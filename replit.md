@@ -1,0 +1,114 @@
+# Field Daily Reports
+
+A mobile-first web application for construction inspectors to create daily field reports with photo uploads, digital signatures, and PDF generation.
+
+## Overview
+
+Field Daily Reports helps construction inspection teams document their daily work efficiently with:
+- **Mobile-first forms**: Touch-optimized interfaces for field use
+- **Photo documentation**: Upload and caption site photos
+- **Digital signatures**: Canvas-based signature capture
+- **PDF generation**: Professional reports with company branding
+- **Email distribution**: Send reports to project stakeholders
+
+## Tech Stack
+
+- **Frontend**: React + TypeScript + Tailwind CSS + shadcn/ui
+- **Backend**: Node.js + Express
+- **Database**: PostgreSQL with Drizzle ORM
+- **Authentication**: Replit Auth (OpenID Connect)
+- **File Storage**: Local filesystem (storage/)
+
+## Project Structure
+
+```
+├── client/                 # Frontend React application
+│   └── src/
+│       ├── components/     # Reusable UI components
+│       ├── pages/          # Page components
+│       ├── hooks/          # Custom React hooks
+│       └── lib/            # Utilities
+├── server/                 # Backend Express server
+│   ├── routes.ts           # API endpoints
+│   ├── storage.ts          # Database operations
+│   └── replit_integrations/ # Auth integration
+├── shared/                 # Shared types and schemas
+│   ├── schema.ts           # Drizzle database schema
+│   └── models/             # Auth models
+└── storage/                # File uploads
+    ├── uploads/            # Report photos
+    ├── signatures/         # Digital signatures
+    └── reports/            # Generated PDFs
+```
+
+## Key Features
+
+### User Roles
+- **Inspector**: Create, edit, and submit daily reports
+- **Admin**: Manage projects, users, and settings
+
+### Daily Report Fields
+- Project selection
+- Date and weather conditions
+- Work performed
+- Trades on site (repeatable rows)
+- Manpower summary
+- Visitors log
+- Issues/delays (yes/no with details)
+- Safety incidents (yes/no with details)
+- Notes and observations
+- Photo uploads with captions
+- Digital signature
+
+### API Endpoints
+
+```
+Authentication:
+GET  /api/login           - Start login flow
+GET  /api/logout          - Logout
+GET  /api/auth/user       - Get current user
+
+Projects:
+GET    /api/projects      - List all projects
+POST   /api/projects      - Create project
+PATCH  /api/projects/:id  - Update project
+DELETE /api/projects/:id  - Delete project
+
+Reports:
+GET    /api/reports       - List reports with stats
+GET    /api/reports/:id   - Get report details
+POST   /api/reports       - Create report
+PATCH  /api/reports/:id   - Update report
+DELETE /api/reports/:id   - Delete report
+
+Photos/Signatures:
+POST   /api/reports/:id/photos    - Upload photos
+POST   /api/reports/:id/signature - Save signature
+POST   /api/reports/:id/pdf       - Generate PDF
+POST   /api/reports/:id/distribute - Send to recipients
+
+Admin:
+GET    /api/admin/users           - List all users
+PATCH  /api/admin/users/:id/role  - Update user role
+GET    /api/admin/settings        - Get app settings
+POST   /api/admin/settings        - Update settings
+POST   /api/admin/logo            - Upload company logo
+```
+
+## Development
+
+The application runs on port 5000 with:
+- Vite for frontend development (HMR enabled)
+- Express for API routes
+- PostgreSQL database
+
+## Database Schema
+
+- **users**: Auth user accounts
+- **sessions**: Session storage
+- **user_profiles**: Extended user data with roles
+- **projects**: Construction projects
+- **daily_reports**: Field inspection reports
+- **photos**: Report photo attachments
+- **distribution_logs**: Email/folder distribution history
+- **app_settings**: Company branding and config
