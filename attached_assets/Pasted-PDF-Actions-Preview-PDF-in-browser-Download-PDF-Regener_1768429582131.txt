@@ -1,0 +1,129 @@
+PDF Actions
+   •   Preview PDF in browser
+   •   Download PDF
+   •   Regenerate PDF on updates
+
+⸻
+
+8. Distribution
+
+Email
+   •   Send PDF to:
+      •   Default project distribution list
+      •   Manually added recipients
+   •   Use nodemailer + SMTP env vars
+   •   Attach generated PDF
+
+Folder Distribution
+   •   Save PDF to project folder path
+   •   Allow override destination folder
+   •   Log success/failure
+
+Distribution Logging
+   •   Save distribution results in DB:
+      •   Recipients
+      •   Folder path
+      •   Timestamp
+      •   Status
+      •   Error message (if any)
+
+⸻
+
+9. Pages / UI
+   •   Login
+   •   Inspector Dashboard
+      •   Create Report
+      •   Recent Reports
+   •   Admin Dashboard
+      •   Projects
+      •   Users
+      •   Reports
+   •   Create/Edit Report (mobile optimized)
+   •   Report Detail Page
+      •   Photos
+      •   Signature
+      •   PDF preview/download
+      •   Distribute
+   •   Admin Settings
+      •   Upload company logo
+      •   Manage distribution defaults
+
+⸻
+
+10. Database Models (Minimum)
+   •   User: id, name, email, passwordHash, role
+   •   Project: id, name, number, address, distributionEmails, defaultFolderPath
+   •   DailyReport:
+      •   id, projectId, inspectorId
+      •   date, weatherType, weatherNotes
+      •   workPerformed
+      •   trades (json)
+      •   manpower (json)
+      •   visitors (json)
+      •   issuesFlag, issuesDetails
+      •   safetyFlag, safetyDetails
+      •   notes
+      •   signaturePath
+      •   signedAt
+      •   status
+      •   createdAt, updatedAt
+   •   Photo: id, reportId, filePath, caption
+   •   DistributionLog: id, reportId, sentTo, folderPath, sentAt, status, errorMessage
+
+⸻
+
+11. Puppeteer Implementation Requirements
+   •   Headless Puppeteer
+   •   Generate PDFs from /print/reports/:id
+   •   Use absolute URLs for images
+   •   Include print-specific CSS:
+      •   Page margins
+      •   Header/footer handling
+      •   Avoid photo page breaks
+
+⸻
+
+12. Environment Variables
+   •   JWT_SECRET
+   •   SMTP_HOST
+   •   SMTP_PORT
+   •   SMTP_USER
+   •   SMTP_PASS
+   •   SMTP_FROM
+   •   APP_BASE_URL
+
+⸻
+
+13. Acceptance Criteria
+
+✔ Inspector can complete report on mobile
+✔ Signature required before submission
+✔ PDF is US Letter with logo and signature
+✔ PDF preview/download works
+✔ Email + folder distribution works
+✔ Admin can manage projects, users, branding
+
+⸻
+
+14. Deliverables
+   •   Complete working app
+   •   Prisma schema + migrations
+   •   Seed script to create Admin user
+   •   README with setup instructions
+
+⸻
+
+🔥 Next-Level Enhancements (Optional)
+   •   Offline draft support
+   •   District-specific report templates
+   •   Multiple signature roles (Inspector / CM / Owner)
+   •   Auto-daily email at set time
+   •   Export all reports as ZIP
+
+⸻
+
+If you want, next I can:
+   •   Convert this into a DSA-specific daily inspection template
+   •   Create a Procore-style PDF layout
+   •   Add photo markup / annotations
+   •   Add offline mode for inspectors

@@ -1,0 +1,114 @@
+Build a full-stack web app called Field Daily Reports for construction inspectors to create daily reports from the field using simple mobile-friendly forms, photo uploads, digital signature capture, and Puppeteer HTML-to-PDF generation on US Letter paper with company branding.
+
+⸻
+
+1. Tech Stack (REQUIRED)
+   •   Backend: Node.js + Express
+   •   Database: SQLite + Prisma
+   •   Frontend: React (mobile-first, touch-friendly)
+   •   Authentication: JWT (secure HTTP-only cookies preferred)
+   •   PDF Engine: Puppeteer (HTML → PDF)
+   •   Email: Nodemailer (SMTP via env vars)
+   •   Storage (MVP):
+      •   /storage/uploads → report photos
+      •   /storage/signatures → inspector signatures
+      •   /storage/reports → generated PDFs
+
+⸻
+
+2. Users & Roles
+
+Inspector
+   •   Create, edit, save drafts, submit daily reports
+   •   Upload photos from mobile
+   •   Capture digital signature
+   •   Preview, download, and distribute PDFs
+
+Admin
+   •   Manage users
+   •   Manage projects
+   •   Configure distribution lists
+   •   Upload company logo used in PDFs
+
+⸻
+
+3. Projects (Admin)
+
+Each project includes:
+   •   Project name
+   •   Project number
+   •   Address
+   •   Default distribution emails (stored as JSON/text)
+   •   Default folder destination (internal path)
+      •   Example: /storage/reports/{projectNumber}/
+
+⸻
+
+4. Daily Report Form (Mobile-First)
+
+Fields:
+   •   Date (default today)
+   •   Project (dropdown)
+   •   Inspector name (auto-filled)
+   •   Weather:
+      •   Dropdown (Clear / Cloudy / Rain / Wind / Heat / Cold)
+      •   Weather notes
+   •   Work performed today (textarea)
+   •   Trades on site (repeatable rows: trade + headcount)
+   •   Manpower summary (repeatable rows)
+   •   Visitors (repeatable rows: name / company / notes)
+   •   Delays or issues (yes/no + details)
+   •   Safety incidents (yes/no + details)
+   •   Notes / observations
+   •   Status: Draft / Submitted
+
+⸻
+
+5. Photo Uploads
+   •   Upload multiple photos per report
+   •   Optional caption per photo
+   •   Stored locally
+   •   Display gallery on report view and PDF
+
+⸻
+
+6. Digital Signature Capture (REQUIRED)
+   •   Inspector signs using finger or stylus on mobile
+   •   Use HTML <canvas> signature pad
+   •   Signature saved as PNG:
+      •   /storage/signatures/{reportId}.png
+   •   Signature is required before submission
+   •   Store:
+      •   Signature image path
+      •   Inspector name
+      •   Date/time signed
+
+⸻
+
+7. PDF Generation (Puppeteer — US Letter)
+
+Page Setup
+   •   US Letter size (8.5 × 11 inches)
+   •   Portrait orientation
+   •   Clean professional styling
+   •   Print-friendly CSS
+
+Company Branding
+   •   Admin-uploaded logo stored in /public/assets/logo.png
+   •   Logo appears in a fixed header on every page
+   •   Header includes:
+      •   Company logo
+      •   “Daily Inspection Report”
+      •   Project name & number
+
+PDF Content
+   •   Project info
+   •   Report metadata (date, inspector, weather)
+   •   All form sections
+   •   Embedded photos with captions
+   •   Signature block on final page:
+      •   Signature image
+      •   Inspector name
+      •   Date signed
+
+File Naming & Storage
