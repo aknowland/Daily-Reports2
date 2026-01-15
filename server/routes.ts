@@ -903,6 +903,57 @@ export async function registerRoutes(
     }
   });
 
+  // Get active company details
+  app.get("/api/my-company", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      
+      if (!profile?.activeCompanyId) {
+        return res.json(null);
+      }
+
+      const company = await storage.getCompany(profile.activeCompanyId);
+      if (!company) {
+        return res.json(null);
+      }
+
+      // Check if user is an admin of this company
+      const membership = await storage.getCompanyMember(profile.activeCompanyId, userId);
+      const isCompanyAdmin = membership?.role === "admin";
+
+      res.json({ ...company, isCompanyAdmin });
+    } catch (error) {
+      console.error("Error fetching active company:", error);
+      res.status(500).json({ message: "Failed to fetch active company" });
+    }
+  });
+
+  // Update active company (only company admins)
+  app.patch("/api/my-company", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      
+      if (!profile?.activeCompanyId) {
+        return res.status(400).json({ message: "No active company selected" });
+      }
+
+      // Check if user is an admin of this company
+      const membership = await storage.getCompanyMember(profile.activeCompanyId, userId);
+      if (membership?.role !== "admin") {
+        return res.status(403).json({ message: "Only company admins can update company information" });
+      }
+
+      const { name, address, phone, email } = req.body;
+      const updated = await storage.updateCompany(profile.activeCompanyId, { name, address, phone, email });
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating company:", error);
+      res.status(500).json({ message: "Failed to update company" });
+    }
+  });
+
   // Switch active company
   app.post("/api/switch-company", isAuthenticated, async (req: any, res) => {
     try {
