@@ -10,6 +10,17 @@ import {
   SheetTitle,
   SheetDescription,
 } from "@/components/ui/sheet";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { format } from "date-fns";
@@ -32,6 +43,7 @@ import {
   Wrench,
   Package,
   Hash,
+  Trash2,
 } from "lucide-react";
 import type { DailyReport, Project, Photo, VisitorRow, WorkActivityRow } from "@shared/schema";
 
@@ -45,9 +57,19 @@ interface ReportDetailPanelProps {
   report: ReportWithDetails | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  currentUserId?: string;
+  isAdmin?: boolean;
+  isCompanyAdmin?: boolean;
 }
 
-export function ReportDetailPanel({ report, open, onOpenChange }: ReportDetailPanelProps) {
+export function ReportDetailPanel({ 
+  report, 
+  open, 
+  onOpenChange,
+  currentUserId,
+  isAdmin = false,
+  isCompanyAdmin = false,
+}: ReportDetailPanelProps) {
   const { toast } = useToast();
 
   const generatePdfMutation = useMutation({
@@ -71,7 +93,33 @@ export function ReportDetailPanel({ report, open, onOpenChange }: ReportDetailPa
     },
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: async () => {
+      await apiRequest("DELETE", `/api/reports/${report?.id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/reports"] });
+      onOpenChange(false);
+      toast({
+        title: "Report Deleted",
+        description: "The report has been permanently deleted.",
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to delete report",
+        variant: "destructive",
+      });
+    },
+  });
+
   if (!report) return null;
+
+  // Permission logic
+  const isOwner = currentUserId === report.inspectorId;
+  const canEdit = isAdmin || isCompanyAdmin || (isOwner && report.status === "draft");
+  const canDelete = isAdmin || isCompanyAdmin;
 
   const workActivities = (report.workActivities as WorkActivityRow[]) || [];
   const visitors = (report.visitors as VisitorRow[]) || [];
@@ -92,7 +140,7 @@ export function ReportDetailPanel({ report, open, onOpenChange }: ReportDetailPa
             <StatusBadge status={report.status || "draft"} />
           </div>
           <div className="flex flex-wrap gap-2 pt-2">
-            {report.status === "draft" && (
+            {canEdit && (
               <Button asChild variant="outline" size="sm" data-testid="button-edit-report">
                 <Link href={`/reports/${report.id}/edit`} onClick={() => onOpenChange(false)}>
                   <Edit className="w-4 h-4 mr-2" />
@@ -130,6 +178,43 @@ export function ReportDetailPanel({ report, open, onOpenChange }: ReportDetailPa
                   Download
                 </a>
               </Button>
+            )}
+            {canDelete && (
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="text-destructive hover:bg-destructive/10"
+                    data-testid="button-delete-report"
+                  >
+                    <Trash2 className="w-4 h-4 mr-2" />
+                    Delete
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Delete Report</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      Are you sure you want to delete this report? This action cannot be undone.
+                      All photos and associated data will be permanently removed.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction
+                      onClick={() => deleteMutation.mutate()}
+                      className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                      disabled={deleteMutation.isPending}
+                    >
+                      {deleteMutation.isPending ? (
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      ) : null}
+                      Delete
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
             )}
           </div>
         </SheetHeader>

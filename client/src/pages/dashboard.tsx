@@ -20,7 +20,7 @@ import {
 import type { DailyReportWithDetails, UserProfile } from "@shared/schema";
 
 export default function DashboardPage() {
-  const { user } = useAuth();
+  const { user, isAdmin, isCompanyAdmin } = useAuth();
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [selectedReport, setSelectedReport] = useState<DailyReportWithDetails | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
@@ -200,6 +200,9 @@ export default function DashboardPage() {
         report={selectedReport}
         open={panelOpen}
         onOpenChange={setPanelOpen}
+        currentUserId={user?.id}
+        isAdmin={isAdmin}
+        isCompanyAdmin={isCompanyAdmin}
       />
 
       <OnboardingModal 
