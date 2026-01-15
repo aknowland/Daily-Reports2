@@ -22,6 +22,8 @@ import { cn } from "@/lib/utils";
 import { useState } from "react";
 import { CompanySwitcher } from "./company-switcher";
 import { ProjectSwitcher } from "./project-switcher";
+import { ModeToggle } from "./mode-toggle";
+import { useAdminMode } from "@/hooks/use-admin-mode";
 
 interface HeaderProps {
   title?: string;
@@ -32,6 +34,9 @@ export function Header({ title = "Field Daily Reports" }: HeaderProps) {
   const { user, isLoading, isAdmin, logout, profile } = useAuth();
   const [location] = useLocation();
   const [sheetOpen, setSheetOpen] = useState(false);
+  const { isAdminMode } = useAdminMode();
+  
+  const showAdminFeatures = isAdmin && isAdminMode;
 
   const getInitials = (firstName?: string | null, lastName?: string | null) => {
     const first = firstName?.charAt(0) || "";
@@ -58,7 +63,7 @@ export function Header({ title = "Field Daily Reports" }: HeaderProps) {
     <header className="sticky top-0 z-40 w-full border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="flex h-14 items-center justify-between gap-4 px-4">
         <div className="flex items-center gap-2">
-          {isAdmin && (
+          {showAdminFeatures && (
             <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
               <SheetTrigger asChild>
                 <Button variant="ghost" size="icon" data-testid="button-admin-menu">
@@ -111,6 +116,7 @@ export function Header({ title = "Field Daily Reports" }: HeaderProps) {
         </div>
 
         <div className="flex items-center gap-2">
+          {isAdmin && <ModeToggle />}
           {user && <CompanySwitcher activeCompanyId={profile?.activeCompanyId} />}
           {user && <ProjectSwitcher activeProjectId={profile?.activeProjectId} />}
           {isLoading ? (
