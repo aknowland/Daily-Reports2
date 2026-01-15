@@ -114,6 +114,26 @@ export function ReportDetailPanel({
     },
   });
 
+  const deletePdfMutation = useMutation({
+    mutationFn: async () => {
+      await apiRequest("DELETE", `/api/reports/${report?.id}/pdf`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/reports"] });
+      toast({
+        title: "PDF Deleted",
+        description: "The PDF has been deleted. You can generate a new one anytime.",
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to delete PDF",
+        variant: "destructive",
+      });
+    },
+  });
+
   if (!report) return null;
 
   // Permission logic
@@ -177,6 +197,23 @@ export function ReportDetailPanel({
                   <Download className="w-4 h-4 mr-2" />
                   Download
                 </a>
+              </Button>
+            )}
+            {report.pdfPath && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => deletePdfMutation.mutate()}
+                disabled={deletePdfMutation.isPending}
+                className="text-destructive"
+                data-testid="button-delete-pdf"
+              >
+                {deletePdfMutation.isPending ? (
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                ) : (
+                  <Trash2 className="w-4 h-4 mr-2" />
+                )}
+                Delete PDF
               </Button>
             )}
             {canDelete && (
