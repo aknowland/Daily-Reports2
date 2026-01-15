@@ -21,6 +21,7 @@ import {
   TradeRowInput,
   ManpowerRowInput,
   VisitorRowInput,
+  WorkActivityRowInput,
   AddRowButton,
 } from "@/components/reports/repeatable-row";
 import { useToast } from "@/hooks/use-toast";
@@ -28,7 +29,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Loader2, Save, Send, ArrowLeft } from "lucide-react";
 import { format } from "date-fns";
-import type { Project, DailyReport, TradeRow, ManpowerRow, VisitorRow } from "@shared/schema";
+import type { Project, DailyReport, TradeRow, ManpowerRow, VisitorRow, WorkActivityRow } from "@shared/schema";
 
 interface PhotoItem {
   id?: string;
@@ -61,6 +62,7 @@ export default function ReportFormPage() {
     workPerformed: "",
     trades: [] as TradeRow[],
     manpower: [] as ManpowerRow[],
+    workActivities: [] as WorkActivityRow[],
     visitors: [] as VisitorRow[],
     issuesFlag: false,
     issuesDetails: "",
@@ -99,6 +101,7 @@ export default function ReportFormPage() {
         workPerformed: existingReport.workPerformed || "",
         trades: (existingReport.trades as TradeRow[]) || [],
         manpower: (existingReport.manpower as ManpowerRow[]) || [],
+        workActivities: (existingReport.workActivities as WorkActivityRow[]) || [],
         visitors: (existingReport.visitors as VisitorRow[]) || [],
         issuesFlag: existingReport.issuesFlag || false,
         issuesDetails: existingReport.issuesDetails || "",
@@ -324,82 +327,53 @@ export default function ReportFormPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-lg">Work Performed</CardTitle>
+            <CardTitle className="text-lg">Work Activities</CardTitle>
+            <p className="text-sm text-muted-foreground">
+              Add each work activity with the contractor/trade and their headcount
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {formData.workActivities.map((activity, index) => (
+              <WorkActivityRowInput
+                key={index}
+                index={index}
+                contractor={activity.contractor}
+                headcount={activity.headcount}
+                workDescription={activity.workDescription}
+                onChange={(c, h, w) => {
+                  const newActivities = [...formData.workActivities];
+                  newActivities[index] = { contractor: c, headcount: h, workDescription: w };
+                  setFormData(prev => ({ ...prev, workActivities: newActivities }));
+                }}
+                onRemove={() => {
+                  const newActivities = formData.workActivities.filter((_, i) => i !== index);
+                  setFormData(prev => ({ ...prev, workActivities: newActivities }));
+                }}
+              />
+            ))}
+            <AddRowButton
+              onClick={() => setFormData(prev => ({ 
+                ...prev, 
+                workActivities: [...prev.workActivities, { contractor: "", headcount: 0, workDescription: "" }] 
+              }))}
+              label="Add Work Activity"
+              testId="button-add-work-activity"
+            />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Additional Notes</CardTitle>
           </CardHeader>
           <CardContent>
             <Textarea
               value={formData.workPerformed}
               onChange={(e) => setFormData(prev => ({ ...prev, workPerformed: e.target.value }))}
-              placeholder="Describe the work performed today..."
-              rows={6}
+              placeholder="Additional work notes or general observations..."
+              rows={4}
               className="resize-y"
               data-testid="textarea-work-performed"
-            />
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">Trades on Site</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {formData.trades.map((trade, index) => (
-              <TradeRowInput
-                key={index}
-                index={index}
-                trade={trade.trade}
-                headcount={trade.headcount}
-                onChange={(t, h) => {
-                  const newTrades = [...formData.trades];
-                  newTrades[index] = { trade: t, headcount: h };
-                  setFormData(prev => ({ ...prev, trades: newTrades }));
-                }}
-                onRemove={() => {
-                  const newTrades = formData.trades.filter((_, i) => i !== index);
-                  setFormData(prev => ({ ...prev, trades: newTrades }));
-                }}
-              />
-            ))}
-            <AddRowButton
-              onClick={() => setFormData(prev => ({ 
-                ...prev, 
-                trades: [...prev.trades, { trade: "", headcount: 0 }] 
-              }))}
-              label="Add Trade"
-              testId="button-add-trade"
-            />
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">Manpower Summary</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {formData.manpower.map((mp, index) => (
-              <ManpowerRowInput
-                key={index}
-                index={index}
-                description={mp.description}
-                count={mp.count}
-                onChange={(d, c) => {
-                  const newManpower = [...formData.manpower];
-                  newManpower[index] = { description: d, count: c };
-                  setFormData(prev => ({ ...prev, manpower: newManpower }));
-                }}
-                onRemove={() => {
-                  const newManpower = formData.manpower.filter((_, i) => i !== index);
-                  setFormData(prev => ({ ...prev, manpower: newManpower }));
-                }}
-              />
-            ))}
-            <AddRowButton
-              onClick={() => setFormData(prev => ({ 
-                ...prev, 
-                manpower: [...prev.manpower, { description: "", count: 0 }] 
-              }))}
-              label="Add Manpower Entry"
-              testId="button-add-manpower"
             />
           </CardContent>
         </Card>

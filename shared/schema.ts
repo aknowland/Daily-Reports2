@@ -78,16 +78,23 @@ export const projectMembers = pgTable("project_members", {
   unique().on(table.projectId, table.userId),
 ]);
 
-// Trade row type
+// Trade row type (legacy - kept for backward compatibility)
 export const tradeRowSchema = z.object({
   trade: z.string(),
   headcount: z.number().min(0),
 });
 
-// Manpower row type
+// Manpower row type (legacy - kept for backward compatibility)
 export const manpowerRowSchema = z.object({
   description: z.string(),
   count: z.number().min(0),
+});
+
+// Work Activity row type - combines trade/contractor, manpower, and work description
+export const workActivityRowSchema = z.object({
+  contractor: z.string(), // Subcontractor name or "GC" for general contractor
+  headcount: z.number().min(0),
+  workDescription: z.string(),
 });
 
 // Visitor row type
@@ -108,6 +115,7 @@ export const dailyReports = pgTable("daily_reports", {
   workPerformed: text("work_performed"),
   trades: json("trades").$type<z.infer<typeof tradeRowSchema>[]>().default([]),
   manpower: json("manpower").$type<z.infer<typeof manpowerRowSchema>[]>().default([]),
+  workActivities: json("work_activities").$type<z.infer<typeof workActivityRowSchema>[]>().default([]),
   visitors: json("visitors").$type<z.infer<typeof visitorRowSchema>[]>().default([]),
   issuesFlag: boolean("issues_flag").default(false),
   issuesDetails: text("issues_details"),
@@ -267,6 +275,7 @@ export type InsertInvite = z.infer<typeof insertInviteSchema>;
 // Extended types for frontend
 export type TradeRow = z.infer<typeof tradeRowSchema>;
 export type ManpowerRow = z.infer<typeof manpowerRowSchema>;
+export type WorkActivityRow = z.infer<typeof workActivityRowSchema>;
 export type VisitorRow = z.infer<typeof visitorRowSchema>;
 
 export type DailyReportWithDetails = DailyReport & {

@@ -40,7 +40,7 @@ import {
   AlertCircle,
   Trash2,
 } from "lucide-react";
-import type { DailyReport, Project, Photo, TradeRow, ManpowerRow, VisitorRow } from "@shared/schema";
+import type { DailyReport, Project, Photo, TradeRow, ManpowerRow, VisitorRow, WorkActivityRow } from "@shared/schema";
 
 type ReportWithDetails = DailyReport & {
   project?: Project;
@@ -181,6 +181,7 @@ export default function ReportDetailPage() {
 
   const trades = (report.trades as TradeRow[]) || [];
   const manpower = (report.manpower as ManpowerRow[]) || [];
+  const workActivities = (report.workActivities as WorkActivityRow[]) || [];
   const visitors = (report.visitors as VisitorRow[]) || [];
 
   return (
@@ -302,12 +303,36 @@ export default function ReportDetailPage() {
           </CardContent>
         </Card>
 
-        {report.workPerformed && (
+        {workActivities.length > 0 && (
           <Card>
             <CardHeader>
               <CardTitle className="text-lg flex items-center gap-2">
                 <HardHat className="w-5 h-5" />
-                Work Performed
+                Work Activities
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                {workActivities.map((activity, index) => (
+                  <div key={index} className="p-3 bg-muted/50 border border-border">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="font-medium">{activity.contractor}</span>
+                      <span className="text-sm text-muted-foreground">{activity.headcount} workers</span>
+                    </div>
+                    <p className="text-sm">{activity.workDescription}</p>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {report.workPerformed && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <MessageSquare className="w-5 h-5" />
+                Additional Notes
               </CardTitle>
             </CardHeader>
             <CardContent>

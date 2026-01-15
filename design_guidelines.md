@@ -64,9 +64,9 @@
 - Height: h-12 with appearance-none custom arrow
 - Clear visual indicator of selection state
 
-**Repeatable Row Sections** (Trades, Manpower, Visitors):
-- Light gray background (bg-gray-50) with border-l-4 border-blue-500
-- Add/Remove buttons: Icon-only, h-10 w-10, rounded-full
+**Repeatable Row Sections** (Work Activities, Visitors):
+- Light gray background (bg-muted/50) with full border border-border
+- Add/Remove buttons: size="icon" variant="ghost"
 - Compact spacing between rows: gap-3
 
 **Radio/Checkbox Groups:**
@@ -90,7 +90,7 @@
 
 **Report Cards (Dashboard):**
 - White background, rounded-lg, shadow-sm
-- Border-l-4 with status color (green: submitted, orange: draft)
+- Full border with status-indicating badge (green: submitted, orange: draft)
 - p-4 with clear hierarchy: Project name → Date → Status badge
 
 **Project Cards (Admin):**
