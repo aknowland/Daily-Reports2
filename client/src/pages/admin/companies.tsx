@@ -28,7 +28,9 @@ import {
   Mail,
   Phone,
   MapPin,
+  ArrowLeft,
 } from "lucide-react";
+import { Link } from "wouter";
 import type { Company } from "@shared/schema";
 
 export default function AdminCompaniesPage() {
@@ -230,6 +232,14 @@ export default function AdminCompaniesPage() {
   return (
     <PageLayout title="Companies" isAdmin>
       <div className="container px-4 py-6 mx-auto max-w-screen-xl space-y-6">
+        <div className="flex items-center gap-2 mb-2">
+          <Button variant="ghost" size="sm" asChild data-testid="button-back">
+            <Link href="/">
+              <ArrowLeft className="w-4 h-4 mr-1" />
+              Back to Dashboard
+            </Link>
+          </Button>
+        </div>
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold">Companies</h1>
