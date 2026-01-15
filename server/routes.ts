@@ -785,7 +785,7 @@ export async function registerRoutes(
 
       // Helper function to draw a table row with border (with page break handling)
       const drawTableRow = (label: string, value: string, options?: { bold?: boolean }) => {
-        const rowHeight = Math.max(20, doc.heightOfString(value || 'N/A', { width: rightColWidth - 10 }) + 8);
+        const rowHeight = Math.max(16, doc.heightOfString(value || 'N/A', { width: rightColWidth - 10 }) + 4);
         
         // Check if we need a new page
         if (doc.y + rowHeight > doc.page.height - doc.page.margins.bottom) {
@@ -799,11 +799,11 @@ export async function registerRoutes(
         doc.rect(startX + leftColWidth, rowY, rightColWidth, rowHeight).stroke();
         
         // Draw label (left cell)
-        doc.fontSize(9).font('Helvetica-Bold').text(label, startX + 5, rowY + 4, { width: leftColWidth - 10 });
+        doc.fontSize(9).font('Helvetica-Bold').text(label, startX + 5, rowY + 3, { width: leftColWidth - 10 });
         
         // Draw value (right cell)
         doc.fontSize(9).font(options?.bold ? 'Helvetica-Bold' : 'Helvetica')
-          .text(value || 'N/A', startX + leftColWidth + 5, rowY + 4, { width: rightColWidth - 10 });
+          .text(value || 'N/A', startX + leftColWidth + 5, rowY + 3, { width: rightColWidth - 10 });
         
         doc.y = rowY + rowHeight;
       };
@@ -811,17 +811,17 @@ export async function registerRoutes(
       // Helper function to draw section header with extra spacing before (with page break handling)
       const drawSectionHeader = (title: string) => {
         // Check if we need a new page (need room for header + at least one row)
-        if (doc.y + 60 > doc.page.height - doc.page.margins.bottom) {
+        if (doc.y + 50 > doc.page.height - doc.page.margins.bottom) {
           doc.addPage();
         } else {
-          doc.moveDown(1.5);
+          doc.moveDown(0.6);
         }
         
         const headerY = doc.y;
-        doc.rect(startX, headerY, pageWidth, 20).fillAndStroke('#f0f0f0', '#000');
-        doc.fillColor('#000').fontSize(10).font('Helvetica-Bold')
-          .text(title, startX + 5, headerY + 5, { width: pageWidth - 10 });
-        doc.y = headerY + 20;
+        doc.rect(startX, headerY, pageWidth, 16).fillAndStroke('#f0f0f0', '#000');
+        doc.fillColor('#000').fontSize(9).font('Helvetica-Bold')
+          .text(title, startX + 5, headerY + 4, { width: pageWidth - 10 });
+        doc.y = headerY + 16;
       };
 
       // Header with company logo in top left and contact info on right (same row)
@@ -881,16 +881,16 @@ export async function registerRoutes(
       
       // Title centered below logo with tighter spacing
       const titleY = hasLogo ? logoEndY - 15 : doc.page.margins.top;
-      doc.fontSize(18).font('Helvetica-Bold').text('DAILY FIELD REPORT', startX, titleY, { 
+      doc.fontSize(16).font('Helvetica-Bold').text('DAILY FIELD REPORT', startX, titleY, { 
         width: pageWidth,
         align: 'center' 
       });
-      doc.fontSize(10).font('Helvetica').text(new Date(report.date).toLocaleDateString('en-US', { 
+      doc.fontSize(9).font('Helvetica').text(new Date(report.date).toLocaleDateString('en-US', { 
         weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' 
-      }), startX, titleY + 22, { align: 'center', width: pageWidth });
+      }), startX, titleY + 18, { align: 'center', width: pageWidth });
       
       // Set consistent position after header block
-      doc.y = titleY + 45;
+      doc.y = titleY + 32;
 
       // Project Information Section
       drawSectionHeader('PROJECT INFORMATION');
@@ -922,22 +922,22 @@ export async function registerRoutes(
         // Helper to draw the work activities table header
         const drawActivityTableHeader = () => {
           const hdrY = doc.y;
-          doc.rect(startX, hdrY, activityColWidths[0], 18).fillAndStroke('#e0e0e0', '#000');
-          doc.rect(startX + activityColWidths[0], hdrY, activityColWidths[1], 18).fillAndStroke('#e0e0e0', '#000');
-          doc.rect(startX + activityColWidths[0] + activityColWidths[1], hdrY, activityColWidths[2], 18).fillAndStroke('#e0e0e0', '#000');
+          doc.rect(startX, hdrY, activityColWidths[0], 14).fillAndStroke('#e0e0e0', '#000');
+          doc.rect(startX + activityColWidths[0], hdrY, activityColWidths[1], 14).fillAndStroke('#e0e0e0', '#000');
+          doc.rect(startX + activityColWidths[0] + activityColWidths[1], hdrY, activityColWidths[2], 14).fillAndStroke('#e0e0e0', '#000');
           
           doc.fillColor('#000').fontSize(8).font('Helvetica-Bold');
-          doc.text('Contractor/Trade', startX + 3, hdrY + 5, { width: activityColWidths[0] - 6 });
-          doc.text('Manpower', startX + activityColWidths[0] + 3, hdrY + 5, { width: activityColWidths[1] - 6 });
-          doc.text('Work Activities', startX + activityColWidths[0] + activityColWidths[1] + 3, hdrY + 5, { width: activityColWidths[2] - 6 });
-          doc.y = hdrY + 18;
+          doc.text('Contractor/Trade', startX + 3, hdrY + 3, { width: activityColWidths[0] - 6 });
+          doc.text('Manpower', startX + activityColWidths[0] + 3, hdrY + 3, { width: activityColWidths[1] - 6 });
+          doc.text('Work Activities', startX + activityColWidths[0] + activityColWidths[1] + 3, hdrY + 3, { width: activityColWidths[2] - 6 });
+          doc.y = hdrY + 14;
         };
         
         drawActivityTableHeader();
         
         workActivities.forEach((activity) => {
           const descHeight = doc.heightOfString(activity.workDescription || '', { width: activityColWidths[2] - 6 });
-          const rowHeight = Math.max(18, descHeight + 8);
+          const rowHeight = Math.max(14, descHeight + 4);
           
           // Check if we need a new page
           if (doc.y + rowHeight > doc.page.height - doc.page.margins.bottom) {
@@ -1013,12 +1013,14 @@ export async function registerRoutes(
       // Photos - 2 columns layout
       const photos = report.photos || [];
       if (photos.length > 0) {
-        doc.addPage();
+        const photoHeight = 130;
+        // Ensure enough space for header + at least one photo row
+        if (doc.y + 16 + photoHeight + 20 > doc.page.height - doc.page.margins.bottom) {
+          doc.addPage();
+        }
         drawSectionHeader('PHOTOS');
-        doc.moveDown(0.3);
         
-        const photoWidth = (pageWidth - 15) / 2;
-        const photoHeight = 140;
+        const photoWidth = (pageWidth - 10) / 2;
         let currentY = doc.y;
         
         for (let i = 0; i < photos.length; i += 2) {
@@ -1054,7 +1056,7 @@ export async function registerRoutes(
           if (i + 1 < photos.length) {
             const rightPhoto = photos[i + 1];
             const rightPhotoPath = path.join(process.cwd(), rightPhoto.filePath.replace(/^\//, ''));
-            const rightX = startX + photoWidth + 15;
+            const rightX = startX + photoWidth + 10;
             if (fs.existsSync(rightPhotoPath)) {
               try {
                 doc.rect(rightX, currentY, photoWidth, photoHeight).stroke();
@@ -1075,7 +1077,7 @@ export async function registerRoutes(
             }
           }
           
-          currentY += photoHeight + 25;
+          currentY += photoHeight + 15;
           doc.y = currentY;
         }
       }
