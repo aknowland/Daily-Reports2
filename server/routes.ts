@@ -827,7 +827,7 @@ export async function registerRoutes(
       // Header with company logo in top left and contact info on right (same row)
       const logoSize = 150;
       let hasLogo = false;
-      const logoTopY = 20; // Position logo closer to top of page
+      const logoTopY = 10; // Position logo at top of page
       let logoEndY = logoTopY;
       let company: any = null;
       
