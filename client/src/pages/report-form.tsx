@@ -369,6 +369,22 @@ export default function ReportFormPage() {
 
         <Card>
           <CardHeader>
+            <CardTitle className="text-lg">Inspections</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Textarea
+              value={formData.inspections}
+              onChange={(e) => setFormData(prev => ({ ...prev, inspections: e.target.value }))}
+              placeholder="Describe inspections performed today..."
+              rows={3}
+              className="resize-y"
+              data-testid="textarea-inspections"
+            />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
             <CardTitle className="text-lg">Additional Notes</CardTitle>
           </CardHeader>
           <CardContent>
@@ -482,22 +498,6 @@ export default function ReportFormPage() {
               rows={3}
               className="resize-y"
               data-testid="textarea-equipment"
-            />
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">Inspections</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Textarea
-              value={formData.inspections}
-              onChange={(e) => setFormData(prev => ({ ...prev, inspections: e.target.value }))}
-              placeholder="Describe inspections performed today..."
-              rows={3}
-              className="resize-y"
-              data-testid="textarea-inspections"
             />
           </CardContent>
         </Card>
