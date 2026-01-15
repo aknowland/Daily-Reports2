@@ -824,20 +824,19 @@ export async function registerRoutes(
         doc.y = headerY + 20;
       };
 
-      // Header with company logo centered at top
+      // Header with company logo in top left
       const logoSize = 150;
       let hasLogo = false;
       let logoEndY = doc.page.margins.top;
       
-      // Add company logo centered at top if exists
+      // Add company logo in top left if exists
       if (report.project?.companyId) {
         const company = await storage.getCompany(report.project.companyId);
         if (company?.logoPath) {
           const logoFilePath = path.join(process.cwd(), company.logoPath.replace(/^\//, ''));
           if (fs.existsSync(logoFilePath)) {
             try {
-              const logoX = startX + (pageWidth - logoSize) / 2;
-              doc.image(logoFilePath, logoX, doc.page.margins.top, {
+              doc.image(logoFilePath, startX, doc.page.margins.top, {
                 width: logoSize,
                 height: logoSize,
                 fit: [logoSize, logoSize],
