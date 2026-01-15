@@ -824,10 +824,11 @@ export async function registerRoutes(
         doc.y = headerY + 20;
       };
 
-      // Header with company logo in top left
+      // Header with company logo in top left (positioned higher with less margin)
       const logoSize = 150;
       let hasLogo = false;
-      let logoEndY = doc.page.margins.top;
+      const logoTopY = 20; // Position logo closer to top of page
+      let logoEndY = logoTopY;
       
       // Add company logo in top left if exists
       if (report.project?.companyId) {
@@ -836,7 +837,7 @@ export async function registerRoutes(
           const logoFilePath = path.join(process.cwd(), company.logoPath.replace(/^\//, ''));
           if (fs.existsSync(logoFilePath)) {
             try {
-              doc.image(logoFilePath, startX, doc.page.margins.top, {
+              doc.image(logoFilePath, startX, logoTopY, {
                 width: logoSize,
                 height: logoSize,
                 fit: [logoSize, logoSize],
@@ -844,7 +845,7 @@ export async function registerRoutes(
                 valign: 'center'
               });
               hasLogo = true;
-              logoEndY = doc.page.margins.top + logoSize;
+              logoEndY = logoTopY + logoSize;
             } catch (err) {
               console.error('Error adding company logo to PDF:', err);
             }
@@ -852,18 +853,18 @@ export async function registerRoutes(
         }
       }
       
-      // Title centered below logo (or at top if no logo)
-      const titleY = hasLogo ? logoEndY + 15 : doc.page.margins.top;
+      // Title centered below logo with reduced spacing
+      const titleY = hasLogo ? logoEndY + 5 : doc.page.margins.top;
       doc.fontSize(18).font('Helvetica-Bold').text('DAILY FIELD REPORT', startX, titleY, { 
         width: pageWidth,
         align: 'center' 
       });
       doc.fontSize(10).font('Helvetica').text(new Date(report.date).toLocaleDateString('en-US', { 
         weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' 
-      }), startX, titleY + 25, { align: 'center', width: pageWidth });
+      }), startX, titleY + 22, { align: 'center', width: pageWidth });
       
       // Set consistent position after header block
-      doc.y = titleY + 55;
+      doc.y = titleY + 45;
 
       // Project Information Section
       drawSectionHeader('PROJECT INFORMATION');
