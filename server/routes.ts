@@ -15,9 +15,10 @@ const UPLOAD_DIR = path.join(process.cwd(), "storage");
 const PHOTOS_DIR = path.join(UPLOAD_DIR, "uploads");
 const SIGNATURES_DIR = path.join(UPLOAD_DIR, "signatures");
 const REPORTS_DIR = path.join(UPLOAD_DIR, "reports");
+const LOGOS_DIR = path.join(UPLOAD_DIR, "logos");
 const ASSETS_DIR = path.join(process.cwd(), "public", "assets");
 
-[PHOTOS_DIR, SIGNATURES_DIR, REPORTS_DIR, ASSETS_DIR].forEach(dir => {
+[PHOTOS_DIR, SIGNATURES_DIR, REPORTS_DIR, LOGOS_DIR, ASSETS_DIR].forEach(dir => {
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
   }
@@ -64,7 +65,7 @@ const photoUpload = multer({
   },
 });
 
-// Multer config for logo
+// Multer config for app logo (admin settings)
 const logoStorage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, ASSETS_DIR),
   filename: (_req, _file, cb) => cb(null, "logo.png"),
@@ -72,6 +73,27 @@ const logoStorage = multer.diskStorage({
 
 const logoUpload = multer({
   storage: logoStorage,
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
+  fileFilter: (_req, file, cb) => {
+    if (file.mimetype.startsWith("image/")) {
+      cb(null, true);
+    } else {
+      cb(new Error("Only image files are allowed"));
+    }
+  },
+});
+
+// Multer config for company logos
+const companyLogoStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, LOGOS_DIR),
+  filename: (_req, file, cb) => {
+    const ext = path.extname(file.originalname);
+    cb(null, `${randomUUID()}${ext}`);
+  },
+});
+
+const companyLogoUpload = multer({
+  storage: companyLogoStorage,
   limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
   fileFilter: (_req, file, cb) => {
     if (file.mimetype.startsWith("image/")) {
@@ -179,6 +201,22 @@ export async function registerRoutes(
         if (reportId) {
           const report = await storage.getReport(reportId);
           if (report && report.inspectorId === userId) {
+            return res.sendFile(filePath);
+          }
+        }
+      } else if (pathParts[1] === 'logos') {
+        // Company logos - allow access for authenticated users who are members of the company
+        const filename = pathParts[2];
+        const logoPath = `/storage/logos/${filename}`;
+        
+        // Find which company owns this logo
+        const companies = await storage.getCompanies();
+        const owningCompany = companies.find(c => c.logoPath === logoPath);
+        
+        if (owningCompany) {
+          // Check if user is a member of this company
+          const isMember = await storage.isUserMemberOfCompany(owningCompany.id, userId);
+          if (isMember) {
             return res.sendFile(filePath);
           }
         }
@@ -774,12 +812,39 @@ export async function registerRoutes(
         doc.y = headerY + 20;
       };
 
-      // Header
-      doc.fontSize(18).font('Helvetica-Bold').text('DAILY FIELD REPORT', { align: 'center' });
+      // Header with company logo in top right
+      const headerY = doc.y;
+      
+      // Add company logo in top right corner if exists
+      if (report.project?.companyId) {
+        const company = await storage.getCompany(report.project.companyId);
+        if (company?.logoPath) {
+          const logoFilePath = path.join(process.cwd(), company.logoPath.replace(/^\//, ''));
+          if (fs.existsSync(logoFilePath)) {
+            try {
+              doc.image(logoFilePath, doc.page.width - doc.page.margins.right - 80, headerY, {
+                width: 70,
+                height: 70,
+                fit: [70, 70],
+                align: 'center',
+                valign: 'center'
+              });
+            } catch (err) {
+              console.error('Error adding company logo to PDF:', err);
+            }
+          }
+        }
+      }
+      
+      doc.fontSize(18).font('Helvetica-Bold').text('DAILY FIELD REPORT', startX, headerY, { 
+        width: pageWidth - 90,
+        align: 'center' 
+      });
       doc.moveDown(0.3);
       doc.fontSize(10).font('Helvetica').text(new Date(report.date).toLocaleDateString('en-US', { 
         weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' 
-      }), { align: 'center' });
+      }), { align: 'center', width: pageWidth - 90 });
+      doc.y = Math.max(doc.y, headerY + 75);
       doc.moveDown();
 
       // Project Information Section
@@ -1329,6 +1394,79 @@ export async function registerRoutes(
       }
       console.error("Error updating company:", error);
       res.status(500).json({ message: "Failed to update company" });
+    }
+  });
+
+  // Upload company logo (company admin only)
+  app.post("/api/companies/:id/logo", isAuthenticated, companyLogoUpload.single("logo"), async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const companyId = req.params.id;
+      
+      // Check if user is a company admin
+      const membership = await storage.getCompanyMember(companyId, userId);
+      const profile = await storage.getUserProfile(userId);
+      const isGlobalAdmin = profile?.role === "admin";
+      
+      if (!isGlobalAdmin && (!membership || membership.role !== "admin")) {
+        // Delete uploaded file if unauthorized
+        if (req.file) {
+          fs.unlinkSync(req.file.path);
+        }
+        return res.status(403).json({ message: "Only company admins can upload logos" });
+      }
+      
+      if (!req.file) {
+        return res.status(400).json({ message: "No logo file provided" });
+      }
+      
+      const logoPath = `/storage/logos/${req.file.filename}`;
+      
+      // Delete old logo if exists
+      const existingCompany = await storage.getCompany(companyId);
+      if (existingCompany?.logoPath) {
+        const oldLogoPath = path.join(process.cwd(), existingCompany.logoPath.replace(/^\//, ''));
+        if (fs.existsSync(oldLogoPath)) {
+          fs.unlinkSync(oldLogoPath);
+        }
+      }
+      
+      await storage.updateCompany(companyId, { logoPath });
+      res.json({ logoPath });
+    } catch (error) {
+      console.error("Error uploading company logo:", error);
+      res.status(500).json({ message: "Failed to upload logo" });
+    }
+  });
+
+  // Delete company logo (company admin only)
+  app.delete("/api/companies/:id/logo", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const companyId = req.params.id;
+      
+      // Check if user is a company admin
+      const membership = await storage.getCompanyMember(companyId, userId);
+      const profile = await storage.getUserProfile(userId);
+      const isGlobalAdmin = profile?.role === "admin";
+      
+      if (!isGlobalAdmin && (!membership || membership.role !== "admin")) {
+        return res.status(403).json({ message: "Only company admins can delete logos" });
+      }
+      
+      const company = await storage.getCompany(companyId);
+      if (company?.logoPath) {
+        const logoPath = path.join(process.cwd(), company.logoPath.replace(/^\//, ''));
+        if (fs.existsSync(logoPath)) {
+          fs.unlinkSync(logoPath);
+        }
+        await storage.updateCompany(companyId, { logoPath: null });
+      }
+      
+      res.json({ message: "Logo deleted" });
+    } catch (error) {
+      console.error("Error deleting company logo:", error);
+      res.status(500).json({ message: "Failed to delete logo" });
     }
   });
 
