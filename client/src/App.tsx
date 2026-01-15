@@ -22,6 +22,7 @@ import AdminSettingsPage from "@/pages/admin/settings";
 import AdminInvitesPage from "@/pages/admin/invites";
 import InviteAcceptPage from "@/pages/invite-accept";
 import ProfilePage from "@/pages/profile";
+import MyCompaniesPage from "@/pages/my-companies";
 
 function LoadingScreen() {
   return (
@@ -43,6 +44,7 @@ function AuthenticatedRoutes() {
       <Route path="/reports/:id" component={ReportDetailPage} />
       <Route path="/reports/:id/edit" component={ReportFormPage} />
       <Route path="/profile" component={ProfilePage} />
+      <Route path="/companies" component={MyCompaniesPage} />
       <Route path="/settings">
         {() => <AdminRoute><AdminSettingsPage /></AdminRoute>}
       </Route>
