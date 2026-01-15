@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import {
@@ -36,6 +36,13 @@ export function EmailDistributionDialog({
   const [currentEmail, setCurrentEmail] = useState("");
   const [message, setMessage] = useState("");
   const { toast } = useToast();
+
+  // Sync emails with defaultEmails when dialog opens or defaults change
+  useEffect(() => {
+    if (open && defaultEmails.length > 0) {
+      setEmails(defaultEmails);
+    }
+  }, [open, defaultEmails]);
 
   const distributeMutation = useMutation({
     mutationFn: async () => {
