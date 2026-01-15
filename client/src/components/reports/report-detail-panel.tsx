@@ -152,6 +152,12 @@ export function ReportDetailPanel({ report, open, onOpenChange }: ReportDetailPa
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4 text-sm">
+                {report.project?.client && (
+                  <div>
+                    <p className="text-muted-foreground">Client</p>
+                    <p className="font-medium">{report.project.client}</p>
+                  </div>
+                )}
                 <div className="flex items-start gap-2">
                   <Cloud className="w-4 h-4 mt-0.5 text-muted-foreground" />
                   <div>
@@ -162,16 +168,16 @@ export function ReportDetailPanel({ report, open, onOpenChange }: ReportDetailPa
                     )}
                   </div>
                 </div>
-                {report.project?.address && (
-                  <div className="flex items-start gap-2">
-                    <MapPin className="w-4 h-4 mt-0.5 text-muted-foreground" />
-                    <div>
-                      <p className="text-muted-foreground">Location</p>
-                      <p className="font-medium">{report.project.address}</p>
-                    </div>
-                  </div>
-                )}
               </div>
+              {report.project?.address && (
+                <div className="flex items-start gap-2 text-sm">
+                  <MapPin className="w-4 h-4 mt-0.5 text-muted-foreground" />
+                  <div>
+                    <p className="text-muted-foreground">Location</p>
+                    <p className="font-medium">{report.project.address}</p>
+                  </div>
+                </div>
+              )}
             </section>
 
             {workActivities.length > 0 && (
