@@ -13,6 +13,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ReportCard } from "@/components/reports/report-card";
+import { ReportDetailPanel } from "@/components/reports/report-detail-panel";
 import { Skeleton } from "@/components/ui/skeleton";
 import { 
   Plus, 
@@ -26,6 +27,8 @@ import type { DailyReportWithDetails } from "@shared/schema";
 export default function ReportsListPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [selectedReport, setSelectedReport] = useState<DailyReportWithDetails | null>(null);
+  const [panelOpen, setPanelOpen] = useState(false);
 
   const { data: reportsData, isLoading, error } = useQuery<{
     reports: DailyReportWithDetails[];
@@ -50,6 +53,11 @@ export default function ReportsListPage() {
 
     return matchesSearch && matchesStatus;
   });
+
+  const handleReportClick = (report: DailyReportWithDetails) => {
+    setSelectedReport(report);
+    setPanelOpen(true);
+  };
 
   return (
     <PageLayout title="Reports">
@@ -159,11 +167,21 @@ export default function ReportsListPage() {
         ) : (
           <div className="space-y-3">
             {filteredReports.map((report) => (
-              <ReportCard key={report.id} report={report} />
+              <ReportCard 
+                key={report.id} 
+                report={report} 
+                onClick={() => handleReportClick(report)}
+              />
             ))}
           </div>
         )}
       </div>
+
+      <ReportDetailPanel
+        report={selectedReport}
+        open={panelOpen}
+        onOpenChange={setPanelOpen}
+      />
     </PageLayout>
   );
 }
