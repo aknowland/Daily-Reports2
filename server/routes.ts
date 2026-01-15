@@ -1249,7 +1249,7 @@ export async function registerRoutes(
 
         const pdfFilename = `Daily_Report_${project?.name?.replace(/[^a-zA-Z0-9]/g, '_') || 'Report'}_${report.date}.pdf`;
 
-        await sendEmail({
+        const emailResult = await sendEmail({
           to: recipients,
           subject: `Daily Field Report - ${project?.name || 'Project'} - ${reportDate}`,
           html: emailHtml,
@@ -1258,6 +1258,18 @@ export async function registerRoutes(
             content: pdfBuffer
           }]
         });
+
+        // Check for Resend API errors
+        if (emailResult.error) {
+          console.error("Resend API error:", emailResult.error);
+          await storage.updateDistributionLogStatus(log.id, "failed");
+          return res.status(500).json({ 
+            message: "Failed to send email: " + (emailResult.error.message || "Unknown error"),
+            error: emailResult.error
+          });
+        }
+
+        console.log("Resend API response:", emailResult);
 
         // Update log to sent
         await storage.updateDistributionLogStatus(log.id, "sent");
