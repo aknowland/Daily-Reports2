@@ -1190,7 +1190,7 @@ export async function registerRoutes(
       const userId = req.user?.claims?.sub;
       const profile = await storage.getUserProfile(userId);
       
-      const { recipients } = req.body;
+      const { recipients, message } = req.body;
       if (!recipients || !Array.isArray(recipients) || recipients.length === 0) {
         return res.status(400).json({ message: "Recipients required" });
       }
@@ -1203,16 +1203,72 @@ export async function registerRoutes(
         return res.status(403).json({ message: "Access denied" });
       }
 
-      // Create distribution log
+      // Check if PDF exists
+      if (!report.pdfPath) {
+        return res.status(400).json({ message: "Please generate a PDF before distributing the report" });
+      }
+
+      // Read PDF file
+      const pdfPath = path.join(process.cwd(), report.pdfPath.replace(/^\//, ''));
+      if (!fs.existsSync(pdfPath)) {
+        return res.status(400).json({ message: "PDF file not found. Please regenerate the PDF." });
+      }
+      const pdfBuffer = fs.readFileSync(pdfPath);
+
+      // Get project and company info for email
+      const project = report.project;
+      const reportDate = new Date(report.date).toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+      });
+
+      // Create distribution log first
       const log = await storage.createDistributionLog({
         reportId: req.params.id,
         sentTo: recipients.join(", "),
         status: "pending",
       });
 
-      console.log(`Distribution requested for report ${req.params.id} to:`, recipients);
+      try {
+        // Send email using Resend integration
+        const { sendEmail } = await import('./replit_integrations/email/client');
+        
+        const emailHtml = `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h2 style="color: #2563eb;">Daily Field Report</h2>
+            <p><strong>Project:</strong> ${project?.name || 'Unknown Project'}</p>
+            <p><strong>Date:</strong> ${reportDate}</p>
+            <p><strong>Inspector:</strong> ${report.inspectorName || 'Unknown'}</p>
+            ${message ? `<p><strong>Message:</strong></p><p>${message}</p>` : ''}
+            <hr style="border: 1px solid #e5e7eb; margin: 20px 0;" />
+            <p>Please find the attached PDF report for your records.</p>
+            <p style="color: #6b7280; font-size: 12px;">This is an automated email from Field Daily Reports.</p>
+          </div>
+        `;
 
-      res.json({ message: "Distribution queued", log });
+        const pdfFilename = `Daily_Report_${project?.name?.replace(/[^a-zA-Z0-9]/g, '_') || 'Report'}_${report.date}.pdf`;
+
+        await sendEmail({
+          to: recipients,
+          subject: `Daily Field Report - ${project?.name || 'Project'} - ${reportDate}`,
+          html: emailHtml,
+          attachments: [{
+            filename: pdfFilename,
+            content: pdfBuffer
+          }]
+        });
+
+        // Update log to sent
+        await storage.updateDistributionLogStatus(log.id, "sent");
+
+        console.log(`Report ${req.params.id} distributed successfully to:`, recipients);
+        res.json({ message: "Report sent successfully", log });
+      } catch (emailError) {
+        console.error("Email sending error:", emailError);
+        await storage.updateDistributionLogStatus(log.id, "failed");
+        return res.status(500).json({ message: "Failed to send email. Please check email configuration." });
+      }
     } catch (error) {
       console.error("Error distributing report:", error);
       res.status(500).json({ message: "Failed to distribute report" });
@@ -1337,6 +1393,44 @@ export async function registerRoutes(
         expiresAt: expiresAt || defaultExpiry,
         status: "pending",
       });
+
+      // Send invitation email via Resend
+      try {
+        const { sendEmail } = await import('./replit_integrations/email/client');
+        const baseUrl = process.env.REPLIT_DEV_DOMAIN 
+          ? `https://${process.env.REPLIT_DEV_DOMAIN}`
+          : process.env.REPLIT_DOMAINS
+            ? `https://${process.env.REPLIT_DOMAINS.split(',')[0]}`
+            : 'http://localhost:5000';
+        
+        const inviteLink = `${baseUrl}/accept-invite/${token}`;
+        const company = companyId ? await storage.getCompany(companyId) : null;
+        
+        const emailHtml = `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h2 style="color: #2563eb;">You've Been Invited to Field Daily Reports</h2>
+            <p>You have been invited to join${company ? ` <strong>${company.name}</strong> on` : ''} Field Daily Reports as a${role === 'admin' ? 'n' : ''} <strong>${role}</strong>.</p>
+            <p>Click the button below to accept your invitation and create your account:</p>
+            <div style="text-align: center; margin: 30px 0;">
+              <a href="${inviteLink}" style="background-color: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold;">Accept Invitation</a>
+            </div>
+            <p style="color: #6b7280; font-size: 12px;">This invitation will expire in 7 days. If you didn't expect this invitation, you can safely ignore this email.</p>
+            <hr style="border: 1px solid #e5e7eb; margin: 20px 0;" />
+            <p style="color: #6b7280; font-size: 12px;">Field Daily Reports - Construction inspection reporting made simple.</p>
+          </div>
+        `;
+
+        await sendEmail({
+          to: email,
+          subject: `You're invited to join${company ? ` ${company.name} on` : ''} Field Daily Reports`,
+          html: emailHtml
+        });
+        
+        console.log(`Invitation email sent to ${email}`);
+      } catch (emailError) {
+        console.error("Failed to send invitation email:", emailError);
+        // Don't fail the invite creation, just log the error
+      }
 
       res.status(201).json(invite);
     } catch (error) {

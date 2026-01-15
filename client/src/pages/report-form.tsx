@@ -22,6 +22,7 @@ import {
   WorkActivityRowInput,
   AddRowButton,
 } from "@/components/reports/repeatable-row";
+import { EmailDistributionDialog } from "@/components/reports/email-distribution-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -73,6 +74,8 @@ export default function ReportFormPage() {
   const [photos, setPhotos] = useState<PhotoItem[]>([]);
   const [signature, setSignature] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  const [showEmailDialog, setShowEmailDialog] = useState(false);
+  const [submittedReportId, setSubmittedReportId] = useState<string | null>(null);
 
   const { data: projects, isLoading: loadingProjects } = useQuery<Project[]>({
     queryKey: ["/api/projects"],
@@ -169,13 +172,22 @@ export default function ReportFormPage() {
     },
     onSuccess: (reportId, status) => {
       queryClient.invalidateQueries({ queryKey: ["/api/reports"] });
-      toast({
-        title: status === "submitted" ? "Report Submitted" : "Report Saved",
-        description: status === "submitted" 
-          ? "Your report has been submitted successfully" 
-          : "Your report has been saved as a draft",
-      });
-      navigate(`/reports/${reportId}`);
+      
+      if (status === "submitted" && reportId) {
+        // Store the report ID and show email dialog
+        setSubmittedReportId(reportId);
+        setShowEmailDialog(true);
+        toast({
+          title: "Report Submitted",
+          description: "Your report has been submitted. Would you like to email it?",
+        });
+      } else if (reportId) {
+        toast({
+          title: "Report Saved",
+          description: "Your report has been saved as a draft",
+        });
+        navigate(`/reports/${reportId}`);
+      }
     },
     onError: (error) => {
       toast({
@@ -681,6 +693,22 @@ export default function ReportFormPage() {
           </Button>
         </div>
       </div>
+      {/* Email Distribution Dialog */}
+      {submittedReportId && (
+        <EmailDistributionDialog
+          open={showEmailDialog}
+          onOpenChange={(open) => {
+            setShowEmailDialog(open);
+            if (!open) {
+              // Navigate to report after closing dialog
+              navigate(`/reports/${submittedReportId}`);
+            }
+          }}
+          reportId={submittedReportId}
+          projectName={projects?.find(p => p.id === formData.projectId)?.name}
+          defaultEmails={projects?.find(p => p.id === formData.projectId)?.distributionEmails || []}
+        />
+      )}
     </PageLayout>
   );
 }

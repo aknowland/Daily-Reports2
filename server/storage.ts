@@ -45,6 +45,7 @@ export interface IStorage {
   // Distribution Logs
   getDistributionLogs(reportId: string): Promise<DistributionLog[]>;
   createDistributionLog(data: InsertDistributionLog): Promise<DistributionLog>;
+  updateDistributionLogStatus(id: string, status: string): Promise<void>;
 
   // App Settings
   getSettings(): Promise<AppSetting[]>;
@@ -307,6 +308,12 @@ export class DatabaseStorage implements IStorage {
   async createDistributionLog(data: InsertDistributionLog): Promise<DistributionLog> {
     const [log] = await db.insert(distributionLogs).values(data).returning();
     return log;
+  }
+
+  async updateDistributionLogStatus(id: string, status: string): Promise<void> {
+    await db.update(distributionLogs)
+      .set({ status: status as "pending" | "sent" | "failed" })
+      .where(eq(distributionLogs.id, id));
   }
 
   // App Settings
