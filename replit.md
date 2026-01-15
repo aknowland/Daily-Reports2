@@ -50,15 +50,19 @@ Field Daily Reports helps construction inspection teams document their daily wor
 ### Daily Report Fields
 - Project selection
 - Date and weather conditions
-- Work performed
-- Trades on site (repeatable rows)
-- Manpower summary
+- Work Activities (unified entries combining contractor/trade, headcount, and work description)
+- Additional work notes
 - Visitors log
 - Issues/delays (yes/no with details)
 - Safety incidents (yes/no with details)
 - Notes and observations
 - Photo uploads with captions
 - Digital signature
+
+### Inspector Profile
+- Inspectors can set their firstName and lastName in their profile
+- These names are used in daily reports and PDF generation
+- Falls back to auth user name, then email if profile name is not set
 
 ### API Endpoints
 

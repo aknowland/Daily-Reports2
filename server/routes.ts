@@ -251,15 +251,17 @@ export async function registerRoutes(
     try {
       const userId = req.user?.claims?.sub;
       const profile = await storage.getUserProfile(userId);
+      const activeCompanyId = profile?.activeCompanyId || undefined;
       
-      // Admins see all reports, inspectors see only their own
-      const reports = profile?.role === "admin" 
-        ? await storage.getReports()
-        : await storage.getReports(userId);
+      // Build filter options - always filter by active company if set
+      // Admins see all reports in the company, inspectors see only their own
+      const options = {
+        inspectorId: profile?.role === "admin" ? undefined : userId,
+        companyId: activeCompanyId,
+      };
       
-      const stats = profile?.role === "admin"
-        ? await storage.getReportStats()
-        : await storage.getReportStats(userId);
+      const reports = await storage.getReports(options);
+      const stats = await storage.getReportStats(options);
       
       res.json({ reports, stats });
     } catch (error) {
@@ -292,7 +294,16 @@ export async function registerRoutes(
   app.post("/api/reports", isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
       const validated = createReportSchema.parse(req.body);
+      
+      // Verify user has access to the project (admin or assigned member)
+      if (profile?.role !== "admin") {
+        const isProjectMember = await storage.isUserMemberOfProject(validated.projectId, userId);
+        if (!isProjectMember) {
+          return res.status(403).json({ message: "You are not assigned to this project" });
+        }
+      }
       
       const report = await storage.createReport({
         ...validated,

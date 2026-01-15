@@ -9,6 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -246,6 +247,9 @@ export default function AdminCompaniesPage() {
             <DialogContent>
               <DialogHeader>
                 <DialogTitle>Create New Company</DialogTitle>
+                <DialogDescription>
+                  Add a new company to manage projects and team members
+                </DialogDescription>
               </DialogHeader>
               <CompanyForm onSubmit={handleCreate} />
             </DialogContent>
@@ -366,6 +370,9 @@ export default function AdminCompaniesPage() {
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Edit Company</DialogTitle>
+              <DialogDescription>
+                Update the company details below
+              </DialogDescription>
             </DialogHeader>
             <CompanyForm onSubmit={handleUpdate} isEdit />
           </DialogContent>

@@ -18,8 +18,6 @@ import {
 import { SignaturePad } from "@/components/ui/signature-pad";
 import { PhotoUpload } from "@/components/ui/photo-upload";
 import {
-  TradeRowInput,
-  ManpowerRowInput,
   VisitorRowInput,
   WorkActivityRowInput,
   AddRowButton,
@@ -29,7 +27,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Loader2, Save, Send, ArrowLeft } from "lucide-react";
 import { format } from "date-fns";
-import type { Project, DailyReport, TradeRow, ManpowerRow, VisitorRow, WorkActivityRow } from "@shared/schema";
+import type { Project, DailyReport, VisitorRow, WorkActivityRow } from "@shared/schema";
 
 interface PhotoItem {
   id?: string;
@@ -60,8 +58,6 @@ export default function ReportFormPage() {
     weatherType: "clear" as const,
     weatherNotes: "",
     workPerformed: "",
-    trades: [] as TradeRow[],
-    manpower: [] as ManpowerRow[],
     workActivities: [] as WorkActivityRow[],
     visitors: [] as VisitorRow[],
     issuesFlag: false,
@@ -96,11 +92,9 @@ export default function ReportFormPage() {
       setFormData({
         projectId: existingReport.projectId,
         date: format(new Date(existingReport.date), "yyyy-MM-dd"),
-        weatherType: existingReport.weatherType || "clear",
+        weatherType: (existingReport.weatherType || "clear") as typeof formData.weatherType,
         weatherNotes: existingReport.weatherNotes || "",
         workPerformed: existingReport.workPerformed || "",
-        trades: (existingReport.trades as TradeRow[]) || [],
-        manpower: (existingReport.manpower as ManpowerRow[]) || [],
         workActivities: (existingReport.workActivities as WorkActivityRow[]) || [],
         visitors: (existingReport.visitors as VisitorRow[]) || [],
         issuesFlag: existingReport.issuesFlag || false,
@@ -231,7 +225,7 @@ export default function ReportFormPage() {
           <Button 
             variant="ghost" 
             size="icon" 
-            onClick={() => navigate(-1)}
+            onClick={() => window.history.back()}
             data-testid="button-back"
           >
             <ArrowLeft className="w-5 h-5" />
@@ -316,7 +310,14 @@ export default function ReportFormPage() {
               <Label htmlFor="inspector">Inspector</Label>
               <Input
                 id="inspector"
-                value={user?.firstName && user?.lastName ? `${user.firstName} ${user.lastName}` : user?.email || ""}
+                value={(() => {
+                  const firstName = profile?.firstName || user?.firstName;
+                  const lastName = profile?.lastName || user?.lastName;
+                  if (firstName && lastName) return `${firstName} ${lastName}`;
+                  if (firstName) return firstName;
+                  if (lastName) return lastName;
+                  return user?.email || "";
+                })()}
                 disabled
                 className="h-12 bg-muted"
                 data-testid="input-inspector"
