@@ -2173,6 +2173,68 @@ export async function registerRoutes(
     }
   });
 
+  // Create project for user (must be company admin of active company)
+  const createMyProjectSchema = z.object({
+    name: z.string().min(1, "Project name is required"),
+    projectNumber: z.string().min(1, "Project number is required"),
+    client: z.string().optional(),
+    address: z.string().optional(),
+    distributionEmails: z.array(z.string().email()).optional(),
+  });
+
+  app.post("/api/my-projects", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      
+      if (!profile?.activeCompanyId) {
+        return res.status(400).json({ message: "You must select a company first" });
+      }
+
+      // Check if user is a company admin
+      const membership = await storage.getCompanyMember(profile.activeCompanyId, userId);
+      if (!membership || membership.role !== "admin") {
+        return res.status(403).json({ message: "Only company admins can create projects" });
+      }
+
+      // Validate request body with Zod
+      const parseResult = createMyProjectSchema.safeParse(req.body);
+      if (!parseResult.success) {
+        const errorMessage = parseResult.error.errors.map(e => e.message).join(", ");
+        return res.status(400).json({ message: errorMessage });
+      }
+
+      const { name, projectNumber, client, address, distributionEmails } = parseResult.data;
+
+      // Check if project number already exists within this company (company-scoped uniqueness)
+      const existingProject = await storage.getProjectByNumberAndCompany(projectNumber.trim(), profile.activeCompanyId);
+      if (existingProject) {
+        return res.status(409).json({ message: "A project with this number already exists in your company" });
+      }
+
+      // Create the project
+      const project = await storage.createProject({
+        companyId: profile.activeCompanyId,
+        name: name.trim(),
+        projectNumber: projectNumber.trim(),
+        client: client?.trim() || null,
+        address: address?.trim() || null,
+        distributionEmails: distributionEmails || [],
+      });
+
+      // Add the creator as a project member
+      await storage.addProjectMember(project.id, userId);
+      
+      // Set as active project
+      await storage.setActiveProject(userId, project.id);
+      
+      res.status(201).json(project);
+    } catch (error) {
+      console.error("Error creating project:", error);
+      res.status(500).json({ message: "Failed to create project" });
+    }
+  });
+
   // Get active project details
   app.get("/api/my-project", isAuthenticated, async (req: any, res) => {
     try {

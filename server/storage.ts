@@ -22,6 +22,8 @@ export interface IStorage {
   // Projects
   getProjects(): Promise<Project[]>;
   getProject(id: string): Promise<Project | undefined>;
+  getProjectByNumber(projectNumber: string): Promise<Project | undefined>;
+  getProjectByNumberAndCompany(projectNumber: string, companyId: string): Promise<Project | undefined>;
   createProject(data: InsertProject): Promise<Project>;
   updateProject(id: string, data: Partial<InsertProject>): Promise<Project | undefined>;
   deleteProject(id: string): Promise<boolean>;
@@ -123,6 +125,21 @@ export class DatabaseStorage implements IStorage {
 
   async getProject(id: string): Promise<Project | undefined> {
     const [project] = await db.select().from(projects).where(eq(projects.id, id));
+    return project;
+  }
+
+  async getProjectByNumber(projectNumber: string): Promise<Project | undefined> {
+    const [project] = await db.select().from(projects).where(eq(projects.projectNumber, projectNumber));
+    return project;
+  }
+
+  async getProjectByNumberAndCompany(projectNumber: string, companyId: string): Promise<Project | undefined> {
+    const [project] = await db.select().from(projects).where(
+      and(
+        eq(projects.projectNumber, projectNumber),
+        eq(projects.companyId, companyId)
+      )
+    );
     return project;
   }
 
