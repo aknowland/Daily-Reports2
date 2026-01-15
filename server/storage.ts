@@ -26,12 +26,12 @@ export interface IStorage {
   deleteProject(id: string): Promise<boolean>;
 
   // Daily Reports
-  getReports(inspectorId?: string): Promise<DailyReportWithDetails[]>;
+  getReports(options?: { inspectorId?: string; companyId?: string }): Promise<DailyReportWithDetails[]>;
   getReport(id: string): Promise<DailyReportWithDetails | undefined>;
   createReport(data: InsertDailyReport): Promise<DailyReport>;
   updateReport(id: string, data: Partial<InsertDailyReport>): Promise<DailyReport | undefined>;
   deleteReport(id: string): Promise<boolean>;
-  getReportStats(inspectorId?: string): Promise<{ total: number; drafts: number; submitted: number }>;
+  getReportStats(options?: { inspectorId?: string; companyId?: string }): Promise<{ total: number; drafts: number; submitted: number }>;
 
   // Photos
   getPhotosByReport(reportId: string): Promise<Photo[]>;
@@ -125,29 +125,26 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Daily Reports
-  async getReports(inspectorId?: string): Promise<DailyReportWithDetails[]> {
-    let results;
+  async getReports(options?: { inspectorId?: string; companyId?: string }): Promise<DailyReportWithDetails[]> {
+    const { inspectorId, companyId } = options || {};
     
+    // Build conditions array
+    const conditions = [];
     if (inspectorId) {
-      // Inspector-filtered query
-      results = await db
-        .select()
-        .from(dailyReports)
-        .leftJoin(projects, eq(dailyReports.projectId, projects.id))
-        .leftJoin(users, eq(dailyReports.inspectorId, users.id))
-        .leftJoin(userProfiles, eq(dailyReports.inspectorId, userProfiles.userId))
-        .where(eq(dailyReports.inspectorId, inspectorId))
-        .orderBy(desc(dailyReports.createdAt));
-    } else {
-      // Admin/all reports query
-      results = await db
-        .select()
-        .from(dailyReports)
-        .leftJoin(projects, eq(dailyReports.projectId, projects.id))
-        .leftJoin(users, eq(dailyReports.inspectorId, users.id))
-        .leftJoin(userProfiles, eq(dailyReports.inspectorId, userProfiles.userId))
-        .orderBy(desc(dailyReports.createdAt));
+      conditions.push(eq(dailyReports.inspectorId, inspectorId));
     }
+    if (companyId) {
+      conditions.push(eq(projects.companyId, companyId));
+    }
+    
+    const results = await db
+      .select()
+      .from(dailyReports)
+      .leftJoin(projects, eq(dailyReports.projectId, projects.id))
+      .leftJoin(users, eq(dailyReports.inspectorId, users.id))
+      .leftJoin(userProfiles, eq(dailyReports.inspectorId, userProfiles.userId))
+      .where(conditions.length > 0 ? and(...conditions) : undefined)
+      .orderBy(desc(dailyReports.createdAt));
 
     return results.map(row => {
       // Prefer profile name, fall back to auth user name, then email
@@ -218,17 +215,32 @@ export class DatabaseStorage implements IStorage {
     return true;
   }
 
-  async getReportStats(inspectorId?: string): Promise<{ total: number; drafts: number; submitted: number }> {
-    const baseCondition = inspectorId ? eq(dailyReports.inspectorId, inspectorId) : sql`1=1`;
+  async getReportStats(options?: { inspectorId?: string; companyId?: string }): Promise<{ total: number; drafts: number; submitted: number }> {
+    const { inspectorId, companyId } = options || {};
     
-    const [stats] = await db
+    // Build conditions array
+    const conditions = [];
+    if (inspectorId) {
+      conditions.push(eq(dailyReports.inspectorId, inspectorId));
+    }
+    if (companyId) {
+      conditions.push(eq(projects.companyId, companyId));
+    }
+    
+    const query = db
       .select({
         total: sql<number>`count(*)::int`,
         drafts: sql<number>`count(*) filter (where ${dailyReports.status} = 'draft')::int`,
         submitted: sql<number>`count(*) filter (where ${dailyReports.status} = 'submitted')::int`,
       })
-      .from(dailyReports)
-      .where(baseCondition);
+      .from(dailyReports);
+    
+    // Only join projects if we need to filter by company
+    if (companyId) {
+      query.leftJoin(projects, eq(dailyReports.projectId, projects.id));
+    }
+    
+    const [stats] = await query.where(conditions.length > 0 ? and(...conditions) : undefined);
 
     return stats || { total: 0, drafts: 0, submitted: 0 };
   }

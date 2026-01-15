@@ -51,12 +51,16 @@ function updateUserSession(
 }
 
 async function upsertUser(claims: any) {
+  // Standard OIDC uses given_name/family_name, but some providers use first_name/last_name
+  const firstName = claims["given_name"] || claims["first_name"] || null;
+  const lastName = claims["family_name"] || claims["last_name"] || null;
+  
   await authStorage.upsertUser({
     id: claims["sub"],
     email: claims["email"],
-    firstName: claims["first_name"],
-    lastName: claims["last_name"],
-    profileImageUrl: claims["profile_image_url"],
+    firstName,
+    lastName,
+    profileImageUrl: claims["profile_image_url"] || claims["picture"],
   });
 }
 

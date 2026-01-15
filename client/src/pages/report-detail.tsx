@@ -40,7 +40,7 @@ import {
   AlertCircle,
   Trash2,
 } from "lucide-react";
-import type { DailyReport, Project, Photo, TradeRow, ManpowerRow, VisitorRow, WorkActivityRow } from "@shared/schema";
+import type { DailyReport, Project, Photo, VisitorRow, WorkActivityRow } from "@shared/schema";
 
 type ReportWithDetails = DailyReport & {
   project?: Project;
@@ -179,8 +179,6 @@ export default function ReportDetailPage() {
     );
   }
 
-  const trades = (report.trades as TradeRow[]) || [];
-  const manpower = (report.manpower as ManpowerRow[]) || [];
   const workActivities = (report.workActivities as WorkActivityRow[]) || [];
   const visitors = (report.visitors as VisitorRow[]) || [];
 
@@ -338,45 +336,6 @@ export default function ReportDetailPage() {
             </CardHeader>
             <CardContent>
               <p className="whitespace-pre-wrap">{report.workPerformed}</p>
-            </CardContent>
-          </Card>
-        )}
-
-        {trades.length > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg flex items-center gap-2">
-                <Users className="w-5 h-5" />
-                Trades on Site
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-2">
-                {trades.map((trade, index) => (
-                  <div key={index} className="flex items-center justify-between py-2 border-b last:border-0">
-                    <span>{trade.trade}</span>
-                    <span className="font-medium">{trade.headcount} workers</span>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {manpower.length > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Manpower Summary</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-2">
-                {manpower.map((mp, index) => (
-                  <div key={index} className="flex items-center justify-between py-2 border-b last:border-0">
-                    <span>{mp.description}</span>
-                    <span className="font-medium">{mp.count}</span>
-                  </div>
-                ))}
-              </div>
             </CardContent>
           </Card>
         )}
