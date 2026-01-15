@@ -2,12 +2,13 @@ import type { Express, RequestHandler } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { setupAuth, isAuthenticated, registerAuthRoutes } from "./replit_integrations/auth";
-import { insertProjectSchema, insertDailyReportSchema, updateUserProfileSchema } from "@shared/schema";
+import { insertProjectSchema, insertDailyReportSchema, updateUserProfileSchema, WorkActivityRow, VisitorRow } from "@shared/schema";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
 import { randomUUID } from "crypto";
 import { z } from "zod";
+import PDFDocument from "pdfkit";
 
 // Ensure upload directories exist
 const UPLOAD_DIR = path.join(process.cwd(), "storage");
@@ -86,6 +87,7 @@ const createProjectSchema = z.object({
   name: z.string().min(1, "Name is required"),
   projectNumber: z.string().min(1, "Project number is required"),
   companyId: z.string().optional(),
+  client: z.string().optional(),
   address: z.string().optional(),
   distributionEmails: z.array(z.string().email()).optional().default([]),
   defaultFolderPath: z.string().optional(),
@@ -475,11 +477,110 @@ export async function registerRoutes(
         return res.status(403).json({ message: "Access denied" });
       }
 
-      // For MVP, return existing PDF or placeholder
-      const pdfPath = `/storage/reports/${req.params.id}.pdf`;
+      // Generate PDF using pdfkit
+      const filename = `${req.params.id}.pdf`;
+      const filePath = path.join(REPORTS_DIR, filename);
+      const pdfPath = `/storage/reports/${filename}`;
+
+      const doc = new PDFDocument({ margin: 50 });
+      const writeStream = fs.createWriteStream(filePath);
+      doc.pipe(writeStream);
+
+      // Header
+      doc.fontSize(20).font('Helvetica-Bold').text('Daily Field Report', { align: 'center' });
+      doc.moveDown(0.5);
+
+      // Project info
+      doc.fontSize(14).font('Helvetica-Bold').text(report.project?.name || 'Unknown Project');
+      doc.fontSize(10).font('Helvetica').text(`Project #: ${report.project?.projectNumber || 'N/A'}`);
+      if (report.project?.client) {
+        doc.text(`Client: ${report.project.client}`);
+      }
+      if (report.project?.address) {
+        doc.text(`Location: ${report.project.address}`);
+      }
+      doc.moveDown();
+
+      // Report details
+      doc.fontSize(12).font('Helvetica-Bold').text('Report Details');
+      doc.fontSize(10).font('Helvetica');
+      doc.text(`Date: ${new Date(report.date).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}`);
+      doc.text(`Inspector: ${report.inspectorName || 'Unknown'}`);
+      doc.text(`Weather: ${report.weatherType || 'Not specified'}${report.weatherNotes ? ` - ${report.weatherNotes}` : ''}`);
+      doc.text(`Status: ${report.status || 'draft'}`);
+      doc.moveDown();
+
+      // Work Activities
+      const workActivities = (report.workActivities as WorkActivityRow[]) || [];
+      if (workActivities.length > 0) {
+        doc.fontSize(12).font('Helvetica-Bold').text('Work Activities');
+        doc.fontSize(10).font('Helvetica');
+        workActivities.forEach((activity, index) => {
+          doc.text(`${index + 1}. ${activity.contractor} (${activity.headcount} workers)`);
+          doc.text(`   ${activity.workDescription}`, { indent: 20 });
+        });
+        doc.moveDown();
+      }
+
+      // Visitors
+      const visitors = (report.visitors as VisitorRow[]) || [];
+      if (visitors.length > 0) {
+        doc.fontSize(12).font('Helvetica-Bold').text('Visitors');
+        doc.fontSize(10).font('Helvetica');
+        visitors.forEach((visitor) => {
+          doc.text(`• ${visitor.name} (${visitor.company})${visitor.notes ? ` - ${visitor.notes}` : ''}`);
+        });
+        doc.moveDown();
+      }
+
+      // Issues/Safety
+      if (report.issuesFlag) {
+        doc.fontSize(12).font('Helvetica-Bold').fillColor('orange').text('Issues/Delays');
+        doc.fontSize(10).font('Helvetica').fillColor('black').text(report.issuesDetails || 'No details provided');
+        doc.moveDown();
+      }
+
+      if (report.safetyFlag) {
+        doc.fontSize(12).font('Helvetica-Bold').fillColor('red').text('Safety Incidents');
+        doc.fontSize(10).font('Helvetica').fillColor('black').text(report.safetyDetails || 'No details provided');
+        doc.moveDown();
+      }
+
+      // Notes
+      if (report.workPerformed) {
+        doc.fontSize(12).font('Helvetica-Bold').text('Additional Notes');
+        doc.fontSize(10).font('Helvetica').text(report.workPerformed);
+        doc.moveDown();
+      }
+
+      // Signature
+      if (report.signaturePath) {
+        doc.fontSize(12).font('Helvetica-Bold').text('Signature');
+        const sigPath = path.join(process.cwd(), report.signaturePath.replace(/^\//, ''));
+        if (fs.existsSync(sigPath)) {
+          doc.image(sigPath, { width: 150 });
+        }
+        if (report.signedAt) {
+          doc.fontSize(8).font('Helvetica').text(`Signed: ${new Date(report.signedAt).toLocaleString()}`);
+        }
+      }
+
+      // Footer
+      doc.moveDown(2);
+      doc.fontSize(8).font('Helvetica').fillColor('gray')
+        .text(`Generated on ${new Date().toLocaleString()}`, { align: 'center' });
+
+      doc.end();
+
+      // Wait for write to complete
+      await new Promise<void>((resolve, reject) => {
+        writeStream.on('finish', resolve);
+        writeStream.on('error', reject);
+      });
+
       await storage.updateReport(req.params.id, { pdfPath });
 
-      res.json({ pdfUrl: pdfPath, message: "PDF generation ready" });
+      res.json({ pdfUrl: pdfPath, message: "PDF generated successfully" });
     } catch (error) {
       console.error("Error generating PDF:", error);
       res.status(500).json({ message: "Failed to generate PDF" });
@@ -733,6 +834,7 @@ export async function registerRoutes(
     address: z.string().optional(),
     phone: z.string().optional(),
     email: z.string().email().optional().or(z.literal("")),
+    logoPath: z.string().optional(),
   });
 
   const updateCompanySchema = createCompanySchema.partial();

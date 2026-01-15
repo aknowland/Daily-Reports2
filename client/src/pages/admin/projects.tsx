@@ -57,6 +57,7 @@ export default function AdminProjectsPage() {
   const [formData, setFormData] = useState({
     name: "",
     projectNumber: "",
+    client: "",
     address: "",
     distributionEmails: "",
     defaultFolderPath: "",
@@ -199,6 +200,7 @@ export default function AdminProjectsPage() {
     setFormData({
       name: "",
       projectNumber: "",
+      client: "",
       address: "",
       distributionEmails: "",
       defaultFolderPath: "",
@@ -210,6 +212,7 @@ export default function AdminProjectsPage() {
     setFormData({
       name: project.name,
       projectNumber: project.projectNumber,
+      client: project.client || "",
       address: project.address || "",
       distributionEmails: (project.distributionEmails as string[])?.join(", ") || "",
       defaultFolderPath: project.defaultFolderPath || "",
@@ -327,6 +330,17 @@ export default function AdminProjectsPage() {
                     placeholder="PRJ-2026-001"
                     required
                     data-testid="input-project-number"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="client">Client</Label>
+                  <Input
+                    id="client"
+                    value={formData.client}
+                    onChange={(e) => setFormData((prev) => ({ ...prev, client: e.target.value }))}
+                    placeholder="ABC Construction Company"
+                    data-testid="input-project-client"
                   />
                 </div>
 
@@ -455,6 +469,7 @@ export default function AdminProjectsPage() {
                       <h3 className="font-semibold truncate">{project.name}</h3>
                       <p className="text-sm text-muted-foreground">
                         #{project.projectNumber}
+                        {project.client && ` • ${project.client}`}
                       </p>
                     </div>
                     <div className="flex gap-1">

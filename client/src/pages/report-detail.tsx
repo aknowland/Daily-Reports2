@@ -203,6 +203,7 @@ export default function ReportDetailPage() {
             </div>
             <p className="text-sm text-muted-foreground">
               #{report.project?.projectNumber}
+              {report.project?.client && ` • ${report.project.client}`}
             </p>
           </div>
         </div>

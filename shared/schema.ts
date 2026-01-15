@@ -61,6 +61,7 @@ export const projects = pgTable("projects", {
   companyId: varchar("company_id").references(() => companies.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
   projectNumber: varchar("project_number").notNull().unique(),
+  client: text("client"),
   address: text("address"),
   distributionEmails: json("distribution_emails").$type<string[]>().default([]),
   defaultFolderPath: text("default_folder_path"),
