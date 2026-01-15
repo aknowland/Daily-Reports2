@@ -1118,9 +1118,21 @@ export async function registerRoutes(
 
   // ========== COMPANY MEMBERS ==========
   // Get company members
-  app.get("/api/companies/:id/members", isAuthenticated, isAdmin, async (req, res) => {
+  app.get("/api/companies/:id/members", isAuthenticated, async (req: any, res) => {
     try {
-      const members = await storage.getCompanyMembers(req.params.id);
+      const userId = req.user?.claims?.sub;
+      const companyId = req.params.id;
+      
+      // Check if user is a company admin OR global admin
+      const membership = await storage.getCompanyMember(companyId, userId);
+      const profile = await storage.getUserProfile(userId);
+      const isGlobalAdmin = profile?.role === "admin";
+      
+      if (!isGlobalAdmin && (!membership || membership.role !== "admin")) {
+        return res.status(403).json({ message: "Access denied. Admin rights required." });
+      }
+      
+      const members = await storage.getCompanyMembers(companyId);
       res.json(members);
     } catch (error) {
       console.error("Error fetching company members:", error);
@@ -1128,10 +1140,22 @@ export async function registerRoutes(
     }
   });
 
-  // Add company member (admin only)
-  app.post("/api/companies/:id/members", isAuthenticated, isAdmin, async (req, res) => {
+  // Add company member (global admin or company admin)
+  app.post("/api/companies/:id/members", isAuthenticated, async (req: any, res) => {
     try {
+      const currentUserId = req.user?.claims?.sub;
+      const companyId = req.params.id;
       const { userId, role } = req.body;
+      
+      // Check if user is a company admin OR global admin
+      const membership = await storage.getCompanyMember(companyId, currentUserId);
+      const profile = await storage.getUserProfile(currentUserId);
+      const isGlobalAdmin = profile?.role === "admin";
+      
+      if (!isGlobalAdmin && (!membership || membership.role !== "admin")) {
+        return res.status(403).json({ message: "Access denied. Admin rights required." });
+      }
+      
       if (!userId) {
         return res.status(400).json({ message: "User ID is required" });
       }
@@ -1142,7 +1166,7 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Invalid role. Must be 'inspector' or 'admin'" });
       }
       
-      const member = await storage.addCompanyMember(req.params.id, userId, role || "inspector");
+      const member = await storage.addCompanyMember(companyId, userId, role || "inspector");
       res.status(201).json(member);
     } catch (error) {
       console.error("Error adding company member:", error);
@@ -1150,14 +1174,94 @@ export async function registerRoutes(
     }
   });
 
-  // Remove company member (admin only)
-  app.delete("/api/companies/:id/members/:userId", isAuthenticated, isAdmin, async (req, res) => {
+  // Update company member role (global admin or company admin)
+  app.patch("/api/companies/:id/members/:userId/role", isAuthenticated, async (req: any, res) => {
     try {
-      await storage.removeCompanyMember(req.params.id, req.params.userId);
+      const currentUserId = req.user?.claims?.sub;
+      const companyId = req.params.id;
+      const targetUserId = req.params.userId;
+      const { role } = req.body;
+      
+      // Check if user is a company admin OR global admin
+      const membership = await storage.getCompanyMember(companyId, currentUserId);
+      const profile = await storage.getUserProfile(currentUserId);
+      const isGlobalAdmin = profile?.role === "admin";
+      
+      if (!isGlobalAdmin && (!membership || membership.role !== "admin")) {
+        return res.status(403).json({ message: "Access denied. Admin rights required." });
+      }
+      
+      // Prevent changing own role
+      if (targetUserId === currentUserId) {
+        return res.status(400).json({ message: "Cannot change your own role" });
+      }
+      
+      // Strict role validation
+      const validRoles = ["inspector", "admin"];
+      if (!role || !validRoles.includes(role)) {
+        return res.status(400).json({ message: "Invalid role. Must be 'inspector' or 'admin'" });
+      }
+      
+      const updatedMember = await storage.updateCompanyMemberRole(companyId, targetUserId, role);
+      if (!updatedMember) {
+        return res.status(404).json({ message: "Member not found" });
+      }
+      res.json(updatedMember);
+    } catch (error) {
+      console.error("Error updating member role:", error);
+      res.status(500).json({ message: "Failed to update member role" });
+    }
+  });
+
+  // Remove company member (global admin or company admin)
+  app.delete("/api/companies/:id/members/:userId", isAuthenticated, async (req: any, res) => {
+    try {
+      const currentUserId = req.user?.claims?.sub;
+      const companyId = req.params.id;
+      const targetUserId = req.params.userId;
+      
+      // Check if user is a company admin OR global admin
+      const membership = await storage.getCompanyMember(companyId, currentUserId);
+      const profile = await storage.getUserProfile(currentUserId);
+      const isGlobalAdmin = profile?.role === "admin";
+      
+      if (!isGlobalAdmin && (!membership || membership.role !== "admin")) {
+        return res.status(403).json({ message: "Access denied. Admin rights required." });
+      }
+      
+      // Prevent removing self
+      if (targetUserId === currentUserId) {
+        return res.status(400).json({ message: "Cannot remove yourself from the company" });
+      }
+      
+      await storage.removeCompanyMember(companyId, targetUserId);
       res.status(204).send();
     } catch (error) {
       console.error("Error removing company member:", error);
       res.status(500).json({ message: "Failed to remove company member" });
+    }
+  });
+
+  // Get company projects (global admin or company admin)
+  app.get("/api/companies/:id/projects", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const companyId = req.params.id;
+      
+      // Check if user is a company admin OR global admin
+      const membership = await storage.getCompanyMember(companyId, userId);
+      const profile = await storage.getUserProfile(userId);
+      const isGlobalAdmin = profile?.role === "admin";
+      
+      if (!isGlobalAdmin && (!membership || membership.role !== "admin")) {
+        return res.status(403).json({ message: "Access denied. Admin rights required." });
+      }
+      
+      const projects = await storage.getProjectsByCompany(companyId);
+      res.json(projects);
+    } catch (error) {
+      console.error("Error fetching company projects:", error);
+      res.status(500).json({ message: "Failed to fetch company projects" });
     }
   });
 

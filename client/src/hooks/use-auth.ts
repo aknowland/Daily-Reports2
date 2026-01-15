@@ -1,8 +1,9 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { User } from "@shared/models/auth";
-import type { UserProfile } from "@shared/schema";
+import type { UserProfile, CompanyMember, Company } from "@shared/schema";
 
 type UserWithProfile = User & { profile?: UserProfile };
+type CompanyMemberWithCompany = CompanyMember & { company?: Company };
 
 async function fetchUser(): Promise<UserWithProfile | null> {
   const response = await fetch("/api/auth/user", {
@@ -48,6 +49,13 @@ export function useAuth() {
     staleTime: 1000 * 60 * 5, // 5 minutes
   });
 
+  // Fetch user's company memberships to determine company admin status
+  const { data: companies = [] } = useQuery<CompanyMemberWithCompany[]>({
+    queryKey: ["/api/my-companies"],
+    enabled: !!user,
+    staleTime: 1000 * 60 * 5, // 5 minutes
+  });
+
   const logoutMutation = useMutation({
     mutationFn: logout,
     onSuccess: () => {
@@ -55,12 +63,21 @@ export function useAuth() {
     },
   });
 
+  // Check if user is admin of the active company
+  const activeCompanyId = user?.profile?.activeCompanyId;
+  const activeCompanyMembership = companies.find(c => c.companyId === activeCompanyId);
+  const isCompanyAdmin = activeCompanyMembership?.role === "admin";
+  const activeCompany = activeCompanyMembership?.company;
+
   return {
     user,
     profile: user?.profile,
     isLoading,
     isAuthenticated: !!user,
     isAdmin: user?.profile?.role === "admin",
+    isCompanyAdmin,
+    activeCompany,
+    companies,
     logout: logoutMutation.mutate,
     isLoggingOut: logoutMutation.isPending,
   };
