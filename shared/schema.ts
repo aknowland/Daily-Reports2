@@ -45,6 +45,7 @@ export const userProfiles = pgTable("user_profiles", {
   firstName: varchar("first_name"),
   lastName: varchar("last_name"),
   phone: varchar("phone"),
+  email: varchar("email"),
   company: varchar("company"),
   activeCompanyId: varchar("active_company_id").references(() => companies.id),
   activeProjectId: varchar("active_project_id"),
@@ -53,8 +54,6 @@ export const userProfiles = pgTable("user_profiles", {
   licenseNumber: varchar("license_number"),
   licenseState: varchar("license_state"),
   certifications: json("certifications").$type<string[]>().default([]),
-  emergencyContact: varchar("emergency_contact"),
-  emergencyPhone: varchar("emergency_phone"),
 });
 
 // Projects table
@@ -241,8 +240,6 @@ export const updateUserProfileSchema = createInsertSchema(userProfiles)
     licenseNumber: true,
     licenseState: true,
     certifications: true,
-    emergencyContact: true,
-    emergencyPhone: true,
   })
   .partial();
 
