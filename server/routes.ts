@@ -854,7 +854,7 @@ export async function registerRoutes(
       }
       
       // Title centered below logo with reduced spacing
-      const titleY = hasLogo ? logoEndY + 5 : doc.page.margins.top;
+      const titleY = hasLogo ? logoEndY : doc.page.margins.top;
       doc.fontSize(18).font('Helvetica-Bold').text('DAILY FIELD REPORT', startX, titleY, { 
         width: pageWidth,
         align: 'center' 
