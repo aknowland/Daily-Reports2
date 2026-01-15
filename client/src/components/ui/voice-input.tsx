@@ -14,7 +14,6 @@ interface VoiceInputProps {
   targetField?: "raw" | "workActivities" | "visitors" | "weather";
   disabled?: boolean;
   className?: string;
-  inHeader?: boolean;
 }
 
 export function VoiceInput({
@@ -23,7 +22,6 @@ export function VoiceInput({
   targetField = "raw",
   disabled = false,
   className,
-  inHeader = false,
 }: VoiceInputProps) {
   const [state, setState] = useState<RecordingState>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -165,8 +163,7 @@ export function VoiceInput({
         disabled={disabled || state === "transcribing"}
         className={cn(
           "shrink-0 transition-all",
-          state === "recording" && "animate-pulse",
-          inHeader && state !== "recording" && "border-primary-foreground/50 text-primary-foreground"
+          state === "recording" && "animate-pulse"
         )}
         data-testid="button-voice-input"
       >
@@ -180,28 +177,19 @@ export function VoiceInput({
       </Button>
       
       {state === "recording" && (
-        <span className={cn(
-          "text-sm animate-pulse",
-          inHeader ? "text-primary-foreground" : "text-destructive"
-        )}>
+        <span className="text-sm text-destructive animate-pulse">
           {recordingTime}s / {MAX_RECORDING_SECONDS}s - Tap to stop
         </span>
       )}
       
       {state === "transcribing" && (
-        <span className={cn(
-          "text-sm",
-          inHeader ? "text-primary-foreground/80" : "text-muted-foreground"
-        )}>
+        <span className="text-sm text-muted-foreground">
           Transcribing...
         </span>
       )}
       
       {error && (
-        <span className={cn(
-          "text-sm",
-          inHeader ? "text-primary-foreground" : "text-destructive"
-        )}>
+        <span className="text-sm text-destructive">
           {error}
         </span>
       )}
