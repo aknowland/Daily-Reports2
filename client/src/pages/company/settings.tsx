@@ -16,14 +16,19 @@ import {
   Phone,
   Mail,
   MapPin,
+  Upload,
+  Trash2,
+  Image,
+  Loader2,
 } from "lucide-react";
 import { Link } from "wouter";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import type { Company } from "@shared/schema";
 
 export default function CompanySettingsPage() {
   const { toast } = useToast();
   const { activeCompany, isCompanyAdmin } = useAuth();
+  const logoInputRef = useRef<HTMLInputElement>(null);
   const [formData, setFormData] = useState({
     name: "",
     phone: "",
@@ -67,6 +72,64 @@ export default function CompanySettingsPage() {
       });
     },
   });
+
+  const uploadLogoMutation = useMutation({
+    mutationFn: async (file: File) => {
+      const formData = new FormData();
+      formData.append("logo", file);
+      const response = await fetch(`/api/companies/${activeCompany?.id}/logo`, {
+        method: "POST",
+        body: formData,
+        credentials: "include",
+      });
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || "Failed to upload logo");
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/companies", activeCompany?.id] });
+      toast({
+        title: "Logo Uploaded",
+        description: "Company logo has been updated.",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to upload logo.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const deleteLogoMutation = useMutation({
+    mutationFn: async () => {
+      return apiRequest("DELETE", `/api/companies/${activeCompany?.id}/logo`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/companies", activeCompany?.id] });
+      toast({
+        title: "Logo Removed",
+        description: "Company logo has been removed.",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to remove logo.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      uploadLogoMutation.mutate(file);
+    }
+  };
 
   if (!isCompanyAdmin || !activeCompany) {
     return (
@@ -154,6 +217,77 @@ export default function CompanySettingsPage() {
             Manage settings for {activeCompany.name}
           </p>
         </div>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Image className="w-5 h-5" />
+              Company Logo
+            </CardTitle>
+            <CardDescription>
+              Upload your company logo to display on PDF reports
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center gap-6">
+              <div className="w-24 h-24 border rounded-lg flex items-center justify-center bg-muted overflow-hidden">
+                {company?.logoPath ? (
+                  <img 
+                    src={company.logoPath} 
+                    alt="Company logo" 
+                    className="w-full h-full object-contain"
+                    data-testid="img-company-logo"
+                  />
+                ) : (
+                  <Image className="w-8 h-8 text-muted-foreground" />
+                )}
+              </div>
+              <div className="space-y-2">
+                <input
+                  ref={logoInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleLogoChange}
+                  className="hidden"
+                  data-testid="input-logo-file"
+                />
+                <Button
+                  variant="outline"
+                  onClick={() => logoInputRef.current?.click()}
+                  disabled={uploadLogoMutation.isPending}
+                  data-testid="button-upload-logo"
+                >
+                  {uploadLogoMutation.isPending ? (
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  ) : (
+                    <Upload className="w-4 h-4 mr-2" />
+                  )}
+                  {company?.logoPath ? "Change Logo" : "Upload Logo"}
+                </Button>
+                {company?.logoPath && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => deleteLogoMutation.mutate()}
+                    disabled={deleteLogoMutation.isPending}
+                    className="text-destructive hover:bg-destructive/10"
+                    data-testid="button-delete-logo"
+                  >
+                    {deleteLogoMutation.isPending ? (
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    ) : (
+                      <Trash2 className="w-4 h-4 mr-2" />
+                    )}
+                    Remove
+                  </Button>
+                )}
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Recommended: Square image, at least 200x200 pixels. Max file size: 5MB.
+            </p>
+          </CardContent>
+        </Card>
 
         <Card>
           <CardHeader>
