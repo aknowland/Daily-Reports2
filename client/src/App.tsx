@@ -39,12 +39,12 @@ function AuthenticatedRoutes() {
       <Route path="/reports/new" component={ReportFormPage} />
       <Route path="/reports/:id" component={ReportDetailPage} />
       <Route path="/reports/:id/edit" component={ReportFormPage} />
+      <Route path="/settings" component={AdminSettingsPage} />
       <Route path="/admin" component={AdminDashboardPage} />
       <Route path="/admin/companies" component={AdminCompaniesPage} />
       <Route path="/admin/projects" component={AdminProjectsPage} />
       <Route path="/admin/users" component={AdminUsersPage} />
       <Route path="/admin/invites" component={AdminInvitesPage} />
-      <Route path="/admin/settings" component={AdminSettingsPage} />
       <Route component={NotFound} />
     </Switch>
   );

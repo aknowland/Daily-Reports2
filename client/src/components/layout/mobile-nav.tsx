@@ -19,12 +19,12 @@ export function MobileNav({ isAdmin }: MobileNavProps) {
     { href: "/", label: "Home", icon: <Home className="w-5 h-5" /> },
     { href: "/reports/new", label: "New Report", icon: <Plus className="w-5 h-5" /> },
     { href: "/reports", label: "Reports", icon: <FileText className="w-5 h-5" /> },
+    { href: "/settings", label: "Settings", icon: <Settings className="w-5 h-5" /> },
   ];
 
   const adminItems: NavItem[] = [
     { href: "/admin", label: "Dashboard", icon: <Home className="w-5 h-5" /> },
     { href: "/admin/projects", label: "Projects", icon: <FileText className="w-5 h-5" /> },
-    { href: "/admin/settings", label: "Settings", icon: <Settings className="w-5 h-5" /> },
   ];
 
   const items = isAdmin ? adminItems : inspectorItems;

@@ -51,7 +51,6 @@ export function Header({ title = "Field Daily Reports" }: HeaderProps) {
     { href: "/admin/projects", label: "Projects", icon: FolderOpen },
     { href: "/admin/users", label: "Users", icon: Users },
     { href: "/admin/invites", label: "Invites", icon: UserPlus },
-    { href: "/admin/settings", label: "Settings", icon: Settings },
   ];
 
   return (
@@ -142,14 +141,12 @@ export function Header({ title = "Field Daily Reports" }: HeaderProps) {
                     Profile
                   </Link>
                 </DropdownMenuItem>
-                {isAdmin && (
-                  <DropdownMenuItem asChild>
-                    <Link href="/admin/settings" className="cursor-pointer">
-                      <Settings className="mr-2 h-4 w-4" />
-                      Settings
-                    </Link>
-                  </DropdownMenuItem>
-                )}
+                <DropdownMenuItem asChild>
+                  <Link href="/settings" className="cursor-pointer">
+                    <Settings className="mr-2 h-4 w-4" />
+                    Settings
+                  </Link>
+                </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem 
                   onClick={() => logout()}
