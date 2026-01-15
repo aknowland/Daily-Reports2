@@ -79,6 +79,7 @@ export interface IStorage {
 
   // Company Members
   getCompanyMembers(companyId: string): Promise<(CompanyMember & { user?: User })[]>;
+  getCompanyMember(companyId: string, userId: string): Promise<CompanyMember | undefined>;
   getCompaniesForUser(userId: string): Promise<(CompanyMember & { company?: Company })[]>;
   addCompanyMember(companyId: string, userId: string, role: "inspector" | "admin"): Promise<CompanyMember>;
   removeCompanyMember(companyId: string, userId: string): Promise<boolean>;
@@ -475,6 +476,17 @@ export class DatabaseStorage implements IStorage {
       ...row.company_members,
       user: row.users || undefined,
     }));
+  }
+
+  async getCompanyMember(companyId: string, userId: string): Promise<CompanyMember | undefined> {
+    const [member] = await db
+      .select()
+      .from(companyMembers)
+      .where(and(
+        eq(companyMembers.companyId, companyId),
+        eq(companyMembers.userId, userId)
+      ));
+    return member;
   }
 
   async getCompaniesForUser(userId: string): Promise<(CompanyMember & { company?: Company })[]> {

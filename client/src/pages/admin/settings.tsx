@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { PageLayout } from "@/components/layout/page-layout";
 import { Button } from "@/components/ui/button";
@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useAuth } from "@/hooks/use-auth";
 import {
   Upload,
   Image,
@@ -15,42 +16,70 @@ import {
   Loader2,
   Check,
   X,
+  Lock,
 } from "lucide-react";
-import type { AppSetting } from "@shared/schema";
+import type { Company } from "@shared/schema";
+
+interface ActiveCompany extends Company {
+  isCompanyAdmin: boolean;
+}
 
 export default function AdminSettingsPage() {
   const { toast } = useToast();
+  const { user } = useAuth();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
 
-  const { data: settings, isLoading } = useQuery<AppSetting[]>({
-    queryKey: ["/api/admin/settings"],
+  const { data: activeCompany, isLoading: companyLoading } = useQuery<ActiveCompany | null>({
+    queryKey: ["/api/my-company"],
   });
 
-  const logoSetting = settings?.find((s) => s.key === "company_logo");
-  const companyNameSetting = settings?.find((s) => s.key === "company_name");
+  const [companyName, setCompanyName] = useState("");
+  const [companyAddress, setCompanyAddress] = useState("");
+  const [companyPhone, setCompanyPhone] = useState("");
+  const [companyEmail, setCompanyEmail] = useState("");
 
-  const [companyName, setCompanyName] = useState(companyNameSetting?.value || "");
+  useEffect(() => {
+    if (activeCompany) {
+      setCompanyName(activeCompany.name || "");
+      setCompanyAddress(activeCompany.address || "");
+      setCompanyPhone(activeCompany.phone || "");
+      setCompanyEmail(activeCompany.email || "");
+    }
+  }, [activeCompany]);
 
-  const updateSettingMutation = useMutation({
-    mutationFn: async ({ key, value }: { key: string; value: string }) => {
-      return apiRequest("POST", "/api/admin/settings", { key, value });
+  const isAdmin = user?.profile?.role === "admin";
+  const canEdit = activeCompany?.isCompanyAdmin === true;
+
+  const updateCompanyMutation = useMutation({
+    mutationFn: async (data: { name?: string; address?: string; phone?: string; email?: string }) => {
+      return apiRequest("PATCH", "/api/my-company", data);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/settings"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/my-company"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/my-companies"] });
       toast({
-        title: "Settings Updated",
-        description: "Your settings have been saved successfully",
+        title: "Company Updated",
+        description: "Company information has been saved successfully",
       });
     },
     onError: (error) => {
       toast({
         title: "Error",
-        description: error instanceof Error ? error.message : "Failed to update settings",
+        description: error instanceof Error ? error.message : "Failed to update company",
         variant: "destructive",
       });
     },
   });
+
+  const handleSaveCompany = () => {
+    updateCompanyMutation.mutate({
+      name: companyName,
+      address: companyAddress,
+      phone: companyPhone,
+      email: companyEmail,
+    });
+  };
 
   const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -89,7 +118,8 @@ export default function AdminSettingsPage() {
         throw new Error("Failed to upload logo");
       }
 
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/settings"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/my-company"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/my-companies"] });
       toast({
         title: "Logo Uploaded",
         description: "Your company logo has been updated",
@@ -108,17 +138,33 @@ export default function AdminSettingsPage() {
     }
   };
 
-  const handleSaveCompanyName = () => {
-    updateSettingMutation.mutate({ key: "company_name", value: companyName });
-  };
+  if (!activeCompany && !companyLoading) {
+    return (
+      <PageLayout title="Settings" isAdmin={isAdmin}>
+        <div className="container px-4 py-6 mx-auto max-w-2xl">
+          <Card>
+            <CardContent className="py-8 text-center">
+              <Building className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+              <p className="text-muted-foreground">
+                No company selected. Please create or join a company first.
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+      </PageLayout>
+    );
+  }
 
   return (
-    <PageLayout title="Settings" isAdmin>
+    <PageLayout title="Settings" isAdmin={isAdmin}>
       <div className="container px-4 py-6 mx-auto max-w-2xl space-y-6">
         <div>
           <h1 className="text-2xl font-bold">Settings</h1>
           <p className="text-muted-foreground">
-            Configure company branding and application settings
+            {canEdit 
+              ? "Configure company branding and application settings"
+              : "View company information (read-only)"
+            }
           </p>
         </div>
 
@@ -127,125 +173,158 @@ export default function AdminSettingsPage() {
             <CardTitle className="text-lg flex items-center gap-2">
               <Building className="w-5 h-5" />
               Company Information
+              {!canEdit && <Lock className="w-4 h-4 text-muted-foreground" />}
             </CardTitle>
             <CardDescription>
-              This information will appear on generated PDF reports
+              {canEdit 
+                ? "This information will appear on generated PDF reports"
+                : "Contact your company administrator to update this information"
+              }
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            {isLoading ? (
+            {companyLoading ? (
               <div className="space-y-4">
                 <Skeleton className="h-10 w-full" />
-                <Skeleton className="h-10 w-32" />
+                <Skeleton className="h-10 w-full" />
+                <Skeleton className="h-10 w-full" />
+                <Skeleton className="h-10 w-full" />
               </div>
             ) : (
               <>
                 <div className="space-y-2">
                   <Label htmlFor="companyName">Company Name</Label>
-                  <div className="flex gap-2">
+                  <Input
+                    id="companyName"
+                    value={companyName}
+                    onChange={(e) => setCompanyName(e.target.value)}
+                    placeholder="Your Company Name"
+                    disabled={!canEdit}
+                    data-testid="input-company-name"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="companyAddress">Address</Label>
+                  <Input
+                    id="companyAddress"
+                    value={companyAddress}
+                    onChange={(e) => setCompanyAddress(e.target.value)}
+                    placeholder="Company Address"
+                    disabled={!canEdit}
+                    data-testid="input-company-address"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="companyPhone">Phone</Label>
                     <Input
-                      id="companyName"
-                      value={companyName}
-                      onChange={(e) => setCompanyName(e.target.value)}
-                      placeholder="Your Company Name"
-                      className="flex-1"
-                      data-testid="input-company-name"
+                      id="companyPhone"
+                      value={companyPhone}
+                      onChange={(e) => setCompanyPhone(e.target.value)}
+                      placeholder="(555) 123-4567"
+                      disabled={!canEdit}
+                      data-testid="input-company-phone"
                     />
-                    <Button
-                      onClick={handleSaveCompanyName}
-                      disabled={updateSettingMutation.isPending}
-                      data-testid="button-save-company-name"
-                    >
-                      {updateSettingMutation.isPending ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                      ) : (
-                        <Check className="w-4 h-4" />
-                      )}
-                    </Button>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="companyEmail">Email</Label>
+                    <Input
+                      id="companyEmail"
+                      value={companyEmail}
+                      onChange={(e) => setCompanyEmail(e.target.value)}
+                      placeholder="info@company.com"
+                      disabled={!canEdit}
+                      data-testid="input-company-email"
+                    />
                   </div>
                 </div>
-              </>
-            )}
-          </CardContent>
-        </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg flex items-center gap-2">
-              <Image className="w-5 h-5" />
-              Company Logo
-            </CardTitle>
-            <CardDescription>
-              Upload your company logo to appear on PDF report headers
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {isLoading ? (
-              <Skeleton className="h-32 w-full" />
-            ) : (
-              <>
-                {logoSetting?.value ? (
-                  <div className="flex items-center gap-4 p-4 bg-muted/50 rounded-lg">
-                    <img
-                      src={logoSetting.value}
-                      alt="Company logo"
-                      className="max-h-16 max-w-48 object-contain"
-                    />
-                    <div className="flex-1">
-                      <p className="text-sm font-medium">Current Logo</p>
-                      <p className="text-xs text-muted-foreground">
-                        Click upload to replace
-                      </p>
-                    </div>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => updateSettingMutation.mutate({ key: "company_logo", value: "" })}
-                      data-testid="button-remove-logo"
-                    >
-                      <X className="w-4 h-4 mr-1" />
-                      Remove
-                    </Button>
-                  </div>
-                ) : (
-                  <div className="text-center py-8 border-2 border-dashed rounded-lg">
-                    <Image className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
-                    <p className="text-muted-foreground">No logo uploaded</p>
-                  </div>
-                )}
-
-                <div className="relative">
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept="image/*"
-                    onChange={handleLogoUpload}
-                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                    disabled={uploading}
-                    data-testid="input-logo-upload"
-                  />
+                {canEdit && (
                   <Button
-                    variant="outline"
+                    onClick={handleSaveCompany}
+                    disabled={updateCompanyMutation.isPending}
                     className="w-full"
-                    disabled={uploading}
+                    data-testid="button-save-company"
                   >
-                    {uploading ? (
+                    {updateCompanyMutation.isPending ? (
                       <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                     ) : (
-                      <Upload className="w-4 h-4 mr-2" />
+                      <Check className="w-4 h-4 mr-2" />
                     )}
-                    {uploading ? "Uploading..." : "Upload Logo"}
+                    Save Company Information
                   </Button>
-                </div>
-
-                <p className="text-xs text-muted-foreground">
-                  Recommended: PNG with transparent background, max 5MB.
-                  The logo will be displayed at approximately 2 inches wide in PDF headers.
-                </p>
+                )}
               </>
             )}
           </CardContent>
         </Card>
+
+        {canEdit && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Image className="w-5 h-5" />
+                Company Logo
+              </CardTitle>
+              <CardDescription>
+                Upload your company logo to appear on PDF report headers
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {activeCompany?.logoPath ? (
+                <div className="flex items-center gap-4 p-4 bg-muted/50 rounded-lg">
+                  <img
+                    src={activeCompany.logoPath}
+                    alt="Company logo"
+                    className="max-h-16 max-w-48 object-contain"
+                  />
+                  <div className="flex-1">
+                    <p className="text-sm font-medium">Current Logo</p>
+                    <p className="text-xs text-muted-foreground">
+                      Click upload to replace
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center py-8 border-2 border-dashed rounded-lg">
+                  <Image className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+                  <p className="text-muted-foreground">No logo uploaded</p>
+                </div>
+              )}
+
+              <div className="relative">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleLogoUpload}
+                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                  disabled={uploading}
+                  data-testid="input-logo-upload"
+                />
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  disabled={uploading}
+                >
+                  {uploading ? (
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  ) : (
+                    <Upload className="w-4 h-4 mr-2" />
+                  )}
+                  {uploading ? "Uploading..." : "Upload Logo"}
+                </Button>
+              </div>
+
+              <p className="text-xs text-muted-foreground">
+                Recommended: PNG with transparent background, max 5MB.
+                The logo will be displayed at approximately 2 inches wide in PDF headers.
+              </p>
+            </CardContent>
+          </Card>
+        )}
 
         <Card>
           <CardHeader>
