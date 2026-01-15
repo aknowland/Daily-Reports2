@@ -2,7 +2,7 @@ import type { Express, RequestHandler } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { setupAuth, isAuthenticated, registerAuthRoutes } from "./replit_integrations/auth";
-import { insertProjectSchema, insertDailyReportSchema } from "@shared/schema";
+import { insertProjectSchema, insertDailyReportSchema, updateUserProfileSchema } from "@shared/schema";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
@@ -1113,6 +1113,44 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error fetching profile:", error);
       res.status(500).json({ message: "Failed to fetch profile" });
+    }
+  });
+
+  // Update user profile
+  app.patch("/api/profile", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      
+      // Validate request body with Zod schema
+      const parseResult = updateUserProfileSchema.safeParse(req.body);
+      
+      if (!parseResult.success) {
+        return res.status(400).json({ 
+          message: "Validation error", 
+          errors: parseResult.error.flatten().fieldErrors 
+        });
+      }
+      
+      const data = parseResult.data;
+      
+      // Normalize empty strings to null
+      const normalize = (val: string | null | undefined) => val?.trim() || null;
+      
+      const profile = await storage.createOrUpdateUserProfile({
+        userId,
+        phone: normalize(data.phone),
+        title: normalize(data.title),
+        licenseNumber: normalize(data.licenseNumber),
+        licenseState: normalize(data.licenseState),
+        certifications: data.certifications || [],
+        emergencyContact: normalize(data.emergencyContact),
+        emergencyPhone: normalize(data.emergencyPhone),
+      });
+      
+      res.json(profile);
+    } catch (error) {
+      console.error("Error updating profile:", error);
+      res.status(500).json({ message: "Failed to update profile" });
     }
   });
 
