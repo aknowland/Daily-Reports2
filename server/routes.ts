@@ -943,6 +943,13 @@ export async function registerRoutes(
         doc.moveDown(0.8);
       }
 
+      // Materials Delivered
+      if (report.materialsDelivered) {
+        drawSectionHeader('MATERIALS DELIVERED');
+        drawTableRow('Items', report.materialsDelivered);
+        doc.moveDown(0.8);
+      }
+
       // Issues/Safety Section
       if (report.issuesFlag || report.safetyFlag) {
         drawSectionHeader('ISSUES & SAFETY');
@@ -973,13 +980,6 @@ export async function registerRoutes(
       if (report.equipment) {
         drawSectionHeader('EQUIPMENT');
         drawTableRow('On Site', report.equipment);
-        doc.moveDown(0.8);
-      }
-
-      // Materials Delivered
-      if (report.materialsDelivered) {
-        drawSectionHeader('MATERIALS DELIVERED');
-        drawTableRow('Items', report.materialsDelivered);
         doc.moveDown(0.8);
       }
 
