@@ -15,6 +15,7 @@ import {
 import { ReportCard } from "@/components/reports/report-card";
 import { ReportDetailPanel } from "@/components/reports/report-detail-panel";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useAuth } from "@/hooks/use-auth";
 import { 
   Plus, 
   Search, 
@@ -25,6 +26,7 @@ import {
 import type { DailyReportWithDetails } from "@shared/schema";
 
 export default function ReportsListPage() {
+  const { user, isAdmin, isCompanyAdmin } = useAuth();
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [selectedReport, setSelectedReport] = useState<DailyReportWithDetails | null>(null);
@@ -181,6 +183,9 @@ export default function ReportsListPage() {
         report={selectedReport}
         open={panelOpen}
         onOpenChange={setPanelOpen}
+        currentUserId={user?.id}
+        isAdmin={isAdmin}
+        isCompanyAdmin={isCompanyAdmin}
       />
     </PageLayout>
   );

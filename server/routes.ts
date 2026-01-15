@@ -476,13 +476,35 @@ export async function registerRoutes(
       const userId = req.user?.claims?.sub;
       const profile = await storage.getUserProfile(userId);
       
-      // Check ownership or admin
       const existing = await storage.getReport(req.params.id);
       if (!existing) {
         return res.status(404).json({ message: "Report not found" });
       }
-      if (profile?.role !== "admin" && existing.inspectorId !== userId) {
-        return res.status(403).json({ message: "Access denied" });
+      
+      // Permission check:
+      // - System admins can edit any report
+      // - Company admins can edit any report in their company
+      // - Inspectors can only edit their own draft reports
+      const isSystemAdmin = profile?.role === "admin";
+      const isOwner = existing.inspectorId === userId;
+      
+      // Check if user is a company admin for the report's project
+      let isCompanyAdmin = false;
+      if (existing.projectId) {
+        const project = await storage.getProject(existing.projectId);
+        if (project?.companyId) {
+          const membership = await storage.getCompanyMember(project.companyId, userId);
+          isCompanyAdmin = membership?.role === "admin";
+        }
+      }
+      
+      // Determine if user can edit
+      if (isSystemAdmin || isCompanyAdmin) {
+        // Admins can edit any report
+      } else if (isOwner && existing.status === "draft") {
+        // Inspectors can only edit their own drafts
+      } else {
+        return res.status(403).json({ message: "Access denied. Only admins can edit submitted reports." });
       }
       
       const validated = updateReportSchema.parse(req.body);
@@ -502,13 +524,29 @@ export async function registerRoutes(
       const userId = req.user?.claims?.sub;
       const profile = await storage.getUserProfile(userId);
       
-      // Check ownership or admin
       const existing = await storage.getReport(req.params.id);
       if (!existing) {
         return res.status(404).json({ message: "Report not found" });
       }
-      if (profile?.role !== "admin" && existing.inspectorId !== userId) {
-        return res.status(403).json({ message: "Access denied" });
+      
+      // Permission check:
+      // - System admins can delete any report
+      // - Company admins can delete any report in their company
+      // - Inspectors cannot delete reports
+      const isSystemAdmin = profile?.role === "admin";
+      
+      // Check if user is a company admin for the report's project
+      let isCompanyAdmin = false;
+      if (existing.projectId) {
+        const project = await storage.getProject(existing.projectId);
+        if (project?.companyId) {
+          const membership = await storage.getCompanyMember(project.companyId, userId);
+          isCompanyAdmin = membership?.role === "admin";
+        }
+      }
+      
+      if (!isSystemAdmin && !isCompanyAdmin) {
+        return res.status(403).json({ message: "Access denied. Only admins can delete reports." });
       }
       
       await storage.deleteReport(req.params.id);
