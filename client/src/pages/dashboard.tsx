@@ -3,8 +3,9 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { PageLayout } from "@/components/layout/page-layout";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { ReportCard } from "@/components/reports/report-card";
+import { ReportDetailPanel } from "@/components/reports/report-detail-panel";
 import { Skeleton } from "@/components/ui/skeleton";
 import { OnboardingModal } from "@/components/onboarding-modal";
 import { useAuth } from "@/hooks/use-auth";
@@ -21,6 +22,8 @@ import type { DailyReportWithDetails, UserProfile } from "@shared/schema";
 export default function DashboardPage() {
   const { user } = useAuth();
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const [selectedReport, setSelectedReport] = useState<DailyReportWithDetails | null>(null);
+  const [panelOpen, setPanelOpen] = useState(false);
 
   const { data: profile } = useQuery<UserProfile>({
     queryKey: ["/api/profile"],
@@ -52,6 +55,11 @@ export default function DashboardPage() {
     if (hour < 12) return "Good morning";
     if (hour < 17) return "Good afternoon";
     return "Good evening";
+  };
+
+  const handleReportClick = (report: DailyReportWithDetails) => {
+    setSelectedReport(report);
+    setPanelOpen(true);
   };
 
   return (
@@ -177,12 +185,22 @@ export default function DashboardPage() {
           ) : (
             <div className="space-y-3">
               {recentReports.map((report) => (
-                <ReportCard key={report.id} report={report} />
+                <ReportCard 
+                  key={report.id} 
+                  report={report} 
+                  onClick={() => handleReportClick(report)}
+                />
               ))}
             </div>
           )}
         </div>
       </div>
+
+      <ReportDetailPanel
+        report={selectedReport}
+        open={panelOpen}
+        onOpenChange={setPanelOpen}
+      />
 
       <OnboardingModal 
         open={showOnboarding} 
