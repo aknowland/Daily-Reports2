@@ -44,6 +44,7 @@ export const userProfiles = pgTable("user_profiles", {
   phone: varchar("phone"),
   company: varchar("company"),
   activeCompanyId: varchar("active_company_id").references(() => companies.id),
+  activeProjectId: varchar("active_project_id"),
 });
 
 // Projects table

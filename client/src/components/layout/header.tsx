@@ -21,6 +21,7 @@ import { Link, useLocation } from "wouter";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
 import { CompanySwitcher } from "./company-switcher";
+import { ProjectSwitcher } from "./project-switcher";
 
 interface HeaderProps {
   title?: string;
@@ -111,6 +112,7 @@ export function Header({ title = "Field Daily Reports" }: HeaderProps) {
 
         <div className="flex items-center gap-2">
           {user && <CompanySwitcher activeCompanyId={profile?.activeCompanyId} />}
+          {user && <ProjectSwitcher activeProjectId={profile?.activeProjectId} />}
           {isLoading ? (
             <div className="w-9 h-9 rounded-full bg-muted animate-pulse" />
           ) : user ? (

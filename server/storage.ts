@@ -88,6 +88,10 @@ export interface IStorage {
   // Active Company
   setActiveCompany(userId: string, companyId: string): Promise<UserProfile | undefined>;
   getProjectsByCompany(companyId: string): Promise<Project[]>;
+
+  // Active Project
+  setActiveProject(userId: string, projectId: string | null): Promise<UserProfile | undefined>;
+  getProjectsForUserInCompany(userId: string, companyId: string): Promise<Project[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -559,6 +563,29 @@ export class DatabaseStorage implements IStorage {
       .select()
       .from(projects)
       .where(eq(projects.companyId, companyId))
+      .orderBy(desc(projects.createdAt));
+  }
+
+  async setActiveProject(userId: string, projectId: string | null): Promise<UserProfile | undefined> {
+    const [profile] = await db
+      .update(userProfiles)
+      .set({ activeProjectId: projectId })
+      .where(eq(userProfiles.userId, userId))
+      .returning();
+    return profile;
+  }
+
+  async getProjectsForUserInCompany(userId: string, companyId: string): Promise<Project[]> {
+    const projectIds = await this.getProjectsForUser(userId);
+    if (projectIds.length === 0) return [];
+    
+    return db
+      .select()
+      .from(projects)
+      .where(and(
+        eq(projects.companyId, companyId),
+        inArray(projects.id, projectIds)
+      ))
       .orderBy(desc(projects.createdAt));
   }
 }

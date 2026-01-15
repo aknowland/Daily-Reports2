@@ -50,7 +50,7 @@ export default function ReportFormPage() {
   const { id } = useParams<{ id?: string }>();
   const [, navigate] = useLocation();
   const { toast } = useToast();
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const isEditing = !!id;
 
   const [formData, setFormData] = useState({
@@ -81,6 +81,13 @@ export default function ReportFormPage() {
     queryKey: ["/api/reports", id],
     enabled: isEditing,
   });
+
+  // Set active project as default for new reports
+  useEffect(() => {
+    if (!isEditing && profile?.activeProjectId && !formData.projectId) {
+      setFormData(prev => ({ ...prev, projectId: profile.activeProjectId! }));
+    }
+  }, [isEditing, profile?.activeProjectId]);
 
   useEffect(() => {
     if (existingReport) {
