@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { PageLayout } from "@/components/layout/page-layout";
@@ -5,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ReportCard } from "@/components/reports/report-card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { OnboardingModal } from "@/components/onboarding-modal";
 import { useAuth } from "@/hooks/use-auth";
 import { 
   Plus, 
@@ -14,10 +16,21 @@ import {
   ChevronRight,
   AlertCircle
 } from "lucide-react";
-import type { DailyReportWithDetails } from "@shared/schema";
+import type { DailyReportWithDetails, UserProfile } from "@shared/schema";
 
 export default function DashboardPage() {
   const { user } = useAuth();
+  const [showOnboarding, setShowOnboarding] = useState(false);
+
+  const { data: profile } = useQuery<UserProfile>({
+    queryKey: ["/api/profile"],
+  });
+
+  useEffect(() => {
+    if (profile && profile.hasSeenOnboarding === false) {
+      setShowOnboarding(true);
+    }
+  }, [profile]);
 
   const { data: reportsData, isLoading, error } = useQuery<{
     reports: DailyReportWithDetails[];
@@ -170,6 +183,11 @@ export default function DashboardPage() {
           )}
         </div>
       </div>
+
+      <OnboardingModal 
+        open={showOnboarding} 
+        onComplete={() => setShowOnboarding(false)} 
+      />
     </PageLayout>
   );
 }
