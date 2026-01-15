@@ -1,5 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Plus, Trash2 } from "lucide-react";
 
 interface TradeRowProps {
@@ -185,11 +186,13 @@ export function WorkActivityRowInput({ contractor, headcount, workDescription, o
           <Trash2 className="w-4 h-4 text-muted-foreground" />
         </Button>
       </div>
-      <Input
+      <Textarea
         value={workDescription}
         onChange={(e) => onChange(contractor, headcount, e.target.value)}
         placeholder="Work description / activity performed"
         disabled={disabled}
+        rows={3}
+        className="resize-none"
         data-testid={`input-activity-work-${index}`}
       />
     </div>
