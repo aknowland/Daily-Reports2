@@ -6,6 +6,7 @@ A mobile-first web application for construction inspectors to create daily field
 
 Field Daily Reports helps construction inspection teams document their daily work efficiently with:
 - **Mobile-first forms**: Touch-optimized interfaces for field use
+- **Voice-to-text dictation**: Hands-free data entry using device microphone and AI transcription
 - **Photo documentation**: Upload and caption site photos
 - **Digital signatures**: Canvas-based signature capture
 - **PDF generation**: Professional reports with company branding
@@ -64,6 +65,14 @@ Field Daily Reports helps construction inspection teams document their daily wor
 - These names are used in daily reports and PDF generation
 - Falls back to auth user name, then email if profile name is not set
 
+### Voice-to-Text Feature
+- VoiceInput component uses MediaRecorder API for audio capture
+- 120-second max recording time with visual countdown and auto-stop
+- Audio sent as base64 WebM to /api/transcribe endpoint
+- OpenAI integration for speech-to-text transcription
+- AI-powered parsing for structured data extraction (work activities, visitors)
+- Integrated into all major text fields (inspections, notes, equipment, materials, issues, safety)
+
 ### API Endpoints
 
 ```
@@ -106,6 +115,10 @@ DELETE /api/admin/invites/:id     - Delete invite
 Invites:
 GET    /api/invites/:token        - Get invite by token (public)
 POST   /api/invites/:token/accept - Accept invite (requires auth)
+
+Voice/Transcription:
+POST   /api/transcribe            - Transcribe audio to text
+POST   /api/parse-report-voice    - Parse transcript into structured data
 ```
 
 ## Development
