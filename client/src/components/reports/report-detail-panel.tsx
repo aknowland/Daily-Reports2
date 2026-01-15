@@ -326,6 +326,26 @@ export function ReportDetailPanel({ report, open, onOpenChange }: ReportDetailPa
                 )}
               </section>
             )}
+
+            {report.pdfPath && (
+              <section className="space-y-3" data-testid="section-pdf-preview">
+                <h3 className="font-semibold flex items-center gap-2">
+                  <FileText className="w-4 h-4" />
+                  PDF Preview
+                </h3>
+                <div className="border rounded-lg overflow-hidden bg-muted">
+                  <iframe
+                    src={report.pdfPath}
+                    className="w-full h-[400px]"
+                    title="Report PDF Preview"
+                    data-testid="iframe-pdf-preview"
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  If the preview doesn't load, use the buttons above to view or download the PDF.
+                </p>
+              </section>
+            )}
           </div>
         </ScrollArea>
       </SheetContent>
