@@ -60,11 +60,13 @@ export default function ReportFormPage() {
     workPerformed: "",
     workActivities: [] as WorkActivityRow[],
     visitors: [] as VisitorRow[],
+    equipment: "",
+    inspections: "",
+    materialsDelivered: "",
     issuesFlag: false,
     issuesDetails: "",
     safetyFlag: false,
     safetyDetails: "",
-    notes: "",
   });
 
   const [photos, setPhotos] = useState<PhotoItem[]>([]);
@@ -97,11 +99,13 @@ export default function ReportFormPage() {
         workPerformed: existingReport.workPerformed || "",
         workActivities: (existingReport.workActivities as WorkActivityRow[]) || [],
         visitors: (existingReport.visitors as VisitorRow[]) || [],
+        equipment: existingReport.equipment || "",
+        inspections: existingReport.inspections || "",
+        materialsDelivered: existingReport.materialsDelivered || "",
         issuesFlag: existingReport.issuesFlag || false,
         issuesDetails: existingReport.issuesDetails || "",
         safetyFlag: existingReport.safetyFlag || false,
         safetyDetails: existingReport.safetyDetails || "",
-        notes: existingReport.notes || "",
       });
 
       if (existingReport.photos) {
@@ -468,15 +472,48 @@ export default function ReportFormPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-lg">Notes & Observations</CardTitle>
+            <CardTitle className="text-lg">Equipment</CardTitle>
           </CardHeader>
           <CardContent>
             <Textarea
-              value={formData.notes}
-              onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
-              placeholder="Additional notes..."
-              rows={4}
-              data-testid="textarea-notes"
+              value={formData.equipment}
+              onChange={(e) => setFormData(prev => ({ ...prev, equipment: e.target.value }))}
+              placeholder="List equipment used on site today..."
+              rows={3}
+              className="resize-y"
+              data-testid="textarea-equipment"
+            />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Inspections</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Textarea
+              value={formData.inspections}
+              onChange={(e) => setFormData(prev => ({ ...prev, inspections: e.target.value }))}
+              placeholder="Describe inspections performed today..."
+              rows={3}
+              className="resize-y"
+              data-testid="textarea-inspections"
+            />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Materials Delivered</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Textarea
+              value={formData.materialsDelivered}
+              onChange={(e) => setFormData(prev => ({ ...prev, materialsDelivered: e.target.value }))}
+              placeholder="List materials delivered to site today..."
+              rows={3}
+              className="resize-y"
+              data-testid="textarea-materials"
             />
           </CardContent>
         </Card>
