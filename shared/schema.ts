@@ -42,6 +42,8 @@ export const companyMembers = pgTable("company_members", {
 export const userProfiles = pgTable("user_profiles", {
   userId: varchar("user_id").primaryKey(),
   role: userRoleEnum("role").default("inspector").notNull(),
+  firstName: varchar("first_name"),
+  lastName: varchar("last_name"),
   phone: varchar("phone"),
   company: varchar("company"),
   activeCompanyId: varchar("active_company_id").references(() => companies.id),
@@ -232,6 +234,8 @@ export const insertUserProfileSchema = createInsertSchema(userProfiles);
 
 export const updateUserProfileSchema = createInsertSchema(userProfiles)
   .pick({
+    firstName: true,
+    lastName: true,
     phone: true,
     title: true,
     licenseNumber: true,
