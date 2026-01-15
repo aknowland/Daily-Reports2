@@ -1187,7 +1187,20 @@ export async function registerRoutes(
       // Check if company with same name already exists
       const existingCompany = await storage.getCompanyByName(name);
       if (existingCompany) {
-        return res.status(400).json({ message: "A company with this name already exists" });
+        // Check if user already has a pending request
+        const existingRequest = await storage.getJoinRequestByUserAndCompany(userId, existingCompany.id);
+        // Check if user is already a member
+        const isMember = await storage.isUserMemberOfCompany(existingCompany.id, userId);
+        
+        return res.status(409).json({ 
+          message: "A company with this name already exists",
+          existingCompany: {
+            id: existingCompany.id,
+            name: existingCompany.name,
+          },
+          hasPendingRequest: existingRequest?.status === "pending",
+          isAlreadyMember: isMember,
+        });
       }
 
       // Create the company with the creator's ID
@@ -1280,6 +1293,137 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error switching company:", error);
       res.status(500).json({ message: "Failed to switch company" });
+    }
+  });
+
+  // ========== JOIN REQUESTS ==========
+  // Get user's pending join requests
+  app.get("/api/my-join-requests", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const requests = await storage.getJoinRequestsForUser(userId);
+      res.json(requests);
+    } catch (error) {
+      console.error("Error fetching join requests:", error);
+      res.status(500).json({ message: "Failed to fetch join requests" });
+    }
+  });
+
+  // Create join request
+  app.post("/api/join-requests", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const { companyId, message } = req.body;
+      
+      if (!companyId) {
+        return res.status(400).json({ message: "Company ID is required" });
+      }
+
+      // Check if company exists
+      const company = await storage.getCompany(companyId);
+      if (!company) {
+        return res.status(404).json({ message: "Company not found" });
+      }
+
+      // Check if user is already a member
+      const isMember = await storage.isUserMemberOfCompany(companyId, userId);
+      if (isMember) {
+        return res.status(400).json({ message: "You are already a member of this company" });
+      }
+
+      // Check if user already has a pending request
+      const existingRequest = await storage.getJoinRequestByUserAndCompany(userId, companyId);
+      if (existingRequest) {
+        if (existingRequest.status === "pending") {
+          return res.status(400).json({ message: "You already have a pending request for this company" });
+        }
+        if (existingRequest.status === "rejected") {
+          return res.status(400).json({ message: "Your previous request was rejected. Please contact the company admin." });
+        }
+      }
+
+      const request = await storage.createJoinRequest({ userId, companyId, message });
+      res.status(201).json(request);
+    } catch (error) {
+      console.error("Error creating join request:", error);
+      res.status(500).json({ message: "Failed to create join request" });
+    }
+  });
+
+  // Get pending join requests for a company (company admins only)
+  app.get("/api/companies/:id/join-requests", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const companyId = req.params.id;
+      
+      // Check if user is a company admin
+      const membership = await storage.getCompanyMember(companyId, userId);
+      if (!membership || membership.role !== "admin") {
+        return res.status(403).json({ message: "Only company admins can view join requests" });
+      }
+
+      const requests = await storage.getJoinRequestsForCompany(companyId);
+      res.json(requests);
+    } catch (error) {
+      console.error("Error fetching company join requests:", error);
+      res.status(500).json({ message: "Failed to fetch join requests" });
+    }
+  });
+
+  // Approve join request (company admins only)
+  app.post("/api/join-requests/:id/approve", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const requestId = req.params.id;
+      
+      const request = await storage.getJoinRequest(requestId);
+      if (!request) {
+        return res.status(404).json({ message: "Join request not found" });
+      }
+
+      // Check if user is a company admin
+      const membership = await storage.getCompanyMember(request.companyId, userId);
+      if (!membership || membership.role !== "admin") {
+        return res.status(403).json({ message: "Only company admins can approve join requests" });
+      }
+
+      // Update request status
+      await storage.updateJoinRequestStatus(requestId, "approved", userId);
+      
+      // Add user as a member with inspector role
+      await storage.addCompanyMember(request.companyId, request.userId, "inspector");
+      
+      res.json({ message: "Join request approved" });
+    } catch (error) {
+      console.error("Error approving join request:", error);
+      res.status(500).json({ message: "Failed to approve join request" });
+    }
+  });
+
+  // Reject join request (company admins only)
+  app.post("/api/join-requests/:id/reject", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const requestId = req.params.id;
+      
+      const request = await storage.getJoinRequest(requestId);
+      if (!request) {
+        return res.status(404).json({ message: "Join request not found" });
+      }
+
+      // Check if user is a company admin
+      const membership = await storage.getCompanyMember(request.companyId, userId);
+      if (!membership || membership.role !== "admin") {
+        return res.status(403).json({ message: "Only company admins can reject join requests" });
+      }
+
+      // Update request status
+      await storage.updateJoinRequestStatus(requestId, "rejected", userId);
+      
+      res.json({ message: "Join request rejected" });
+    } catch (error) {
+      console.error("Error rejecting join request:", error);
+      res.status(500).json({ message: "Failed to reject join request" });
     }
   });
 
