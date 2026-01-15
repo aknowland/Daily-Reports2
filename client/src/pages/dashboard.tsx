@@ -50,6 +50,16 @@ export default function DashboardPage() {
   const stats = reportsData?.stats || { total: 0, drafts: 0, submitted: 0 };
   const recentReports = reports.slice(0, 5);
 
+  // Sync selectedReport with fresh data when reports update
+  useEffect(() => {
+    if (selectedReport && reports.length > 0) {
+      const updatedReport = reports.find(r => r.id === selectedReport.id);
+      if (updatedReport) {
+        setSelectedReport(updatedReport);
+      }
+    }
+  }, [reports, selectedReport?.id]);
+
   const getGreeting = () => {
     const hour = new Date().getHours();
     if (hour < 12) return "Good morning";
