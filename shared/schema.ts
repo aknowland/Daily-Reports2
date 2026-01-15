@@ -1,10 +1,11 @@
 import { sql, relations } from "drizzle-orm";
-import { pgTable, text, varchar, boolean, integer, timestamp, json, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, boolean, integer, timestamp, json, pgEnum, unique } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
 // Re-export auth models
 export * from "./models/auth";
+import { users } from "./models/auth";
 
 // Enums
 export const userRoleEnum = pgEnum("user_role", ["inspector", "admin"]);
@@ -36,9 +37,11 @@ export const projects = pgTable("projects", {
 export const projectMembers = pgTable("project_members", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   projectId: varchar("project_id").references(() => projects.id, { onDelete: "cascade" }).notNull(),
-  userId: varchar("user_id").notNull(),
+  userId: varchar("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
   assignedAt: timestamp("assigned_at").defaultNow(),
-});
+}, (table) => [
+  unique().on(table.projectId, table.userId),
+]);
 
 // Trade row type
 export const tradeRowSchema = z.object({
