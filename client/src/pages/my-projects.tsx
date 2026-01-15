@@ -4,8 +4,26 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useAuth } from "@/hooks/use-auth";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   FolderOpen,
   Check,
@@ -14,12 +32,26 @@ import {
   AlertCircle,
   Building2,
   Hash,
+  Plus,
+  Link as LinkIcon,
 } from "lucide-react";
 import { Link } from "wouter";
-import type { Project } from "@shared/schema";
+import { useState } from "react";
+import type { Project, Company } from "@shared/schema";
 
 export default function MyProjectsPage() {
   const { toast } = useToast();
+  const { companies, isCompanyAdmin } = useAuth();
+  const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [showAssignDialog, setShowAssignDialog] = useState(false);
+  const [selectedProject, setSelectedProject] = useState<Project | null>(null);
+  const [selectedCompanyId, setSelectedCompanyId] = useState<string>("");
+  const [formData, setFormData] = useState({
+    name: "",
+    projectNumber: "",
+    client: "",
+    address: "",
+  });
 
   const { data: projects = [], isLoading, error } = useQuery<Project[]>({
     queryKey: ["/api/my-projects"],
@@ -44,6 +76,62 @@ export default function MyProjectsPage() {
       });
     },
   });
+
+  const createMutation = useMutation({
+    mutationFn: async (data: typeof formData) => {
+      return apiRequest("POST", "/api/projects", data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/my-projects"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+      setShowCreateDialog(false);
+      setFormData({ name: "", projectNumber: "", client: "", address: "" });
+      toast({
+        title: "Project Created",
+        description: "Your new project has been created.",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to create project.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const assignMutation = useMutation({
+    mutationFn: async ({ projectId, companyId }: { projectId: string; companyId: string }) => {
+      return apiRequest("PATCH", `/api/projects/${projectId}`, { companyId });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/my-projects"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+      setShowAssignDialog(false);
+      setSelectedProject(null);
+      setSelectedCompanyId("");
+      toast({
+        title: "Project Assigned",
+        description: "Project has been assigned to the company.",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to assign project.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleAssignToCompany = (project: Project) => {
+    setSelectedProject(project);
+    setSelectedCompanyId("");
+    setShowAssignDialog(true);
+  };
+
+  // Get companies where user is admin
+  const adminCompanies = companies.filter(c => c.role === "admin");
 
   if (isLoading) {
     return (
@@ -118,22 +206,31 @@ export default function MyProjectsPage() {
               Projects you are assigned to
             </p>
           </div>
+          <Button onClick={() => setShowCreateDialog(true)} data-testid="button-create-project">
+            <Plus className="w-4 h-4 mr-2" />
+            New Project
+          </Button>
         </div>
 
         {projects.length === 0 ? (
           <Card>
             <CardContent className="flex flex-col items-center justify-center py-12">
               <FolderOpen className="w-12 h-12 text-muted-foreground mb-4" />
-              <p className="text-lg font-medium">No projects assigned</p>
-              <p className="text-muted-foreground">
-                You haven't been assigned to any projects yet
+              <p className="text-lg font-medium">No projects yet</p>
+              <p className="text-muted-foreground mb-4">
+                Create your first project to get started
               </p>
+              <Button onClick={() => setShowCreateDialog(true)} data-testid="button-create-first">
+                <Plus className="w-4 h-4 mr-2" />
+                Create Project
+              </Button>
             </CardContent>
           </Card>
         ) : (
           <div className="grid gap-4 md:grid-cols-2">
             {projects.map((project) => {
               const isActive = project.id === profile?.activeProjectId;
+              const isPersonal = !project.companyId;
 
               return (
                 <Card 
@@ -149,12 +246,19 @@ export default function MyProjectsPage() {
                           {project.name}
                         </CardTitle>
                       </div>
-                      {isActive && (
-                        <Badge variant="default" data-testid={`badge-active-${project.id}`}>
-                          <Check className="w-3 h-3 mr-1" />
-                          Active
-                        </Badge>
-                      )}
+                      <div className="flex items-center gap-1">
+                        {isPersonal && (
+                          <Badge variant="secondary" data-testid={`badge-personal-${project.id}`}>
+                            Personal
+                          </Badge>
+                        )}
+                        {isActive && (
+                          <Badge variant="default" data-testid={`badge-active-${project.id}`}>
+                            <Check className="w-3 h-3 mr-1" />
+                            Active
+                          </Badge>
+                        )}
+                      </div>
                     </div>
                     <CardDescription className="flex items-center gap-2">
                       <Hash className="w-3 h-3" />
@@ -174,17 +278,30 @@ export default function MyProjectsPage() {
                         <span>{project.address}</span>
                       </div>
                     )}
-                    {!isActive && (
-                      <Button
-                        variant="outline"
-                        className="w-full mt-2"
-                        onClick={() => switchMutation.mutate(project.id)}
-                        disabled={switchMutation.isPending}
-                        data-testid={`button-switch-${project.id}`}
-                      >
-                        Switch to this Project
-                      </Button>
-                    )}
+                    <div className="flex flex-col gap-2 mt-2">
+                      {isPersonal && adminCompanies.length > 0 && (
+                        <Button
+                          variant="outline"
+                          className="w-full"
+                          onClick={() => handleAssignToCompany(project)}
+                          data-testid={`button-assign-${project.id}`}
+                        >
+                          <LinkIcon className="w-4 h-4 mr-2" />
+                          Assign to Company
+                        </Button>
+                      )}
+                      {!isActive && (
+                        <Button
+                          variant="outline"
+                          className="w-full"
+                          onClick={() => switchMutation.mutate(project.id)}
+                          disabled={switchMutation.isPending}
+                          data-testid={`button-switch-${project.id}`}
+                        >
+                          Switch to this Project
+                        </Button>
+                      )}
+                    </div>
                   </CardContent>
                 </Card>
               );
@@ -192,6 +309,135 @@ export default function MyProjectsPage() {
           </div>
         )}
       </div>
+
+      <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Create Project</DialogTitle>
+            <DialogDescription>
+              Create a personal project. You can assign it to a company later.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 pt-4">
+            <div className="space-y-2">
+              <Label htmlFor="name">Project Name *</Label>
+              <Input
+                id="name"
+                value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                placeholder="Enter project name"
+                data-testid="input-project-name"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="projectNumber">Project Number *</Label>
+              <Input
+                id="projectNumber"
+                value={formData.projectNumber}
+                onChange={(e) => setFormData({ ...formData, projectNumber: e.target.value })}
+                placeholder="e.g., PRJ-001"
+                data-testid="input-project-number"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="client">Client</Label>
+              <Input
+                id="client"
+                value={formData.client}
+                onChange={(e) => setFormData({ ...formData, client: e.target.value })}
+                placeholder="Client name"
+                data-testid="input-project-client"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="address">Address</Label>
+              <Input
+                id="address"
+                value={formData.address}
+                onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                placeholder="Project address"
+                data-testid="input-project-address"
+              />
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowCreateDialog(false);
+                setFormData({ name: "", projectNumber: "", client: "", address: "" });
+              }}
+              data-testid="button-cancel"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={() => createMutation.mutate(formData)}
+              disabled={!formData.name.trim() || !formData.projectNumber.trim() || createMutation.isPending}
+              data-testid="button-submit"
+            >
+              {createMutation.isPending ? "Creating..." : "Create Project"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showAssignDialog} onOpenChange={(open) => {
+        setShowAssignDialog(open);
+        if (!open) {
+          setSelectedProject(null);
+          setSelectedCompanyId("");
+        }
+      }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Assign to Company</DialogTitle>
+            <DialogDescription>
+              Assign "{selectedProject?.name}" to a company you manage.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 pt-4">
+            <div className="space-y-2">
+              <Label htmlFor="company">Select Company</Label>
+              <Select value={selectedCompanyId} onValueChange={setSelectedCompanyId}>
+                <SelectTrigger data-testid="select-company">
+                  <SelectValue placeholder="Choose a company" />
+                </SelectTrigger>
+                <SelectContent>
+                  {adminCompanies.map((membership) => (
+                    <SelectItem key={membership.companyId} value={membership.companyId}>
+                      {membership.company?.name || "Unknown Company"}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowAssignDialog(false);
+                setSelectedProject(null);
+                setSelectedCompanyId("");
+              }}
+              data-testid="button-cancel-assign"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={() => selectedProject && assignMutation.mutate({ 
+                projectId: selectedProject.id, 
+                companyId: selectedCompanyId 
+              })}
+              disabled={!selectedCompanyId || assignMutation.isPending}
+              data-testid="button-confirm-assign"
+            >
+              {assignMutation.isPending ? "Assigning..." : "Assign Project"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </PageLayout>
   );
 }
