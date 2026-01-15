@@ -57,12 +57,6 @@ export default function AdminDashboardPage() {
       icon: <FileText className="w-6 h-6" />,
       count: stats.total,
     },
-    {
-      title: "Settings",
-      description: "Configure company branding",
-      href: "/admin/settings",
-      icon: <Settings className="w-6 h-6" />,
-    },
   ];
 
   return (
