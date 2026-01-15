@@ -824,19 +824,20 @@ export async function registerRoutes(
         doc.y = headerY + 20;
       };
 
-      // Header with company logo on top left
-      const headerY = doc.y;
-      const logoSize = 120;
+      // Header with company logo centered at top
+      const logoSize = 150;
       let hasLogo = false;
+      let logoEndY = doc.page.margins.top;
       
-      // Add company logo in top left corner if exists
+      // Add company logo centered at top if exists
       if (report.project?.companyId) {
         const company = await storage.getCompany(report.project.companyId);
         if (company?.logoPath) {
           const logoFilePath = path.join(process.cwd(), company.logoPath.replace(/^\//, ''));
           if (fs.existsSync(logoFilePath)) {
             try {
-              doc.image(logoFilePath, startX, headerY, {
+              const logoX = startX + (pageWidth - logoSize) / 2;
+              doc.image(logoFilePath, logoX, doc.page.margins.top, {
                 width: logoSize,
                 height: logoSize,
                 fit: [logoSize, logoSize],
@@ -844,6 +845,7 @@ export async function registerRoutes(
                 valign: 'center'
               });
               hasLogo = true;
+              logoEndY = doc.page.margins.top + logoSize;
             } catch (err) {
               console.error('Error adding company logo to PDF:', err);
             }
@@ -851,21 +853,18 @@ export async function registerRoutes(
         }
       }
       
-      // Position title text - if logo exists, put title to the right of it, otherwise center
-      const titleX = hasLogo ? startX + logoSize + 20 : startX;
-      const titleWidth = hasLogo ? pageWidth - logoSize - 20 : pageWidth;
-      
-      doc.fontSize(18).font('Helvetica-Bold').text('DAILY FIELD REPORT', titleX, headerY + 35, { 
-        width: titleWidth,
+      // Title centered below logo (or at top if no logo)
+      const titleY = hasLogo ? logoEndY + 15 : doc.page.margins.top;
+      doc.fontSize(18).font('Helvetica-Bold').text('DAILY FIELD REPORT', startX, titleY, { 
+        width: pageWidth,
         align: 'center' 
       });
       doc.fontSize(10).font('Helvetica').text(new Date(report.date).toLocaleDateString('en-US', { 
         weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' 
-      }), titleX, headerY + 60, { align: 'center', width: titleWidth });
+      }), startX, titleY + 25, { align: 'center', width: pageWidth });
       
       // Set consistent position after header block
-      const headerBlockHeight = hasLogo ? logoSize : 80;
-      doc.y = headerY + headerBlockHeight + 20;
+      doc.y = titleY + 55;
 
       // Project Information Section
       drawSectionHeader('PROJECT INFORMATION');
