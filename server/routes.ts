@@ -790,22 +790,48 @@ export async function registerRoutes(
         doc.moveDown();
       }
 
-      // Photos
+      // Photos - 2 columns layout
       const photos = report.photos || [];
       if (photos.length > 0) {
         doc.addPage();
         doc.fontSize(12).font('Helvetica-Bold').text('Photos');
         doc.moveDown(0.5);
         
-        for (const photo of photos) {
+        const pageWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
+        const photoWidth = (pageWidth - 20) / 2; // 20px gap between photos
+        const startX = doc.page.margins.left;
+        let currentY = doc.y;
+        
+        for (let i = 0; i < photos.length; i++) {
+          const photo = photos[i];
           const photoPath = path.join(process.cwd(), photo.filePath.replace(/^\//, ''));
+          const isLeftColumn = i % 2 === 0;
+          const xPos = isLeftColumn ? startX : startX + photoWidth + 20;
+          
           if (fs.existsSync(photoPath)) {
             try {
-              doc.image(photoPath, { width: 300 });
-              if (photo.caption) {
-                doc.fontSize(9).font('Helvetica-Oblique').text(photo.caption);
+              // Check if we need a new page (leave room for photo + caption)
+              if (isLeftColumn && currentY > doc.page.height - 250) {
+                doc.addPage();
+                currentY = doc.page.margins.top;
               }
-              doc.moveDown();
+              
+              doc.image(photoPath, xPos, currentY, { width: photoWidth, height: 150, fit: [photoWidth, 150] });
+              
+              // Caption - truncate to prevent overflow
+              if (photo.caption) {
+                doc.fontSize(8).font('Helvetica-Oblique');
+                const truncatedCaption = photo.caption.length > 60 
+                  ? photo.caption.substring(0, 60) + '...' 
+                  : photo.caption;
+                doc.text(truncatedCaption, xPos, currentY + 155, { width: photoWidth, lineBreak: false });
+              }
+              
+              // Move to next row after right column
+              if (!isLeftColumn || i === photos.length - 1) {
+                currentY += 175;
+                doc.y = currentY;
+              }
             } catch (err) {
               console.error('Error adding photo to PDF:', err);
             }
