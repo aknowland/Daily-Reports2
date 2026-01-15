@@ -229,13 +229,26 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/projects", isAuthenticated, isAdmin, async (req: any, res) => {
+  app.post("/api/projects", isAuthenticated, async (req: any, res) => {
     try {
-      const validated = createProjectSchema.parse(req.body);
+      const userId = req.user?.claims?.sub;
+      const { companyId, ...projectData } = req.body;
+      
+      // If companyId is provided, check if user is admin of that company or global admin
+      if (companyId) {
+        const membership = await storage.getCompanyMember(companyId, userId);
+        const profile = await storage.getUserProfile(userId);
+        const isGlobalAdmin = profile?.role === "admin";
+        
+        if (!isGlobalAdmin && (!membership || membership.role !== "admin")) {
+          return res.status(403).json({ message: "You must be a company admin to create projects for this company" });
+        }
+      }
+      
+      const validated = createProjectSchema.parse({ ...projectData, companyId: companyId || null });
       const project = await storage.createProject(validated);
       
       // Automatically assign the creator to the project
-      const userId = req.user?.claims?.sub;
       if (userId && project.id) {
         await storage.addProjectMember(project.id, userId);
       }
@@ -250,13 +263,59 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/projects/:id", isAuthenticated, isAdmin, async (req, res) => {
+  app.patch("/api/projects/:id", isAuthenticated, async (req: any, res) => {
     try {
-      const validated = updateProjectSchema.parse(req.body);
-      const project = await storage.updateProject(req.params.id, validated);
-      if (!project) {
+      const userId = req.user?.claims?.sub;
+      const projectId = req.params.id;
+      const { companyId: newCompanyId, ...otherUpdates } = req.body;
+      
+      // Get the project to check ownership
+      const existingProject = await storage.getProject(projectId);
+      if (!existingProject) {
         return res.status(404).json({ message: "Project not found" });
       }
+      
+      // Check authorization: global admin, company admin, or project member
+      const profile = await storage.getUserProfile(userId);
+      const isGlobalAdmin = profile?.role === "admin";
+      const isProjectMember = await storage.isUserMemberOfProject(projectId, userId);
+      
+      let canEdit = isGlobalAdmin || isProjectMember;
+      
+      // If project belongs to a company, check if user is company admin
+      if (existingProject.companyId) {
+        const membership = await storage.getCompanyMember(existingProject.companyId, userId);
+        if (membership?.role === "admin") {
+          canEdit = true;
+        }
+      }
+      
+      if (!canEdit) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      // Handle companyId assignment separately with extra authorization
+      let updateData = { ...otherUpdates };
+      if (newCompanyId !== undefined) {
+        // If assigning to a new company, user must be admin of that company
+        if (newCompanyId) {
+          const targetMembership = await storage.getCompanyMember(newCompanyId, userId);
+          if (!isGlobalAdmin && (!targetMembership || targetMembership.role !== "admin")) {
+            return res.status(403).json({ message: "You must be an admin of the target company to assign projects" });
+          }
+        }
+        // Also check user can remove from current company (if it has one)
+        if (existingProject.companyId && newCompanyId !== existingProject.companyId) {
+          const currentMembership = await storage.getCompanyMember(existingProject.companyId, userId);
+          if (!isGlobalAdmin && (!currentMembership || currentMembership.role !== "admin")) {
+            return res.status(403).json({ message: "You must be an admin of the current company to reassign projects" });
+          }
+        }
+        updateData.companyId = newCompanyId;
+      }
+      
+      const validated = updateProjectSchema.parse(updateData);
+      const project = await storage.updateProject(projectId, validated);
       res.json(project);
     } catch (error) {
       if (error instanceof z.ZodError) {
