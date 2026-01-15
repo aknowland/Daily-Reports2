@@ -2256,45 +2256,78 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Transcript is required" });
       }
 
-      // For simple text fields, just return the transcript
+      // For simple text fields, formalize the transcript with proper construction terminology
       if (targetField === "raw") {
-        return res.json({ text: transcript });
+        const formalizeResponse = await openai.chat.completions.create({
+          model: "gpt-4o-mini",
+          messages: [
+            { 
+              role: "system", 
+              content: `You are a professional construction documentation assistant. Convert voice transcripts into formal, well-written text suitable for official daily construction reports.
+
+Guidelines:
+- Use proper grammar, punctuation, and capitalization
+- Use formal construction terminology (e.g., "reinforcement" instead of "rebar", "formwork" instead of "forms", "MEP" for mechanical/electrical/plumbing)
+- Start sentences with action verbs when appropriate: Completed, Continued, Performed, Installed, Coordinated, Inspected, Observed, Verified
+- Use professional phrasing (e.g., "per approved drawings", "in accordance with specifications", "as directed by")
+- Maintain the original meaning while improving clarity and professionalism
+- Return ONLY the formatted text, no explanations or quotes` 
+            },
+            { role: "user", content: `Format this voice transcript into professional construction report text:\n\n"${transcript}"` }
+          ],
+          temperature: 0.3,
+        });
+        
+        const formalizedText = formalizeResponse.choices[0]?.message?.content?.trim() || transcript;
+        return res.json({ text: formalizedText });
       }
 
       // For structured parsing (work activities, visitors, etc.), use AI
-      const systemPrompt = `You are a helpful assistant that extracts structured data from voice transcripts for construction daily reports.
-The user is a construction inspector dictating field report information.
-Parse the transcript and extract the relevant information for the requested field type.
+      const systemPrompt = `You are a professional construction documentation assistant that converts voice transcripts into formal, industry-standard daily report entries.
+You work for construction inspectors creating official field documentation.
+Use proper construction terminology, formal language, and professional phrasing.
+Capitalize trade names properly (e.g., "Electrical Subcontractor", "Mechanical Contractor", "Plumbing Crew").
+Use action verbs like: performed, completed, installed, continued, coordinated, inspected, prepared, executed.
 Return ONLY valid JSON, no explanations.`;
 
       let userPrompt = "";
       
       switch (targetField) {
         case "workActivities":
-          userPrompt = `Extract work activities from this transcript. Each activity should have:
-- contractor: company name or trade doing the work (e.g., "ABC Electric", "Plumbing crew")
-- headcount: number of workers as an integer (default 0 if not mentioned)
-- workDescription: what work was performed
+          userPrompt = `Extract and formalize work activities from this voice transcript into professional construction report entries.
 
-Return as JSON array: [{"contractor": "company or trade name", "headcount": 0, "workDescription": "work performed"}]
+For each activity, provide:
+- contractor: Use formal naming (e.g., "Electrical Subcontractor", "ABC Mechanical, Inc.", "General Contractor Crew", "Plumbing Contractor"). Capitalize properly.
+- headcount: Number of workers as an integer (default 0 if not specified)
+- workDescription: Formal description using professional construction terminology. Start with action verbs like "Completed", "Continued", "Performed", "Installed", "Coordinated". Use proper terminology (e.g., "underground utilities" not "pipes", "formwork" not "forms", "reinforcement" not "rebar").
+
+Examples of formal work descriptions:
+- "Completed underground utility rough-in per approved drawings"
+- "Continued installation of structural steel connections at grid lines A-C"
+- "Performed layout and coordination for MEP systems"
+- "Installed CMU block wall at building perimeter"
+
+Return as JSON array: [{"contractor": "Formal Contractor Name", "headcount": 0, "workDescription": "Professional work description"}]
 
 Transcript: "${transcript}"`;
           break;
           
         case "visitors":
-          userPrompt = `Extract visitor information from this transcript. Each visitor should have:
-- name: visitor's name
-- company: their company
-- purpose: reason for visit
+          userPrompt = `Extract and formalize visitor information from this voice transcript for a construction daily report.
 
-Return as JSON array: [{"name": "", "company": "", "purpose": ""}]
+For each visitor, provide:
+- name: Full name with proper capitalization
+- company: Formal company/organization name (e.g., "Division of the State Architect", "General Contractor", "Owner's Representative", "City Building Department")
+- purpose: Formal purpose using professional language (e.g., "Conducted structural inspection", "Project coordination meeting", "Quality assurance walkthrough", "Progress review and site observation")
+
+Return as JSON array: [{"name": "Full Name", "company": "Formal Company Name", "purpose": "Professional purpose description"}]
 
 Transcript: "${transcript}"`;
           break;
           
         case "weather":
           userPrompt = `Extract weather information from this transcript.
-Return as JSON: {"type": "clear|cloudy|rain|wind|heat|cold", "notes": "additional details"}
+Return as JSON: {"type": "clear|cloudy|rain|wind|heat|cold", "notes": "Temperature and conditions in professional format"}
 
 Transcript: "${transcript}"`;
           break;
