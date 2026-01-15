@@ -12,6 +12,7 @@ export const userRoleEnum = pgEnum("user_role", ["inspector", "admin"]);
 export const weatherTypeEnum = pgEnum("weather_type", ["clear", "cloudy", "rain", "wind", "heat", "cold"]);
 export const reportStatusEnum = pgEnum("report_status", ["draft", "submitted"]);
 export const distributionStatusEnum = pgEnum("distribution_status", ["pending", "sent", "failed"]);
+export const inviteStatusEnum = pgEnum("invite_status", ["pending", "accepted", "expired"]);
 
 // Extended User Profile for app-specific fields
 export const userProfiles = pgTable("user_profiles", {
@@ -114,6 +115,20 @@ export const appSettings = pgTable("app_settings", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+// Invites table for inviting new users
+export const invites = pgTable("invites", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  email: varchar("email").notNull(),
+  role: userRoleEnum("role").default("inspector").notNull(),
+  projectIds: json("project_ids").$type<string[]>().default([]),
+  invitedBy: varchar("invited_by").references(() => users.id).notNull(),
+  status: inviteStatusEnum("status").default("pending").notNull(),
+  token: varchar("token").notNull().unique(),
+  expiresAt: timestamp("expires_at").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+  acceptedAt: timestamp("accepted_at"),
+});
+
 // Relations
 export const projectsRelations = relations(projects, ({ many }) => ({
   dailyReports: many(dailyReports),
@@ -158,6 +173,7 @@ export const insertDailyReportSchema = createInsertSchema(dailyReports).omit({ i
 export const insertPhotoSchema = createInsertSchema(photos).omit({ id: true, createdAt: true });
 export const insertDistributionLogSchema = createInsertSchema(distributionLogs).omit({ id: true, sentAt: true });
 export const insertAppSettingSchema = createInsertSchema(appSettings);
+export const insertInviteSchema = createInsertSchema(invites).omit({ id: true, createdAt: true, acceptedAt: true });
 
 // Types
 export type UserProfile = typeof userProfiles.$inferSelect;
@@ -174,6 +190,8 @@ export type DistributionLog = typeof distributionLogs.$inferSelect;
 export type InsertDistributionLog = z.infer<typeof insertDistributionLogSchema>;
 export type AppSetting = typeof appSettings.$inferSelect;
 export type InsertAppSetting = z.infer<typeof insertAppSettingSchema>;
+export type Invite = typeof invites.$inferSelect;
+export type InsertInvite = z.infer<typeof insertInviteSchema>;
 
 // Extended types for frontend
 export type TradeRow = z.infer<typeof tradeRowSchema>;
