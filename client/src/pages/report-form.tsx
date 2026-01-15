@@ -241,7 +241,7 @@ export default function ReportFormPage() {
         </div>
 
         <Card>
-          <CardHeader>
+          <CardHeader className="bg-primary text-primary-foreground rounded-t-lg">
             <CardTitle className="text-lg">Report Details</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -332,11 +332,12 @@ export default function ReportFormPage() {
         </Card>
 
         <Card>
-          <CardHeader>
+          <CardHeader className="bg-primary text-primary-foreground rounded-t-lg">
             <CardTitle className="text-lg flex items-center justify-between gap-2 flex-wrap">
               <span>Work Activities</span>
               <VoiceInput
                 targetField="workActivities"
+                inHeader
                 onTranscript={() => {}}
                 onParsedData={(data) => {
                   if (Array.isArray(data)) {
@@ -358,7 +359,7 @@ export default function ReportFormPage() {
                 }}
               />
             </CardTitle>
-            <p className="text-sm text-muted-foreground">
+            <p className="text-sm text-primary-foreground/80">
               Add each work activity with the contractor/trade and their headcount. Use voice to dictate multiple activities at once.
             </p>
           </CardHeader>
@@ -393,10 +394,11 @@ export default function ReportFormPage() {
         </Card>
 
         <Card>
-          <CardHeader>
+          <CardHeader className="bg-primary text-primary-foreground rounded-t-lg">
             <CardTitle className="text-lg flex items-center justify-between gap-2 flex-wrap">
               <span>Inspections</span>
               <VoiceInput
+                inHeader
                 onTranscript={(text) => {
                   setFormData(prev => ({
                     ...prev,
@@ -419,10 +421,11 @@ export default function ReportFormPage() {
         </Card>
 
         <Card>
-          <CardHeader>
+          <CardHeader className="bg-primary text-primary-foreground rounded-t-lg">
             <CardTitle className="text-lg flex items-center justify-between gap-2 flex-wrap">
               <span>Additional Notes</span>
               <VoiceInput
+                inHeader
                 onTranscript={(text) => {
                   setFormData(prev => ({
                     ...prev,
@@ -445,11 +448,12 @@ export default function ReportFormPage() {
         </Card>
 
         <Card>
-          <CardHeader>
+          <CardHeader className="bg-primary text-primary-foreground rounded-t-lg">
             <CardTitle className="text-lg flex items-center justify-between gap-2 flex-wrap">
               <span>Visitors</span>
               <VoiceInput
                 targetField="visitors"
+                inHeader
                 onTranscript={() => {}}
                 onParsedData={(data) => {
                   if (Array.isArray(data)) {
@@ -503,7 +507,7 @@ export default function ReportFormPage() {
         </Card>
 
         <Card>
-          <CardHeader>
+          <CardHeader className="bg-primary text-primary-foreground rounded-t-lg">
             <CardTitle className="text-lg">Issues & Safety</CardTitle>
           </CardHeader>
           <CardContent className="space-y-6">
@@ -576,10 +580,11 @@ export default function ReportFormPage() {
         </Card>
 
         <Card>
-          <CardHeader>
+          <CardHeader className="bg-primary text-primary-foreground rounded-t-lg">
             <CardTitle className="text-lg flex items-center justify-between gap-2 flex-wrap">
               <span>Equipment</span>
               <VoiceInput
+                inHeader
                 onTranscript={(text) => {
                   setFormData(prev => ({
                     ...prev,
@@ -602,10 +607,11 @@ export default function ReportFormPage() {
         </Card>
 
         <Card>
-          <CardHeader>
+          <CardHeader className="bg-primary text-primary-foreground rounded-t-lg">
             <CardTitle className="text-lg flex items-center justify-between gap-2 flex-wrap">
               <span>Materials Delivered</span>
               <VoiceInput
+                inHeader
                 onTranscript={(text) => {
                   setFormData(prev => ({
                     ...prev,
@@ -628,7 +634,7 @@ export default function ReportFormPage() {
         </Card>
 
         <Card>
-          <CardHeader>
+          <CardHeader className="bg-primary text-primary-foreground rounded-t-lg">
             <CardTitle className="text-lg">Photos</CardTitle>
           </CardHeader>
           <CardContent>
@@ -640,7 +646,7 @@ export default function ReportFormPage() {
         </Card>
 
         <Card>
-          <CardHeader>
+          <CardHeader className="bg-primary text-primary-foreground rounded-t-lg">
             <CardTitle className="text-lg">Signature *</CardTitle>
           </CardHeader>
           <CardContent>
