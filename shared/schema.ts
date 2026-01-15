@@ -14,17 +14,42 @@ export const reportStatusEnum = pgEnum("report_status", ["draft", "submitted"]);
 export const distributionStatusEnum = pgEnum("distribution_status", ["pending", "sent", "failed"]);
 export const inviteStatusEnum = pgEnum("invite_status", ["pending", "accepted", "expired"]);
 
+// Companies table
+export const companies = pgTable("companies", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  address: text("address"),
+  phone: varchar("phone"),
+  email: varchar("email"),
+  logoPath: varchar("logo_path"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Company Members table (many-to-many: users <-> companies)
+export const companyMembers = pgTable("company_members", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").references(() => companies.id, { onDelete: "cascade" }).notNull(),
+  userId: varchar("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+  role: userRoleEnum("role").default("inspector").notNull(),
+  joinedAt: timestamp("joined_at").defaultNow(),
+}, (table) => [
+  unique().on(table.companyId, table.userId),
+]);
+
 // Extended User Profile for app-specific fields
 export const userProfiles = pgTable("user_profiles", {
   userId: varchar("user_id").primaryKey(),
   role: userRoleEnum("role").default("inspector").notNull(),
   phone: varchar("phone"),
   company: varchar("company"),
+  activeCompanyId: varchar("active_company_id").references(() => companies.id),
 });
 
 // Projects table
 export const projects = pgTable("projects", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").references(() => companies.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
   projectNumber: varchar("project_number").notNull().unique(),
   address: text("address"),
@@ -120,6 +145,7 @@ export const invites = pgTable("invites", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   email: varchar("email").notNull(),
   role: userRoleEnum("role").default("inspector").notNull(),
+  companyId: varchar("company_id").references(() => companies.id, { onDelete: "cascade" }),
   projectIds: json("project_ids").$type<string[]>().default([]),
   invitedBy: varchar("invited_by").references(() => users.id).notNull(),
   status: inviteStatusEnum("status").default("pending").notNull(),
@@ -130,7 +156,23 @@ export const invites = pgTable("invites", {
 });
 
 // Relations
-export const projectsRelations = relations(projects, ({ many }) => ({
+export const companiesRelations = relations(companies, ({ many }) => ({
+  projects: many(projects),
+  members: many(companyMembers),
+}));
+
+export const companyMembersRelations = relations(companyMembers, ({ one }) => ({
+  company: one(companies, {
+    fields: [companyMembers.companyId],
+    references: [companies.id],
+  }),
+}));
+
+export const projectsRelations = relations(projects, ({ one, many }) => ({
+  company: one(companies, {
+    fields: [projects.companyId],
+    references: [companies.id],
+  }),
   dailyReports: many(dailyReports),
   members: many(projectMembers),
 }));
@@ -166,6 +208,8 @@ export const distributionLogsRelations = relations(distributionLogs, ({ one }) =
 }));
 
 // Insert schemas
+export const insertCompanySchema = createInsertSchema(companies).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertCompanyMemberSchema = createInsertSchema(companyMembers).omit({ id: true, joinedAt: true });
 export const insertUserProfileSchema = createInsertSchema(userProfiles);
 export const insertProjectSchema = createInsertSchema(projects).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertProjectMemberSchema = createInsertSchema(projectMembers).omit({ id: true, assignedAt: true });
@@ -176,6 +220,10 @@ export const insertAppSettingSchema = createInsertSchema(appSettings);
 export const insertInviteSchema = createInsertSchema(invites).omit({ id: true, createdAt: true, acceptedAt: true });
 
 // Types
+export type Company = typeof companies.$inferSelect;
+export type InsertCompany = z.infer<typeof insertCompanySchema>;
+export type CompanyMember = typeof companyMembers.$inferSelect;
+export type InsertCompanyMember = z.infer<typeof insertCompanyMemberSchema>;
 export type UserProfile = typeof userProfiles.$inferSelect;
 export type InsertUserProfile = z.infer<typeof insertUserProfileSchema>;
 export type Project = typeof projects.$inferSelect;

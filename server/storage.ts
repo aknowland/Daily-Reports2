@@ -1,5 +1,6 @@
 import { 
   projects, dailyReports, photos, distributionLogs, appSettings, userProfiles, projectMembers, invites,
+  companies, companyMembers,
   type Project, type InsertProject,
   type DailyReport, type InsertDailyReport,
   type Photo, type InsertPhoto,
@@ -8,6 +9,8 @@ import {
   type UserProfile, type InsertUserProfile,
   type ProjectMember, type InsertProjectMember,
   type Invite, type InsertInvite,
+  type Company, type InsertCompany,
+  type CompanyMember, type InsertCompanyMember,
   type DailyReportWithDetails,
 } from "@shared/schema";
 import { users, type User } from "@shared/models/auth";
@@ -66,6 +69,24 @@ export interface IStorage {
   createInvite(data: InsertInvite): Promise<Invite>;
   updateInviteStatus(id: string, status: "pending" | "accepted" | "expired"): Promise<Invite | undefined>;
   deleteInvite(id: string): Promise<boolean>;
+
+  // Companies
+  getCompanies(): Promise<Company[]>;
+  getCompany(id: string): Promise<Company | undefined>;
+  createCompany(data: InsertCompany): Promise<Company>;
+  updateCompany(id: string, data: Partial<InsertCompany>): Promise<Company | undefined>;
+  deleteCompany(id: string): Promise<boolean>;
+
+  // Company Members
+  getCompanyMembers(companyId: string): Promise<(CompanyMember & { user?: User })[]>;
+  getCompaniesForUser(userId: string): Promise<(CompanyMember & { company?: Company })[]>;
+  addCompanyMember(companyId: string, userId: string, role: "inspector" | "admin"): Promise<CompanyMember>;
+  removeCompanyMember(companyId: string, userId: string): Promise<boolean>;
+  isUserMemberOfCompany(companyId: string, userId: string): Promise<boolean>;
+
+  // Active Company
+  setActiveCompany(userId: string, companyId: string): Promise<UserProfile | undefined>;
+  getProjectsByCompany(companyId: string): Promise<Project[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -410,6 +431,123 @@ export class DatabaseStorage implements IStorage {
   async deleteInvite(id: string): Promise<boolean> {
     await db.delete(invites).where(eq(invites.id, id));
     return true;
+  }
+
+  // Companies
+  async getCompanies(): Promise<Company[]> {
+    return db.select().from(companies).orderBy(desc(companies.createdAt));
+  }
+
+  async getCompany(id: string): Promise<Company | undefined> {
+    const [company] = await db.select().from(companies).where(eq(companies.id, id));
+    return company;
+  }
+
+  async createCompany(data: InsertCompany): Promise<Company> {
+    const [company] = await db.insert(companies).values(data).returning();
+    return company;
+  }
+
+  async updateCompany(id: string, data: Partial<InsertCompany>): Promise<Company | undefined> {
+    const [company] = await db
+      .update(companies)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(companies.id, id))
+      .returning();
+    return company;
+  }
+
+  async deleteCompany(id: string): Promise<boolean> {
+    await db.delete(companies).where(eq(companies.id, id));
+    return true;
+  }
+
+  // Company Members
+  async getCompanyMembers(companyId: string): Promise<(CompanyMember & { user?: User })[]> {
+    const results = await db
+      .select()
+      .from(companyMembers)
+      .leftJoin(users, eq(companyMembers.userId, users.id))
+      .where(eq(companyMembers.companyId, companyId))
+      .orderBy(desc(companyMembers.joinedAt));
+
+    return results.map(row => ({
+      ...row.company_members,
+      user: row.users || undefined,
+    }));
+  }
+
+  async getCompaniesForUser(userId: string): Promise<(CompanyMember & { company?: Company })[]> {
+    const results = await db
+      .select()
+      .from(companyMembers)
+      .leftJoin(companies, eq(companyMembers.companyId, companies.id))
+      .where(eq(companyMembers.userId, userId))
+      .orderBy(desc(companyMembers.joinedAt));
+
+    return results.map(row => ({
+      ...row.company_members,
+      company: row.companies || undefined,
+    }));
+  }
+
+  async addCompanyMember(companyId: string, userId: string, role: "inspector" | "admin"): Promise<CompanyMember> {
+    const existing = await db
+      .select()
+      .from(companyMembers)
+      .where(and(
+        eq(companyMembers.companyId, companyId),
+        eq(companyMembers.userId, userId)
+      ));
+    
+    if (existing.length > 0) {
+      return existing[0];
+    }
+
+    const [member] = await db
+      .insert(companyMembers)
+      .values({ companyId, userId, role })
+      .returning();
+    return member;
+  }
+
+  async removeCompanyMember(companyId: string, userId: string): Promise<boolean> {
+    await db
+      .delete(companyMembers)
+      .where(and(
+        eq(companyMembers.companyId, companyId),
+        eq(companyMembers.userId, userId)
+      ));
+    return true;
+  }
+
+  async isUserMemberOfCompany(companyId: string, userId: string): Promise<boolean> {
+    const [result] = await db
+      .select()
+      .from(companyMembers)
+      .where(and(
+        eq(companyMembers.companyId, companyId),
+        eq(companyMembers.userId, userId)
+      ));
+    return !!result;
+  }
+
+  // Active Company
+  async setActiveCompany(userId: string, companyId: string): Promise<UserProfile | undefined> {
+    const [profile] = await db
+      .update(userProfiles)
+      .set({ activeCompanyId: companyId })
+      .where(eq(userProfiles.userId, userId))
+      .returning();
+    return profile;
+  }
+
+  async getProjectsByCompany(companyId: string): Promise<Project[]> {
+    return db
+      .select()
+      .from(projects)
+      .where(eq(projects.companyId, companyId))
+      .orderBy(desc(projects.createdAt));
   }
 }
 

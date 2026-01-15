@@ -13,6 +13,7 @@ import ReportsListPage from "@/pages/reports-list";
 import ReportFormPage from "@/pages/report-form";
 import ReportDetailPage from "@/pages/report-detail";
 import AdminDashboardPage from "@/pages/admin/dashboard";
+import AdminCompaniesPage from "@/pages/admin/companies";
 import AdminProjectsPage from "@/pages/admin/projects";
 import AdminUsersPage from "@/pages/admin/users";
 import AdminSettingsPage from "@/pages/admin/settings";
@@ -39,6 +40,7 @@ function AuthenticatedRoutes() {
       <Route path="/reports/:id" component={ReportDetailPage} />
       <Route path="/reports/:id/edit" component={ReportFormPage} />
       <Route path="/admin" component={AdminDashboardPage} />
+      <Route path="/admin/companies" component={AdminCompaniesPage} />
       <Route path="/admin/projects" component={AdminProjectsPage} />
       <Route path="/admin/users" component={AdminUsersPage} />
       <Route path="/admin/invites" component={AdminInvitesPage} />
