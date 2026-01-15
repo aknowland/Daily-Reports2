@@ -32,6 +32,14 @@ export const projects = pgTable("projects", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+// Project Members table (many-to-many: users <-> projects)
+export const projectMembers = pgTable("project_members", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  projectId: varchar("project_id").references(() => projects.id, { onDelete: "cascade" }).notNull(),
+  userId: varchar("user_id").notNull(),
+  assignedAt: timestamp("assigned_at").defaultNow(),
+});
+
 // Trade row type
 export const tradeRowSchema = z.object({
   trade: z.string(),
@@ -106,6 +114,14 @@ export const appSettings = pgTable("app_settings", {
 // Relations
 export const projectsRelations = relations(projects, ({ many }) => ({
   dailyReports: many(dailyReports),
+  members: many(projectMembers),
+}));
+
+export const projectMembersRelations = relations(projectMembers, ({ one }) => ({
+  project: one(projects, {
+    fields: [projectMembers.projectId],
+    references: [projects.id],
+  }),
 }));
 
 export const dailyReportsRelations = relations(dailyReports, ({ one, many }) => ({
@@ -134,6 +150,7 @@ export const distributionLogsRelations = relations(distributionLogs, ({ one }) =
 // Insert schemas
 export const insertUserProfileSchema = createInsertSchema(userProfiles);
 export const insertProjectSchema = createInsertSchema(projects).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertProjectMemberSchema = createInsertSchema(projectMembers).omit({ id: true, assignedAt: true });
 export const insertDailyReportSchema = createInsertSchema(dailyReports).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertPhotoSchema = createInsertSchema(photos).omit({ id: true, createdAt: true });
 export const insertDistributionLogSchema = createInsertSchema(distributionLogs).omit({ id: true, sentAt: true });
@@ -144,6 +161,8 @@ export type UserProfile = typeof userProfiles.$inferSelect;
 export type InsertUserProfile = z.infer<typeof insertUserProfileSchema>;
 export type Project = typeof projects.$inferSelect;
 export type InsertProject = z.infer<typeof insertProjectSchema>;
+export type ProjectMember = typeof projectMembers.$inferSelect;
+export type InsertProjectMember = z.infer<typeof insertProjectMemberSchema>;
 export type DailyReport = typeof dailyReports.$inferSelect;
 export type InsertDailyReport = z.infer<typeof insertDailyReportSchema>;
 export type Photo = typeof photos.$inferSelect;

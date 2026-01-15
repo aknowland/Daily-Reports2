@@ -1,16 +1,17 @@
 import { 
-  projects, dailyReports, photos, distributionLogs, appSettings, userProfiles,
+  projects, dailyReports, photos, distributionLogs, appSettings, userProfiles, projectMembers,
   type Project, type InsertProject,
   type DailyReport, type InsertDailyReport,
   type Photo, type InsertPhoto,
   type DistributionLog, type InsertDistributionLog,
   type AppSetting, type InsertAppSetting,
   type UserProfile, type InsertUserProfile,
+  type ProjectMember, type InsertProjectMember,
   type DailyReportWithDetails,
 } from "@shared/schema";
 import { users, type User } from "@shared/models/auth";
 import { db } from "./db";
-import { eq, desc, and, sql } from "drizzle-orm";
+import { eq, desc, and, sql, inArray } from "drizzle-orm";
 
 export interface IStorage {
   // Projects
@@ -49,6 +50,13 @@ export interface IStorage {
   // Users (admin)
   getAllUsers(): Promise<(User & { profile?: UserProfile })[]>;
   updateUserRole(userId: string, role: "inspector" | "admin"): Promise<UserProfile | undefined>;
+
+  // Project Members
+  getProjectMembers(projectId: string): Promise<(ProjectMember & { user?: User })[]>;
+  getProjectsForUser(userId: string): Promise<string[]>;
+  addProjectMember(projectId: string, userId: string): Promise<ProjectMember>;
+  removeProjectMember(projectId: string, userId: string): Promise<boolean>;
+  isUserMemberOfProject(projectId: string, userId: string): Promise<boolean>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -254,6 +262,72 @@ export class DatabaseStorage implements IStorage {
       })
       .returning();
     return profile;
+  }
+
+  // Project Members
+  async getProjectMembers(projectId: string): Promise<(ProjectMember & { user?: User })[]> {
+    const results = await db
+      .select()
+      .from(projectMembers)
+      .leftJoin(users, eq(projectMembers.userId, users.id))
+      .where(eq(projectMembers.projectId, projectId))
+      .orderBy(desc(projectMembers.assignedAt));
+
+    return results.map(row => ({
+      ...row.project_members,
+      user: row.users || undefined,
+    }));
+  }
+
+  async getProjectsForUser(userId: string): Promise<string[]> {
+    const results = await db
+      .select({ projectId: projectMembers.projectId })
+      .from(projectMembers)
+      .where(eq(projectMembers.userId, userId));
+    
+    return results.map(r => r.projectId);
+  }
+
+  async addProjectMember(projectId: string, userId: string): Promise<ProjectMember> {
+    // Check if already a member
+    const existing = await db
+      .select()
+      .from(projectMembers)
+      .where(and(
+        eq(projectMembers.projectId, projectId),
+        eq(projectMembers.userId, userId)
+      ));
+    
+    if (existing.length > 0) {
+      return existing[0];
+    }
+
+    const [member] = await db
+      .insert(projectMembers)
+      .values({ projectId, userId })
+      .returning();
+    return member;
+  }
+
+  async removeProjectMember(projectId: string, userId: string): Promise<boolean> {
+    await db
+      .delete(projectMembers)
+      .where(and(
+        eq(projectMembers.projectId, projectId),
+        eq(projectMembers.userId, userId)
+      ));
+    return true;
+  }
+
+  async isUserMemberOfProject(projectId: string, userId: string): Promise<boolean> {
+    const [result] = await db
+      .select()
+      .from(projectMembers)
+      .where(and(
+        eq(projectMembers.projectId, projectId),
+        eq(projectMembers.userId, userId)
+      ));
+    return !!result;
   }
 }
 
