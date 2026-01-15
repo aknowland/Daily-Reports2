@@ -1,7 +1,10 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { User } from "@shared/models/auth";
+import type { UserProfile } from "@shared/schema";
 
-async function fetchUser(): Promise<User | null> {
+type UserWithProfile = User & { profile?: UserProfile };
+
+async function fetchUser(): Promise<UserWithProfile | null> {
   const response = await fetch("/api/auth/user", {
     credentials: "include",
   });
@@ -14,7 +17,22 @@ async function fetchUser(): Promise<User | null> {
     throw new Error(`${response.status}: ${response.statusText}`);
   }
 
-  return response.json();
+  const user = await response.json();
+  
+  // Fetch user profile to get role
+  try {
+    const profileResponse = await fetch("/api/auth/profile", {
+      credentials: "include",
+    });
+    if (profileResponse.ok) {
+      const profile = await profileResponse.json();
+      return { ...user, profile };
+    }
+  } catch (e) {
+    // Profile fetch failed, continue without it
+  }
+  
+  return user;
 }
 
 async function logout(): Promise<void> {
@@ -23,7 +41,7 @@ async function logout(): Promise<void> {
 
 export function useAuth() {
   const queryClient = useQueryClient();
-  const { data: user, isLoading } = useQuery<User | null>({
+  const { data: user, isLoading } = useQuery<UserWithProfile | null>({
     queryKey: ["/api/auth/user"],
     queryFn: fetchUser,
     retry: false,
@@ -41,6 +59,7 @@ export function useAuth() {
     user,
     isLoading,
     isAuthenticated: !!user,
+    isAdmin: user?.profile?.role === "admin",
     logout: logoutMutation.mutate,
     isLoggingOut: logoutMutation.isPending,
   };
