@@ -7,12 +7,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
+  DialogFooter,
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -25,18 +27,38 @@ import {
   Phone,
   MapPin,
   AlertCircle,
+  Clock,
+  UserPlus,
 } from "lucide-react";
 import { Link } from "wouter";
-import type { Company, CompanyMember } from "@shared/schema";
+import type { Company, CompanyMember, JoinRequest } from "@shared/schema";
 
 interface CompanyWithMembership extends CompanyMember {
   company?: Company;
 }
 
+interface ExistingCompanyInfo {
+  id: string;
+  name: string;
+}
+
+interface JoinRequestWithCompany extends JoinRequest {
+  company?: Company;
+}
+
+interface JoinRequestWithUser extends JoinRequest {
+  user?: { id: string; email?: string | null; firstName?: string | null; lastName?: string | null };
+}
+
 export default function MyCompaniesPage() {
   const { toast } = useToast();
   const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [showJoinDialog, setShowJoinDialog] = useState(false);
+  const [showManageRequestsDialog, setShowManageRequestsDialog] = useState(false);
+  const [selectedCompanyForRequests, setSelectedCompanyForRequests] = useState<Company | null>(null);
   const [newCompanyName, setNewCompanyName] = useState("");
+  const [existingCompany, setExistingCompany] = useState<ExistingCompanyInfo | null>(null);
+  const [joinMessage, setJoinMessage] = useState("");
 
   const { data: companies = [], isLoading, error } = useQuery<CompanyWithMembership[]>({
     queryKey: ["/api/my-companies"],
@@ -44,6 +66,15 @@ export default function MyCompaniesPage() {
 
   const { data: profile } = useQuery<{ activeCompanyId?: string }>({
     queryKey: ["/api/profile"],
+  });
+
+  const { data: joinRequests = [] } = useQuery<JoinRequestWithCompany[]>({
+    queryKey: ["/api/my-join-requests"],
+  });
+
+  const { data: companyJoinRequests = [], refetch: refetchCompanyRequests } = useQuery<JoinRequestWithUser[]>({
+    queryKey: ["/api/companies", selectedCompanyForRequests?.id, "join-requests"],
+    enabled: !!selectedCompanyForRequests,
   });
 
   const switchMutation = useMutation({
@@ -66,7 +97,22 @@ export default function MyCompaniesPage() {
 
   const createMutation = useMutation({
     mutationFn: async (name: string) => {
-      return apiRequest("POST", "/api/my-companies", { name });
+      const res = await fetch("/api/my-companies", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+        credentials: "include",
+      });
+      
+      if (!res.ok) {
+        const data = await res.json();
+        if (res.status === 409 && data.existingCompany) {
+          throw { status: 409, ...data };
+        }
+        throw new Error(data.message || "Failed to create company");
+      }
+      
+      return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/my-companies"] });
@@ -79,10 +125,53 @@ export default function MyCompaniesPage() {
         description: "Your company has been created successfully.",
       });
     },
-    onError: () => {
+    onError: (error: any) => {
+      if (error.status === 409 && error.existingCompany) {
+        setExistingCompany(error.existingCompany);
+        setShowCreateDialog(false);
+        
+        if (error.isAlreadyMember) {
+          toast({
+            title: "Already a Member",
+            description: `You are already a member of "${error.existingCompany.name}".`,
+          });
+        } else if (error.hasPendingRequest) {
+          toast({
+            title: "Request Pending",
+            description: `You already have a pending request to join "${error.existingCompany.name}".`,
+          });
+        } else {
+          setShowJoinDialog(true);
+        }
+      } else {
+        toast({
+          title: "Error",
+          description: error.message || "Failed to create company.",
+          variant: "destructive",
+        });
+      }
+    },
+  });
+
+  const joinRequestMutation = useMutation({
+    mutationFn: async ({ companyId, message }: { companyId: string; message?: string }) => {
+      return apiRequest("POST", "/api/join-requests", { companyId, message });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/my-join-requests"] });
+      setShowJoinDialog(false);
+      setExistingCompany(null);
+      setJoinMessage("");
+      setNewCompanyName("");
+      toast({
+        title: "Request Sent",
+        description: "Your request to join the company has been submitted.",
+      });
+    },
+    onError: (error: any) => {
       toast({
         title: "Error",
-        description: "Failed to create company.",
+        description: error.message || "Failed to send join request.",
         variant: "destructive",
       });
     },
@@ -92,6 +181,58 @@ export default function MyCompaniesPage() {
     if (newCompanyName.trim()) {
       createMutation.mutate(newCompanyName.trim());
     }
+  };
+
+  const handleJoinRequest = () => {
+    if (existingCompany) {
+      joinRequestMutation.mutate({ companyId: existingCompany.id, message: joinMessage.trim() || undefined });
+    }
+  };
+
+  const approveMutation = useMutation({
+    mutationFn: async (requestId: string) => {
+      return apiRequest("POST", `/api/join-requests/${requestId}/approve`);
+    },
+    onSuccess: () => {
+      refetchCompanyRequests();
+      queryClient.invalidateQueries({ queryKey: ["/api/my-companies"] });
+      toast({
+        title: "Request Approved",
+        description: "The user has been added to the company.",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to approve request.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const rejectMutation = useMutation({
+    mutationFn: async (requestId: string) => {
+      return apiRequest("POST", `/api/join-requests/${requestId}/reject`);
+    },
+    onSuccess: () => {
+      refetchCompanyRequests();
+      toast({
+        title: "Request Rejected",
+        description: "The join request has been rejected.",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to reject request.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleManageRequests = (company: Company) => {
+    setSelectedCompanyForRequests(company);
+    setShowManageRequestsDialog(true);
   };
 
   if (isLoading) {
@@ -173,6 +314,45 @@ export default function MyCompaniesPage() {
           </Button>
         </div>
 
+        {joinRequests.filter(r => r.status === "pending").length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Clock className="w-5 h-5 text-orange-500" />
+                Pending Join Requests
+              </CardTitle>
+              <CardDescription>
+                Waiting for approval from company admins
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                {joinRequests.filter(r => r.status === "pending").map((request) => (
+                  <div 
+                    key={request.id}
+                    className="flex items-center justify-between p-3 border rounded-lg"
+                    data-testid={`pending-request-${request.id}`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <Building2 className="w-5 h-5 text-muted-foreground" />
+                      <div>
+                        <p className="font-medium">{request.company?.name || "Unknown Company"}</p>
+                        <p className="text-sm text-muted-foreground">
+                          Requested {new Date(request.createdAt || Date.now()).toLocaleDateString()}
+                        </p>
+                      </div>
+                    </div>
+                    <Badge variant="secondary">
+                      <Clock className="w-3 h-3 mr-1" />
+                      Pending
+                    </Badge>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {companies.length === 0 ? (
           <Card>
             <CardContent className="flex flex-col items-center justify-center py-12">
@@ -244,17 +424,30 @@ export default function MyCompaniesPage() {
                         <span>{company.email}</span>
                       </div>
                     )}
-                    {!isActive && (
-                      <Button
-                        variant="outline"
-                        className="w-full mt-2"
-                        onClick={() => switchMutation.mutate(company.id)}
-                        disabled={switchMutation.isPending}
-                        data-testid={`button-switch-${company.id}`}
-                      >
-                        Switch to this Company
-                      </Button>
-                    )}
+                    <div className="flex flex-col gap-2 mt-2">
+                      {item.role === "admin" && (
+                        <Button
+                          variant="outline"
+                          className="w-full"
+                          onClick={() => handleManageRequests(company)}
+                          data-testid={`button-manage-requests-${company.id}`}
+                        >
+                          <UserPlus className="w-4 h-4 mr-2" />
+                          Manage Join Requests
+                        </Button>
+                      )}
+                      {!isActive && (
+                        <Button
+                          variant="outline"
+                          className="w-full"
+                          onClick={() => switchMutation.mutate(company.id)}
+                          disabled={switchMutation.isPending}
+                          data-testid={`button-switch-${company.id}`}
+                        >
+                          Switch to this Company
+                        </Button>
+                      )}
+                    </div>
                   </CardContent>
                 </Card>
               );
@@ -299,6 +492,145 @@ export default function MyCompaniesPage() {
               </Button>
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showJoinDialog} onOpenChange={(open) => {
+        setShowJoinDialog(open);
+        if (!open) {
+          setExistingCompany(null);
+          setJoinMessage("");
+        }
+      }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Company Already Exists</DialogTitle>
+            <DialogDescription>
+              A company named "{existingCompany?.name}" already exists. Would you like to request to join it?
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 pt-4">
+            <div className="flex items-center gap-3 p-4 bg-muted rounded-lg">
+              <Building2 className="w-10 h-10 text-muted-foreground" />
+              <div>
+                <p className="font-medium">{existingCompany?.name}</p>
+                <p className="text-sm text-muted-foreground">Request to join as an inspector</p>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="join-message">Message (optional)</Label>
+              <Textarea
+                id="join-message"
+                placeholder="Introduce yourself or explain why you want to join..."
+                value={joinMessage}
+                onChange={(e) => setJoinMessage(e.target.value)}
+                rows={3}
+                data-testid="input-join-message"
+              />
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowJoinDialog(false);
+                setExistingCompany(null);
+                setJoinMessage("");
+              }}
+              data-testid="button-cancel-join"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleJoinRequest}
+              disabled={joinRequestMutation.isPending}
+              data-testid="button-submit-join"
+            >
+              <UserPlus className="w-4 h-4 mr-2" />
+              {joinRequestMutation.isPending ? "Sending..." : "Request to Join"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showManageRequestsDialog} onOpenChange={(open) => {
+        setShowManageRequestsDialog(open);
+        if (!open) {
+          setSelectedCompanyForRequests(null);
+        }
+      }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Pending Join Requests</DialogTitle>
+            <DialogDescription>
+              People who want to join {selectedCompanyForRequests?.name}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 pt-4 max-h-96 overflow-y-auto">
+            {companyJoinRequests.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                <UserPlus className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                <p>No pending requests</p>
+              </div>
+            ) : (
+              companyJoinRequests.map((request) => (
+                <div 
+                  key={request.id}
+                  className="flex items-center justify-between p-4 border rounded-lg"
+                  data-testid={`request-${request.id}`}
+                >
+                  <div className="flex-1">
+                    <p className="font-medium">
+                      {request.user?.firstName && request.user?.lastName 
+                        ? `${request.user.firstName} ${request.user.lastName}`
+                        : request.user?.email || "Unknown User"}
+                    </p>
+                    {request.user?.email && (
+                      <p className="text-sm text-muted-foreground">{request.user.email}</p>
+                    )}
+                    {request.message && (
+                      <p className="text-sm mt-2 text-muted-foreground italic">"{request.message}"</p>
+                    )}
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Requested {new Date(request.createdAt || Date.now()).toLocaleDateString()}
+                    </p>
+                  </div>
+                  <div className="flex gap-2 ml-4">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => rejectMutation.mutate(request.id)}
+                      disabled={rejectMutation.isPending || approveMutation.isPending}
+                      data-testid={`button-reject-${request.id}`}
+                    >
+                      Reject
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={() => approveMutation.mutate(request.id)}
+                      disabled={approveMutation.isPending || rejectMutation.isPending}
+                      data-testid={`button-approve-${request.id}`}
+                    >
+                      <Check className="w-4 h-4 mr-1" />
+                      Approve
+                    </Button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowManageRequestsDialog(false);
+                setSelectedCompanyForRequests(null);
+              }}
+              data-testid="button-close-manage"
+            >
+              Close
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </PageLayout>
