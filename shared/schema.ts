@@ -176,6 +176,23 @@ export const invites = pgTable("invites", {
   acceptedAt: timestamp("accepted_at"),
 });
 
+// Join request status enum
+export const joinRequestStatusEnum = pgEnum("join_request_status", ["pending", "approved", "rejected"]);
+
+// Join Requests table - for users requesting to join existing companies
+export const joinRequests = pgTable("join_requests", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+  companyId: varchar("company_id").references(() => companies.id, { onDelete: "cascade" }).notNull(),
+  message: text("message"),
+  status: joinRequestStatusEnum("status").default("pending").notNull(),
+  reviewedBy: varchar("reviewed_by").references(() => users.id),
+  reviewedAt: timestamp("reviewed_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  unique().on(table.userId, table.companyId),
+]);
+
 // Relations
 export const companiesRelations = relations(companies, ({ many }) => ({
   projects: many(projects),
@@ -253,6 +270,7 @@ export const insertPhotoSchema = createInsertSchema(photos).omit({ id: true, cre
 export const insertDistributionLogSchema = createInsertSchema(distributionLogs).omit({ id: true, sentAt: true });
 export const insertAppSettingSchema = createInsertSchema(appSettings);
 export const insertInviteSchema = createInsertSchema(invites).omit({ id: true, createdAt: true, acceptedAt: true });
+export const insertJoinRequestSchema = createInsertSchema(joinRequests).omit({ id: true, createdAt: true, reviewedAt: true });
 
 // Types
 export type Company = typeof companies.$inferSelect;
@@ -275,6 +293,8 @@ export type AppSetting = typeof appSettings.$inferSelect;
 export type InsertAppSetting = z.infer<typeof insertAppSettingSchema>;
 export type Invite = typeof invites.$inferSelect;
 export type InsertInvite = z.infer<typeof insertInviteSchema>;
+export type JoinRequest = typeof joinRequests.$inferSelect;
+export type InsertJoinRequest = z.infer<typeof insertJoinRequestSchema>;
 
 // Extended types for frontend
 export type TradeRow = z.infer<typeof tradeRowSchema>;

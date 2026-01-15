@@ -1,6 +1,6 @@
 import { 
   projects, dailyReports, photos, distributionLogs, appSettings, userProfiles, projectMembers, invites,
-  companies, companyMembers,
+  companies, companyMembers, joinRequests,
   type Project, type InsertProject,
   type DailyReport, type InsertDailyReport,
   type Photo, type InsertPhoto,
@@ -11,6 +11,7 @@ import {
   type Invite, type InsertInvite,
   type Company, type InsertCompany,
   type CompanyMember, type InsertCompanyMember,
+  type JoinRequest, type InsertJoinRequest,
   type DailyReportWithDetails,
 } from "@shared/schema";
 import { users, type User } from "@shared/models/auth";
@@ -72,6 +73,15 @@ export interface IStorage {
   createInvite(data: InsertInvite): Promise<Invite>;
   updateInviteStatus(id: string, status: "pending" | "accepted" | "expired"): Promise<Invite | undefined>;
   deleteInvite(id: string): Promise<boolean>;
+
+  // Join Requests
+  getJoinRequest(id: string): Promise<JoinRequest | undefined>;
+  getJoinRequestByUserAndCompany(userId: string, companyId: string): Promise<JoinRequest | undefined>;
+  getJoinRequestsForCompany(companyId: string): Promise<(JoinRequest & { user?: User })[]>;
+  getJoinRequestsForUser(userId: string): Promise<(JoinRequest & { company?: Company })[]>;
+  createJoinRequest(data: InsertJoinRequest): Promise<JoinRequest>;
+  updateJoinRequestStatus(id: string, status: "pending" | "approved" | "rejected", reviewedBy: string): Promise<JoinRequest | undefined>;
+  deleteJoinRequest(id: string): Promise<boolean>;
 
   // Companies
   getCompanies(): Promise<Company[]>;
@@ -499,6 +509,71 @@ export class DatabaseStorage implements IStorage {
 
   async deleteInvite(id: string): Promise<boolean> {
     await db.delete(invites).where(eq(invites.id, id));
+    return true;
+  }
+
+  // Join Requests
+  async getJoinRequest(id: string): Promise<JoinRequest | undefined> {
+    const [request] = await db.select().from(joinRequests).where(eq(joinRequests.id, id));
+    return request;
+  }
+
+  async getJoinRequestByUserAndCompany(userId: string, companyId: string): Promise<JoinRequest | undefined> {
+    const [request] = await db
+      .select()
+      .from(joinRequests)
+      .where(and(
+        eq(joinRequests.userId, userId),
+        eq(joinRequests.companyId, companyId)
+      ));
+    return request;
+  }
+
+  async getJoinRequestsForCompany(companyId: string): Promise<(JoinRequest & { user?: User })[]> {
+    const results = await db
+      .select()
+      .from(joinRequests)
+      .leftJoin(users, eq(joinRequests.userId, users.id))
+      .where(and(
+        eq(joinRequests.companyId, companyId),
+        eq(joinRequests.status, "pending")
+      ))
+      .orderBy(desc(joinRequests.createdAt));
+    return results.map(r => ({
+      ...r.join_requests,
+      user: r.users || undefined,
+    }));
+  }
+
+  async getJoinRequestsForUser(userId: string): Promise<(JoinRequest & { company?: Company })[]> {
+    const results = await db
+      .select()
+      .from(joinRequests)
+      .leftJoin(companies, eq(joinRequests.companyId, companies.id))
+      .where(eq(joinRequests.userId, userId))
+      .orderBy(desc(joinRequests.createdAt));
+    return results.map(r => ({
+      ...r.join_requests,
+      company: r.companies || undefined,
+    }));
+  }
+
+  async createJoinRequest(data: InsertJoinRequest): Promise<JoinRequest> {
+    const [request] = await db.insert(joinRequests).values(data).returning();
+    return request;
+  }
+
+  async updateJoinRequestStatus(id: string, status: "pending" | "approved" | "rejected", reviewedBy: string): Promise<JoinRequest | undefined> {
+    const [request] = await db
+      .update(joinRequests)
+      .set({ status, reviewedBy, reviewedAt: new Date() })
+      .where(eq(joinRequests.id, id))
+      .returning();
+    return request;
+  }
+
+  async deleteJoinRequest(id: string): Promise<boolean> {
+    await db.delete(joinRequests).where(eq(joinRequests.id, id));
     return true;
   }
 
