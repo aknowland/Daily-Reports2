@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useAuth } from "@/hooks/use-auth";
 import {
   Plus,
   Building2,
@@ -31,6 +32,7 @@ import type { Company } from "@shared/schema";
 
 export default function AdminCompaniesPage() {
   const { toast } = useToast();
+  const { user } = useAuth();
   const [searchTerm, setSearchTerm] = useState("");
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [editingCompany, setEditingCompany] = useState<Company | null>(null);
@@ -40,6 +42,8 @@ export default function AdminCompaniesPage() {
     phone: "",
     email: "",
   });
+
+  const isOwner = (company: Company) => company.createdById === user?.id;
 
   const { data: companies, isLoading, error } = useQuery<Company[]>({
     queryKey: ["/api/admin/companies"],
@@ -141,6 +145,8 @@ export default function AdminCompaniesPage() {
       company.email?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  const canEditNameAndLogo = !editingCompany || isOwner(editingCompany);
+
   const CompanyForm = ({ onSubmit, isEdit }: { onSubmit: (e: React.FormEvent) => void; isEdit?: boolean }) => (
     <form onSubmit={onSubmit} className="space-y-4">
       <div>
@@ -151,8 +157,14 @@ export default function AdminCompaniesPage() {
           onChange={(e) => setFormData({ ...formData, name: e.target.value })}
           placeholder="Enter company name"
           required
+          disabled={isEdit && !canEditNameAndLogo}
           data-testid="input-company-name"
         />
+        {isEdit && !canEditNameAndLogo && (
+          <p className="text-xs text-muted-foreground mt-1">
+            Only the company creator can change the name and logo
+          </p>
+        )}
       </div>
       <div>
         <Label htmlFor="address">Address</Label>
@@ -307,19 +319,21 @@ export default function AdminCompaniesPage() {
                       >
                         <Pencil className="w-4 h-4" />
                       </Button>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="text-destructive hover:text-destructive"
-                        onClick={() => {
-                          if (confirm("Are you sure you want to delete this company?")) {
-                            deleteMutation.mutate(company.id);
-                          }
-                        }}
-                        data-testid={`button-delete-company-${company.id}`}
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
+                      {isOwner(company) && (
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="text-destructive hover:text-destructive"
+                          onClick={() => {
+                            if (confirm("Are you sure you want to delete this company?")) {
+                              deleteMutation.mutate(company.id);
+                            }
+                          }}
+                          data-testid={`button-delete-company-${company.id}`}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      )}
                     </div>
                   </div>
                 </CardHeader>

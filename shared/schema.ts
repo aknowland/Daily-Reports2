@@ -22,6 +22,7 @@ export const companies = pgTable("companies", {
   phone: varchar("phone"),
   email: varchar("email"),
   logoPath: varchar("logo_path"),
+  createdById: varchar("created_by_id"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

@@ -779,7 +779,8 @@ export async function registerRoutes(
       const validated = createCompanySchema.parse(req.body);
       const userId = req.user?.claims?.sub;
       
-      const company = await storage.createCompany(validated);
+      // Create the company with the creator's ID
+      const company = await storage.createCompany({ ...validated, createdById: userId });
       
       // Auto-add creating admin as a member
       await storage.addCompanyMember(company.id, userId, "admin");
@@ -795,15 +796,28 @@ export async function registerRoutes(
   });
 
   // Update company (admin only)
-  app.patch("/api/admin/companies/:id", isAuthenticated, isAdmin, async (req, res) => {
+  app.patch("/api/admin/companies/:id", isAuthenticated, isAdmin, async (req: any, res) => {
     try {
-      const validated = updateCompanySchema.parse(req.body);
-      const company = await storage.updateCompany(req.params.id, validated);
+      const userId = req.user?.claims?.sub;
+      const companyId = req.params.id;
       
-      if (!company) {
+      // Fetch existing company to check ownership
+      const existingCompany = await storage.getCompany(companyId);
+      if (!existingCompany) {
         return res.status(404).json({ message: "Company not found" });
       }
       
+      const validated = updateCompanySchema.parse(req.body);
+      
+      // Only the creator can update name and logo
+      const isOwner = existingCompany.createdById === userId;
+      if (!isOwner) {
+        // Remove name and logoPath from the update if not owner
+        delete validated.name;
+        delete validated.logoPath;
+      }
+      
+      const company = await storage.updateCompany(companyId, validated);
       res.json(company);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -887,8 +901,8 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Company name is required" });
       }
 
-      // Create the company
-      const company = await storage.createCompany({ name, address, phone, email });
+      // Create the company with the creator's ID
+      const company = await storage.createCompany({ name, address, phone, email, createdById: userId });
       
       // Add the creator as a member with admin role in the company
       await storage.addCompanyMember(company.id, userId, "admin");
