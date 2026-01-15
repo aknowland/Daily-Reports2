@@ -16,10 +16,11 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
-import { LogOut, User, Settings, HardHat, Menu, LayoutDashboard, FolderOpen, Users, UserPlus } from "lucide-react";
+import { LogOut, User, Settings, HardHat, Menu, LayoutDashboard, FolderOpen, Users, UserPlus, Building2 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
+import { CompanySwitcher } from "./company-switcher";
 
 interface HeaderProps {
   title?: string;
@@ -27,7 +28,7 @@ interface HeaderProps {
 }
 
 export function Header({ title = "Field Daily Reports" }: HeaderProps) {
-  const { user, isLoading, isAdmin, logout } = useAuth();
+  const { user, isLoading, isAdmin, logout, profile } = useAuth();
   const [location] = useLocation();
   const [sheetOpen, setSheetOpen] = useState(false);
 
@@ -46,6 +47,7 @@ export function Header({ title = "Field Daily Reports" }: HeaderProps) {
 
   const adminNavItems = [
     { href: "/admin", label: "Dashboard", icon: LayoutDashboard },
+    { href: "/admin/companies", label: "Companies", icon: Building2 },
     { href: "/admin/projects", label: "Projects", icon: FolderOpen },
     { href: "/admin/users", label: "Users", icon: Users },
     { href: "/admin/invites", label: "Invites", icon: UserPlus },
@@ -109,6 +111,7 @@ export function Header({ title = "Field Daily Reports" }: HeaderProps) {
         </div>
 
         <div className="flex items-center gap-2">
+          {user && <CompanySwitcher activeCompanyId={profile?.activeCompanyId} />}
           {isLoading ? (
             <div className="w-9 h-9 rounded-full bg-muted animate-pulse" />
           ) : user ? (

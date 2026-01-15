@@ -113,11 +113,22 @@ The application runs on port 5000 with:
 
 - **users**: Auth user accounts
 - **sessions**: Session storage
-- **user_profiles**: Extended user data with roles
-- **projects**: Construction projects
+- **user_profiles**: Extended user data with roles and active company
+- **companies**: Construction companies
+- **company_members**: User-to-company assignments (many-to-many)
+- **projects**: Construction projects (linked to companies)
 - **project_members**: User-to-project assignments
 - **daily_reports**: Field inspection reports
 - **photos**: Report photo attachments
 - **distribution_logs**: Email/folder distribution history
 - **app_settings**: Company branding and config
-- **invites**: Pending user invitations with role and project assignments
+- **invites**: Pending user invitations with role, company, and project assignments
+
+## Multi-Company Support
+
+Inspectors can work for multiple companies:
+- Each project belongs to a company
+- Users can be members of multiple companies
+- Company switcher in header allows switching between companies
+- Projects filter based on active company
+- Company info is read-only for inspectors (admins manage companies)

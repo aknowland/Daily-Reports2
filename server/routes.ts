@@ -85,6 +85,7 @@ const logoUpload = multer({
 const createProjectSchema = z.object({
   name: z.string().min(1, "Name is required"),
   projectNumber: z.string().min(1, "Project number is required"),
+  companyId: z.string().optional(),
   address: z.string().optional(),
   distributionEmails: z.array(z.string().email()).optional().default([]),
   defaultFolderPath: z.string().optional(),
@@ -591,6 +592,7 @@ export async function registerRoutes(
   const createInviteSchema = z.object({
     email: z.string().email("Valid email is required"),
     role: z.enum(["inspector", "admin"]).default("inspector"),
+    companyId: z.string().optional(),
     projectIds: z.array(z.string()).optional().default([]),
     expiresAt: z.string().or(z.date()).transform(val => new Date(val)).optional(),
   });
@@ -615,7 +617,7 @@ export async function registerRoutes(
         });
       }
 
-      const { email, role, projectIds, expiresAt } = result.data;
+      const { email, role, companyId, projectIds, expiresAt } = result.data;
       const userId = req.user?.claims?.sub;
 
       const existingInvite = await storage.getInviteByEmail(email);
@@ -630,6 +632,7 @@ export async function registerRoutes(
       const invite = await storage.createInvite({
         email,
         role,
+        companyId,
         projectIds,
         token,
         invitedBy: userId,
@@ -699,9 +702,15 @@ export async function registerRoutes(
         return res.status(400).json({ message: "This invite has expired" });
       }
 
+      // Add user to company if companyId is set on invite
+      if (invite.companyId) {
+        await storage.addCompanyMember(invite.companyId, userId, invite.role as "inspector" | "admin");
+      }
+
       await storage.createOrUpdateUserProfile({
         userId,
         role: invite.role as "inspector" | "admin",
+        activeCompanyId: invite.companyId || undefined,
       });
 
       const projectIds = (invite.projectIds as string[]) || [];
@@ -715,6 +724,208 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error accepting invite:", error);
       res.status(500).json({ message: "Failed to accept invite" });
+    }
+  });
+
+  // ========== COMPANY ROUTES ==========
+  const createCompanySchema = z.object({
+    name: z.string().min(1, "Company name is required"),
+    address: z.string().optional(),
+    phone: z.string().optional(),
+    email: z.string().email().optional().or(z.literal("")),
+  });
+
+  const updateCompanySchema = createCompanySchema.partial();
+
+  // Get all companies (admin only)
+  app.get("/api/admin/companies", isAuthenticated, isAdmin, async (_req, res) => {
+    try {
+      const companiesList = await storage.getCompanies();
+      res.json(companiesList);
+    } catch (error) {
+      console.error("Error fetching companies:", error);
+      res.status(500).json({ message: "Failed to fetch companies" });
+    }
+  });
+
+  // Get single company
+  app.get("/api/companies/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const company = await storage.getCompany(req.params.id);
+      
+      if (!company) {
+        return res.status(404).json({ message: "Company not found" });
+      }
+
+      // Check if user is a member of this company
+      const isMember = await storage.isUserMemberOfCompany(req.params.id, userId);
+      const profile = await storage.getUserProfile(userId);
+      
+      if (!isMember && profile?.role !== "admin") {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      res.json(company);
+    } catch (error) {
+      console.error("Error fetching company:", error);
+      res.status(500).json({ message: "Failed to fetch company" });
+    }
+  });
+
+  // Create company (admin only)
+  app.post("/api/admin/companies", isAuthenticated, isAdmin, async (req: any, res) => {
+    try {
+      const validated = createCompanySchema.parse(req.body);
+      const userId = req.user?.claims?.sub;
+      
+      const company = await storage.createCompany(validated);
+      
+      // Auto-add creating admin as a member
+      await storage.addCompanyMember(company.id, userId, "admin");
+      
+      res.status(201).json(company);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation error", errors: error.errors });
+      }
+      console.error("Error creating company:", error);
+      res.status(500).json({ message: "Failed to create company" });
+    }
+  });
+
+  // Update company (admin only)
+  app.patch("/api/admin/companies/:id", isAuthenticated, isAdmin, async (req, res) => {
+    try {
+      const validated = updateCompanySchema.parse(req.body);
+      const company = await storage.updateCompany(req.params.id, validated);
+      
+      if (!company) {
+        return res.status(404).json({ message: "Company not found" });
+      }
+      
+      res.json(company);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation error", errors: error.errors });
+      }
+      console.error("Error updating company:", error);
+      res.status(500).json({ message: "Failed to update company" });
+    }
+  });
+
+  // Delete company (admin only)
+  app.delete("/api/admin/companies/:id", isAuthenticated, isAdmin, async (req, res) => {
+    try {
+      await storage.deleteCompany(req.params.id);
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting company:", error);
+      res.status(500).json({ message: "Failed to delete company" });
+    }
+  });
+
+  // ========== COMPANY MEMBERS ==========
+  // Get company members
+  app.get("/api/companies/:id/members", isAuthenticated, isAdmin, async (req, res) => {
+    try {
+      const members = await storage.getCompanyMembers(req.params.id);
+      res.json(members);
+    } catch (error) {
+      console.error("Error fetching company members:", error);
+      res.status(500).json({ message: "Failed to fetch company members" });
+    }
+  });
+
+  // Add company member (admin only)
+  app.post("/api/companies/:id/members", isAuthenticated, isAdmin, async (req, res) => {
+    try {
+      const { userId, role } = req.body;
+      if (!userId) {
+        return res.status(400).json({ message: "User ID is required" });
+      }
+      
+      const member = await storage.addCompanyMember(req.params.id, userId, role || "inspector");
+      res.status(201).json(member);
+    } catch (error) {
+      console.error("Error adding company member:", error);
+      res.status(500).json({ message: "Failed to add company member" });
+    }
+  });
+
+  // Remove company member (admin only)
+  app.delete("/api/companies/:id/members/:userId", isAuthenticated, isAdmin, async (req, res) => {
+    try {
+      await storage.removeCompanyMember(req.params.id, req.params.userId);
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error removing company member:", error);
+      res.status(500).json({ message: "Failed to remove company member" });
+    }
+  });
+
+  // ========== USER COMPANIES ==========
+  // Get companies for current user (for company switcher)
+  app.get("/api/my-companies", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const companiesWithMembership = await storage.getCompaniesForUser(userId);
+      res.json(companiesWithMembership);
+    } catch (error) {
+      console.error("Error fetching user companies:", error);
+      res.status(500).json({ message: "Failed to fetch user companies" });
+    }
+  });
+
+  // Switch active company
+  app.post("/api/switch-company", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const { companyId } = req.body;
+      
+      if (!companyId) {
+        return res.status(400).json({ message: "Company ID is required" });
+      }
+
+      // Verify user is a member of this company
+      const isMember = await storage.isUserMemberOfCompany(companyId, userId);
+      if (!isMember) {
+        return res.status(403).json({ message: "You are not a member of this company" });
+      }
+
+      const profile = await storage.setActiveCompany(userId, companyId);
+      res.json(profile);
+    } catch (error) {
+      console.error("Error switching company:", error);
+      res.status(500).json({ message: "Failed to switch company" });
+    }
+  });
+
+  // Get projects for a specific company
+  app.get("/api/companies/:id/projects", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      
+      // Check membership or admin
+      const isMember = await storage.isUserMemberOfCompany(req.params.id, userId);
+      if (!isMember && profile?.role !== "admin") {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const projectsList = await storage.getProjectsByCompany(req.params.id);
+      
+      // For non-admin, filter to only assigned projects
+      if (profile?.role !== "admin") {
+        const assignedProjectIds = await storage.getProjectsForUser(userId);
+        const filtered = projectsList.filter(p => assignedProjectIds.includes(p.id));
+        return res.json(filtered);
+      }
+      
+      res.json(projectsList);
+    } catch (error) {
+      console.error("Error fetching company projects:", error);
+      res.status(500).json({ message: "Failed to fetch company projects" });
     }
   });
 
