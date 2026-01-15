@@ -783,10 +783,16 @@ export async function registerRoutes(
       const rightColWidth = pageWidth - leftColWidth;
       const startX = doc.page.margins.left;
 
-      // Helper function to draw a table row with border
+      // Helper function to draw a table row with border (with page break handling)
       const drawTableRow = (label: string, value: string, options?: { bold?: boolean }) => {
+        const rowHeight = Math.max(20, doc.heightOfString(value || 'N/A', { width: rightColWidth - 10 }) + 8);
+        
+        // Check if we need a new page
+        if (doc.y + rowHeight > doc.page.height - doc.page.margins.bottom) {
+          doc.addPage();
+        }
+        
         const rowY = doc.y;
-        const rowHeight = Math.max(20, doc.heightOfString(value, { width: rightColWidth - 10 }) + 8);
         
         // Draw cell borders
         doc.rect(startX, rowY, leftColWidth, rowHeight).stroke();
@@ -802,9 +808,15 @@ export async function registerRoutes(
         doc.y = rowY + rowHeight;
       };
 
-      // Helper function to draw section header with extra spacing before
+      // Helper function to draw section header with extra spacing before (with page break handling)
       const drawSectionHeader = (title: string) => {
-        doc.moveDown(1.5);
+        // Check if we need a new page (need room for header + at least one row)
+        if (doc.y + 60 > doc.page.height - doc.page.margins.bottom) {
+          doc.addPage();
+        } else {
+          doc.moveDown(1.5);
+        }
+        
         const headerY = doc.y;
         doc.rect(startX, headerY, pageWidth, 20).fillAndStroke('#f0f0f0', '#000');
         doc.fillColor('#000').fontSize(10).font('Helvetica-Bold')
@@ -879,23 +891,35 @@ export async function registerRoutes(
       if (workActivities.length > 0) {
         drawSectionHeader('WORK ACTIVITIES');
         
-        // Draw work activities table header
         const activityColWidths = [150, pageWidth - 150 - 60, 60];
-        const headerY = doc.y;
-        doc.rect(startX, headerY, activityColWidths[0], 18).fillAndStroke('#e0e0e0', '#000');
-        doc.rect(startX + activityColWidths[0], headerY, activityColWidths[1], 18).fillAndStroke('#e0e0e0', '#000');
-        doc.rect(startX + activityColWidths[0] + activityColWidths[1], headerY, activityColWidths[2], 18).fillAndStroke('#e0e0e0', '#000');
         
-        doc.fillColor('#000').fontSize(8).font('Helvetica-Bold');
-        doc.text('Contractor/Trade', startX + 3, headerY + 5, { width: activityColWidths[0] - 6 });
-        doc.text('Work Description', startX + activityColWidths[0] + 3, headerY + 5, { width: activityColWidths[1] - 6 });
-        doc.text('Workers', startX + activityColWidths[0] + activityColWidths[1] + 3, headerY + 5, { width: activityColWidths[2] - 6 });
-        doc.y = headerY + 18;
+        // Helper to draw the work activities table header
+        const drawActivityTableHeader = () => {
+          const hdrY = doc.y;
+          doc.rect(startX, hdrY, activityColWidths[0], 18).fillAndStroke('#e0e0e0', '#000');
+          doc.rect(startX + activityColWidths[0], hdrY, activityColWidths[1], 18).fillAndStroke('#e0e0e0', '#000');
+          doc.rect(startX + activityColWidths[0] + activityColWidths[1], hdrY, activityColWidths[2], 18).fillAndStroke('#e0e0e0', '#000');
+          
+          doc.fillColor('#000').fontSize(8).font('Helvetica-Bold');
+          doc.text('Contractor/Trade', startX + 3, hdrY + 5, { width: activityColWidths[0] - 6 });
+          doc.text('Work Description', startX + activityColWidths[0] + 3, hdrY + 5, { width: activityColWidths[1] - 6 });
+          doc.text('Workers', startX + activityColWidths[0] + activityColWidths[1] + 3, hdrY + 5, { width: activityColWidths[2] - 6 });
+          doc.y = hdrY + 18;
+        };
+        
+        drawActivityTableHeader();
         
         workActivities.forEach((activity) => {
-          const rowY = doc.y;
           const descHeight = doc.heightOfString(activity.workDescription || '', { width: activityColWidths[1] - 6 });
           const rowHeight = Math.max(18, descHeight + 8);
+          
+          // Check if we need a new page
+          if (doc.y + rowHeight > doc.page.height - doc.page.margins.bottom) {
+            doc.addPage();
+            drawActivityTableHeader();
+          }
+          
+          const rowY = doc.y;
           
           doc.rect(startX, rowY, activityColWidths[0], rowHeight).stroke();
           doc.rect(startX + activityColWidths[0], rowY, activityColWidths[1], rowHeight).stroke();
