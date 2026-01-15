@@ -970,11 +970,100 @@ export async function registerRoutes(
         return res.status(403).json({ message: "You are not a member of this company" });
       }
 
-      const profile = await storage.setActiveCompany(userId, companyId);
+      // Set active company and clear active project (project belongs to old company)
+      await storage.setActiveCompany(userId, companyId);
+      const profile = await storage.setActiveProject(userId, null);
       res.json(profile);
     } catch (error) {
       console.error("Error switching company:", error);
       res.status(500).json({ message: "Failed to switch company" });
+    }
+  });
+
+  // ========== USER PROJECTS ==========
+  // Get projects for current user (filtered by active company)
+  app.get("/api/my-projects", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      
+      if (!profile?.activeCompanyId) {
+        return res.json([]);
+      }
+
+      // For admins, get all projects in company; for inspectors, get assigned projects
+      if (profile.role === "admin") {
+        const projectsList = await storage.getProjectsByCompany(profile.activeCompanyId);
+        res.json(projectsList);
+      } else {
+        const projectsList = await storage.getProjectsForUserInCompany(userId, profile.activeCompanyId);
+        res.json(projectsList);
+      }
+    } catch (error) {
+      console.error("Error fetching user projects:", error);
+      res.status(500).json({ message: "Failed to fetch user projects" });
+    }
+  });
+
+  // Get active project details
+  app.get("/api/my-project", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      
+      if (!profile?.activeProjectId) {
+        return res.json(null);
+      }
+
+      const project = await storage.getProject(profile.activeProjectId);
+      res.json(project || null);
+    } catch (error) {
+      console.error("Error fetching active project:", error);
+      res.status(500).json({ message: "Failed to fetch active project" });
+    }
+  });
+
+  // Switch active project
+  app.post("/api/switch-project", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const { projectId } = req.body;
+      
+      // Allow null to clear active project
+      if (projectId === null) {
+        const profile = await storage.setActiveProject(userId, null);
+        return res.json(profile);
+      }
+
+      if (!projectId) {
+        return res.status(400).json({ message: "Project ID is required" });
+      }
+
+      // Get user profile and project
+      const userProfile = await storage.getUserProfile(userId);
+      const project = await storage.getProject(projectId);
+      
+      if (!project) {
+        return res.status(404).json({ message: "Project not found" });
+      }
+
+      // Ensure project belongs to user's active company
+      if (userProfile?.activeCompanyId && project.companyId !== userProfile.activeCompanyId) {
+        return res.status(403).json({ message: "Project belongs to a different company" });
+      }
+
+      // Verify user has access to this project
+      const isMember = await storage.isUserMemberOfProject(projectId, userId);
+      
+      if (!isMember && userProfile?.role !== "admin") {
+        return res.status(403).json({ message: "You don't have access to this project" });
+      }
+
+      const profile = await storage.setActiveProject(userId, projectId);
+      res.json(profile);
+    } catch (error) {
+      console.error("Error switching project:", error);
+      res.status(500).json({ message: "Failed to switch project" });
     }
   });
 

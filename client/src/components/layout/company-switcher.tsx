@@ -48,6 +48,8 @@ export function CompanySwitcher({ activeCompanyId }: CompanySwitcherProps) {
       queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
       queryClient.invalidateQueries({ queryKey: ["/api/auth/profile"] });
       queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/my-projects"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/my-project"] });
       queryClient.invalidateQueries({ queryKey: ["/api/reports"] });
     },
   });
