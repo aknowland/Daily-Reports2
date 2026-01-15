@@ -587,6 +587,137 @@ export async function registerRoutes(
     }
   });
 
+  // ========== INVITE ROUTES ==========
+  const createInviteSchema = z.object({
+    email: z.string().email("Valid email is required"),
+    role: z.enum(["inspector", "admin"]).default("inspector"),
+    projectIds: z.array(z.string()).optional().default([]),
+    expiresAt: z.string().or(z.date()).transform(val => new Date(val)).optional(),
+  });
+
+  app.get("/api/admin/invites", isAuthenticated, isAdmin, async (_req, res) => {
+    try {
+      const invites = await storage.getInvites();
+      res.json(invites);
+    } catch (error) {
+      console.error("Error fetching invites:", error);
+      res.status(500).json({ message: "Failed to fetch invites" });
+    }
+  });
+
+  app.post("/api/admin/invites", isAuthenticated, isAdmin, async (req: any, res) => {
+    try {
+      const result = createInviteSchema.safeParse(req.body);
+      if (!result.success) {
+        return res.status(400).json({ 
+          message: "Validation failed", 
+          errors: result.error.flatten().fieldErrors 
+        });
+      }
+
+      const { email, role, projectIds, expiresAt } = result.data;
+      const userId = req.user?.claims?.sub;
+
+      const existingInvite = await storage.getInviteByEmail(email);
+      if (existingInvite) {
+        return res.status(400).json({ message: "An active invite already exists for this email" });
+      }
+
+      const token = randomUUID();
+      const defaultExpiry = new Date();
+      defaultExpiry.setDate(defaultExpiry.getDate() + 7);
+
+      const invite = await storage.createInvite({
+        email,
+        role,
+        projectIds,
+        token,
+        invitedBy: userId,
+        expiresAt: expiresAt || defaultExpiry,
+        status: "pending",
+      });
+
+      res.status(201).json(invite);
+    } catch (error) {
+      console.error("Error creating invite:", error);
+      res.status(500).json({ message: "Failed to create invite" });
+    }
+  });
+
+  app.delete("/api/admin/invites/:id", isAuthenticated, isAdmin, async (req, res) => {
+    try {
+      await storage.deleteInvite(req.params.id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting invite:", error);
+      res.status(500).json({ message: "Failed to delete invite" });
+    }
+  });
+
+  app.get("/api/invites/:token", async (req, res) => {
+    try {
+      const invite = await storage.getInviteByToken(req.params.token);
+      if (!invite) {
+        return res.status(404).json({ message: "Invite not found" });
+      }
+
+      if (invite.status !== "pending") {
+        return res.status(400).json({ message: "This invite has already been used or expired" });
+      }
+
+      if (new Date(invite.expiresAt) < new Date()) {
+        await storage.updateInviteStatus(invite.id, "expired");
+        return res.status(400).json({ message: "This invite has expired" });
+      }
+
+      res.json({
+        email: invite.email,
+        role: invite.role,
+        projectIds: invite.projectIds,
+      });
+    } catch (error) {
+      console.error("Error fetching invite:", error);
+      res.status(500).json({ message: "Failed to fetch invite" });
+    }
+  });
+
+  app.post("/api/invites/:token/accept", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const invite = await storage.getInviteByToken(req.params.token);
+      
+      if (!invite) {
+        return res.status(404).json({ message: "Invite not found" });
+      }
+
+      if (invite.status !== "pending") {
+        return res.status(400).json({ message: "This invite has already been used or expired" });
+      }
+
+      if (new Date(invite.expiresAt) < new Date()) {
+        await storage.updateInviteStatus(invite.id, "expired");
+        return res.status(400).json({ message: "This invite has expired" });
+      }
+
+      await storage.createOrUpdateUserProfile({
+        userId,
+        role: invite.role as "inspector" | "admin",
+      });
+
+      const projectIds = (invite.projectIds as string[]) || [];
+      for (const projectId of projectIds) {
+        await storage.addProjectMember(projectId, userId);
+      }
+
+      await storage.updateInviteStatus(invite.id, "accepted");
+
+      res.json({ success: true, message: "Invite accepted successfully" });
+    } catch (error) {
+      console.error("Error accepting invite:", error);
+      res.status(500).json({ message: "Failed to accept invite" });
+    }
+  });
+
   // ========== USER PROFILE (auto-create on first access) ==========
   app.get("/api/profile", isAuthenticated, async (req: any, res) => {
     try {
