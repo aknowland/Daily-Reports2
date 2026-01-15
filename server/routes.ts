@@ -126,13 +126,60 @@ export async function registerRoutes(
   await setupAuth(app);
   registerAuthRoutes(app);
 
-  // Serve static files from storage
-  app.use("/storage", (req, res, next) => {
-    const filePath = path.join(UPLOAD_DIR, req.path);
-    if (fs.existsSync(filePath)) {
-      res.sendFile(filePath);
-    } else {
-      next();
+  // Serve static files from storage (authenticated access with ownership check)
+  app.use("/storage", isAuthenticated, async (req: any, res, next) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      
+      // Safely resolve path within UPLOAD_DIR (prevent path traversal)
+      const requestedPath = path.normalize(req.path).replace(/^(\.\.[\/\\])+/, '');
+      const filePath = path.resolve(UPLOAD_DIR, '.' + requestedPath);
+      
+      // Ensure resolved path is within UPLOAD_DIR
+      if (!filePath.startsWith(UPLOAD_DIR)) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      if (!fs.existsSync(filePath)) {
+        return next();
+      }
+
+      // Admins can access all files
+      if (profile?.role === "admin") {
+        return res.sendFile(filePath);
+      }
+
+      // Check ownership based on file type
+      const pathParts = req.path.split('/');
+      
+      if (pathParts[1] === 'uploads') {
+        // Photo files - check if user owns the report that contains this photo
+        const filename = pathParts[2];
+        const photoPath = `/storage/uploads/${filename}`;
+        const photo = await storage.getPhotoByPath(photoPath);
+        if (photo) {
+          const report = await storage.getReport(photo.reportId);
+          if (report && report.inspectorId === userId) {
+            return res.sendFile(filePath);
+          }
+        }
+      } else if (pathParts[1] === 'signatures' || pathParts[1] === 'reports') {
+        // Signature and PDF files are named with report ID
+        const filename = pathParts[2];
+        const reportId = filename?.replace(/\.(png|pdf)$/, '');
+        if (reportId) {
+          const report = await storage.getReport(reportId);
+          if (report && report.inspectorId === userId) {
+            return res.sendFile(filePath);
+          }
+        }
+      }
+
+      return res.status(403).json({ message: "Access denied" });
+    } catch (error) {
+      console.error("Error serving file:", error);
+      return res.status(500).json({ message: "Failed to serve file" });
     }
   });
 
@@ -215,7 +262,26 @@ export async function registerRoutes(
 
   app.delete("/api/projects/:id", isAuthenticated, isAdmin, async (req, res) => {
     try {
-      await storage.deleteProject(req.params.id);
+      const projectId = req.params.id;
+      
+      // Check if project has any reports
+      const projectReports = await storage.getReportsByProject(projectId);
+      if (projectReports.length > 0) {
+        return res.status(400).json({ 
+          message: `Cannot delete project with ${projectReports.length} existing report(s). Please delete the reports first.` 
+        });
+      }
+      
+      // Clean up project members
+      const members = await storage.getProjectMembers(projectId);
+      for (const member of members) {
+        await storage.removeProjectMember(projectId, member.userId);
+      }
+      
+      // Clear activeProjectId for users who have this project selected
+      await storage.clearActiveProjectForProject(projectId);
+      
+      await storage.deleteProject(projectId);
       res.status(204).send();
     } catch (error) {
       console.error("Error deleting project:", error);
@@ -456,6 +522,40 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error deleting photo:", error);
       res.status(500).json({ message: "Failed to delete photo" });
+    }
+  });
+
+  // Update photo caption
+  app.patch("/api/photos/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      
+      const photo = await storage.getPhoto(req.params.id);
+      if (!photo) {
+        return res.status(404).json({ message: "Photo not found" });
+      }
+      
+      // Check ownership via the report
+      const report = await storage.getReport(photo.reportId);
+      if (!report) {
+        return res.status(404).json({ message: "Report not found" });
+      }
+      
+      if (profile?.role !== "admin" && report.inspectorId !== userId) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      const { caption } = req.body;
+      if (typeof caption !== "string") {
+        return res.status(400).json({ message: "Caption must be a string" });
+      }
+      
+      const updatedPhoto = await storage.updatePhotoCaption(req.params.id, caption);
+      res.json(updatedPhoto);
+    } catch (error) {
+      console.error("Error updating photo caption:", error);
+      res.status(500).json({ message: "Failed to update photo caption" });
     }
   });
 
@@ -976,7 +1076,26 @@ export async function registerRoutes(
   // Delete company (admin only)
   app.delete("/api/admin/companies/:id", isAuthenticated, isAdmin, async (req, res) => {
     try {
-      await storage.deleteCompany(req.params.id);
+      const companyId = req.params.id;
+      
+      // Check if company has any projects
+      const companyProjects = await storage.getProjectsByCompany(companyId);
+      if (companyProjects.length > 0) {
+        return res.status(400).json({ 
+          message: `Cannot delete company with ${companyProjects.length} existing project(s). Please delete the projects first.` 
+        });
+      }
+      
+      // Remove all company members
+      const members = await storage.getCompanyMembers(companyId);
+      for (const member of members) {
+        await storage.removeCompanyMember(companyId, member.userId);
+      }
+      
+      // Clear activeCompanyId for users who have this company selected
+      await storage.clearActiveCompanyForCompany(companyId);
+      
+      await storage.deleteCompany(companyId);
       res.status(204).send();
     } catch (error) {
       console.error("Error deleting company:", error);
@@ -1002,6 +1121,12 @@ export async function registerRoutes(
       const { userId, role } = req.body;
       if (!userId) {
         return res.status(400).json({ message: "User ID is required" });
+      }
+      
+      // Strict role validation - reject invalid roles
+      const validRoles = ["inspector", "admin"];
+      if (role && !validRoles.includes(role)) {
+        return res.status(400).json({ message: "Invalid role. Must be 'inspector' or 'admin'" });
       }
       
       const member = await storage.addCompanyMember(req.params.id, userId, role || "inspector");

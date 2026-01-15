@@ -87,6 +87,8 @@ DELETE /api/reports/:id   - Delete report
 
 Photos/Signatures:
 POST   /api/reports/:id/photos    - Upload photos
+PATCH  /api/photos/:id            - Update photo caption
+DELETE /api/photos/:id            - Delete photo
 POST   /api/reports/:id/signature - Save signature
 POST   /api/reports/:id/pdf       - Generate PDF
 POST   /api/reports/:id/distribute - Send to recipients
