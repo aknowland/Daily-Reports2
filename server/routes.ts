@@ -1055,7 +1055,7 @@ export async function registerRoutes(
       // Signature Section
       if (report.signaturePath) {
         // Check if we need a new page for signature
-        if (doc.y > doc.page.height - 150) {
+        if (doc.y > doc.page.height - 180) {
           doc.addPage();
         }
         
@@ -1076,9 +1076,11 @@ export async function registerRoutes(
           doc.y = sigBoxY + sigBoxHeight;
         }
         
-        if (report.signedAt) {
-          drawTableRow('Signed At', new Date(report.signedAt).toLocaleString());
-        }
+        // Add inspector name and report date below signature
+        drawTableRow('Inspector', report.inspectorName || 'Unknown');
+        drawTableRow('Report Date', new Date(report.date).toLocaleDateString('en-US', { 
+          weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' 
+        }));
         doc.moveDown(0.8);
       }
 
