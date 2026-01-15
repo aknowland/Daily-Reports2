@@ -54,6 +54,8 @@ export const userProfiles = pgTable("user_profiles", {
   licenseNumber: varchar("license_number"),
   licenseState: varchar("license_state"),
   certifications: json("certifications").$type<string[]>().default([]),
+  // Onboarding
+  hasSeenOnboarding: boolean("has_seen_onboarding").default(false),
 });
 
 // Projects table

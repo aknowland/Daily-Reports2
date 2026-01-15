@@ -1445,5 +1445,20 @@ export async function registerRoutes(
     }
   });
 
+  // Complete onboarding
+  app.post("/api/complete-onboarding", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.createOrUpdateUserProfile({
+        userId,
+        hasSeenOnboarding: true,
+      });
+      res.json(profile);
+    } catch (error) {
+      console.error("Error completing onboarding:", error);
+      res.status(500).json({ message: "Failed to complete onboarding" });
+    }
+  });
+
   return httpServer;
 }
