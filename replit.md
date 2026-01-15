@@ -93,6 +93,13 @@ PATCH  /api/admin/users/:id/role  - Update user role
 GET    /api/admin/settings        - Get app settings
 POST   /api/admin/settings        - Update settings
 POST   /api/admin/logo            - Upload company logo
+GET    /api/admin/invites         - List all invites
+POST   /api/admin/invites         - Create new invite
+DELETE /api/admin/invites/:id     - Delete invite
+
+Invites:
+GET    /api/invites/:token        - Get invite by token (public)
+POST   /api/invites/:token/accept - Accept invite (requires auth)
 ```
 
 ## Development
@@ -108,7 +115,9 @@ The application runs on port 5000 with:
 - **sessions**: Session storage
 - **user_profiles**: Extended user data with roles
 - **projects**: Construction projects
+- **project_members**: User-to-project assignments
 - **daily_reports**: Field inspection reports
 - **photos**: Report photo attachments
 - **distribution_logs**: Email/folder distribution history
 - **app_settings**: Company branding and config
+- **invites**: Pending user invitations with role and project assignments

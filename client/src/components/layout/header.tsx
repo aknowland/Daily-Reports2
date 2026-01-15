@@ -16,7 +16,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
-import { LogOut, User, Settings, HardHat, Menu, LayoutDashboard, FolderOpen, Users } from "lucide-react";
+import { LogOut, User, Settings, HardHat, Menu, LayoutDashboard, FolderOpen, Users, UserPlus } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
@@ -48,6 +48,7 @@ export function Header({ title = "Field Daily Reports" }: HeaderProps) {
     { href: "/admin", label: "Dashboard", icon: LayoutDashboard },
     { href: "/admin/projects", label: "Projects", icon: FolderOpen },
     { href: "/admin/users", label: "Users", icon: Users },
+    { href: "/admin/invites", label: "Invites", icon: UserPlus },
     { href: "/admin/settings", label: "Settings", icon: Settings },
   ];
 
