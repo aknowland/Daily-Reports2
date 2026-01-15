@@ -802,9 +802,9 @@ export async function registerRoutes(
         doc.y = rowY + rowHeight;
       };
 
-      // Helper function to draw section header
+      // Helper function to draw section header with extra spacing before
       const drawSectionHeader = (title: string) => {
-        doc.moveDown(0.5);
+        doc.moveDown(1.5);
         const headerY = doc.y;
         doc.rect(startX, headerY, pageWidth, 20).fillAndStroke('#f0f0f0', '#000');
         doc.fillColor('#000').fontSize(10).font('Helvetica-Bold')
@@ -812,24 +812,26 @@ export async function registerRoutes(
         doc.y = headerY + 20;
       };
 
-      // Header with company logo in top right
+      // Header with company logo on top left
       const headerY = doc.y;
-      const logoSize = 100;
+      const logoSize = 120;
+      let hasLogo = false;
       
-      // Add company logo in top right corner if exists
+      // Add company logo in top left corner if exists
       if (report.project?.companyId) {
         const company = await storage.getCompany(report.project.companyId);
         if (company?.logoPath) {
           const logoFilePath = path.join(process.cwd(), company.logoPath.replace(/^\//, ''));
           if (fs.existsSync(logoFilePath)) {
             try {
-              doc.image(logoFilePath, doc.page.width - doc.page.margins.right - logoSize, headerY, {
+              doc.image(logoFilePath, startX, headerY, {
                 width: logoSize,
                 height: logoSize,
                 fit: [logoSize, logoSize],
                 align: 'center',
                 valign: 'center'
               });
+              hasLogo = true;
             } catch (err) {
               console.error('Error adding company logo to PDF:', err);
             }
@@ -837,16 +839,21 @@ export async function registerRoutes(
         }
       }
       
-      doc.fontSize(18).font('Helvetica-Bold').text('DAILY FIELD REPORT', startX, headerY + 20, { 
-        width: pageWidth,
+      // Position title text - if logo exists, put title to the right of it, otherwise center
+      const titleX = hasLogo ? startX + logoSize + 20 : startX;
+      const titleWidth = hasLogo ? pageWidth - logoSize - 20 : pageWidth;
+      
+      doc.fontSize(18).font('Helvetica-Bold').text('DAILY FIELD REPORT', titleX, headerY + 35, { 
+        width: titleWidth,
         align: 'center' 
       });
-      doc.moveDown(0.3);
       doc.fontSize(10).font('Helvetica').text(new Date(report.date).toLocaleDateString('en-US', { 
         weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' 
-      }), startX, doc.y, { align: 'center', width: pageWidth });
-      doc.y = Math.max(doc.y, headerY + logoSize + 10);
-      doc.moveDown();
+      }), titleX, headerY + 60, { align: 'center', width: titleWidth });
+      
+      // Set consistent position after header block
+      const headerBlockHeight = hasLogo ? logoSize : 80;
+      doc.y = headerY + headerBlockHeight + 20;
 
       // Project Information Section
       drawSectionHeader('PROJECT INFORMATION');
@@ -858,12 +865,14 @@ export async function registerRoutes(
       if (report.project?.address) {
         drawTableRow('Location', report.project.address);
       }
+      doc.moveDown(0.8);
 
       // Report Details Section
       drawSectionHeader('REPORT DETAILS');
       drawTableRow('Inspector', report.inspectorName || 'Unknown');
       drawTableRow('Weather', `${report.weatherType || 'Not specified'}${report.weatherNotes ? ` - ${report.weatherNotes}` : ''}`);
       drawTableRow('Status', (report.status || 'draft').toUpperCase());
+      doc.moveDown(0.8);
 
       // Work Activities Section
       const workActivities = (report.workActivities as WorkActivityRow[]) || [];
@@ -898,6 +907,7 @@ export async function registerRoutes(
           doc.text(String(activity.headcount || 0), startX + activityColWidths[0] + activityColWidths[1] + 3, rowY + 4, { width: activityColWidths[2] - 6 });
           doc.y = rowY + rowHeight;
         });
+        doc.moveDown(0.8);
       }
 
       // Visitors Section
@@ -907,6 +917,7 @@ export async function registerRoutes(
         visitors.forEach((visitor) => {
           drawTableRow(visitor.name || 'Unknown', `${visitor.company || ''}${visitor.notes ? ` - ${visitor.notes}` : ''}`);
         });
+        doc.moveDown(0.8);
       }
 
       // Issues/Safety Section
@@ -918,30 +929,35 @@ export async function registerRoutes(
         if (report.safetyFlag) {
           drawTableRow('Safety Incident', report.safetyDetails || 'No details provided');
         }
+        doc.moveDown(0.8);
       }
 
       // Inspections
       if (report.inspections) {
         drawSectionHeader('INSPECTIONS');
         drawTableRow('Details', report.inspections);
+        doc.moveDown(0.8);
       }
 
       // Additional Notes
       if (report.workPerformed) {
         drawSectionHeader('ADDITIONAL NOTES');
         drawTableRow('Notes', report.workPerformed);
+        doc.moveDown(0.8);
       }
 
       // Equipment
       if (report.equipment) {
         drawSectionHeader('EQUIPMENT');
         drawTableRow('On Site', report.equipment);
+        doc.moveDown(0.8);
       }
 
       // Materials Delivered
       if (report.materialsDelivered) {
         drawSectionHeader('MATERIALS DELIVERED');
         drawTableRow('Items', report.materialsDelivered);
+        doc.moveDown(0.8);
       }
 
       // Photos - 2 columns layout
