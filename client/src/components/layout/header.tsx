@@ -9,8 +9,17 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { LogOut, User, Settings, HardHat } from "lucide-react";
-import { Link } from "wouter";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
+import { LogOut, User, Settings, HardHat, Menu, LayoutDashboard, FolderOpen, Users } from "lucide-react";
+import { Link, useLocation } from "wouter";
+import { cn } from "@/lib/utils";
+import { useState } from "react";
 
 interface HeaderProps {
   title?: string;
@@ -18,7 +27,9 @@ interface HeaderProps {
 }
 
 export function Header({ title = "Field Daily Reports" }: HeaderProps) {
-  const { user, isLoading, logout } = useAuth();
+  const { user, isLoading, isAdmin, logout } = useAuth();
+  const [location] = useLocation();
+  const [sheetOpen, setSheetOpen] = useState(false);
 
   const getInitials = (firstName?: string | null, lastName?: string | null) => {
     const first = firstName?.charAt(0) || "";
@@ -33,17 +44,68 @@ export function Header({ title = "Field Daily Reports" }: HeaderProps) {
     return user?.email || "User";
   };
 
+  const adminNavItems = [
+    { href: "/admin", label: "Dashboard", icon: LayoutDashboard },
+    { href: "/admin/projects", label: "Projects", icon: FolderOpen },
+    { href: "/admin/users", label: "Users", icon: Users },
+    { href: "/admin/settings", label: "Settings", icon: Settings },
+  ];
+
   return (
     <header className="sticky top-0 z-40 w-full border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="flex h-14 items-center justify-between gap-4 px-4">
-        <Link href="/">
-          <div className="flex items-center gap-2 cursor-pointer" data-testid="link-home">
-            <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
-              <HardHat className="w-5 h-5 text-primary-foreground" />
+        <div className="flex items-center gap-2">
+          {isAdmin && (
+            <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
+              <SheetTrigger asChild>
+                <Button variant="ghost" size="icon" data-testid="button-admin-menu">
+                  <Menu className="w-5 h-5" />
+                </Button>
+              </SheetTrigger>
+              <SheetContent side="left" className="w-64">
+                <SheetHeader>
+                  <SheetTitle className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
+                      <HardHat className="w-5 h-5 text-primary-foreground" />
+                    </div>
+                    Admin Panel
+                  </SheetTitle>
+                </SheetHeader>
+                <nav className="mt-6 space-y-1">
+                  {adminNavItems.map((item) => {
+                    const isActive = location === item.href || 
+                      (item.href !== "/admin" && location.startsWith(item.href));
+                    const Icon = item.icon;
+                    return (
+                      <Link key={item.href} href={item.href} onClick={() => setSheetOpen(false)}>
+                        <div
+                          className={cn(
+                            "flex items-center gap-3 px-3 py-2 rounded-md transition-colors",
+                            isActive 
+                              ? "bg-primary text-primary-foreground" 
+                              : "hover-elevate"
+                          )}
+                          data-testid={`nav-admin-${item.label.toLowerCase()}`}
+                        >
+                          <Icon className="w-5 h-5" />
+                          <span className="font-medium">{item.label}</span>
+                        </div>
+                      </Link>
+                    );
+                  })}
+                </nav>
+              </SheetContent>
+            </Sheet>
+          )}
+          <Link href="/">
+            <div className="flex items-center gap-2 cursor-pointer" data-testid="link-home">
+              <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
+                <HardHat className="w-5 h-5 text-primary-foreground" />
+              </div>
+              <span className="font-semibold text-lg hidden sm:inline">{title}</span>
             </div>
-            <span className="font-semibold text-lg hidden sm:inline">{title}</span>
-          </div>
-        </Link>
+          </Link>
+        </div>
 
         <div className="flex items-center gap-2">
           {isLoading ? (
@@ -76,12 +138,14 @@ export function Header({ title = "Field Daily Reports" }: HeaderProps) {
                     Profile
                   </Link>
                 </DropdownMenuItem>
-                <DropdownMenuItem asChild>
-                  <Link href="/admin/settings" className="cursor-pointer">
-                    <Settings className="mr-2 h-4 w-4" />
-                    Settings
-                  </Link>
-                </DropdownMenuItem>
+                {isAdmin && (
+                  <DropdownMenuItem asChild>
+                    <Link href="/admin/settings" className="cursor-pointer">
+                      <Settings className="mr-2 h-4 w-4" />
+                      Settings
+                    </Link>
+                  </DropdownMenuItem>
+                )}
                 <DropdownMenuSeparator />
                 <DropdownMenuItem 
                   onClick={() => logout()}
