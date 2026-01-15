@@ -111,6 +111,10 @@ const createReportSchema = z.object({
 
 const updateReportSchema = createReportSchema.partial();
 
+const addProjectMemberSchema = z.object({
+  userId: z.string().min(1, "User ID is required"),
+});
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
@@ -217,14 +221,13 @@ export async function registerRoutes(
 
   app.post("/api/projects/:id/members", isAuthenticated, isAdmin, async (req, res) => {
     try {
-      const { userId } = req.body;
-      if (!userId) {
-        return res.status(400).json({ message: "userId is required" });
-      }
-
-      const member = await storage.addProjectMember(req.params.id, userId);
+      const validated = addProjectMemberSchema.parse(req.body);
+      const member = await storage.addProjectMember(req.params.id, validated.userId);
       res.status(201).json(member);
     } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation error", errors: error.errors });
+      }
       console.error("Error adding project member:", error);
       res.status(500).json({ message: "Failed to add project member" });
     }
