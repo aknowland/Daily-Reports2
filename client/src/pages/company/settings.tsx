@@ -54,11 +54,12 @@ export default function CompanySettingsPage() {
 
   const updateMutation = useMutation({
     mutationFn: async (data: typeof formData) => {
-      return apiRequest("PATCH", `/api/companies/${activeCompany?.id}`, data);
+      return apiRequest("PATCH", "/api/my-company", data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/companies", activeCompany?.id] });
       queryClient.invalidateQueries({ queryKey: ["/api/my-companies"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/my-company"] });
       toast({
         title: "Settings Saved",
         description: "Company settings have been updated.",
