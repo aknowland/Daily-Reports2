@@ -1048,6 +1048,50 @@ export async function registerRoutes(
     }
   });
 
+  // Delete PDF from report
+  app.delete("/api/reports/:id/pdf", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+
+      const report = await storage.getReport(req.params.id);
+      if (!report) {
+        return res.status(404).json({ message: "Report not found" });
+      }
+
+      // Check permissions: admin, company admin, or owner
+      const isSystemAdmin = profile?.role === "admin";
+      let isCompanyAdminForReport = false;
+      if (report.project?.companyId && profile?.activeCompanyId === report.project.companyId) {
+        const membership = await storage.getCompanyMember(report.project.companyId, userId);
+        isCompanyAdminForReport = membership?.role === "admin";
+      }
+      const isOwner = report.inspectorId === userId;
+
+      if (!isSystemAdmin && !isCompanyAdminForReport && !isOwner) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      if (!report.pdfPath) {
+        return res.status(400).json({ message: "No PDF to delete" });
+      }
+
+      // Delete the file
+      const filePath = path.join(process.cwd(), report.pdfPath.replace(/^\//, ''));
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+      }
+
+      // Update the report
+      await storage.updateReport(req.params.id, { pdfPath: null });
+
+      res.json({ message: "PDF deleted successfully" });
+    } catch (error) {
+      console.error("Error deleting PDF:", error);
+      res.status(500).json({ message: "Failed to delete PDF" });
+    }
+  });
+
   // ========== DISTRIBUTION ==========
   app.post("/api/reports/:id/distribute", isAuthenticated, async (req: any, res) => {
     try {
