@@ -825,7 +825,7 @@ export async function registerRoutes(
       };
 
       // Header with company logo in top left and contact info on right (same row)
-      const logoSize = 150;
+      const logoSize = 170;
       let hasLogo = false;
       const logoTopY = 10; // Position logo at top of page
       let logoEndY = logoTopY;
@@ -855,9 +855,10 @@ export async function registerRoutes(
           }
         }
         
-        // Add company contact info on the right side (same row as logo)
+        // Add company contact info on the right side (vertically centered with logo)
         const contactX = startX + pageWidth - 200;
-        let contactY = logoTopY; // Align with top of logo area
+        const contactBlockHeight = 50; // Approximate height of contact block
+        let contactY = logoTopY + (logoSize - contactBlockHeight) / 2; // Center vertically with logo
         doc.fontSize(10).font('Helvetica-Bold').fillColor('#000');
         
         if (company?.name) {
