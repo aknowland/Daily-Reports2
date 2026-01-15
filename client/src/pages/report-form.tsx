@@ -229,7 +229,7 @@ export default function ReportFormPage() {
           <Button 
             variant="ghost" 
             size="icon" 
-            onClick={() => window.history.back()}
+            onClick={() => navigate("/")}
             data-testid="button-back"
           >
             <ArrowLeft className="w-5 h-5" />
