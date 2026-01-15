@@ -10,6 +10,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 import {
   Building2,
   FolderOpen,
@@ -68,6 +69,7 @@ const steps = [
 
 export function OnboardingModal({ open, onComplete }: OnboardingModalProps) {
   const [currentStep, setCurrentStep] = useState(0);
+  const { toast } = useToast();
 
   const completeMutation = useMutation({
     mutationFn: async () => {
@@ -77,6 +79,13 @@ export function OnboardingModal({ open, onComplete }: OnboardingModalProps) {
       queryClient.invalidateQueries({ queryKey: ["/api/profile"] });
       queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
       onComplete();
+    },
+    onError: () => {
+      toast({
+        title: "Oops!",
+        description: "Failed to save your progress. Please try again.",
+        variant: "destructive",
+      });
     },
   });
 
