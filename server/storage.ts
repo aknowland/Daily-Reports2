@@ -35,6 +35,7 @@ export interface IStorage {
 
   // Photos
   getPhotosByReport(reportId: string): Promise<Photo[]>;
+  getPhoto(id: string): Promise<Photo | undefined>;
   createPhoto(data: InsertPhoto): Promise<Photo>;
   deletePhoto(id: string): Promise<boolean>;
 
@@ -248,6 +249,11 @@ export class DatabaseStorage implements IStorage {
   // Photos
   async getPhotosByReport(reportId: string): Promise<Photo[]> {
     return db.select().from(photos).where(eq(photos.reportId, reportId)).orderBy(photos.createdAt);
+  }
+
+  async getPhoto(id: string): Promise<Photo | undefined> {
+    const [photo] = await db.select().from(photos).where(eq(photos.id, id));
+    return photo;
   }
 
   async createPhoto(data: InsertPhoto): Promise<Photo> {

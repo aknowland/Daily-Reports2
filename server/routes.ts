@@ -157,12 +157,24 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/projects/:id", isAuthenticated, async (req, res) => {
+  app.get("/api/projects/:id", isAuthenticated, async (req: any, res) => {
     try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      
       const project = await storage.getProject(req.params.id);
       if (!project) {
         return res.status(404).json({ message: "Project not found" });
       }
+      
+      // Non-admin users can only view projects they're assigned to
+      if (profile?.role !== "admin") {
+        const isProjectMember = await storage.isUserMemberOfProject(req.params.id, userId);
+        if (!isProjectMember) {
+          return res.status(403).json({ message: "Access denied" });
+        }
+      }
+      
       res.json(project);
     } catch (error) {
       console.error("Error fetching project:", error);
@@ -418,8 +430,27 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/photos/:id", isAuthenticated, async (req, res) => {
+  app.delete("/api/photos/:id", isAuthenticated, async (req: any, res) => {
     try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      
+      // Get the photo to find its report
+      const photo = await storage.getPhoto(req.params.id);
+      if (!photo) {
+        return res.status(404).json({ message: "Photo not found" });
+      }
+      
+      // Check ownership via the report
+      const report = await storage.getReport(photo.reportId);
+      if (!report) {
+        return res.status(404).json({ message: "Report not found" });
+      }
+      
+      if (profile?.role !== "admin" && report.inspectorId !== userId) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
       await storage.deletePhoto(req.params.id);
       res.status(204).send();
     } catch (error) {
