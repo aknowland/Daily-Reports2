@@ -62,6 +62,7 @@ export interface IStorage {
   // Project Members
   getProjectMembers(projectId: string): Promise<(ProjectMember & { user?: User })[]>;
   getProjectsForUser(userId: string): Promise<string[]>;
+  getAllProjectsForUser(userId: string): Promise<Project[]>;
   addProjectMember(projectId: string, userId: string): Promise<ProjectMember>;
   removeProjectMember(projectId: string, userId: string): Promise<boolean>;
   isUserMemberOfProject(projectId: string, userId: string): Promise<boolean>;
@@ -396,6 +397,17 @@ export class DatabaseStorage implements IStorage {
       .where(eq(projectMembers.userId, userId));
     
     return results.map(r => r.projectId);
+  }
+
+  async getAllProjectsForUser(userId: string): Promise<Project[]> {
+    const projectIds = await this.getProjectsForUser(userId);
+    if (projectIds.length === 0) return [];
+    
+    return db
+      .select()
+      .from(projects)
+      .where(inArray(projects.id, projectIds))
+      .orderBy(desc(projects.createdAt));
   }
 
   async addProjectMember(projectId: string, userId: string): Promise<ProjectMember> {

@@ -1595,20 +1595,10 @@ export async function registerRoutes(
   app.get("/api/my-projects", isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user?.claims?.sub;
-      const profile = await storage.getUserProfile(userId);
       
-      if (!profile?.activeCompanyId) {
-        return res.json([]);
-      }
-
-      // For admins, get all projects in company; for inspectors, get assigned projects
-      if (profile.role === "admin") {
-        const projectsList = await storage.getProjectsByCompany(profile.activeCompanyId);
-        res.json(projectsList);
-      } else {
-        const projectsList = await storage.getProjectsForUserInCompany(userId, profile.activeCompanyId);
-        res.json(projectsList);
-      }
+      // Get ALL projects the user is a member of (regardless of company)
+      const projectsList = await storage.getAllProjectsForUser(userId);
+      res.json(projectsList);
     } catch (error) {
       console.error("Error fetching user projects:", error);
       res.status(500).json({ message: "Failed to fetch user projects" });
