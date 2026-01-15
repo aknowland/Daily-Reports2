@@ -147,7 +147,8 @@ export default function ReportFormPage() {
         reportId = result.id;
       }
 
-      if (signature && reportId) {
+      // Only save signature if it's new (base64 data, not an existing file path)
+      if (signature && reportId && signature.startsWith("data:")) {
         await apiRequest("POST", `/api/reports/${reportId}/signature`, { signature });
       }
 
