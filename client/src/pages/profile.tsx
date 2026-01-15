@@ -28,8 +28,10 @@ import {
   Award, 
   Shield, 
   Plus, 
-  X
+  X,
+  ArrowLeft
 } from "lucide-react";
+import { Link } from "wouter";
 import { updateUserProfileSchema, type UserProfile, type UpdateUserProfile } from "@shared/schema";
 
 export default function ProfilePage() {
@@ -147,6 +149,14 @@ export default function ProfilePage() {
   return (
     <PageLayout title="Profile">
       <div className="max-w-2xl mx-auto space-y-6">
+        <div className="flex items-center gap-2">
+          <Button variant="ghost" size="sm" asChild data-testid="button-back">
+            <Link href="/">
+              <ArrowLeft className="w-4 h-4 mr-1" />
+              Back to Dashboard
+            </Link>
+          </Button>
+        </div>
         <Card data-testid="card-user-info">
           <CardHeader>
             <div className="flex items-center gap-4">
