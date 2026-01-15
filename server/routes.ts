@@ -877,6 +877,32 @@ export async function registerRoutes(
     }
   });
 
+  // Create own company (any authenticated user can create their own company)
+  app.post("/api/my-companies", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const { name, address, phone, email } = req.body;
+      
+      if (!name) {
+        return res.status(400).json({ message: "Company name is required" });
+      }
+
+      // Create the company
+      const company = await storage.createCompany({ name, address, phone, email });
+      
+      // Add the creator as a member with admin role in the company
+      await storage.addCompanyMember(company.id, userId, "admin");
+      
+      // Set this as their active company
+      await storage.setActiveCompany(userId, company.id);
+      
+      res.status(201).json(company);
+    } catch (error) {
+      console.error("Error creating company:", error);
+      res.status(500).json({ message: "Failed to create company" });
+    }
+  });
+
   // Switch active company
   app.post("/api/switch-company", isAuthenticated, async (req: any, res) => {
     try {
