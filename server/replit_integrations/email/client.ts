@@ -60,6 +60,13 @@ export interface SendEmailOptions {
 export async function sendEmail(options: SendEmailOptions) {
   const { client, fromEmail } = await getResendClient();
   
+  console.log("Sending email via Resend:", {
+    from: fromEmail,
+    to: options.to,
+    subject: options.subject,
+    hasAttachments: !!options.attachments?.length,
+  });
+  
   const result = await client.emails.send({
     from: fromEmail,
     to: options.to,
@@ -67,6 +74,8 @@ export async function sendEmail(options: SendEmailOptions) {
     html: options.html,
     attachments: options.attachments,
   });
+  
+  console.log("Resend API result:", JSON.stringify(result, null, 2));
   
   return result;
 }
