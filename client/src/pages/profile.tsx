@@ -46,6 +46,8 @@ export default function ProfilePage() {
   const form = useForm<UpdateUserProfile>({
     resolver: zodResolver(updateUserProfileSchema),
     defaultValues: {
+      firstName: "",
+      lastName: "",
       phone: "",
       title: "",
       licenseNumber: "",
@@ -59,6 +61,8 @@ export default function ProfilePage() {
   useEffect(() => {
     if (profile) {
       form.reset({
+        firstName: profile.firstName || user?.firstName || "",
+        lastName: profile.lastName || user?.lastName || "",
         phone: profile.phone || "",
         title: profile.title || "",
         licenseNumber: profile.licenseNumber || "",
@@ -69,7 +73,7 @@ export default function ProfilePage() {
       });
       setCertifications(profile.certifications || []);
     }
-  }, [profile, form]);
+  }, [profile, form, user]);
 
   const updateMutation = useMutation({
     mutationFn: async (data: UpdateUserProfile) => {
@@ -97,15 +101,19 @@ export default function ProfilePage() {
   });
 
   const getInitials = () => {
-    const first = user?.firstName?.charAt(0) || "";
-    const last = user?.lastName?.charAt(0) || "";
-    return (first + last).toUpperCase() || "U";
+    const first = profile?.firstName || user?.firstName || "";
+    const last = profile?.lastName || user?.lastName || "";
+    return ((first.charAt(0) || "") + (last.charAt(0) || "")).toUpperCase() || "U";
   };
 
   const getDisplayName = () => {
-    if (user?.firstName && user?.lastName) {
-      return `${user.firstName} ${user.lastName}`;
+    const firstName = profile?.firstName || user?.firstName;
+    const lastName = profile?.lastName || user?.lastName;
+    if (firstName && lastName) {
+      return `${firstName} ${lastName}`;
     }
+    if (firstName) return firstName;
+    if (lastName) return lastName;
     return user?.email || "User";
   };
 
@@ -177,10 +185,49 @@ export default function ProfilePage() {
                   Contact Information
                 </CardTitle>
                 <CardDescription data-testid="desc-contact-info">
-                  Your contact details for field operations and emergencies
+                  Your name and contact details for field operations
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <FormField
+                    control={form.control}
+                    name="firstName"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel data-testid="label-first-name">First Name</FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder="John"
+                            {...field}
+                            value={field.value || ""}
+                            data-testid="input-first-name"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="lastName"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel data-testid="label-last-name">Last Name</FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder="Smith"
+                            {...field}
+                            value={field.value || ""}
+                            data-testid="input-last-name"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+
                 <div className="grid gap-4 sm:grid-cols-2">
                   <FormField
                     control={form.control}

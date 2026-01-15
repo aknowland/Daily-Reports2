@@ -135,6 +135,7 @@ export class DatabaseStorage implements IStorage {
         .from(dailyReports)
         .leftJoin(projects, eq(dailyReports.projectId, projects.id))
         .leftJoin(users, eq(dailyReports.inspectorId, users.id))
+        .leftJoin(userProfiles, eq(dailyReports.inspectorId, userProfiles.userId))
         .where(eq(dailyReports.inspectorId, inspectorId))
         .orderBy(desc(dailyReports.createdAt));
     } else {
@@ -144,14 +145,27 @@ export class DatabaseStorage implements IStorage {
         .from(dailyReports)
         .leftJoin(projects, eq(dailyReports.projectId, projects.id))
         .leftJoin(users, eq(dailyReports.inspectorId, users.id))
+        .leftJoin(userProfiles, eq(dailyReports.inspectorId, userProfiles.userId))
         .orderBy(desc(dailyReports.createdAt));
     }
 
-    return results.map(row => ({
-      ...row.daily_reports,
-      project: row.projects || undefined,
-      inspectorName: row.users ? `${row.users.firstName || ''} ${row.users.lastName || ''}`.trim() || row.users.email : undefined,
-    }));
+    return results.map(row => {
+      // Prefer profile name, fall back to auth user name, then email
+      const profileFirst = row.user_profiles?.firstName;
+      const profileLast = row.user_profiles?.lastName;
+      const authFirst = row.users?.firstName;
+      const authLast = row.users?.lastName;
+      
+      const firstName = profileFirst || authFirst || '';
+      const lastName = profileLast || authLast || '';
+      const fullName = `${firstName} ${lastName}`.trim();
+      
+      return {
+        ...row.daily_reports,
+        project: row.projects || undefined,
+        inspectorName: fullName || row.users?.email || undefined,
+      };
+    });
   }
 
   async getReport(id: string): Promise<DailyReportWithDetails | undefined> {
@@ -160,17 +174,28 @@ export class DatabaseStorage implements IStorage {
       .from(dailyReports)
       .leftJoin(projects, eq(dailyReports.projectId, projects.id))
       .leftJoin(users, eq(dailyReports.inspectorId, users.id))
+      .leftJoin(userProfiles, eq(dailyReports.inspectorId, userProfiles.userId))
       .where(eq(dailyReports.id, id));
 
     if (!result) return undefined;
 
     const reportPhotos = await this.getPhotosByReport(id);
 
+    // Prefer profile name, fall back to auth user name, then email
+    const profileFirst = result.user_profiles?.firstName;
+    const profileLast = result.user_profiles?.lastName;
+    const authFirst = result.users?.firstName;
+    const authLast = result.users?.lastName;
+    
+    const firstName = profileFirst || authFirst || '';
+    const lastName = profileLast || authLast || '';
+    const fullName = `${firstName} ${lastName}`.trim();
+
     return {
       ...result.daily_reports,
       project: result.projects || undefined,
       photos: reportPhotos,
-      inspectorName: result.users ? `${result.users.firstName || ''} ${result.users.lastName || ''}`.trim() || result.users.email : undefined,
+      inspectorName: fullName || result.users?.email || undefined,
     };
   }
 
