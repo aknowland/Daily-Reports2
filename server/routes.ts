@@ -819,10 +819,13 @@ export async function registerRoutes(
         }
         
         const headerY = doc.y;
-        doc.rect(startX, headerY, pageWidth, 16).fillAndStroke('#f0f0f0', '#000');
-        doc.fillColor('#000').fontSize(9).font('Helvetica-Bold')
+        // Blue background with white text for section headers
+        doc.rect(startX, headerY, pageWidth, 16).fillAndStroke('#2563eb', '#1d4ed8');
+        doc.fillColor('#ffffff').fontSize(9).font('Helvetica-Bold')
           .text(title, startX + 5, headerY + 4, { width: pageWidth - 10 });
         doc.y = headerY + 16;
+        // Reset fill color for subsequent content
+        doc.fillColor('#000');
       };
 
       // Header with company logo in top left and contact info on right (same row)
