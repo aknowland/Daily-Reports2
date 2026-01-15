@@ -9,6 +9,7 @@ import fs from "fs";
 import { randomUUID } from "crypto";
 import { z } from "zod";
 import PDFDocument from "pdfkit";
+import { speechToText, openai } from "./replit_integrations/audio/client";
 
 // Ensure upload directories exist
 const UPLOAD_DIR = path.join(process.cwd(), "storage");
@@ -2224,6 +2225,110 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error completing onboarding:", error);
       res.status(500).json({ message: "Failed to complete onboarding" });
+    }
+  });
+
+  // ========== VOICE TRANSCRIPTION ==========
+  app.post("/api/transcribe", isAuthenticated, async (req: any, res) => {
+    try {
+      const { audio, format = "webm" } = req.body;
+      
+      if (!audio) {
+        return res.status(400).json({ message: "Audio data is required" });
+      }
+
+      const audioBuffer = Buffer.from(audio, "base64");
+      const transcript = await speechToText(audioBuffer, format as "wav" | "mp3" | "webm");
+      
+      res.json({ transcript });
+    } catch (error) {
+      console.error("Error transcribing audio:", error);
+      res.status(500).json({ message: "Failed to transcribe audio" });
+    }
+  });
+
+  // AI-powered form field parsing from voice transcript
+  app.post("/api/parse-report-voice", isAuthenticated, async (req: any, res) => {
+    try {
+      const { transcript, targetField } = req.body;
+      
+      if (!transcript) {
+        return res.status(400).json({ message: "Transcript is required" });
+      }
+
+      // For simple text fields, just return the transcript
+      if (targetField === "raw") {
+        return res.json({ text: transcript });
+      }
+
+      // For structured parsing (work activities, visitors, etc.), use AI
+      const systemPrompt = `You are a helpful assistant that extracts structured data from voice transcripts for construction daily reports.
+The user is a construction inspector dictating field report information.
+Parse the transcript and extract the relevant information for the requested field type.
+Return ONLY valid JSON, no explanations.`;
+
+      let userPrompt = "";
+      
+      switch (targetField) {
+        case "workActivities":
+          userPrompt = `Extract work activities from this transcript. Each activity should have:
+- contractor: company name or trade doing the work (e.g., "ABC Electric", "Plumbing crew")
+- headcount: number of workers as an integer (default 0 if not mentioned)
+- workDescription: what work was performed
+
+Return as JSON array: [{"contractor": "company or trade name", "headcount": 0, "workDescription": "work performed"}]
+
+Transcript: "${transcript}"`;
+          break;
+          
+        case "visitors":
+          userPrompt = `Extract visitor information from this transcript. Each visitor should have:
+- name: visitor's name
+- company: their company
+- purpose: reason for visit
+
+Return as JSON array: [{"name": "", "company": "", "purpose": ""}]
+
+Transcript: "${transcript}"`;
+          break;
+          
+        case "weather":
+          userPrompt = `Extract weather information from this transcript.
+Return as JSON: {"type": "clear|cloudy|rain|wind|heat|cold", "notes": "additional details"}
+
+Transcript: "${transcript}"`;
+          break;
+          
+        default:
+          return res.json({ text: transcript });
+      }
+
+      const response = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt }
+        ],
+        temperature: 0.3,
+      });
+
+      const content = response.choices[0]?.message?.content || "";
+      
+      // Try to parse as JSON
+      try {
+        const jsonMatch = content.match(/\[[\s\S]*\]|\{[\s\S]*\}/);
+        if (jsonMatch) {
+          const parsed = JSON.parse(jsonMatch[0]);
+          return res.json({ data: parsed });
+        }
+      } catch {
+        // If parsing fails, return the raw text
+      }
+      
+      res.json({ text: content });
+    } catch (error) {
+      console.error("Error parsing voice transcript:", error);
+      res.status(500).json({ message: "Failed to parse voice transcript" });
     }
   });
 

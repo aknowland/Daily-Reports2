@@ -28,6 +28,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Loader2, Save, Send, ArrowLeft } from "lucide-react";
 import { format } from "date-fns";
 import type { Project, DailyReport, VisitorRow, WorkActivityRow } from "@shared/schema";
+import { VoiceInput } from "@/components/ui/voice-input";
 
 interface PhotoItem {
   id?: string;
@@ -332,9 +333,33 @@ export default function ReportFormPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-lg">Work Activities</CardTitle>
+            <CardTitle className="text-lg flex items-center justify-between gap-2 flex-wrap">
+              <span>Work Activities</span>
+              <VoiceInput
+                targetField="workActivities"
+                onTranscript={() => {}}
+                onParsedData={(data) => {
+                  if (Array.isArray(data)) {
+                    const newActivities = data
+                      .filter((item: any) => item && typeof item === "object")
+                      .map((item: any) => ({
+                        contractor: String(item.contractor || "").trim(),
+                        headcount: Math.max(0, parseInt(String(item.headcount)) || 0),
+                        workDescription: String(item.workDescription || item.description || "").trim(),
+                      }))
+                      .filter(a => a.contractor || a.workDescription);
+                    if (newActivities.length > 0) {
+                      setFormData(prev => ({
+                        ...prev,
+                        workActivities: [...prev.workActivities, ...newActivities]
+                      }));
+                    }
+                  }
+                }}
+              />
+            </CardTitle>
             <p className="text-sm text-muted-foreground">
-              Add each work activity with the contractor/trade and their headcount
+              Add each work activity with the contractor/trade and their headcount. Use voice to dictate multiple activities at once.
             </p>
           </CardHeader>
           <CardContent className="space-y-3">
@@ -369,13 +394,23 @@ export default function ReportFormPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-lg">Inspections</CardTitle>
+            <CardTitle className="text-lg flex items-center justify-between gap-2 flex-wrap">
+              <span>Inspections</span>
+              <VoiceInput
+                onTranscript={(text) => {
+                  setFormData(prev => ({
+                    ...prev,
+                    inspections: prev.inspections ? `${prev.inspections} ${text}` : text
+                  }));
+                }}
+              />
+            </CardTitle>
           </CardHeader>
           <CardContent>
             <Textarea
               value={formData.inspections}
               onChange={(e) => setFormData(prev => ({ ...prev, inspections: e.target.value }))}
-              placeholder="Describe inspections performed today..."
+              placeholder="Describe inspections performed today... (or use voice input)"
               rows={3}
               className="resize-y"
               data-testid="textarea-inspections"
@@ -385,13 +420,23 @@ export default function ReportFormPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-lg">Additional Notes</CardTitle>
+            <CardTitle className="text-lg flex items-center justify-between gap-2 flex-wrap">
+              <span>Additional Notes</span>
+              <VoiceInput
+                onTranscript={(text) => {
+                  setFormData(prev => ({
+                    ...prev,
+                    workPerformed: prev.workPerformed ? `${prev.workPerformed} ${text}` : text
+                  }));
+                }}
+              />
+            </CardTitle>
           </CardHeader>
           <CardContent>
             <Textarea
               value={formData.workPerformed}
               onChange={(e) => setFormData(prev => ({ ...prev, workPerformed: e.target.value }))}
-              placeholder="Additional work notes or general observations..."
+              placeholder="Additional work notes or general observations... (or use voice input)"
               rows={4}
               className="resize-y"
               data-testid="textarea-work-performed"
@@ -401,7 +446,31 @@ export default function ReportFormPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-lg">Visitors</CardTitle>
+            <CardTitle className="text-lg flex items-center justify-between gap-2 flex-wrap">
+              <span>Visitors</span>
+              <VoiceInput
+                targetField="visitors"
+                onTranscript={() => {}}
+                onParsedData={(data) => {
+                  if (Array.isArray(data)) {
+                    const newVisitors = data
+                      .filter((item: any) => item && typeof item === "object")
+                      .map((item: any) => ({
+                        name: String(item.name || "").trim(),
+                        company: String(item.company || "").trim(),
+                        notes: String(item.purpose || item.notes || "").trim(),
+                      }))
+                      .filter(v => v.name || v.company);
+                    if (newVisitors.length > 0) {
+                      setFormData(prev => ({
+                        ...prev,
+                        visitors: [...prev.visitors, ...newVisitors]
+                      }));
+                    }
+                  }
+                }}
+              />
+            </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             {formData.visitors.map((visitor, index) => (
@@ -451,13 +520,23 @@ export default function ReportFormPage() {
                 />
               </div>
               {formData.issuesFlag && (
-                <Textarea
-                  value={formData.issuesDetails}
-                  onChange={(e) => setFormData(prev => ({ ...prev, issuesDetails: e.target.value }))}
-                  placeholder="Describe the issues..."
-                  rows={3}
-                  data-testid="textarea-issues-details"
-                />
+                <div className="space-y-2">
+                  <Textarea
+                    value={formData.issuesDetails}
+                    onChange={(e) => setFormData(prev => ({ ...prev, issuesDetails: e.target.value }))}
+                    placeholder="Describe the issues... (or use voice input)"
+                    rows={3}
+                    data-testid="textarea-issues-details"
+                  />
+                  <VoiceInput
+                    onTranscript={(text) => {
+                      setFormData(prev => ({
+                        ...prev,
+                        issuesDetails: prev.issuesDetails ? `${prev.issuesDetails} ${text}` : text
+                      }));
+                    }}
+                  />
+                </div>
               )}
             </div>
 
@@ -474,13 +553,23 @@ export default function ReportFormPage() {
                 />
               </div>
               {formData.safetyFlag && (
-                <Textarea
-                  value={formData.safetyDetails}
-                  onChange={(e) => setFormData(prev => ({ ...prev, safetyDetails: e.target.value }))}
-                  placeholder="Describe the safety incident..."
-                  rows={3}
-                  data-testid="textarea-safety-details"
-                />
+                <div className="space-y-2">
+                  <Textarea
+                    value={formData.safetyDetails}
+                    onChange={(e) => setFormData(prev => ({ ...prev, safetyDetails: e.target.value }))}
+                    placeholder="Describe the safety incident... (or use voice input)"
+                    rows={3}
+                    data-testid="textarea-safety-details"
+                  />
+                  <VoiceInput
+                    onTranscript={(text) => {
+                      setFormData(prev => ({
+                        ...prev,
+                        safetyDetails: prev.safetyDetails ? `${prev.safetyDetails} ${text}` : text
+                      }));
+                    }}
+                  />
+                </div>
               )}
             </div>
           </CardContent>
@@ -488,13 +577,23 @@ export default function ReportFormPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-lg">Equipment</CardTitle>
+            <CardTitle className="text-lg flex items-center justify-between gap-2 flex-wrap">
+              <span>Equipment</span>
+              <VoiceInput
+                onTranscript={(text) => {
+                  setFormData(prev => ({
+                    ...prev,
+                    equipment: prev.equipment ? `${prev.equipment} ${text}` : text
+                  }));
+                }}
+              />
+            </CardTitle>
           </CardHeader>
           <CardContent>
             <Textarea
               value={formData.equipment}
               onChange={(e) => setFormData(prev => ({ ...prev, equipment: e.target.value }))}
-              placeholder="List equipment used on site today..."
+              placeholder="List equipment used on site today... (or use voice input)"
               rows={3}
               className="resize-y"
               data-testid="textarea-equipment"
@@ -504,13 +603,23 @@ export default function ReportFormPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-lg">Materials Delivered</CardTitle>
+            <CardTitle className="text-lg flex items-center justify-between gap-2 flex-wrap">
+              <span>Materials Delivered</span>
+              <VoiceInput
+                onTranscript={(text) => {
+                  setFormData(prev => ({
+                    ...prev,
+                    materialsDelivered: prev.materialsDelivered ? `${prev.materialsDelivered} ${text}` : text
+                  }));
+                }}
+              />
+            </CardTitle>
           </CardHeader>
           <CardContent>
             <Textarea
               value={formData.materialsDelivered}
               onChange={(e) => setFormData(prev => ({ ...prev, materialsDelivered: e.target.value }))}
-              placeholder="List materials delivered to site today..."
+              placeholder="List materials delivered to site today... (or use voice input)"
               rows={3}
               className="resize-y"
               data-testid="textarea-materials"
