@@ -754,11 +754,55 @@ export async function registerRoutes(
         doc.moveDown();
       }
 
-      // Notes
+      // Inspections
+      if (report.inspections) {
+        doc.fontSize(12).font('Helvetica-Bold').text('Inspections');
+        doc.fontSize(10).font('Helvetica').text(report.inspections);
+        doc.moveDown();
+      }
+
+      // Additional Notes
       if (report.workPerformed) {
         doc.fontSize(12).font('Helvetica-Bold').text('Additional Notes');
         doc.fontSize(10).font('Helvetica').text(report.workPerformed);
         doc.moveDown();
+      }
+
+      // Equipment
+      if (report.equipment) {
+        doc.fontSize(12).font('Helvetica-Bold').text('Equipment');
+        doc.fontSize(10).font('Helvetica').text(report.equipment);
+        doc.moveDown();
+      }
+
+      // Materials Delivered
+      if (report.materialsDelivered) {
+        doc.fontSize(12).font('Helvetica-Bold').text('Materials Delivered');
+        doc.fontSize(10).font('Helvetica').text(report.materialsDelivered);
+        doc.moveDown();
+      }
+
+      // Photos
+      const photos = report.photos || [];
+      if (photos.length > 0) {
+        doc.addPage();
+        doc.fontSize(12).font('Helvetica-Bold').text('Photos');
+        doc.moveDown(0.5);
+        
+        for (const photo of photos) {
+          const photoPath = path.join(process.cwd(), photo.filePath.replace(/^\//, ''));
+          if (fs.existsSync(photoPath)) {
+            try {
+              doc.image(photoPath, { width: 300 });
+              if (photo.caption) {
+                doc.fontSize(9).font('Helvetica-Oblique').text(photo.caption);
+              }
+              doc.moveDown();
+            } catch (err) {
+              console.error('Error adding photo to PDF:', err);
+            }
+          }
+        }
       }
 
       // Signature
