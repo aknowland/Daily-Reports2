@@ -1,5 +1,5 @@
 import { 
-  projects, dailyReports, photos, distributionLogs, appSettings, userProfiles, projectMembers,
+  projects, dailyReports, photos, distributionLogs, appSettings, userProfiles, projectMembers, invites,
   type Project, type InsertProject,
   type DailyReport, type InsertDailyReport,
   type Photo, type InsertPhoto,
@@ -7,6 +7,7 @@ import {
   type AppSetting, type InsertAppSetting,
   type UserProfile, type InsertUserProfile,
   type ProjectMember, type InsertProjectMember,
+  type Invite, type InsertInvite,
   type DailyReportWithDetails,
 } from "@shared/schema";
 import { users, type User } from "@shared/models/auth";
@@ -57,6 +58,14 @@ export interface IStorage {
   addProjectMember(projectId: string, userId: string): Promise<ProjectMember>;
   removeProjectMember(projectId: string, userId: string): Promise<boolean>;
   isUserMemberOfProject(projectId: string, userId: string): Promise<boolean>;
+
+  // Invites
+  getInvites(): Promise<(Invite & { invitedByUser?: User; projects?: Project[] })[]>;
+  getInviteByToken(token: string): Promise<Invite | undefined>;
+  getInviteByEmail(email: string): Promise<Invite | undefined>;
+  createInvite(data: InsertInvite): Promise<Invite>;
+  updateInviteStatus(id: string, status: "pending" | "accepted" | "expired"): Promise<Invite | undefined>;
+  deleteInvite(id: string): Promise<boolean>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -328,6 +337,79 @@ export class DatabaseStorage implements IStorage {
         eq(projectMembers.userId, userId)
       ));
     return !!result;
+  }
+
+  // Invites
+  async getInvites(): Promise<(Invite & { invitedByUser?: User; projects?: Project[] })[]> {
+    const results = await db
+      .select()
+      .from(invites)
+      .leftJoin(users, eq(invites.invitedBy, users.id))
+      .orderBy(desc(invites.createdAt));
+
+    const invitesWithProjects = await Promise.all(results.map(async (row) => {
+      const projectIds = (row.invites.projectIds as string[]) || [];
+      let projectsList: Project[] = [];
+      
+      if (projectIds.length > 0) {
+        projectsList = await db
+          .select()
+          .from(projects)
+          .where(inArray(projects.id, projectIds));
+      }
+
+      return {
+        ...row.invites,
+        invitedByUser: row.users || undefined,
+        projects: projectsList,
+      };
+    }));
+
+    return invitesWithProjects;
+  }
+
+  async getInviteByToken(token: string): Promise<Invite | undefined> {
+    const [invite] = await db
+      .select()
+      .from(invites)
+      .where(eq(invites.token, token));
+    return invite;
+  }
+
+  async getInviteByEmail(email: string): Promise<Invite | undefined> {
+    const [invite] = await db
+      .select()
+      .from(invites)
+      .where(and(
+        eq(invites.email, email.toLowerCase()),
+        eq(invites.status, "pending")
+      ));
+    return invite;
+  }
+
+  async createInvite(data: InsertInvite): Promise<Invite> {
+    const [invite] = await db
+      .insert(invites)
+      .values({ ...data, email: data.email.toLowerCase() })
+      .returning();
+    return invite;
+  }
+
+  async updateInviteStatus(id: string, status: "pending" | "accepted" | "expired"): Promise<Invite | undefined> {
+    const [invite] = await db
+      .update(invites)
+      .set({ 
+        status, 
+        acceptedAt: status === "accepted" ? new Date() : undefined 
+      })
+      .where(eq(invites.id, id))
+      .returning();
+    return invite;
+  }
+
+  async deleteInvite(id: string): Promise<boolean> {
+    await db.delete(invites).where(eq(invites.id, id));
+    return true;
   }
 }
 
