@@ -5,6 +5,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useAuth } from "@/hooks/use-auth";
 import { AdminModeProvider } from "@/hooks/use-admin-mode";
+import { AdminRoute } from "@/components/layout/admin-route";
 import { Loader2 } from "lucide-react";
 
 import NotFound from "@/pages/not-found";
@@ -42,12 +43,24 @@ function AuthenticatedRoutes() {
       <Route path="/reports/:id" component={ReportDetailPage} />
       <Route path="/reports/:id/edit" component={ReportFormPage} />
       <Route path="/profile" component={ProfilePage} />
-      <Route path="/settings" component={AdminSettingsPage} />
-      <Route path="/admin" component={AdminDashboardPage} />
-      <Route path="/admin/companies" component={AdminCompaniesPage} />
-      <Route path="/admin/projects" component={AdminProjectsPage} />
-      <Route path="/admin/users" component={AdminUsersPage} />
-      <Route path="/admin/invites" component={AdminInvitesPage} />
+      <Route path="/settings">
+        {() => <AdminRoute><AdminSettingsPage /></AdminRoute>}
+      </Route>
+      <Route path="/admin">
+        {() => <AdminRoute><AdminDashboardPage /></AdminRoute>}
+      </Route>
+      <Route path="/admin/companies">
+        {() => <AdminRoute><AdminCompaniesPage /></AdminRoute>}
+      </Route>
+      <Route path="/admin/projects">
+        {() => <AdminRoute><AdminProjectsPage /></AdminRoute>}
+      </Route>
+      <Route path="/admin/users">
+        {() => <AdminRoute><AdminUsersPage /></AdminRoute>}
+      </Route>
+      <Route path="/admin/invites">
+        {() => <AdminRoute><AdminInvitesPage /></AdminRoute>}
+      </Route>
       <Route component={NotFound} />
     </Switch>
   );
