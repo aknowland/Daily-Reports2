@@ -13,13 +13,13 @@ interface TradeRowProps {
 
 export function TradeRowInput({ trade, headcount, onChange, onRemove, disabled, index }: TradeRowProps) {
   return (
-    <div className="flex items-center gap-2 p-3 bg-muted/50 rounded-lg border-l-4 border-l-primary">
+    <div className="flex items-center gap-2 p-3 bg-muted/50 border border-border">
       <Input
         value={trade}
         onChange={(e) => onChange(e.target.value, headcount)}
         placeholder="Trade name"
         disabled={disabled}
-        className="flex-1 h-10"
+        className="flex-1"
         data-testid={`input-trade-name-${index}`}
       />
       <Input
@@ -28,7 +28,7 @@ export function TradeRowInput({ trade, headcount, onChange, onRemove, disabled, 
         onChange={(e) => onChange(trade, parseInt(e.target.value) || 0)}
         placeholder="Count"
         disabled={disabled}
-        className="w-20 h-10"
+        className="w-20"
         min={0}
         data-testid={`input-trade-headcount-${index}`}
       />
@@ -38,7 +38,6 @@ export function TradeRowInput({ trade, headcount, onChange, onRemove, disabled, 
         size="icon"
         onClick={onRemove}
         disabled={disabled}
-        className="h-10 w-10 flex-shrink-0"
         data-testid={`button-remove-trade-${index}`}
       >
         <Trash2 className="w-4 h-4 text-muted-foreground" />
@@ -58,13 +57,13 @@ interface ManpowerRowProps {
 
 export function ManpowerRowInput({ description, count, onChange, onRemove, disabled, index }: ManpowerRowProps) {
   return (
-    <div className="flex items-center gap-2 p-3 bg-muted/50 rounded-lg border-l-4 border-l-primary">
+    <div className="flex items-center gap-2 p-3 bg-muted/50 border border-border">
       <Input
         value={description}
         onChange={(e) => onChange(e.target.value, count)}
         placeholder="Description"
         disabled={disabled}
-        className="flex-1 h-10"
+        className="flex-1"
         data-testid={`input-manpower-desc-${index}`}
       />
       <Input
@@ -73,7 +72,7 @@ export function ManpowerRowInput({ description, count, onChange, onRemove, disab
         onChange={(e) => onChange(description, parseInt(e.target.value) || 0)}
         placeholder="Count"
         disabled={disabled}
-        className="w-20 h-10"
+        className="w-20"
         min={0}
         data-testid={`input-manpower-count-${index}`}
       />
@@ -83,7 +82,6 @@ export function ManpowerRowInput({ description, count, onChange, onRemove, disab
         size="icon"
         onClick={onRemove}
         disabled={disabled}
-        className="h-10 w-10 flex-shrink-0"
         data-testid={`button-remove-manpower-${index}`}
       >
         <Trash2 className="w-4 h-4 text-muted-foreground" />
@@ -104,14 +102,14 @@ interface VisitorRowProps {
 
 export function VisitorRowInput({ name, company, notes, onChange, onRemove, disabled, index }: VisitorRowProps) {
   return (
-    <div className="flex flex-col gap-2 p-3 bg-muted/50 rounded-lg border-l-4 border-l-primary">
+    <div className="flex flex-col gap-2 p-3 bg-muted/50 border border-border">
       <div className="flex items-center gap-2">
         <Input
           value={name}
           onChange={(e) => onChange(e.target.value, company, notes)}
           placeholder="Visitor name"
           disabled={disabled}
-          className="flex-1 h-10"
+          className="flex-1"
           data-testid={`input-visitor-name-${index}`}
         />
         <Input
@@ -119,7 +117,7 @@ export function VisitorRowInput({ name, company, notes, onChange, onRemove, disa
           onChange={(e) => onChange(name, e.target.value, notes)}
           placeholder="Company"
           disabled={disabled}
-          className="flex-1 h-10"
+          className="flex-1"
           data-testid={`input-visitor-company-${index}`}
         />
         <Button
@@ -128,7 +126,6 @@ export function VisitorRowInput({ name, company, notes, onChange, onRemove, disa
           size="icon"
           onClick={onRemove}
           disabled={disabled}
-          className="h-10 w-10 flex-shrink-0"
           data-testid={`button-remove-visitor-${index}`}
         >
           <Trash2 className="w-4 h-4 text-muted-foreground" />
@@ -139,8 +136,61 @@ export function VisitorRowInput({ name, company, notes, onChange, onRemove, disa
         onChange={(e) => onChange(name, company, e.target.value)}
         placeholder="Notes (optional)"
         disabled={disabled}
-        className="h-10"
         data-testid={`input-visitor-notes-${index}`}
+      />
+    </div>
+  );
+}
+
+interface WorkActivityRowProps {
+  contractor: string;
+  headcount: number;
+  workDescription: string;
+  onChange: (contractor: string, headcount: number, workDescription: string) => void;
+  onRemove: () => void;
+  disabled?: boolean;
+  index: number;
+}
+
+export function WorkActivityRowInput({ contractor, headcount, workDescription, onChange, onRemove, disabled, index }: WorkActivityRowProps) {
+  return (
+    <div className="flex flex-col gap-2 p-3 bg-muted/50 border border-border">
+      <div className="flex items-center gap-2">
+        <Input
+          value={contractor}
+          onChange={(e) => onChange(e.target.value, headcount, workDescription)}
+          placeholder="Contractor/Trade (or GC)"
+          disabled={disabled}
+          className="flex-1"
+          data-testid={`input-activity-contractor-${index}`}
+        />
+        <Input
+          type="number"
+          value={headcount || ""}
+          onChange={(e) => onChange(contractor, parseInt(e.target.value) || 0, workDescription)}
+          placeholder="Headcount"
+          disabled={disabled}
+          className="w-24"
+          min={0}
+          data-testid={`input-activity-headcount-${index}`}
+        />
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          onClick={onRemove}
+          disabled={disabled}
+          data-testid={`button-remove-activity-${index}`}
+        >
+          <Trash2 className="w-4 h-4 text-muted-foreground" />
+        </Button>
+      </div>
+      <Input
+        value={workDescription}
+        onChange={(e) => onChange(contractor, headcount, e.target.value)}
+        placeholder="Work description / activity performed"
+        disabled={disabled}
+        data-testid={`input-activity-work-${index}`}
       />
     </div>
   );
@@ -158,10 +208,9 @@ export function AddRowButton({ onClick, label, disabled, testId }: AddRowButtonP
     <Button
       type="button"
       variant="outline"
-      size="sm"
       onClick={onClick}
       disabled={disabled}
-      className="w-full h-10 border-dashed"
+      className="w-full border-dashed"
       data-testid={testId}
     >
       <Plus className="w-4 h-4 mr-2" />
