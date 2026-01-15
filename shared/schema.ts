@@ -45,6 +45,13 @@ export const userProfiles = pgTable("user_profiles", {
   company: varchar("company"),
   activeCompanyId: varchar("active_company_id").references(() => companies.id),
   activeProjectId: varchar("active_project_id"),
+  // Inspector profile fields
+  title: varchar("title"),
+  licenseNumber: varchar("license_number"),
+  licenseState: varchar("license_state"),
+  certifications: json("certifications").$type<string[]>().default([]),
+  emergencyContact: varchar("emergency_contact"),
+  emergencyPhone: varchar("emergency_phone"),
 });
 
 // Projects table
@@ -212,6 +219,20 @@ export const distributionLogsRelations = relations(distributionLogs, ({ one }) =
 export const insertCompanySchema = createInsertSchema(companies).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertCompanyMemberSchema = createInsertSchema(companyMembers).omit({ id: true, joinedAt: true });
 export const insertUserProfileSchema = createInsertSchema(userProfiles);
+
+export const updateUserProfileSchema = createInsertSchema(userProfiles)
+  .pick({
+    phone: true,
+    title: true,
+    licenseNumber: true,
+    licenseState: true,
+    certifications: true,
+    emergencyContact: true,
+    emergencyPhone: true,
+  })
+  .partial();
+
+export type UpdateUserProfile = z.infer<typeof updateUserProfileSchema>;
 export const insertProjectSchema = createInsertSchema(projects).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertProjectMemberSchema = createInsertSchema(projectMembers).omit({ id: true, assignedAt: true });
 export const insertDailyReportSchema = createInsertSchema(dailyReports).omit({ id: true, createdAt: true, updatedAt: true });
