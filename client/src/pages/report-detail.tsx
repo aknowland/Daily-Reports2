@@ -39,6 +39,9 @@ import {
   PenTool,
   AlertCircle,
   Trash2,
+  ClipboardCheck,
+  Wrench,
+  Package,
 } from "lucide-react";
 import type { DailyReport, Project, Photo, VisitorRow, WorkActivityRow } from "@shared/schema";
 
@@ -318,10 +321,24 @@ export default function ReportDetailPage() {
                       <span className="font-medium">{activity.contractor}</span>
                       <span className="text-sm text-muted-foreground">{activity.headcount} workers</span>
                     </div>
-                    <p className="text-sm">{activity.workDescription}</p>
+                    <p className="text-sm whitespace-pre-wrap">{activity.workDescription}</p>
                   </div>
                 ))}
               </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {report.inspections && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <ClipboardCheck className="w-5 h-5" />
+                Inspections
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="whitespace-pre-wrap">{report.inspections}</p>
             </CardContent>
           </Card>
         )}
@@ -336,6 +353,34 @@ export default function ReportDetailPage() {
             </CardHeader>
             <CardContent>
               <p className="whitespace-pre-wrap">{report.workPerformed}</p>
+            </CardContent>
+          </Card>
+        )}
+
+        {report.equipment && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Wrench className="w-5 h-5" />
+                Equipment
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="whitespace-pre-wrap">{report.equipment}</p>
+            </CardContent>
+          </Card>
+        )}
+
+        {report.materialsDelivered && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Package className="w-5 h-5" />
+                Materials Delivered
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="whitespace-pre-wrap">{report.materialsDelivered}</p>
             </CardContent>
           </Card>
         )}
@@ -388,20 +433,6 @@ export default function ReportDetailPage() {
                   <p className="text-sm mt-1">{report.safetyDetails}</p>
                 </div>
               )}
-            </CardContent>
-          </Card>
-        )}
-
-        {report.notes && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg flex items-center gap-2">
-                <MessageSquare className="w-5 h-5" />
-                Notes & Observations
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="whitespace-pre-wrap">{report.notes}</p>
             </CardContent>
           </Card>
         )}
