@@ -824,7 +824,7 @@ export async function registerRoutes(
         doc.y = headerY + 20;
       };
 
-      // Header with company logo in top left and contact info on right
+      // Header with company logo in top left and contact info on right (same row)
       const logoSize = 150;
       let hasLogo = false;
       const logoTopY = 20; // Position logo closer to top of page
@@ -855,9 +855,9 @@ export async function registerRoutes(
           }
         }
         
-        // Add company contact info on the right side
+        // Add company contact info on the right side (same row as logo)
         const contactX = startX + pageWidth - 200;
-        let contactY = logoTopY + 10;
+        let contactY = logoTopY; // Align with top of logo area
         doc.fontSize(10).font('Helvetica-Bold').fillColor('#000');
         
         if (company?.name) {
@@ -878,8 +878,8 @@ export async function registerRoutes(
         }
       }
       
-      // Title centered below logo with reduced spacing
-      const titleY = hasLogo ? logoEndY : doc.page.margins.top;
+      // Title centered below logo with tighter spacing
+      const titleY = hasLogo ? logoEndY + 5 : doc.page.margins.top;
       doc.fontSize(18).font('Helvetica-Bold').text('DAILY FIELD REPORT', startX, titleY, { 
         width: pageWidth,
         align: 'center' 
@@ -910,12 +910,13 @@ export async function registerRoutes(
       drawTableRow('Status', (report.status || 'draft').toUpperCase());
       doc.moveDown(0.8);
 
-      // Work Activities Section
+      // Work Activities Section - Columns: Contractor, Manpower, Work Activities
       const workActivities = (report.workActivities as WorkActivityRow[]) || [];
       if (workActivities.length > 0) {
         drawSectionHeader('WORK ACTIVITIES');
         
-        const activityColWidths = [150, pageWidth - 150 - 60, 60];
+        // Column widths: Contractor (150), Manpower (60), Work Activities (remaining)
+        const activityColWidths = [150, 60, pageWidth - 150 - 60];
         
         // Helper to draw the work activities table header
         const drawActivityTableHeader = () => {
@@ -926,15 +927,15 @@ export async function registerRoutes(
           
           doc.fillColor('#000').fontSize(8).font('Helvetica-Bold');
           doc.text('Contractor/Trade', startX + 3, hdrY + 5, { width: activityColWidths[0] - 6 });
-          doc.text('Work Description', startX + activityColWidths[0] + 3, hdrY + 5, { width: activityColWidths[1] - 6 });
-          doc.text('Workers', startX + activityColWidths[0] + activityColWidths[1] + 3, hdrY + 5, { width: activityColWidths[2] - 6 });
+          doc.text('Manpower', startX + activityColWidths[0] + 3, hdrY + 5, { width: activityColWidths[1] - 6 });
+          doc.text('Work Activities', startX + activityColWidths[0] + activityColWidths[1] + 3, hdrY + 5, { width: activityColWidths[2] - 6 });
           doc.y = hdrY + 18;
         };
         
         drawActivityTableHeader();
         
         workActivities.forEach((activity) => {
-          const descHeight = doc.heightOfString(activity.workDescription || '', { width: activityColWidths[1] - 6 });
+          const descHeight = doc.heightOfString(activity.workDescription || '', { width: activityColWidths[2] - 6 });
           const rowHeight = Math.max(18, descHeight + 8);
           
           // Check if we need a new page
@@ -951,8 +952,8 @@ export async function registerRoutes(
           
           doc.fontSize(8).font('Helvetica');
           doc.text(activity.contractor || '', startX + 3, rowY + 4, { width: activityColWidths[0] - 6 });
-          doc.text(activity.workDescription || '', startX + activityColWidths[0] + 3, rowY + 4, { width: activityColWidths[1] - 6 });
-          doc.text(String(activity.headcount || 0), startX + activityColWidths[0] + activityColWidths[1] + 3, rowY + 4, { width: activityColWidths[2] - 6 });
+          doc.text(String(activity.headcount || 0), startX + activityColWidths[0] + 3, rowY + 4, { width: activityColWidths[1] - 6 });
+          doc.text(activity.workDescription || '', startX + activityColWidths[0] + activityColWidths[1] + 3, rowY + 4, { width: activityColWidths[2] - 6 });
           doc.y = rowY + rowHeight;
         });
         doc.moveDown(0.8);
