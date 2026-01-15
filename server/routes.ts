@@ -103,7 +103,15 @@ const createReportSchema = z.object({
   workPerformed: z.string().optional(),
   trades: z.array(z.object({ trade: z.string(), headcount: z.number() })).optional().default([]),
   manpower: z.array(z.object({ description: z.string(), count: z.number() })).optional().default([]),
+  workActivities: z.array(z.object({ 
+    contractor: z.string(), 
+    headcount: z.number(), 
+    workDescription: z.string() 
+  })).optional().default([]),
   visitors: z.array(z.object({ name: z.string(), company: z.string(), notes: z.string().optional() })).optional().default([]),
+  equipment: z.string().optional(),
+  inspections: z.string().optional(),
+  materialsDelivered: z.string().optional(),
   issuesFlag: z.boolean().optional(),
   issuesDetails: z.string().optional(),
   safetyFlag: z.boolean().optional(),
