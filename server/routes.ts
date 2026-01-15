@@ -1030,22 +1030,40 @@ export async function registerRoutes(
         }
       }
 
-      // Signature
+      // Signature Section
       if (report.signaturePath) {
-        doc.fontSize(12).font('Helvetica-Bold').text('Signature');
+        // Check if we need a new page for signature
+        if (doc.y > doc.page.height - 150) {
+          doc.addPage();
+        }
+        
+        drawSectionHeader('SIGNATURE');
+        doc.moveDown(0.3);
+        
         const sigPath = path.join(process.cwd(), report.signaturePath.replace(/^\//, ''));
         if (fs.existsSync(sigPath)) {
-          doc.image(sigPath, { width: 150 });
+          // Draw signature in a bordered box
+          const sigBoxY = doc.y;
+          const sigBoxHeight = 80;
+          doc.rect(startX, sigBoxY, pageWidth, sigBoxHeight).stroke();
+          doc.image(sigPath, startX + 10, sigBoxY + 5, { 
+            width: 150,
+            height: sigBoxHeight - 10,
+            fit: [150, sigBoxHeight - 10]
+          });
+          doc.y = sigBoxY + sigBoxHeight;
         }
+        
         if (report.signedAt) {
-          doc.fontSize(8).font('Helvetica').text(`Signed: ${new Date(report.signedAt).toLocaleString()}`);
+          drawTableRow('Signed At', new Date(report.signedAt).toLocaleString());
         }
+        doc.moveDown(0.8);
       }
 
       // Footer
-      doc.moveDown(2);
+      doc.moveDown(1);
       doc.fontSize(8).font('Helvetica').fillColor('gray')
-        .text(`Generated on ${new Date().toLocaleString()}`, { align: 'center' });
+        .text(`Generated on ${new Date().toLocaleString()}`, startX, doc.y, { align: 'center', width: pageWidth });
 
       doc.end();
 
