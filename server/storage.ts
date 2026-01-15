@@ -36,7 +36,9 @@ export interface IStorage {
   // Photos
   getPhotosByReport(reportId: string): Promise<Photo[]>;
   getPhoto(id: string): Promise<Photo | undefined>;
+  getPhotoByPath(filePath: string): Promise<Photo | undefined>;
   createPhoto(data: InsertPhoto): Promise<Photo>;
+  updatePhotoCaption(id: string, caption: string): Promise<Photo | undefined>;
   deletePhoto(id: string): Promise<boolean>;
 
   // Distribution Logs
@@ -89,10 +91,15 @@ export interface IStorage {
   // Active Company
   setActiveCompany(userId: string, companyId: string): Promise<UserProfile | undefined>;
   getProjectsByCompany(companyId: string): Promise<Project[]>;
+  clearActiveCompanyForCompany(companyId: string): Promise<void>;
 
   // Active Project
   setActiveProject(userId: string, projectId: string | null): Promise<UserProfile | undefined>;
   getProjectsForUserInCompany(userId: string, companyId: string): Promise<Project[]>;
+  clearActiveProjectForProject(projectId: string): Promise<void>;
+
+  // Reports by project (for cascade checks)
+  getReportsByProject(projectId: string): Promise<DailyReport[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -256,8 +263,22 @@ export class DatabaseStorage implements IStorage {
     return photo;
   }
 
+  async getPhotoByPath(filePath: string): Promise<Photo | undefined> {
+    const [photo] = await db.select().from(photos).where(eq(photos.filePath, filePath));
+    return photo;
+  }
+
   async createPhoto(data: InsertPhoto): Promise<Photo> {
     const [photo] = await db.insert(photos).values(data).returning();
+    return photo;
+  }
+
+  async updatePhotoCaption(id: string, caption: string): Promise<Photo | undefined> {
+    const [photo] = await db
+      .update(photos)
+      .set({ caption })
+      .where(eq(photos.id, id))
+      .returning();
     return photo;
   }
 
@@ -630,6 +651,27 @@ export class DatabaseStorage implements IStorage {
         inArray(projects.id, projectIds)
       ))
       .orderBy(desc(projects.createdAt));
+  }
+
+  async clearActiveCompanyForCompany(companyId: string): Promise<void> {
+    await db
+      .update(userProfiles)
+      .set({ activeCompanyId: null })
+      .where(eq(userProfiles.activeCompanyId, companyId));
+  }
+
+  async clearActiveProjectForProject(projectId: string): Promise<void> {
+    await db
+      .update(userProfiles)
+      .set({ activeProjectId: null })
+      .where(eq(userProfiles.activeProjectId, projectId));
+  }
+
+  async getReportsByProject(projectId: string): Promise<DailyReport[]> {
+    return db
+      .select()
+      .from(dailyReports)
+      .where(eq(dailyReports.projectId, projectId));
   }
 }
 
