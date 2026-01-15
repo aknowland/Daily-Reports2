@@ -57,11 +57,8 @@ export function ReportDetailPanel({ report, open, onOpenChange }: ReportDetailPa
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/reports"] });
-      window.open(data.pdfUrl, "_blank");
-      toast({
-        title: "PDF Generated",
-        description: "Your PDF has been generated and will open in a new tab",
-      });
+      // Navigate in same tab for mobile compatibility (avoids popup blockers)
+      window.location.href = data.pdfUrl;
     },
     onError: (error) => {
       toast({
@@ -74,7 +71,8 @@ export function ReportDetailPanel({ report, open, onOpenChange }: ReportDetailPa
 
   const handlePdfAction = () => {
     if (report?.pdfPath) {
-      window.open(report.pdfPath, "_blank");
+      // Navigate in same tab for mobile compatibility
+      window.location.href = report.pdfPath;
     } else {
       generatePdfMutation.mutate();
     }
