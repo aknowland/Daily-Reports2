@@ -814,6 +814,7 @@ export async function registerRoutes(
 
       // Header with company logo in top right
       const headerY = doc.y;
+      const logoSize = 100;
       
       // Add company logo in top right corner if exists
       if (report.project?.companyId) {
@@ -822,10 +823,10 @@ export async function registerRoutes(
           const logoFilePath = path.join(process.cwd(), company.logoPath.replace(/^\//, ''));
           if (fs.existsSync(logoFilePath)) {
             try {
-              doc.image(logoFilePath, doc.page.width - doc.page.margins.right - 80, headerY, {
-                width: 70,
-                height: 70,
-                fit: [70, 70],
+              doc.image(logoFilePath, doc.page.width - doc.page.margins.right - logoSize, headerY, {
+                width: logoSize,
+                height: logoSize,
+                fit: [logoSize, logoSize],
                 align: 'center',
                 valign: 'center'
               });
@@ -836,15 +837,15 @@ export async function registerRoutes(
         }
       }
       
-      doc.fontSize(18).font('Helvetica-Bold').text('DAILY FIELD REPORT', startX, headerY, { 
-        width: pageWidth - 90,
+      doc.fontSize(18).font('Helvetica-Bold').text('DAILY FIELD REPORT', startX, headerY + 20, { 
+        width: pageWidth,
         align: 'center' 
       });
       doc.moveDown(0.3);
       doc.fontSize(10).font('Helvetica').text(new Date(report.date).toLocaleDateString('en-US', { 
         weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' 
-      }), { align: 'center', width: pageWidth - 90 });
-      doc.y = Math.max(doc.y, headerY + 75);
+      }), startX, doc.y, { align: 'center', width: pageWidth });
+      doc.y = Math.max(doc.y, headerY + logoSize + 10);
       doc.moveDown();
 
       // Project Information Section
