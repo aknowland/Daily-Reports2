@@ -150,7 +150,7 @@ export function Header({ title = "Field Daily Reports" }: HeaderProps) {
                   </Link>
                 </DropdownMenuItem>
                 <DropdownMenuItem asChild>
-                  <Link href="/admin/companies" className="cursor-pointer">
+                  <Link href="/companies" className="cursor-pointer">
                     <Building2 className="mr-2 h-4 w-4" />
                     Companies
                   </Link>
