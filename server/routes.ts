@@ -229,10 +229,17 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/projects", isAuthenticated, isAdmin, async (req, res) => {
+  app.post("/api/projects", isAuthenticated, isAdmin, async (req: any, res) => {
     try {
       const validated = createProjectSchema.parse(req.body);
       const project = await storage.createProject(validated);
+      
+      // Automatically assign the creator to the project
+      const userId = req.user?.claims?.sub;
+      if (userId && project.id) {
+        await storage.addProjectMember(project.id, userId);
+      }
+      
       res.status(201).json(project);
     } catch (error) {
       if (error instanceof z.ZodError) {
