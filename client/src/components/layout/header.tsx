@@ -155,6 +155,12 @@ export function Header({ title = "Field Daily Reports" }: HeaderProps) {
                     Companies
                   </Link>
                 </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link href="/my-projects" className="cursor-pointer">
+                    <FolderOpen className="mr-2 h-4 w-4" />
+                    Projects
+                  </Link>
+                </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem 
                   onClick={() => logout()}
