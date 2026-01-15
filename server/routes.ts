@@ -854,6 +854,7 @@ export async function registerRoutes(
         userId,
         role: invite.role as "inspector" | "admin",
         activeCompanyId: invite.companyId || undefined,
+        email: invite.email,
       });
 
       const projectIds = (invite.projectIds as string[]) || [];
@@ -1296,13 +1297,13 @@ export async function registerRoutes(
       
       const profile = await storage.createOrUpdateUserProfile({
         userId,
+        firstName: normalize(data.firstName),
+        lastName: normalize(data.lastName),
         phone: normalize(data.phone),
         title: normalize(data.title),
         licenseNumber: normalize(data.licenseNumber),
         licenseState: normalize(data.licenseState),
         certifications: data.certifications || [],
-        emergencyContact: normalize(data.emergencyContact),
-        emergencyPhone: normalize(data.emergencyPhone),
       });
       
       res.json(profile);

@@ -28,8 +28,7 @@ import {
   Award, 
   Shield, 
   Plus, 
-  X,
-  AlertCircle
+  X
 } from "lucide-react";
 import { updateUserProfileSchema, type UserProfile, type UpdateUserProfile } from "@shared/schema";
 
@@ -52,8 +51,6 @@ export default function ProfilePage() {
       title: "",
       licenseNumber: "",
       licenseState: "",
-      emergencyContact: "",
-      emergencyPhone: "",
       certifications: [],
     },
   });
@@ -67,8 +64,6 @@ export default function ProfilePage() {
         title: profile.title || "",
         licenseNumber: profile.licenseNumber || "",
         licenseState: profile.licenseState || "",
-        emergencyContact: profile.emergencyContact || "",
-        emergencyPhone: profile.emergencyPhone || "",
         certifications: profile.certifications || [],
       });
       setCertifications(profile.certifications || []);
@@ -268,50 +263,18 @@ export default function ProfilePage() {
                   />
                 </div>
 
-                <Separator />
-
                 <div className="space-y-2">
-                  <div className="flex items-center gap-2 text-sm font-medium" data-testid="label-emergency-contact">
-                    <AlertCircle className="w-4 h-4 text-muted-foreground" />
-                    Emergency Contact
-                  </div>
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <FormField
-                      control={form.control}
-                      name="emergencyContact"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormControl>
-                            <Input
-                              placeholder="Contact name"
-                              {...field}
-                              value={field.value || ""}
-                              data-testid="input-emergency-contact"
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={form.control}
-                      name="emergencyPhone"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormControl>
-                            <Input
-                              type="tel"
-                              placeholder="Contact phone"
-                              {...field}
-                              value={field.value || ""}
-                              data-testid="input-emergency-phone"
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  </div>
+                  <FormLabel data-testid="label-email">Email</FormLabel>
+                  <Input
+                    type="email"
+                    value={profile?.email || user?.email || ""}
+                    disabled
+                    className="bg-muted"
+                    data-testid="input-email"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Email is set from your invitation and cannot be changed
+                  </p>
                 </div>
               </CardContent>
             </Card>
