@@ -16,6 +16,8 @@ import AdminDashboardPage from "@/pages/admin/dashboard";
 import AdminProjectsPage from "@/pages/admin/projects";
 import AdminUsersPage from "@/pages/admin/users";
 import AdminSettingsPage from "@/pages/admin/settings";
+import AdminInvitesPage from "@/pages/admin/invites";
+import InviteAcceptPage from "@/pages/invite-accept";
 
 function LoadingScreen() {
   return (
@@ -39,6 +41,7 @@ function AuthenticatedRoutes() {
       <Route path="/admin" component={AdminDashboardPage} />
       <Route path="/admin/projects" component={AdminProjectsPage} />
       <Route path="/admin/users" component={AdminUsersPage} />
+      <Route path="/admin/invites" component={AdminInvitesPage} />
       <Route path="/admin/settings" component={AdminSettingsPage} />
       <Route component={NotFound} />
     </Switch>
@@ -52,11 +55,16 @@ function AppContent() {
     return <LoadingScreen />;
   }
 
-  if (!isAuthenticated) {
-    return <LandingPage />;
-  }
-
-  return <AuthenticatedRoutes />;
+  return (
+    <Switch>
+      <Route path="/invite/:token" component={InviteAcceptPage} />
+      {!isAuthenticated ? (
+        <Route component={LandingPage} />
+      ) : (
+        <AuthenticatedRoutes />
+      )}
+    </Switch>
+  );
 }
 
 function App() {
