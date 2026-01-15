@@ -824,15 +824,18 @@ export async function registerRoutes(
         doc.y = headerY + 20;
       };
 
-      // Header with company logo in top left (positioned higher with less margin)
+      // Header with company logo in top left and contact info on right
       const logoSize = 150;
       let hasLogo = false;
       const logoTopY = 20; // Position logo closer to top of page
       let logoEndY = logoTopY;
+      let company: any = null;
       
-      // Add company logo in top left if exists
+      // Get company info
       if (report.project?.companyId) {
-        const company = await storage.getCompany(report.project.companyId);
+        company = await storage.getCompany(report.project.companyId);
+        
+        // Add company logo in top left if exists
         if (company?.logoPath) {
           const logoFilePath = path.join(process.cwd(), company.logoPath.replace(/^\//, ''));
           if (fs.existsSync(logoFilePath)) {
@@ -850,6 +853,28 @@ export async function registerRoutes(
               console.error('Error adding company logo to PDF:', err);
             }
           }
+        }
+        
+        // Add company contact info on the right side
+        const contactX = startX + pageWidth - 200;
+        let contactY = logoTopY + 10;
+        doc.fontSize(10).font('Helvetica-Bold').fillColor('#000');
+        
+        if (company?.name) {
+          doc.text(company.name, contactX, contactY, { width: 200, align: 'right' });
+          contactY += 14;
+        }
+        doc.font('Helvetica').fontSize(9);
+        if (company?.address) {
+          doc.text(company.address, contactX, contactY, { width: 200, align: 'right' });
+          contactY += 12;
+        }
+        if (company?.phone) {
+          doc.text(company.phone, contactX, contactY, { width: 200, align: 'right' });
+          contactY += 12;
+        }
+        if (company?.email) {
+          doc.text(company.email, contactX, contactY, { width: 200, align: 'right' });
         }
       }
       
