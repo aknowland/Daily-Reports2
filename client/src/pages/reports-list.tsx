@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { PageLayout } from "@/components/layout/page-layout";
@@ -44,6 +44,16 @@ export default function ReportsListPage() {
   });
 
   const reports = reportsData?.reports || [];
+
+  // Sync selectedReport with fresh data when reports update
+  useEffect(() => {
+    if (selectedReport && reports.length > 0) {
+      const updatedReport = reports.find(r => r.id === selectedReport.id);
+      if (updatedReport) {
+        setSelectedReport(updatedReport);
+      }
+    }
+  }, [reports, selectedReport?.id]);
 
   const filteredReports = reports.filter((report) => {
     const matchesSearch = 

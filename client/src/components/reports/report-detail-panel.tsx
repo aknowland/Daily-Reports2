@@ -79,6 +79,7 @@ export function ReportDetailPanel({
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/reports"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/reports", report?.id] });
       toast({
         title: "PDF Generated",
         description: "The PDF has been generated. You can now view it in the preview below or use the View/Download buttons.",
@@ -120,6 +121,7 @@ export function ReportDetailPanel({
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/reports"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/reports", report?.id] });
       toast({
         title: "PDF Deleted",
         description: "The PDF has been deleted. You can generate a new one anytime.",
