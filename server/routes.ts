@@ -1031,6 +1031,12 @@ export async function registerRoutes(
       const validated = createCompanySchema.parse(req.body);
       const userId = req.user?.claims?.sub;
       
+      // Check if company with same name already exists
+      const existingCompany = await storage.getCompanyByName(validated.name);
+      if (existingCompany) {
+        return res.status(400).json({ message: "A company with this name already exists" });
+      }
+      
       // Create the company with the creator's ID
       const company = await storage.createCompany({ ...validated, createdById: userId });
       
@@ -1176,6 +1182,12 @@ export async function registerRoutes(
       
       if (!name) {
         return res.status(400).json({ message: "Company name is required" });
+      }
+
+      // Check if company with same name already exists
+      const existingCompany = await storage.getCompanyByName(name);
+      if (existingCompany) {
+        return res.status(400).json({ message: "A company with this name already exists" });
       }
 
       // Create the company with the creator's ID
