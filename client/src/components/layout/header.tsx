@@ -16,7 +16,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
-import { LogOut, User, Settings, HardHat, Menu, LayoutDashboard, FolderOpen, Users, UserPlus, Building2 } from "lucide-react";
+import { LogOut, User, Settings, HardHat, Menu, LayoutDashboard, FolderOpen, Users, UserPlus, Building2, ClipboardList } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
@@ -31,7 +31,7 @@ interface HeaderProps {
 }
 
 export function Header({ title = "Field Daily Reports" }: HeaderProps) {
-  const { user, isLoading, isAdmin, logout, profile } = useAuth();
+  const { user, isLoading, isAdmin, isCompanyAdmin, activeCompany, logout, profile } = useAuth();
   const [location] = useLocation();
   const [sheetOpen, setSheetOpen] = useState(false);
   const { isAdminMode } = useAdminMode();
@@ -161,6 +161,38 @@ export function Header({ title = "Field Daily Reports" }: HeaderProps) {
                     Projects
                   </Link>
                 </DropdownMenuItem>
+                {isCompanyAdmin && activeCompany && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuLabel className="text-xs text-muted-foreground">
+                      {activeCompany.name} Admin
+                    </DropdownMenuLabel>
+                    <DropdownMenuItem asChild>
+                      <Link href="/company/team" className="cursor-pointer">
+                        <Users className="mr-2 h-4 w-4" />
+                        Team Members
+                      </Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                      <Link href="/company/projects" className="cursor-pointer">
+                        <FolderOpen className="mr-2 h-4 w-4" />
+                        Company Projects
+                      </Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                      <Link href="/company/requests" className="cursor-pointer">
+                        <ClipboardList className="mr-2 h-4 w-4" />
+                        Join Requests
+                      </Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                      <Link href="/company/settings" className="cursor-pointer">
+                        <Settings className="mr-2 h-4 w-4" />
+                        Company Settings
+                      </Link>
+                    </DropdownMenuItem>
+                  </>
+                )}
                 <DropdownMenuSeparator />
                 <DropdownMenuItem 
                   onClick={() => logout()}

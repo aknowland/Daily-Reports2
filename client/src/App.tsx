@@ -24,6 +24,10 @@ import InviteAcceptPage from "@/pages/invite-accept";
 import ProfilePage from "@/pages/profile";
 import MyCompaniesPage from "@/pages/my-companies";
 import MyProjectsPage from "@/pages/my-projects";
+import CompanyTeamPage from "@/pages/company/team";
+import CompanyProjectsPage from "@/pages/company/projects";
+import CompanyRequestsPage from "@/pages/company/requests";
+import CompanySettingsPage from "@/pages/company/settings";
 
 function LoadingScreen() {
   return (
@@ -47,6 +51,10 @@ function AuthenticatedRoutes() {
       <Route path="/profile" component={ProfilePage} />
       <Route path="/companies" component={MyCompaniesPage} />
       <Route path="/my-projects" component={MyProjectsPage} />
+      <Route path="/company/team" component={CompanyTeamPage} />
+      <Route path="/company/projects" component={CompanyProjectsPage} />
+      <Route path="/company/requests" component={CompanyRequestsPage} />
+      <Route path="/company/settings" component={CompanySettingsPage} />
       <Route path="/settings">
         {() => <AdminRoute><AdminSettingsPage /></AdminRoute>}
       </Route>
