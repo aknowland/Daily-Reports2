@@ -130,10 +130,20 @@ export async function registerRoutes(
   });
 
   // ========== PROJECTS ==========
-  app.get("/api/projects", isAuthenticated, async (_req, res) => {
+  app.get("/api/projects", isAuthenticated, async (req: any, res) => {
     try {
-      const projects = await storage.getProjects();
-      res.json(projects);
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      
+      let projectsList = await storage.getProjects();
+      
+      // Non-admin users only see their assigned projects
+      if (profile?.role !== "admin") {
+        const assignedProjectIds = await storage.getProjectsForUser(userId);
+        projectsList = projectsList.filter(p => assignedProjectIds.includes(p.id));
+      }
+      
+      res.json(projectsList);
     } catch (error) {
       console.error("Error fetching projects:", error);
       res.status(500).json({ message: "Failed to fetch projects" });
@@ -191,6 +201,42 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error deleting project:", error);
       res.status(500).json({ message: "Failed to delete project" });
+    }
+  });
+
+  // ========== PROJECT MEMBERS ==========
+  app.get("/api/projects/:id/members", isAuthenticated, isAdmin, async (req, res) => {
+    try {
+      const members = await storage.getProjectMembers(req.params.id);
+      res.json(members);
+    } catch (error) {
+      console.error("Error fetching project members:", error);
+      res.status(500).json({ message: "Failed to fetch project members" });
+    }
+  });
+
+  app.post("/api/projects/:id/members", isAuthenticated, isAdmin, async (req, res) => {
+    try {
+      const { userId } = req.body;
+      if (!userId) {
+        return res.status(400).json({ message: "userId is required" });
+      }
+
+      const member = await storage.addProjectMember(req.params.id, userId);
+      res.status(201).json(member);
+    } catch (error) {
+      console.error("Error adding project member:", error);
+      res.status(500).json({ message: "Failed to add project member" });
+    }
+  });
+
+  app.delete("/api/projects/:id/members/:userId", isAuthenticated, isAdmin, async (req, res) => {
+    try {
+      await storage.removeProjectMember(req.params.id, req.params.userId);
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error removing project member:", error);
+      res.status(500).json({ message: "Failed to remove project member" });
     }
   });
 

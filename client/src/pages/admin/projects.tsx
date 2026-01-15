@@ -7,6 +7,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
   DialogContent,
@@ -16,6 +18,13 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import {
@@ -28,14 +37,23 @@ import {
   Mail,
   Loader2,
   AlertCircle,
+  Users,
+  UserPlus,
+  X,
 } from "lucide-react";
-import type { Project } from "@shared/schema";
+import type { Project, ProjectMember, User } from "@shared/schema";
+
+type MemberWithUser = ProjectMember & { user?: User };
+type UserWithProfile = User & { profile?: { role: string } };
 
 export default function AdminProjectsPage() {
   const { toast } = useToast();
   const [searchTerm, setSearchTerm] = useState("");
   const [showDialog, setShowDialog] = useState(false);
+  const [showTeamDialog, setShowTeamDialog] = useState(false);
+  const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
+  const [selectedUserId, setSelectedUserId] = useState("");
   const [formData, setFormData] = useState({
     name: "",
     projectNumber: "",
@@ -46,6 +64,15 @@ export default function AdminProjectsPage() {
 
   const { data: projects, isLoading, error } = useQuery<Project[]>({
     queryKey: ["/api/projects"],
+  });
+
+  const { data: allUsers } = useQuery<UserWithProfile[]>({
+    queryKey: ["/api/admin/users"],
+  });
+
+  const { data: projectMembers, isLoading: loadingMembers } = useQuery<MemberWithUser[]>({
+    queryKey: ["/api/projects", selectedProject?.id, "members"],
+    enabled: !!selectedProject?.id,
   });
 
   const createMutation = useMutation({
@@ -127,6 +154,47 @@ export default function AdminProjectsPage() {
     },
   });
 
+  const addMemberMutation = useMutation({
+    mutationFn: async ({ projectId, userId }: { projectId: string; userId: string }) => {
+      return apiRequest("POST", `/api/projects/${projectId}/members`, { userId });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/projects", selectedProject?.id, "members"] });
+      setSelectedUserId("");
+      toast({
+        title: "Member Added",
+        description: "The team member has been added to this project",
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to add member",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const removeMemberMutation = useMutation({
+    mutationFn: async ({ projectId, userId }: { projectId: string; userId: string }) => {
+      return apiRequest("DELETE", `/api/projects/${projectId}/members/${userId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/projects", selectedProject?.id, "members"] });
+      toast({
+        title: "Member Removed",
+        description: "The team member has been removed from this project",
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to remove member",
+        variant: "destructive",
+      });
+    },
+  });
+
   const resetForm = () => {
     setFormData({
       name: "",
@@ -149,6 +217,11 @@ export default function AdminProjectsPage() {
     setShowDialog(true);
   };
 
+  const handleManageTeam = (project: Project) => {
+    setSelectedProject(project);
+    setShowTeamDialog(true);
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (editingProject) {
@@ -158,13 +231,45 @@ export default function AdminProjectsPage() {
     }
   };
 
+  const handleAddMember = () => {
+    if (selectedProject && selectedUserId) {
+      addMemberMutation.mutate({ projectId: selectedProject.id, userId: selectedUserId });
+    }
+  };
+
+  const handleRemoveMember = (userId: string) => {
+    if (selectedProject) {
+      removeMemberMutation.mutate({ projectId: selectedProject.id, userId });
+    }
+  };
+
   const filteredProjects = projects?.filter(
     (project) =>
       project.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       project.projectNumber.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  const memberUserIds = projectMembers?.map(m => m.userId) || [];
+  const availableUsers = allUsers?.filter(u => 
+    !memberUserIds.includes(u.id) && u.profile?.role === "inspector"
+  ) || [];
+
   const isSubmitting = createMutation.isPending || updateMutation.isPending;
+
+  const getInitials = (user?: User) => {
+    if (!user) return "?";
+    const first = user.firstName?.charAt(0) || "";
+    const last = user.lastName?.charAt(0) || "";
+    return (first + last).toUpperCase() || user.email?.charAt(0).toUpperCase() || "?";
+  };
+
+  const getUserDisplayName = (user?: User) => {
+    if (!user) return "Unknown User";
+    if (user.firstName && user.lastName) {
+      return `${user.firstName} ${user.lastName}`;
+    }
+    return user.email || "Unknown User";
+  };
 
   return (
     <PageLayout title="Projects" isAdmin>
@@ -356,6 +461,14 @@ export default function AdminProjectsPage() {
                       <Button
                         variant="ghost"
                         size="icon"
+                        onClick={() => handleManageTeam(project)}
+                        data-testid={`button-team-project-${project.id}`}
+                      >
+                        <Users className="w-4 h-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
                         onClick={() => handleEdit(project)}
                         data-testid={`button-edit-project-${project.id}`}
                       >
@@ -394,6 +507,122 @@ export default function AdminProjectsPage() {
             ))}
           </div>
         )}
+
+        <Dialog open={showTeamDialog} onOpenChange={(open) => {
+          setShowTeamDialog(open);
+          if (!open) {
+            setSelectedProject(null);
+            setSelectedUserId("");
+          }
+        }}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Manage Team</DialogTitle>
+              <DialogDescription>
+                {selectedProject?.name} - Add or remove inspectors from this project
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4">
+              <div className="flex gap-2">
+                <Select value={selectedUserId} onValueChange={setSelectedUserId}>
+                  <SelectTrigger className="flex-1" data-testid="select-add-member">
+                    <SelectValue placeholder="Select an inspector to add" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableUsers.length === 0 ? (
+                      <div className="px-2 py-4 text-sm text-muted-foreground text-center">
+                        No available inspectors
+                      </div>
+                    ) : (
+                      availableUsers.map((user) => (
+                        <SelectItem key={user.id} value={user.id}>
+                          {getUserDisplayName(user)}
+                        </SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
+                <Button 
+                  onClick={handleAddMember}
+                  disabled={!selectedUserId || addMemberMutation.isPending}
+                  data-testid="button-add-member"
+                >
+                  {addMemberMutation.isPending ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <UserPlus className="w-4 h-4" />
+                  )}
+                </Button>
+              </div>
+
+              <div className="border rounded-lg">
+                <div className="px-4 py-2 border-b bg-muted/50">
+                  <h4 className="text-sm font-medium">Team Members</h4>
+                </div>
+                <div className="divide-y max-h-64 overflow-y-auto">
+                  {loadingMembers ? (
+                    <div className="p-4 space-y-3">
+                      {[1, 2, 3].map((i) => (
+                        <div key={i} className="flex items-center gap-3">
+                          <Skeleton className="w-8 h-8 rounded-full" />
+                          <Skeleton className="h-4 flex-1" />
+                        </div>
+                      ))}
+                    </div>
+                  ) : projectMembers?.length === 0 ? (
+                    <div className="p-4 text-center text-sm text-muted-foreground">
+                      No team members assigned yet
+                    </div>
+                  ) : (
+                    projectMembers?.map((member) => (
+                      <div 
+                        key={member.id}
+                        className="flex items-center justify-between px-4 py-3"
+                        data-testid={`member-${member.userId}`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <Avatar className="w-8 h-8">
+                            <AvatarImage src={member.user?.profileImageUrl || undefined} />
+                            <AvatarFallback className="text-xs">
+                              {getInitials(member.user)}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium truncate">
+                              {getUserDisplayName(member.user)}
+                            </p>
+                            {member.user?.email && (
+                              <p className="text-xs text-muted-foreground truncate">
+                                {member.user.email}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="text-destructive hover:text-destructive"
+                          onClick={() => handleRemoveMember(member.userId)}
+                          disabled={removeMemberMutation.isPending}
+                          data-testid={`button-remove-member-${member.userId}`}
+                        >
+                          <X className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setShowTeamDialog(false)}>
+                Done
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </PageLayout>
   );
