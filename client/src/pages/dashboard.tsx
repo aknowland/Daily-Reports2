@@ -8,6 +8,7 @@ import { ReportCard } from "@/components/reports/report-card";
 import { ReportDetailPanel } from "@/components/reports/report-detail-panel";
 import { Skeleton } from "@/components/ui/skeleton";
 import { OnboardingModal } from "@/components/onboarding-modal";
+import { NewUserSetup } from "@/components/new-user-setup";
 import { useAuth } from "@/hooks/use-auth";
 import { 
   Plus, 
@@ -17,11 +18,12 @@ import {
   ChevronRight,
   AlertCircle
 } from "lucide-react";
-import type { DailyReportWithDetails, UserProfile } from "@shared/schema";
+import type { DailyReportWithDetails, UserProfile, CompanyMember, Company } from "@shared/schema";
 
 export default function DashboardPage() {
   const { user, isAdmin, isCompanyAdmin } = useAuth();
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const [showNewUserSetup, setShowNewUserSetup] = useState(false);
   const [selectedReport, setSelectedReport] = useState<DailyReportWithDetails | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
 
@@ -29,11 +31,23 @@ export default function DashboardPage() {
     queryKey: ["/api/profile"],
   });
 
+  const { data: myCompanies } = useQuery<(CompanyMember & { company?: Company })[]>({
+    queryKey: ["/api/my-companies"],
+  });
+
+  // Show new user setup if user has no company memberships
   useEffect(() => {
-    if (profile && profile.hasSeenOnboarding === false) {
+    if (myCompanies !== undefined && myCompanies.length === 0) {
+      setShowNewUserSetup(true);
+    }
+  }, [myCompanies]);
+
+  // Show onboarding only after setup is complete and user hasn't seen it
+  useEffect(() => {
+    if (profile && profile.hasSeenOnboarding === false && !showNewUserSetup) {
       setShowOnboarding(true);
     }
-  }, [profile]);
+  }, [profile, showNewUserSetup]);
 
   const { data: reportsData, isLoading, error } = useQuery<{
     reports: DailyReportWithDetails[];
@@ -215,8 +229,19 @@ export default function DashboardPage() {
         isCompanyAdmin={isCompanyAdmin}
       />
 
+      <NewUserSetup
+        open={showNewUserSetup}
+        onComplete={() => {
+          setShowNewUserSetup(false);
+          // Show onboarding after setup if not seen
+          if (profile && profile.hasSeenOnboarding === false) {
+            setShowOnboarding(true);
+          }
+        }}
+      />
+
       <OnboardingModal 
-        open={showOnboarding} 
+        open={showOnboarding && !showNewUserSetup} 
         onComplete={() => setShowOnboarding(false)} 
       />
     </PageLayout>
