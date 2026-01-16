@@ -959,7 +959,7 @@ export async function registerRoutes(
       const filePath = path.join(REPORTS_DIR, filename);
       const pdfPath = `/storage/reports/${filename}`;
 
-      const doc = new PDFDocument({ margin: 50 });
+      const doc = new PDFDocument({ margin: 50, bufferPages: true });
       const writeStream = fs.createWriteStream(filePath);
       doc.pipe(writeStream);
 
@@ -967,13 +967,18 @@ export async function registerRoutes(
       const leftColWidth = 120;
       const rightColWidth = pageWidth - leftColWidth;
       const startX = doc.page.margins.left;
+      
+      // PDF color scheme - darker, more professional blue
+      const PRIMARY_BLUE = '#1e40af';
+      const PRIMARY_BLUE_BORDER = '#1e3a8a';
+      const DIVIDER_GRAY = '#d1d5db';
 
       // Helper function to draw a table row with border (with page break handling)
       const drawTableRow = (label: string, value: string, options?: { bold?: boolean }) => {
         const rowHeight = Math.max(16, doc.heightOfString(value || 'N/A', { width: rightColWidth - 10 }) + 4);
         
         // Check if we need a new page
-        if (doc.y + rowHeight > doc.page.height - doc.page.margins.bottom) {
+        if (doc.y + rowHeight > doc.page.height - doc.page.margins.bottom - 30) {
           doc.addPage();
         }
         
@@ -992,22 +997,34 @@ export async function registerRoutes(
         
         doc.y = rowY + rowHeight;
       };
+      
+      // Helper function to draw a subtle section divider
+      const drawSectionDivider = () => {
+        doc.moveDown(0.5);
+        const dividerY = doc.y;
+        doc.strokeColor(DIVIDER_GRAY).lineWidth(0.5)
+          .moveTo(startX, dividerY)
+          .lineTo(startX + pageWidth, dividerY)
+          .stroke();
+        doc.strokeColor('#000').lineWidth(1);
+        doc.moveDown(0.3);
+      };
 
       // Helper function to draw section header with extra spacing before (with page break handling)
       const drawSectionHeader = (title: string) => {
         // Check if we need a new page (need room for header + at least one row)
-        if (doc.y + 50 > doc.page.height - doc.page.margins.bottom) {
+        if (doc.y + 50 > doc.page.height - doc.page.margins.bottom - 30) {
           doc.addPage();
         } else {
           doc.moveDown(0.6);
         }
         
         const headerY = doc.y;
-        // Blue background with white text for section headers
-        doc.rect(startX, headerY, pageWidth, 16).fillAndStroke('#2563eb', '#1d4ed8');
-        doc.fillColor('#ffffff').fontSize(9).font('Helvetica-Bold')
-          .text(title, startX + 5, headerY + 4, { width: pageWidth - 10 });
-        doc.y = headerY + 16;
+        // Darker blue background with white text for section headers - larger font
+        doc.rect(startX, headerY, pageWidth, 18).fillAndStroke(PRIMARY_BLUE, PRIMARY_BLUE_BORDER);
+        doc.fillColor('#ffffff').fontSize(10).font('Helvetica-Bold')
+          .text(title, startX + 6, headerY + 4, { width: pageWidth - 12 });
+        doc.y = headerY + 18;
         // Reset fill color for subsequent content
         doc.fillColor('#000');
       };
@@ -1110,25 +1127,26 @@ export async function registerRoutes(
         // Helper to draw the work activities table header
         const drawActivityTableHeader = () => {
           const hdrY = doc.y;
-          doc.rect(startX, hdrY, activityColWidths[0], 14).fillAndStroke('#e0e0e0', '#000');
-          doc.rect(startX + activityColWidths[0], hdrY, activityColWidths[1], 14).fillAndStroke('#e0e0e0', '#000');
-          doc.rect(startX + activityColWidths[0] + activityColWidths[1], hdrY, activityColWidths[2], 14).fillAndStroke('#e0e0e0', '#000');
+          const headerBg = '#e5e7eb';
+          doc.rect(startX, hdrY, activityColWidths[0], 16).fillAndStroke(headerBg, '#000');
+          doc.rect(startX + activityColWidths[0], hdrY, activityColWidths[1], 16).fillAndStroke(headerBg, '#000');
+          doc.rect(startX + activityColWidths[0] + activityColWidths[1], hdrY, activityColWidths[2], 16).fillAndStroke(headerBg, '#000');
           
-          doc.fillColor('#000').fontSize(8).font('Helvetica-Bold');
-          doc.text('Contractor/Trade', startX + 3, hdrY + 3, { width: activityColWidths[0] - 6 });
-          doc.text('Manpower', startX + activityColWidths[0] + 3, hdrY + 3, { width: activityColWidths[1] - 6 });
-          doc.text('Work Activities', startX + activityColWidths[0] + activityColWidths[1] + 3, hdrY + 3, { width: activityColWidths[2] - 6 });
-          doc.y = hdrY + 14;
+          doc.fillColor('#000').fontSize(9).font('Helvetica-Bold');
+          doc.text('Contractor/Trade', startX + 4, hdrY + 4, { width: activityColWidths[0] - 8 });
+          doc.text('Manpower', startX + activityColWidths[0] + 4, hdrY + 4, { width: activityColWidths[1] - 8 });
+          doc.text('Work Activities', startX + activityColWidths[0] + activityColWidths[1] + 4, hdrY + 4, { width: activityColWidths[2] - 8 });
+          doc.y = hdrY + 16;
         };
         
         drawActivityTableHeader();
         
         workActivities.forEach((activity) => {
-          const descHeight = doc.heightOfString(activity.workDescription || '', { width: activityColWidths[2] - 6 });
-          const rowHeight = Math.max(14, descHeight + 4);
+          const descHeight = doc.heightOfString(activity.workDescription || '', { width: activityColWidths[2] - 8 });
+          const rowHeight = Math.max(16, descHeight + 6);
           
           // Check if we need a new page
-          if (doc.y + rowHeight > doc.page.height - doc.page.margins.bottom) {
+          if (doc.y + rowHeight > doc.page.height - doc.page.margins.bottom - 30) {
             doc.addPage();
             drawActivityTableHeader();
           }
@@ -1139,13 +1157,13 @@ export async function registerRoutes(
           doc.rect(startX + activityColWidths[0], rowY, activityColWidths[1], rowHeight).stroke();
           doc.rect(startX + activityColWidths[0] + activityColWidths[1], rowY, activityColWidths[2], rowHeight).stroke();
           
-          doc.fontSize(8).font('Helvetica');
-          doc.text(activity.contractor || '', startX + 3, rowY + 4, { width: activityColWidths[0] - 6 });
-          doc.text(String(activity.headcount || 0), startX + activityColWidths[0] + 3, rowY + 4, { width: activityColWidths[1] - 6 });
-          doc.text(activity.workDescription || '', startX + activityColWidths[0] + activityColWidths[1] + 3, rowY + 4, { width: activityColWidths[2] - 6 });
+          doc.fontSize(9).font('Helvetica');
+          doc.text(activity.contractor || '', startX + 4, rowY + 4, { width: activityColWidths[0] - 8 });
+          doc.text(String(activity.headcount || 0), startX + activityColWidths[0] + 4, rowY + 4, { width: activityColWidths[1] - 8 });
+          doc.text(activity.workDescription || '', startX + activityColWidths[0] + activityColWidths[1] + 4, rowY + 4, { width: activityColWidths[2] - 8 });
           doc.y = rowY + rowHeight;
         });
-        doc.moveDown(0.8);
+        drawSectionDivider();
       }
 
       // Visitors Section
@@ -1155,14 +1173,14 @@ export async function registerRoutes(
         visitors.forEach((visitor) => {
           drawTableRow(visitor.name || 'Unknown', `${visitor.company || ''}${visitor.notes ? ` - ${visitor.notes}` : ''}`);
         });
-        doc.moveDown(0.8);
+        drawSectionDivider();
       }
 
       // Materials Delivered
       if (report.materialsDelivered) {
         drawSectionHeader('MATERIALS DELIVERED');
         drawTableRow('Items', report.materialsDelivered);
-        doc.moveDown(0.8);
+        drawSectionDivider();
       }
 
       // Issues/Safety Section
@@ -1174,46 +1192,50 @@ export async function registerRoutes(
         if (report.safetyFlag) {
           drawTableRow('Safety Incident', report.safetyDetails || 'No details provided');
         }
-        doc.moveDown(0.8);
+        drawSectionDivider();
       }
 
       // Inspections
       if (report.inspections) {
         drawSectionHeader('INSPECTIONS');
         drawTableRow('Details', report.inspections);
-        doc.moveDown(0.8);
+        drawSectionDivider();
       }
 
       // Additional Notes
       if (report.workPerformed) {
         drawSectionHeader('ADDITIONAL NOTES');
         drawTableRow('Notes', report.workPerformed);
-        doc.moveDown(0.8);
+        drawSectionDivider();
       }
 
       // Equipment
       if (report.equipment) {
         drawSectionHeader('EQUIPMENT');
         drawTableRow('On Site', report.equipment);
-        doc.moveDown(0.8);
+        drawSectionDivider();
       }
 
-      // Photos - 2 columns layout
+      // Photos - 2 columns layout with improved styling
       const photos = report.photos || [];
       if (photos.length > 0) {
-        const photoHeight = 130;
+        const photoHeight = 140;
+        const photoPadding = 6;
+        const photoGap = 16;
+        const captionHeight = 20;
         // Ensure enough space for header + at least one photo row
-        if (doc.y + 16 + photoHeight + 20 > doc.page.height - doc.page.margins.bottom) {
+        if (doc.y + 18 + photoHeight + captionHeight + 30 > doc.page.height - doc.page.margins.bottom - 30) {
           doc.addPage();
         }
         drawSectionHeader('PHOTOS');
+        doc.moveDown(0.3);
         
-        const photoWidth = (pageWidth - 10) / 2;
+        const photoWidth = (pageWidth - photoGap) / 2;
         let currentY = doc.y;
         
         for (let i = 0; i < photos.length; i += 2) {
           // Check if we need a new page
-          if (currentY > doc.page.height - photoHeight - 50) {
+          if (currentY > doc.page.height - photoHeight - captionHeight - 60) {
             doc.addPage();
             currentY = doc.page.margins.top;
           }
@@ -1223,17 +1245,24 @@ export async function registerRoutes(
           const leftPhotoPath = path.join(process.cwd(), leftPhoto.filePath.replace(/^\//, ''));
           if (fs.existsSync(leftPhotoPath)) {
             try {
-              doc.rect(startX, currentY, photoWidth, photoHeight).stroke();
-              doc.image(leftPhotoPath, startX + 2, currentY + 2, { 
-                width: photoWidth - 4, 
-                height: photoHeight - 4, 
-                fit: [photoWidth - 4, photoHeight - 4],
+              // Draw thicker border with subtle shadow effect
+              doc.lineWidth(1.5).strokeColor('#374151')
+                .rect(startX, currentY, photoWidth, photoHeight).stroke();
+              doc.lineWidth(1).strokeColor('#000');
+              
+              doc.image(leftPhotoPath, startX + photoPadding, currentY + photoPadding, { 
+                width: photoWidth - (photoPadding * 2), 
+                height: photoHeight - (photoPadding * 2), 
+                fit: [photoWidth - (photoPadding * 2), photoHeight - (photoPadding * 2)],
                 align: 'center',
                 valign: 'center'
               });
+              // Styled caption with italic font
               if (leftPhoto.caption) {
-                const caption = leftPhoto.caption.length > 40 ? leftPhoto.caption.substring(0, 40) + '...' : leftPhoto.caption;
-                doc.fontSize(7).font('Helvetica').text(caption, startX, currentY + photoHeight + 2, { width: photoWidth, align: 'center' });
+                const caption = leftPhoto.caption.length > 50 ? leftPhoto.caption.substring(0, 50) + '...' : leftPhoto.caption;
+                doc.fontSize(8).font('Helvetica-Oblique').fillColor('#4b5563')
+                  .text(caption, startX, currentY + photoHeight + 4, { width: photoWidth, align: 'center' });
+                doc.fillColor('#000');
               }
             } catch (err) {
               console.error('Error adding left photo:', err);
@@ -1244,20 +1273,27 @@ export async function registerRoutes(
           if (i + 1 < photos.length) {
             const rightPhoto = photos[i + 1];
             const rightPhotoPath = path.join(process.cwd(), rightPhoto.filePath.replace(/^\//, ''));
-            const rightX = startX + photoWidth + 10;
+            const rightX = startX + photoWidth + photoGap;
             if (fs.existsSync(rightPhotoPath)) {
               try {
-                doc.rect(rightX, currentY, photoWidth, photoHeight).stroke();
-                doc.image(rightPhotoPath, rightX + 2, currentY + 2, { 
-                  width: photoWidth - 4, 
-                  height: photoHeight - 4, 
-                  fit: [photoWidth - 4, photoHeight - 4],
+                // Draw thicker border
+                doc.lineWidth(1.5).strokeColor('#374151')
+                  .rect(rightX, currentY, photoWidth, photoHeight).stroke();
+                doc.lineWidth(1).strokeColor('#000');
+                
+                doc.image(rightPhotoPath, rightX + photoPadding, currentY + photoPadding, { 
+                  width: photoWidth - (photoPadding * 2), 
+                  height: photoHeight - (photoPadding * 2), 
+                  fit: [photoWidth - (photoPadding * 2), photoHeight - (photoPadding * 2)],
                   align: 'center',
                   valign: 'center'
                 });
+                // Styled caption with italic font
                 if (rightPhoto.caption) {
-                  const caption = rightPhoto.caption.length > 40 ? rightPhoto.caption.substring(0, 40) + '...' : rightPhoto.caption;
-                  doc.fontSize(7).font('Helvetica').text(caption, rightX, currentY + photoHeight + 2, { width: photoWidth, align: 'center' });
+                  const caption = rightPhoto.caption.length > 50 ? rightPhoto.caption.substring(0, 50) + '...' : rightPhoto.caption;
+                  doc.fontSize(8).font('Helvetica-Oblique').fillColor('#4b5563')
+                    .text(caption, rightX, currentY + photoHeight + 4, { width: photoWidth, align: 'center' });
+                  doc.fillColor('#000');
                 }
               } catch (err) {
                 console.error('Error adding right photo:', err);
@@ -1265,9 +1301,10 @@ export async function registerRoutes(
             }
           }
           
-          currentY += photoHeight + 15;
+          currentY += photoHeight + captionHeight + 8;
           doc.y = currentY;
         }
+        drawSectionDivider();
       }
 
       // Signature Section
