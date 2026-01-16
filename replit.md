@@ -153,3 +153,29 @@ Inspectors can work for multiple companies:
 - Company switcher in header allows switching between companies
 - Projects filter based on active company
 - Company info is read-only for inspectors (admins manage companies)
+
+## Role-Based Access Control
+
+Three role levels with different access permissions:
+
+### System Admin (role="admin")
+- Sees ALL projects across all companies
+- Sees ALL reports from all inspectors
+- Can manage all users, settings, and invites
+- System admin emails configured via ADMIN_EMAILS environment variable
+
+### Company Admin (company member with role="admin")
+- Sees all projects in companies where they are admin
+- Sees all reports for those company's projects (not just their own reports)
+- Can manage company settings, invites, and project assignments
+- Access spans ALL companies where they have admin role (not just activeCompanyId)
+
+### Inspector (regular user)
+- Sees only projects they are assigned to
+- Sees only their own reports
+- Can create reports for assigned projects
+
+### Implementation Details
+- `getCompaniesForUser(userId)` retrieves all company memberships to determine admin access
+- Storage functions (`getReports`, `getReportStats`) support `companyIds` array for efficient OR filtering
+- Database queries avoid N+1 patterns by filtering at the SQL level using `inArray` and `or` conditions
