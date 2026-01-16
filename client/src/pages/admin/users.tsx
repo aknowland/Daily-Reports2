@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { PageLayout } from "@/components/layout/page-layout";
 import { Button } from "@/components/ui/button";
@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
   SelectContent,
@@ -14,6 +15,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import {
@@ -23,19 +32,39 @@ import {
   HardHat,
   AlertCircle,
   Loader2,
+  FolderOpen,
 } from "lucide-react";
 import type { User } from "@shared/models/auth";
-import type { UserProfile } from "@shared/schema";
+import type { UserProfile, Project } from "@shared/schema";
 
 type UserWithProfile = User & { profile?: UserProfile };
 
 export default function AdminUsersPage() {
   const { toast } = useToast();
   const [searchTerm, setSearchTerm] = useState("");
+  const [selectedUser, setSelectedUser] = useState<UserWithProfile | null>(null);
+  const [selectedProjectIds, setSelectedProjectIds] = useState<string[]>([]);
+  const [projectDialogOpen, setProjectDialogOpen] = useState(false);
 
   const { data: users, isLoading, error } = useQuery<UserWithProfile[]>({
     queryKey: ["/api/admin/users"],
   });
+
+  const { data: allProjects = [] } = useQuery<Project[]>({
+    queryKey: ["/api/projects"],
+  });
+
+  const { data: userProjectIds, isLoading: isLoadingUserProjects } = useQuery<string[]>({
+    queryKey: ["/api/admin/users", selectedUser?.id, "projects"],
+    enabled: !!selectedUser && projectDialogOpen,
+  });
+
+  // Initialize selected projects when dialog opens and data loads
+  useEffect(() => {
+    if (userProjectIds && projectDialogOpen) {
+      setSelectedProjectIds(userProjectIds);
+    }
+  }, [userProjectIds, projectDialogOpen]);
 
   const updateRoleMutation = useMutation({
     mutationFn: async ({ userId, role }: { userId: string; role: "inspector" | "admin" }) => {
@@ -56,6 +85,51 @@ export default function AdminUsersPage() {
       });
     },
   });
+
+  const updateProjectsMutation = useMutation({
+    mutationFn: async ({ userId, projectIds }: { userId: string; projectIds: string[] }) => {
+      return apiRequest("PUT", `/api/admin/users/${userId}/projects`, { projectIds });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/users", selectedUser?.id, "projects"] });
+      toast({
+        title: "Projects Updated",
+        description: "The user's project assignments have been updated",
+      });
+      setProjectDialogOpen(false);
+      setSelectedUser(null);
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to update projects",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleOpenProjectDialog = (user: UserWithProfile) => {
+    setSelectedUser(user);
+    setSelectedProjectIds([]);
+    setProjectDialogOpen(true);
+  };
+
+  const handleProjectToggle = (projectId: string, checked: boolean) => {
+    if (checked) {
+      setSelectedProjectIds(prev => [...prev, projectId]);
+    } else {
+      setSelectedProjectIds(prev => prev.filter(id => id !== projectId));
+    }
+  };
+
+  const handleSaveProjects = () => {
+    if (selectedUser) {
+      updateProjectsMutation.mutate({
+        userId: selectedUser.id,
+        projectIds: selectedProjectIds,
+      });
+    }
+  };
 
   const filteredUsers = users?.filter(
     (user) =>
@@ -175,34 +249,46 @@ export default function AdminUsersPage() {
                       <p className="text-sm text-muted-foreground truncate">{user.email}</p>
                     </div>
 
-                    <Select
-                      value={user.profile?.role || "inspector"}
-                      onValueChange={(role: "inspector" | "admin") => 
-                        updateRoleMutation.mutate({ userId: user.id, role })
-                      }
-                      disabled={updateRoleMutation.isPending}
-                    >
-                      <SelectTrigger 
-                        className="w-32"
-                        data-testid={`select-role-${user.id}`}
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleOpenProjectDialog(user)}
+                        data-testid={`button-assign-projects-${user.id}`}
                       >
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="inspector">
-                          <div className="flex items-center gap-2">
-                            <HardHat className="w-4 h-4" />
-                            Inspector
-                          </div>
-                        </SelectItem>
-                        <SelectItem value="admin">
-                          <div className="flex items-center gap-2">
-                            <Shield className="w-4 h-4" />
-                            Admin
-                          </div>
-                        </SelectItem>
-                      </SelectContent>
-                    </Select>
+                        <FolderOpen className="w-4 h-4 mr-1" />
+                        Projects
+                      </Button>
+                      
+                      <Select
+                        value={user.profile?.role || "inspector"}
+                        onValueChange={(role: "inspector" | "admin") => 
+                          updateRoleMutation.mutate({ userId: user.id, role })
+                        }
+                        disabled={updateRoleMutation.isPending}
+                      >
+                        <SelectTrigger 
+                          className="w-32"
+                          data-testid={`select-role-${user.id}`}
+                        >
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="inspector">
+                            <div className="flex items-center gap-2">
+                              <HardHat className="w-4 h-4" />
+                              Inspector
+                            </div>
+                          </SelectItem>
+                          <SelectItem value="admin">
+                            <div className="flex items-center gap-2">
+                              <Shield className="w-4 h-4" />
+                              Admin
+                            </div>
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
                 </CardContent>
               </Card>
@@ -210,6 +296,71 @@ export default function AdminUsersPage() {
           </div>
         )}
       </div>
+
+      <Dialog open={projectDialogOpen} onOpenChange={setProjectDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              Assign Projects to {selectedUser ? getDisplayName(selectedUser) : "User"}
+            </DialogTitle>
+            <DialogDescription>
+              Select which projects this user should have access to.
+            </DialogDescription>
+          </DialogHeader>
+          
+          {isLoadingUserProjects ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : allProjects.length === 0 ? (
+            <div className="py-8 text-center text-muted-foreground">
+              <FolderOpen className="w-12 h-12 mx-auto mb-2 opacity-50" />
+              <p>No projects available</p>
+            </div>
+          ) : (
+            <div className="space-y-3 max-h-[300px] overflow-y-auto py-2">
+              {allProjects.map((project) => (
+                <label
+                  key={project.id}
+                  className="flex items-center gap-3 p-3 rounded-md border cursor-pointer hover-elevate"
+                  data-testid={`checkbox-project-${project.id}`}
+                >
+                  <Checkbox
+                    checked={selectedProjectIds.includes(project.id)}
+                    onCheckedChange={(checked) => handleProjectToggle(project.id, !!checked)}
+                  />
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium truncate">{project.name}</p>
+                    <p className="text-sm text-muted-foreground truncate">
+                      {project.projectNumber}
+                    </p>
+                  </div>
+                </label>
+              ))}
+            </div>
+          )}
+          
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setProjectDialogOpen(false)}
+              data-testid="button-cancel-projects"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSaveProjects}
+              disabled={updateProjectsMutation.isPending}
+              data-testid="button-save-projects"
+            >
+              {updateProjectsMutation.isPending && (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              )}
+              Save
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </PageLayout>
   );
 }

@@ -1313,6 +1313,54 @@ export async function registerRoutes(
     }
   });
 
+  // Get all projects assigned to a user (for admin)
+  app.get("/api/admin/users/:id/projects", isAuthenticated, isAdmin, async (req, res) => {
+    try {
+      const userId = req.params.id;
+      const projectIds = await storage.getProjectsForUser(userId);
+      res.json(projectIds);
+    } catch (error) {
+      console.error("Error fetching user projects:", error);
+      res.status(500).json({ message: "Failed to fetch user projects" });
+    }
+  });
+
+  // Update project assignments for a user (for admin)
+  app.put("/api/admin/users/:id/projects", isAuthenticated, isAdmin, async (req, res) => {
+    try {
+      const userId = req.params.id;
+      const { projectIds } = req.body;
+      
+      if (!Array.isArray(projectIds)) {
+        return res.status(400).json({ message: "projectIds must be an array" });
+      }
+      
+      // Get current assignments
+      const currentProjectIds = await storage.getProjectsForUser(userId);
+      
+      // Remove from projects no longer assigned
+      for (const projectId of currentProjectIds) {
+        if (!projectIds.includes(projectId)) {
+          await storage.removeProjectMember(projectId, userId);
+        }
+      }
+      
+      // Add to new projects
+      for (const projectId of projectIds) {
+        if (!currentProjectIds.includes(projectId)) {
+          await storage.addProjectMember(projectId, userId);
+        }
+      }
+      
+      // Return updated list
+      const updatedProjectIds = await storage.getProjectsForUser(userId);
+      res.json(updatedProjectIds);
+    } catch (error) {
+      console.error("Error updating user projects:", error);
+      res.status(500).json({ message: "Failed to update user projects" });
+    }
+  });
+
   app.get("/api/admin/settings", isAuthenticated, isAdmin, async (_req, res) => {
     try {
       const settings = await storage.getSettings();
