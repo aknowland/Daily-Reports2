@@ -2326,16 +2326,33 @@ export async function registerRoutes(
   });
 
   // ========== USER PROFILE (auto-create on first access) ==========
+  // Helper to check if email should have admin access
+  const getAdminEmails = (): string[] => {
+    const adminEmails = process.env.ADMIN_EMAILS || "";
+    return adminEmails.split(",").map(e => e.trim().toLowerCase()).filter(Boolean);
+  };
+
   app.get("/api/profile", isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user?.claims?.sub;
+      const userEmail = req.user?.claims?.email?.toLowerCase();
       let profile = await storage.getUserProfile(userId);
+      
+      // Check if this email should have admin access
+      const adminEmails = getAdminEmails();
+      const shouldBeAdmin = userEmail && adminEmails.includes(userEmail);
       
       // Auto-create profile if doesn't exist
       if (!profile) {
         profile = await storage.createOrUpdateUserProfile({
           userId,
-          role: "inspector", // Default role
+          role: shouldBeAdmin ? "admin" : "inspector",
+        });
+      } else if (shouldBeAdmin && profile.role !== "admin") {
+        // Upgrade to admin if email is in admin list but profile isn't admin yet
+        profile = await storage.createOrUpdateUserProfile({
+          userId,
+          role: "admin",
         });
       }
       
