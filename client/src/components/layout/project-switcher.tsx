@@ -33,8 +33,24 @@ export function ProjectSwitcher({ activeProjectId }: ProjectSwitcherProps) {
     },
   });
 
-  if (isLoading || projects.length === 0) {
+  if (isLoading) {
     return null;
+  }
+
+  // Show a disabled button when there are no projects
+  if (projects.length === 0) {
+    return (
+      <Button 
+        variant="ghost" 
+        size="sm" 
+        className="gap-2 text-muted-foreground"
+        disabled
+        data-testid="button-no-projects"
+      >
+        <FolderOpen className="w-4 h-4 shrink-0" />
+        <span className="truncate hidden sm:inline">No Projects</span>
+      </Button>
+    );
   }
 
   const activeProject = projects.find(p => p.id === activeProjectId);
