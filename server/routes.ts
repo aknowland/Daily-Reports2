@@ -1107,14 +1107,14 @@ export async function registerRoutes(
       if (report.project?.address) {
         drawTableRow('Location', report.project.address);
       }
-      doc.moveDown(0.8);
+      drawSectionDivider();
 
       // Report Details Section
       drawSectionHeader('REPORT DETAILS');
       drawTableRow('Inspector', report.inspectorName || 'Unknown');
       drawTableRow('Weather', `${report.weatherType || 'Not specified'}${report.weatherNotes ? ` - ${report.weatherNotes}` : ''}`);
       drawTableRow('Status', (report.status || 'draft').toUpperCase());
-      doc.moveDown(0.8);
+      drawSectionDivider();
 
       // Work Activities Section - Columns: Contractor, Manpower, Work Activities
       const workActivities = (report.workActivities as WorkActivityRow[]) || [];
@@ -1310,7 +1310,7 @@ export async function registerRoutes(
       // Signature Section
       if (report.signaturePath) {
         // Check if we need a new page for signature
-        if (doc.y > doc.page.height - 180) {
+        if (doc.y > doc.page.height - 200) {
           doc.addPage();
         }
         
@@ -1319,15 +1319,31 @@ export async function registerRoutes(
         
         const sigPath = path.join(process.cwd(), report.signaturePath.replace(/^\//, ''));
         if (fs.existsSync(sigPath)) {
-          // Draw signature in a bordered box
+          // Draw signature in a bordered box with label
           const sigBoxY = doc.y;
           const sigBoxHeight = 80;
-          doc.rect(startX, sigBoxY, pageWidth, sigBoxHeight).stroke();
+          doc.lineWidth(1).strokeColor('#374151')
+            .rect(startX, sigBoxY, pageWidth, sigBoxHeight).stroke();
+          doc.strokeColor('#000');
+          
           doc.image(sigPath, startX + 10, sigBoxY + 5, { 
             width: 150,
             height: sigBoxHeight - 10,
             fit: [150, sigBoxHeight - 10]
           });
+          
+          // Signature line and label on the right
+          const sigLineX = startX + 180;
+          const sigLineY = sigBoxY + sigBoxHeight - 20;
+          doc.strokeColor(DIVIDER_GRAY).lineWidth(0.5)
+            .moveTo(sigLineX, sigLineY)
+            .lineTo(startX + pageWidth - 20, sigLineY)
+            .stroke();
+          doc.strokeColor('#000').lineWidth(1);
+          doc.fontSize(7).font('Helvetica').fillColor('#6b7280')
+            .text('Inspector Signature', sigLineX, sigLineY + 3, { width: pageWidth - 200 });
+          doc.fillColor('#000');
+          
           doc.y = sigBoxY + sigBoxHeight;
         }
         
@@ -1336,13 +1352,48 @@ export async function registerRoutes(
         drawTableRow('Report Date', new Date(report.date).toLocaleDateString('en-US', { 
           weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' 
         }));
-        doc.moveDown(0.8);
+        if (report.signedAt) {
+          drawTableRow('Signed At', new Date(report.signedAt).toLocaleString('en-US'));
+        }
+        drawSectionDivider();
       }
 
-      // Footer
-      doc.moveDown(1);
-      doc.fontSize(8).font('Helvetica').fillColor('gray')
-        .text(`Generated on ${new Date().toLocaleString()}`, startX, doc.y, { align: 'center', width: pageWidth });
+      // Professional Disclaimer
+      doc.moveDown(0.5);
+      if (doc.y > doc.page.height - 100) {
+        doc.addPage();
+      }
+      doc.fontSize(7).font('Helvetica-Oblique').fillColor('#6b7280')
+        .text(
+          'This report is a record of field observations made on the date indicated. The information contained herein represents conditions observed at the time of inspection. Any work not observed or documented in this report does not imply acceptance or approval. This document is confidential and intended for authorized recipients only.',
+          startX, doc.y, 
+          { width: pageWidth, align: 'justify' }
+        );
+      doc.fillColor('#000');
+
+      // Add page numbers to all pages using buffered pages
+      const range = doc.bufferedPageRange();
+      const totalPages = range.count;
+      const generatedDate = new Date().toLocaleString('en-US', {
+        year: 'numeric', month: 'short', day: 'numeric',
+        hour: '2-digit', minute: '2-digit'
+      });
+      
+      for (let i = 0; i < totalPages; i++) {
+        doc.switchToPage(i);
+        
+        // Footer with page number and generation date
+        const footerY = doc.page.height - 30;
+        doc.fontSize(8).font('Helvetica').fillColor('#6b7280');
+        
+        // Left: Generated date
+        doc.text(`Generated: ${generatedDate}`, startX, footerY, { width: pageWidth / 2, align: 'left' });
+        
+        // Right: Page number
+        doc.text(`Page ${i + 1} of ${totalPages}`, startX + pageWidth / 2, footerY, { width: pageWidth / 2, align: 'right' });
+        
+        doc.fillColor('#000');
+      }
 
       doc.end();
 
