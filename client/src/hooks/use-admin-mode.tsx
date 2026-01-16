@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from "react";
 import { useAuth } from "./use-auth";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 
 interface AdminModeContextType {
   isAdminMode: boolean;
@@ -33,6 +33,13 @@ export function AdminModeProvider({ children }: { children: ReactNode }) {
     }
   }, [profile]);
 
+  const invalidateRoleBasedQueries = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/my-projects"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/reports"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/auth/profile"] });
+  }, []);
+
   const toggleMode = useCallback(async () => {
     const newValue = !isAdminMode;
     setIsAdminMode(newValue);
@@ -40,10 +47,11 @@ export function AdminModeProvider({ children }: { children: ReactNode }) {
     // Save to database
     try {
       await apiRequest("PATCH", "/api/profile/admin-mode", { preferAdminMode: newValue });
+      invalidateRoleBasedQueries();
     } catch (error) {
       console.error("Failed to save admin mode preference:", error);
     }
-  }, [isAdminMode]);
+  }, [isAdminMode, invalidateRoleBasedQueries]);
 
   const setAdminMode = useCallback(async (value: boolean) => {
     setIsAdminMode(value);
@@ -51,10 +59,11 @@ export function AdminModeProvider({ children }: { children: ReactNode }) {
     // Save to database
     try {
       await apiRequest("PATCH", "/api/profile/admin-mode", { preferAdminMode: value });
+      invalidateRoleBasedQueries();
     } catch (error) {
       console.error("Failed to save admin mode preference:", error);
     }
-  }, []);
+  }, [invalidateRoleBasedQueries]);
 
   return (
     <AdminModeContext.Provider
