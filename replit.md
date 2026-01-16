@@ -103,14 +103,16 @@ POST   /api/reports/:id/pdf       - Generate PDF
 POST   /api/reports/:id/distribute - Send to recipients
 
 Admin:
-GET    /api/admin/users           - List all users
-PATCH  /api/admin/users/:id/role  - Update user role
-GET    /api/admin/settings        - Get app settings
-POST   /api/admin/settings        - Update settings
-POST   /api/admin/logo            - Upload company logo
-GET    /api/admin/invites         - List all invites
-POST   /api/admin/invites         - Create new invite
-DELETE /api/admin/invites/:id     - Delete invite
+GET    /api/admin/users              - List all users
+PATCH  /api/admin/users/:id/role     - Update user role
+GET    /api/admin/users/:id/projects - Get user's assigned projects
+PUT    /api/admin/users/:id/projects - Update user's project assignments
+GET    /api/admin/settings           - Get app settings
+POST   /api/admin/settings           - Update settings
+POST   /api/admin/logo               - Upload company logo
+GET    /api/admin/invites            - List all invites
+POST   /api/admin/invites            - Create new invite
+DELETE /api/admin/invites/:id        - Delete invite
 
 Invites:
 GET    /api/invites/:token        - Get invite by token (public)
