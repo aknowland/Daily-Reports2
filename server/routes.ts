@@ -127,7 +127,7 @@ const companyLogoUpload = multer({
 const createProjectSchema = z.object({
   name: z.string().min(1, "Name is required"),
   projectNumber: z.string().min(1, "Project number is required"),
-  companyId: z.string().optional(),
+  companyId: z.string().nullable().optional(),
   client: z.string().optional(),
   address: z.string().optional(),
   distributionEmails: z.array(z.string().email()).optional().default([]),
@@ -1875,7 +1875,13 @@ export async function registerRoutes(
 
       await storage.updateInviteStatus(invite.id, "accepted");
 
-      res.json({ success: true, message: "Invite accepted successfully" });
+      res.json({ 
+        success: true, 
+        message: "Invite accepted successfully",
+        companyId: invite.companyId,
+        projectsAssigned: projectIds.length,
+        role: invite.role,
+      });
     } catch (error) {
       console.error("Error accepting invite:", error);
       res.status(500).json({ message: "Failed to accept invite" });
