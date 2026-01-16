@@ -1327,13 +1327,12 @@ export async function registerRoutes(
           currentY += photoHeight + captionHeight + 8;
           doc.y = currentY;
         }
-        drawSectionDivider();
       }
 
       // Signature Section
       if (report.signaturePath) {
-        // Check if we need a new page for signature
-        if (doc.y > doc.page.height - 200) {
+        // Check if we need a new page for signature (need 200px of space)
+        if (doc.y > doc.page.height - doc.page.margins.bottom - 200) {
           doc.addPage();
         }
         
@@ -1378,21 +1377,20 @@ export async function registerRoutes(
         if (report.signedAt) {
           drawTableRow('Signed At', new Date(report.signedAt).toLocaleString('en-US'));
         }
-        drawSectionDivider();
       }
 
-      // Professional Disclaimer
-      doc.moveDown(0.5);
-      if (doc.y > doc.page.height - 100) {
-        doc.addPage();
+      // Professional Disclaimer - only add if there's enough space, don't add new page for just disclaimer
+      const disclaimerHeight = 50;
+      if (doc.y + disclaimerHeight < doc.page.height - doc.page.margins.bottom - 40) {
+        doc.moveDown(0.8);
+        doc.fontSize(7).font('Helvetica-Oblique').fillColor('#6b7280')
+          .text(
+            'This report is a record of field observations made on the date indicated. The information contained herein represents conditions observed at the time of inspection. Any work not observed or documented in this report does not imply acceptance or approval. This document is confidential and intended for authorized recipients only.',
+            startX, doc.y, 
+            { width: pageWidth, align: 'justify' }
+          );
+        doc.fillColor('#000');
       }
-      doc.fontSize(7).font('Helvetica-Oblique').fillColor('#6b7280')
-        .text(
-          'This report is a record of field observations made on the date indicated. The information contained herein represents conditions observed at the time of inspection. Any work not observed or documented in this report does not imply acceptance or approval. This document is confidential and intended for authorized recipients only.',
-          startX, doc.y, 
-          { width: pageWidth, align: 'justify' }
-        );
-      doc.fillColor('#000');
 
       // Add page numbers to all pages using buffered pages
       const range = doc.bufferedPageRange();
