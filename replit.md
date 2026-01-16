@@ -175,7 +175,17 @@ Three role levels with different access permissions:
 - Sees only their own reports
 - Can create reports for assigned projects
 
+### Inspector Mode Toggle
+- System and company admins can toggle "View as Inspector" mode via switch in header
+- When enabled (preferAdminMode=false), admin users see only their assigned projects and own reports
+- This allows admins to test/preview the inspector experience without needing separate accounts
+- The toggle persists in user_profiles.preferAdminMode database column
+- Admin-only endpoints (settings, users, invites) are blocked when in inspector mode
+
 ### Implementation Details
+- `isEffectiveSystemAdmin(profile)` - returns true only if role=admin AND preferAdminMode !== false
+- `isEffectiveCompanyAdmin(userId, companyId, profile)` - returns true only if company admin AND preferAdminMode !== false
+- `isAdmin` middleware uses effective admin check to block admin endpoints in inspector mode
 - `getCompaniesForUser(userId)` retrieves all company memberships to determine admin access
 - Storage functions (`getReports`, `getReportStats`) support `companyIds` array for efficient OR filtering
 - Database queries avoid N+1 patterns by filtering at the SQL level using `inArray` and `or` conditions
