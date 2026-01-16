@@ -16,7 +16,7 @@ import {
 } from "@shared/schema";
 import { users, type User } from "@shared/models/auth";
 import { db } from "./db";
-import { eq, desc, and, sql, inArray } from "drizzle-orm";
+import { eq, desc, and, or, sql, inArray } from "drizzle-orm";
 
 export interface IStorage {
   // Projects
@@ -29,12 +29,12 @@ export interface IStorage {
   deleteProject(id: string): Promise<boolean>;
 
   // Daily Reports
-  getReports(options?: { inspectorId?: string; companyId?: string }): Promise<DailyReportWithDetails[]>;
+  getReports(options?: { inspectorId?: string; companyId?: string; companyIds?: string[] }): Promise<DailyReportWithDetails[]>;
   getReport(id: string): Promise<DailyReportWithDetails | undefined>;
   createReport(data: InsertDailyReport): Promise<DailyReport>;
   updateReport(id: string, data: Partial<InsertDailyReport>): Promise<DailyReport | undefined>;
   deleteReport(id: string): Promise<boolean>;
-  getReportStats(options?: { inspectorId?: string; companyId?: string }): Promise<{ total: number; drafts: number; submitted: number }>;
+  getReportStats(options?: { inspectorId?: string; companyId?: string; companyIds?: string[] }): Promise<{ total: number; drafts: number; submitted: number }>;
 
   // Photos
   getPhotosByReport(reportId: string): Promise<Photo[]>;
@@ -163,16 +163,29 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Daily Reports
-  async getReports(options?: { inspectorId?: string; companyId?: string }): Promise<DailyReportWithDetails[]> {
-    const { inspectorId, companyId } = options || {};
+  async getReports(options?: { inspectorId?: string; companyId?: string; companyIds?: string[] }): Promise<DailyReportWithDetails[]> {
+    const { inspectorId, companyId, companyIds } = options || {};
     
     // Build conditions array
     const conditions = [];
-    if (inspectorId) {
-      conditions.push(eq(dailyReports.inspectorId, inspectorId));
-    }
-    if (companyId) {
-      conditions.push(eq(projects.companyId, companyId));
+    if (inspectorId && companyIds && companyIds.length > 0) {
+      // Special case: inspector OR company admin (used for combined access)
+      conditions.push(
+        or(
+          eq(dailyReports.inspectorId, inspectorId),
+          inArray(projects.companyId, companyIds)
+        )
+      );
+    } else {
+      if (inspectorId) {
+        conditions.push(eq(dailyReports.inspectorId, inspectorId));
+      }
+      if (companyId) {
+        conditions.push(eq(projects.companyId, companyId));
+      }
+      if (companyIds && companyIds.length > 0) {
+        conditions.push(inArray(projects.companyId, companyIds));
+      }
     }
     
     const results = await db
@@ -253,16 +266,31 @@ export class DatabaseStorage implements IStorage {
     return true;
   }
 
-  async getReportStats(options?: { inspectorId?: string; companyId?: string }): Promise<{ total: number; drafts: number; submitted: number }> {
-    const { inspectorId, companyId } = options || {};
+  async getReportStats(options?: { inspectorId?: string; companyId?: string; companyIds?: string[] }): Promise<{ total: number; drafts: number; submitted: number }> {
+    const { inspectorId, companyId, companyIds } = options || {};
     
     // Build conditions array
     const conditions = [];
-    if (inspectorId) {
-      conditions.push(eq(dailyReports.inspectorId, inspectorId));
-    }
-    if (companyId) {
-      conditions.push(eq(projects.companyId, companyId));
+    const needsProjectJoin = companyId || (companyIds && companyIds.length > 0);
+    
+    if (inspectorId && companyIds && companyIds.length > 0) {
+      // Special case: inspector OR company admin (used for combined access)
+      conditions.push(
+        or(
+          eq(dailyReports.inspectorId, inspectorId),
+          inArray(projects.companyId, companyIds)
+        )
+      );
+    } else {
+      if (inspectorId) {
+        conditions.push(eq(dailyReports.inspectorId, inspectorId));
+      }
+      if (companyId) {
+        conditions.push(eq(projects.companyId, companyId));
+      }
+      if (companyIds && companyIds.length > 0) {
+        conditions.push(inArray(projects.companyId, companyIds));
+      }
     }
     
     const query = db
@@ -274,7 +302,7 @@ export class DatabaseStorage implements IStorage {
       .from(dailyReports);
     
     // Only join projects if we need to filter by company
-    if (companyId) {
+    if (needsProjectJoin) {
       query.leftJoin(projects, eq(dailyReports.projectId, projects.id));
     }
     
