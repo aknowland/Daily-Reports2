@@ -53,7 +53,7 @@ export default function AdminDashboardPage() {
     {
       title: "All Reports",
       description: "View all daily reports",
-      href: "/admin/reports",
+      href: "/reports",
       icon: <FileText className="w-6 h-6" />,
       count: stats.total,
     },
