@@ -2509,12 +2509,37 @@ export async function registerRoutes(
   });
 
   // ========== USER PROJECTS ==========
-  // Get projects for current user (filtered by active company)
+  // Get projects for current user (respects admin mode for system admins)
   app.get("/api/my-projects", isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
       
-      // Get ALL projects the user is a member of (regardless of company)
+      // System admins in admin mode see ALL projects
+      if (isEffectiveSystemAdmin(profile)) {
+        const allProjects = await storage.getProjects();
+        return res.json(allProjects);
+      }
+      
+      // Company admins in admin mode see all projects from their companies + assigned projects
+      if (profile?.preferAdminMode !== false) {
+        const userCompanyMemberships = await storage.getCompaniesForUser(userId);
+        const adminCompanyIds = userCompanyMemberships
+          .filter(m => m.role === "admin")
+          .map(m => m.companyId);
+        
+        if (adminCompanyIds.length > 0) {
+          const allProjects = await storage.getProjects();
+          const assignedProjectIds = await storage.getProjectsForUser(userId);
+          const filtered = allProjects.filter(p => 
+            (p.companyId && adminCompanyIds.includes(p.companyId)) || 
+            assignedProjectIds.includes(p.id)
+          );
+          return res.json(filtered);
+        }
+      }
+      
+      // Regular inspectors (or admins in inspector mode): only assigned projects
       const projectsList = await storage.getAllProjectsForUser(userId);
       res.json(projectsList);
     } catch (error) {
