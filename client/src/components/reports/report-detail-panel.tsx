@@ -1,4 +1,5 @@
-import { useMutation } from "@tanstack/react-query";
+import { useState } from "react";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/ui/status-badge";
@@ -21,6 +22,13 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { format } from "date-fns";
@@ -44,6 +52,7 @@ import {
   Package,
   Hash,
   Trash2,
+  FolderPlus,
 } from "lucide-react";
 import type { DailyReport, Project, Photo, VisitorRow, WorkActivityRow } from "@shared/schema";
 
@@ -71,6 +80,36 @@ export function ReportDetailPanel({
   isCompanyAdmin = false,
 }: ReportDetailPanelProps) {
   const { toast } = useToast();
+  const [showAssignProject, setShowAssignProject] = useState(false);
+  const [selectedProjectId, setSelectedProjectId] = useState<string>("");
+
+  // Fetch projects for assignment dropdown
+  const { data: projects } = useQuery<Project[]>({
+    queryKey: ["/api/projects"],
+    enabled: showAssignProject,
+  });
+
+  const assignProjectMutation = useMutation({
+    mutationFn: async (projectId: string) => {
+      return apiRequest("PATCH", `/api/reports/${report?.id}`, { projectId });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/reports"] });
+      toast({
+        title: "Project Assigned",
+        description: "The report has been assigned to the selected project.",
+      });
+      setShowAssignProject(false);
+      setSelectedProjectId("");
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to assign project",
+        variant: "destructive",
+      });
+    },
+  });
 
   const generatePdfMutation = useMutation({
     mutationFn: async () => {
@@ -152,12 +191,20 @@ export function ReportDetailPanel({
         <SheetHeader className="p-6 pb-4 border-b">
           <div className="flex items-start justify-between gap-4 pr-8">
             <div className="space-y-1">
-              <SheetTitle className="text-xl">{report.project?.name || "Report"}</SheetTitle>
-              <SheetDescription className="flex items-center gap-2">
-                <Hash className="w-3 h-3" />
-                {report.project?.projectNumber}
-                {report.project?.client && ` • ${report.project.client}`}
-              </SheetDescription>
+              <SheetTitle className="text-xl">
+                {report.project?.name || (report.projectId ? "Report" : "Personal Report")}
+              </SheetTitle>
+              {report.project ? (
+                <SheetDescription className="flex items-center gap-2">
+                  <Hash className="w-3 h-3" />
+                  {report.project?.projectNumber}
+                  {report.project?.client && ` • ${report.project.client}`}
+                </SheetDescription>
+              ) : !report.projectId ? (
+                <SheetDescription className="text-muted-foreground">
+                  Not assigned to a project
+                </SheetDescription>
+              ) : null}
             </div>
             <StatusBadge status={report.status || "draft"} />
           </div>
@@ -168,6 +215,17 @@ export function ReportDetailPanel({
                   <Edit className="w-4 h-4 mr-2" />
                   Edit
                 </Link>
+              </Button>
+            )}
+            {!report.projectId && canEdit && (
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => setShowAssignProject(true)}
+                data-testid="button-assign-project"
+              >
+                <FolderPlus className="w-4 h-4 mr-2" />
+                Assign Project
               </Button>
             )}
             {report.pdfPath ? (
@@ -475,6 +533,48 @@ export function ReportDetailPanel({
           </div>
         </ScrollArea>
       </SheetContent>
+
+      <AlertDialog open={showAssignProject} onOpenChange={setShowAssignProject}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Assign to Project</AlertDialogTitle>
+            <AlertDialogDescription>
+              Select a project to assign this report to. This will associate the report with the selected project.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="py-4">
+            <Select value={selectedProjectId} onValueChange={setSelectedProjectId}>
+              <SelectTrigger data-testid="select-assign-project">
+                <SelectValue placeholder="Select a project" />
+              </SelectTrigger>
+              <SelectContent>
+                {projects?.map((project) => (
+                  <SelectItem key={project.id} value={project.id}>
+                    {project.name} ({project.projectNumber})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setSelectedProjectId("")}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => assignProjectMutation.mutate(selectedProjectId)}
+              disabled={!selectedProjectId || assignProjectMutation.isPending}
+              data-testid="button-confirm-assign"
+            >
+              {assignProjectMutation.isPending ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Assigning...
+                </>
+              ) : (
+                "Assign"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Sheet>
   );
 }
