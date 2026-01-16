@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "wouter";
+import { Link, useSearch, useLocation } from "wouter";
 import { PageLayout } from "@/components/layout/page-layout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -21,16 +21,34 @@ import {
   Search, 
   FileText,
   AlertCircle,
-  Filter
+  Filter,
+  FolderOpen,
+  X
 } from "lucide-react";
-import type { DailyReportWithDetails } from "@shared/schema";
+import type { DailyReportWithDetails, Project } from "@shared/schema";
 
 export default function ReportsListPage() {
   const { user, isAdmin, isCompanyAdmin } = useAuth();
+  const [, setLocation] = useLocation();
+  const searchString = useSearch();
+  const urlParams = new URLSearchParams(searchString);
+  const projectIdFromUrl = urlParams.get("project");
+  
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [projectFilter, setProjectFilter] = useState<string>(projectIdFromUrl || "all");
   const [selectedReport, setSelectedReport] = useState<DailyReportWithDetails | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
+  
+  useEffect(() => {
+    if (projectIdFromUrl) {
+      setProjectFilter(projectIdFromUrl);
+    }
+  }, [projectIdFromUrl]);
+  
+  const { data: projects } = useQuery<Project[]>({
+    queryKey: ["/api/projects"],
+  });
 
   const { data: reportsData, isLoading, error } = useQuery<{
     reports: DailyReportWithDetails[];
@@ -55,6 +73,8 @@ export default function ReportsListPage() {
     }
   }, [reports, selectedReport?.id]);
 
+  const selectedProject = projects?.find(p => p.id === projectFilter);
+  
   const filteredReports = reports.filter((report) => {
     const matchesSearch = 
       report.project?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -62,9 +82,15 @@ export default function ReportsListPage() {
       report.workPerformed?.toLowerCase().includes(searchTerm.toLowerCase());
     
     const matchesStatus = statusFilter === "all" || report.status === statusFilter;
+    const matchesProject = projectFilter === "all" || report.projectId === projectFilter;
 
-    return matchesSearch && matchesStatus;
+    return matchesSearch && matchesStatus && matchesProject;
   });
+  
+  const clearProjectFilter = () => {
+    setProjectFilter("all");
+    setLocation("/reports");
+  };
 
   const handleReportClick = (report: DailyReportWithDetails) => {
     setSelectedReport(report);
@@ -78,7 +104,7 @@ export default function ReportsListPage() {
           <div>
             <h1 className="text-2xl font-bold">Daily Reports</h1>
             <p className="text-muted-foreground">
-              {reports.length} total reports
+              {filteredReports.length} {projectFilter !== "all" ? "reports for this project" : "total reports"}
             </p>
           </div>
           <Button asChild data-testid="button-new-report">
@@ -88,6 +114,33 @@ export default function ReportsListPage() {
             </Link>
           </Button>
         </div>
+
+        {selectedProject && (
+          <Card className="bg-primary/5 border-primary/20">
+            <CardContent className="p-4 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                  <FolderOpen className="w-5 h-5 text-primary" />
+                </div>
+                <div>
+                  <p className="font-medium">{selectedProject.name}</p>
+                  <p className="text-sm text-muted-foreground">
+                    #{selectedProject.projectNumber}
+                    {selectedProject.client && ` • ${selectedProject.client}`}
+                  </p>
+                </div>
+              </div>
+              <Button 
+                variant="ghost" 
+                size="icon"
+                onClick={clearProjectFilter}
+                data-testid="button-clear-project-filter"
+              >
+                <X className="w-4 h-4" />
+              </Button>
+            </CardContent>
+          </Card>
+        )}
 
         <div className="flex flex-col sm:flex-row gap-3">
           <div className="relative flex-1">
@@ -142,7 +195,7 @@ export default function ReportsListPage() {
           <Card>
             <CardContent className="p-8 text-center">
               <FileText className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
-              {searchTerm || statusFilter !== "all" ? (
+              {searchTerm || statusFilter !== "all" || projectFilter !== "all" ? (
                 <>
                   <p className="text-lg font-medium">No matching reports</p>
                   <p className="text-sm text-muted-foreground mt-1">
@@ -154,6 +207,8 @@ export default function ReportsListPage() {
                     onClick={() => {
                       setSearchTerm("");
                       setStatusFilter("all");
+                      setProjectFilter("all");
+                      setLocation("/reports");
                     }}
                     data-testid="button-clear-filters"
                   >
