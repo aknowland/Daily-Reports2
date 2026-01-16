@@ -399,9 +399,29 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/projects/:id", isAuthenticated, isAdmin, async (req, res) => {
+  app.delete("/api/projects/:id", isAuthenticated, async (req: any, res) => {
     try {
+      const userId = req.user?.claims?.sub;
       const projectId = req.params.id;
+      const profile = await storage.getUserProfile(userId);
+      
+      // Get project to check permissions
+      const project = await storage.getProject(projectId);
+      if (!project) {
+        return res.status(404).json({ message: "Project not found" });
+      }
+      
+      // Check permissions: system admin or company admin of the project's company
+      const isSystemAdmin = profile?.role === "admin";
+      let isCompanyAdmin = false;
+      if (project.companyId) {
+        const membership = await storage.getCompanyMember(project.companyId, userId);
+        isCompanyAdmin = membership?.role === "admin";
+      }
+      
+      if (!isSystemAdmin && !isCompanyAdmin) {
+        return res.status(403).json({ message: "Access denied. Only admins can delete projects." });
+      }
       
       // Check if project has any reports
       const projectReports = await storage.getReportsByProject(projectId);
@@ -429,8 +449,35 @@ export async function registerRoutes(
   });
 
   // ========== PROJECT MEMBERS ==========
-  app.get("/api/projects/:id/members", isAuthenticated, isAdmin, async (req, res) => {
+  // Helper to check admin access for project
+  async function checkProjectAdminAccess(userId: string, projectId: string): Promise<{ allowed: boolean; project?: any }> {
+    const profile = await storage.getUserProfile(userId);
+    const project = await storage.getProject(projectId);
+    if (!project) return { allowed: false };
+    
+    const isSystemAdmin = profile?.role === "admin";
+    if (isSystemAdmin) return { allowed: true, project };
+    
+    if (project.companyId) {
+      const membership = await storage.getCompanyMember(project.companyId, userId);
+      if (membership?.role === "admin") return { allowed: true, project };
+    }
+    
+    return { allowed: false, project };
+  }
+
+  app.get("/api/projects/:id/members", isAuthenticated, async (req: any, res) => {
     try {
+      const userId = req.user?.claims?.sub;
+      const { allowed, project } = await checkProjectAdminAccess(userId, req.params.id);
+      
+      if (!project) {
+        return res.status(404).json({ message: "Project not found" });
+      }
+      if (!allowed) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
       const members = await storage.getProjectMembers(req.params.id);
       res.json(members);
     } catch (error) {
@@ -439,8 +486,18 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/projects/:id/members", isAuthenticated, isAdmin, async (req, res) => {
+  app.post("/api/projects/:id/members", isAuthenticated, async (req: any, res) => {
     try {
+      const userId = req.user?.claims?.sub;
+      const { allowed, project } = await checkProjectAdminAccess(userId, req.params.id);
+      
+      if (!project) {
+        return res.status(404).json({ message: "Project not found" });
+      }
+      if (!allowed) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
       const validated = addProjectMemberSchema.parse(req.body);
       const member = await storage.addProjectMember(req.params.id, validated.userId);
       res.status(201).json(member);
@@ -453,8 +510,18 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/projects/:id/members/:userId", isAuthenticated, isAdmin, async (req, res) => {
+  app.delete("/api/projects/:id/members/:userId", isAuthenticated, async (req: any, res) => {
     try {
+      const userId = req.user?.claims?.sub;
+      const { allowed, project } = await checkProjectAdminAccess(userId, req.params.id);
+      
+      if (!project) {
+        return res.status(404).json({ message: "Project not found" });
+      }
+      if (!allowed) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
       await storage.removeProjectMember(req.params.id, req.params.userId);
       res.status(204).send();
     } catch (error) {
@@ -661,7 +728,20 @@ export async function registerRoutes(
       if (!existing) {
         return res.status(404).json({ message: "Report not found" });
       }
-      if (profile?.role !== "admin" && existing.inspectorId !== userId) {
+      
+      // Check permissions: system admin, company admin, or owner
+      const isSystemAdmin = profile?.role === "admin";
+      const isOwner = existing.inspectorId === userId;
+      let isCompanyAdmin = false;
+      if (existing.projectId) {
+        const project = await storage.getProject(existing.projectId);
+        if (project?.companyId) {
+          const membership = await storage.getCompanyMember(project.companyId, userId);
+          isCompanyAdmin = membership?.role === "admin";
+        }
+      }
+      
+      if (!isSystemAdmin && !isCompanyAdmin && !isOwner) {
         return res.status(403).json({ message: "Access denied" });
       }
       
@@ -718,7 +798,19 @@ export async function registerRoutes(
         return res.status(404).json({ message: "Report not found" });
       }
       
-      if (profile?.role !== "admin" && report.inspectorId !== userId) {
+      // Check permissions: system admin, company admin, or owner
+      const isSystemAdmin = profile?.role === "admin";
+      const isOwner = report.inspectorId === userId;
+      let isCompanyAdmin = false;
+      if (report.projectId) {
+        const project = await storage.getProject(report.projectId);
+        if (project?.companyId) {
+          const membership = await storage.getCompanyMember(project.companyId, userId);
+          isCompanyAdmin = membership?.role === "admin";
+        }
+      }
+      
+      if (!isSystemAdmin && !isCompanyAdmin && !isOwner) {
         return res.status(403).json({ message: "Access denied" });
       }
       
@@ -747,7 +839,19 @@ export async function registerRoutes(
         return res.status(404).json({ message: "Report not found" });
       }
       
-      if (profile?.role !== "admin" && report.inspectorId !== userId) {
+      // Check permissions: system admin, company admin, or owner
+      const isSystemAdmin = profile?.role === "admin";
+      const isOwner = report.inspectorId === userId;
+      let isCompanyAdmin = false;
+      if (report.projectId) {
+        const project = await storage.getProject(report.projectId);
+        if (project?.companyId) {
+          const membership = await storage.getCompanyMember(project.companyId, userId);
+          isCompanyAdmin = membership?.role === "admin";
+        }
+      }
+      
+      if (!isSystemAdmin && !isCompanyAdmin && !isOwner) {
         return res.status(403).json({ message: "Access denied" });
       }
       
@@ -775,7 +879,20 @@ export async function registerRoutes(
       if (!existing) {
         return res.status(404).json({ message: "Report not found" });
       }
-      if (profile?.role !== "admin" && existing.inspectorId !== userId) {
+      
+      // Check permissions: system admin, company admin, or owner
+      const isSystemAdmin = profile?.role === "admin";
+      const isOwner = existing.inspectorId === userId;
+      let isCompanyAdmin = false;
+      if (existing.projectId) {
+        const project = await storage.getProject(existing.projectId);
+        if (project?.companyId) {
+          const membership = await storage.getCompanyMember(project.companyId, userId);
+          isCompanyAdmin = membership?.role === "admin";
+        }
+      }
+      
+      if (!isSystemAdmin && !isCompanyAdmin && !isOwner) {
         return res.status(403).json({ message: "Access denied" });
       }
       
@@ -820,7 +937,20 @@ export async function registerRoutes(
       if (!report) {
         return res.status(404).json({ message: "Report not found" });
       }
-      if (profile?.role !== "admin" && report.inspectorId !== userId) {
+      
+      // Check permissions: system admin, company admin, or owner
+      const isSystemAdmin = profile?.role === "admin";
+      const isOwner = report.inspectorId === userId;
+      let isCompanyAdmin = false;
+      if (report.projectId) {
+        const project = await storage.getProject(report.projectId);
+        if (project?.companyId) {
+          const membership = await storage.getCompanyMember(project.companyId, userId);
+          isCompanyAdmin = membership?.role === "admin";
+        }
+      }
+      
+      if (!isSystemAdmin && !isCompanyAdmin && !isOwner) {
         return res.status(403).json({ message: "Access denied" });
       }
 
@@ -1253,7 +1383,20 @@ export async function registerRoutes(
       if (!report) {
         return res.status(404).json({ message: "Report not found" });
       }
-      if (profile?.role !== "admin" && report.inspectorId !== userId) {
+      
+      // Check permissions: system admin, company admin, or owner
+      const isSystemAdmin = profile?.role === "admin";
+      const isOwner = report.inspectorId === userId;
+      let isCompanyAdmin = false;
+      if (report.projectId) {
+        const project = await storage.getProject(report.projectId);
+        if (project?.companyId) {
+          const membership = await storage.getCompanyMember(project.companyId, userId);
+          isCompanyAdmin = membership?.role === "admin";
+        }
+      }
+      
+      if (!isSystemAdmin && !isCompanyAdmin && !isOwner) {
         return res.status(403).json({ message: "Access denied" });
       }
 
