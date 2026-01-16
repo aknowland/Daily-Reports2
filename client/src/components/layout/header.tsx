@@ -16,7 +16,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
-import { LogOut, User, Settings, HardHat, Menu, LayoutDashboard, FolderOpen, Users, UserPlus, Building2, ClipboardList } from "lucide-react";
+import { LogOut, User, Settings, HardHat, Menu, LayoutDashboard, FolderOpen, Users, UserPlus, Building2, ClipboardList, FilePlus, Shield } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
@@ -24,6 +24,7 @@ import { CompanySwitcher } from "./company-switcher";
 import { ProjectSwitcher } from "./project-switcher";
 import { ModeToggle } from "./mode-toggle";
 import { useAdminMode } from "@/hooks/use-admin-mode";
+import { Separator } from "@/components/ui/separator";
 
 interface HeaderProps {
   title?: string;
@@ -51,57 +52,136 @@ export function Header({ title = "Field Daily Reports" }: HeaderProps) {
     return user?.email || "User";
   };
 
-  const adminNavItems = [
-    { href: "/admin", label: "Dashboard", icon: LayoutDashboard },
-    { href: "/admin/companies", label: "Companies", icon: Building2 },
-    { href: "/admin/projects", label: "Projects", icon: FolderOpen },
-    { href: "/admin/users", label: "Users", icon: Users },
+  const inspectorNavItems = [
+    { href: "/", label: "Dashboard", icon: LayoutDashboard },
+    { href: "/reports/new", label: "New Report", icon: FilePlus },
+    { href: "/profile", label: "My Profile", icon: User },
+    { href: "/companies", label: "My Companies", icon: Building2 },
+    { href: "/my-projects", label: "My Projects", icon: FolderOpen },
+  ];
+
+  const companyAdminNavItems = [
+    { href: "/company/team", label: "Team Members", icon: Users },
+    { href: "/company/projects", label: "Company Projects", icon: FolderOpen },
+    { href: "/company/requests", label: "Join Requests", icon: ClipboardList },
+    { href: "/company/settings", label: "Company Settings", icon: Settings },
+  ];
+
+  const systemAdminNavItems = [
+    { href: "/admin", label: "Admin Dashboard", icon: LayoutDashboard },
+    { href: "/admin/companies", label: "All Companies", icon: Building2 },
+    { href: "/admin/projects", label: "All Projects", icon: FolderOpen },
+    { href: "/admin/users", label: "All Users", icon: Users },
     { href: "/admin/invites", label: "Invites", icon: UserPlus },
   ];
+
+  const renderNavItems = (items: typeof inspectorNavItems, sectionTitle?: string) => (
+    <>
+      {sectionTitle && (
+        <div className="px-3 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+          {sectionTitle}
+        </div>
+      )}
+      {items.map((item) => {
+        const isActive = item.href === "/" 
+          ? location === "/" 
+          : location.startsWith(item.href);
+        const Icon = item.icon;
+        return (
+          <Link key={item.href} href={item.href} onClick={() => setSheetOpen(false)}>
+            <div
+              className={cn(
+                "flex items-center gap-3 px-3 py-2 rounded-md transition-colors",
+                isActive 
+                  ? "bg-primary text-primary-foreground" 
+                  : "hover-elevate"
+              )}
+              data-testid={`nav-${item.label.toLowerCase().replace(/\s+/g, '-')}`}
+            >
+              <Icon className="w-5 h-5" />
+              <span className="font-medium">{item.label}</span>
+            </div>
+          </Link>
+        );
+      })}
+    </>
+  );
 
   return (
     <header className="sticky top-0 z-40 w-full border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="flex h-14 items-center justify-between gap-4 px-4">
         <div className="flex items-center gap-2">
-          {showAdminFeatures && (
+          {user && (
             <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
               <SheetTrigger asChild>
-                <Button variant="ghost" size="icon" data-testid="button-admin-menu">
+                <Button variant="ghost" size="icon" data-testid="button-nav-menu">
                   <Menu className="w-5 h-5" />
                 </Button>
               </SheetTrigger>
-              <SheetContent side="left" className="w-64">
+              <SheetContent side="left" className="w-64 overflow-y-auto">
                 <SheetHeader>
                   <SheetTitle className="flex items-center gap-2">
                     <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
                       <HardHat className="w-5 h-5 text-primary-foreground" />
                     </div>
-                    Admin Panel
+                    Field Daily Reports
                   </SheetTitle>
                 </SheetHeader>
                 <nav className="mt-6 space-y-1">
-                  {adminNavItems.map((item) => {
-                    const isActive = location === item.href || 
-                      (item.href !== "/admin" && location.startsWith(item.href));
-                    const Icon = item.icon;
-                    return (
-                      <Link key={item.href} href={item.href} onClick={() => setSheetOpen(false)}>
-                        <div
-                          className={cn(
-                            "flex items-center gap-3 px-3 py-2 rounded-md transition-colors",
-                            isActive 
-                              ? "bg-primary text-primary-foreground" 
-                              : "hover-elevate"
-                          )}
-                          data-testid={`nav-admin-${item.label.toLowerCase()}`}
-                        >
-                          <Icon className="w-5 h-5" />
-                          <span className="font-medium">{item.label}</span>
-                        </div>
-                      </Link>
-                    );
-                  })}
+                  {renderNavItems(inspectorNavItems)}
+                  
+                  {isCompanyAdmin && activeCompany && (
+                    <>
+                      <Separator className="my-4" />
+                      {renderNavItems(companyAdminNavItems, `${activeCompany.name}`)}
+                    </>
+                  )}
+                  
+                  {showAdminFeatures && (
+                    <>
+                      <Separator className="my-4" />
+                      <div className="flex items-center gap-2 px-3 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                        <Shield className="w-3 h-3" />
+                        System Admin
+                      </div>
+                      {systemAdminNavItems.map((item) => {
+                        const isActive = location === item.href || 
+                          (item.href !== "/admin" && location.startsWith(item.href));
+                        const Icon = item.icon;
+                        return (
+                          <Link key={item.href} href={item.href} onClick={() => setSheetOpen(false)}>
+                            <div
+                              className={cn(
+                                "flex items-center gap-3 px-3 py-2 rounded-md transition-colors",
+                                isActive 
+                                  ? "bg-primary text-primary-foreground" 
+                                  : "hover-elevate"
+                              )}
+                              data-testid={`nav-admin-${item.label.toLowerCase().replace(/\s+/g, '-')}`}
+                            >
+                              <Icon className="w-5 h-5" />
+                              <span className="font-medium">{item.label}</span>
+                            </div>
+                          </Link>
+                        );
+                      })}
+                    </>
+                  )}
                 </nav>
+                
+                <Separator className="my-4" />
+                <Button 
+                  variant="ghost" 
+                  className="w-full justify-start text-destructive"
+                  onClick={() => {
+                    setSheetOpen(false);
+                    logout();
+                  }}
+                  data-testid="nav-logout"
+                >
+                  <LogOut className="w-5 h-5 mr-3" />
+                  Sign out
+                </Button>
               </SheetContent>
             </Sheet>
           )}
