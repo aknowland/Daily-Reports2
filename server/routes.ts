@@ -137,7 +137,7 @@ const createProjectSchema = z.object({
 const updateProjectSchema = createProjectSchema.partial();
 
 const createReportSchema = z.object({
-  projectId: z.string().min(1, "Project is required"),
+  projectId: z.string().min(1).nullable().optional(), // Optional to allow personal reports without a project
   date: z.string().or(z.date()).transform(val => new Date(val)),
   weatherType: z.enum(["clear", "cloudy", "rain", "wind", "heat", "cold"]).optional(),
   weatherNotes: z.string().optional(),
@@ -642,22 +642,26 @@ export async function registerRoutes(
       const profile = await storage.getUserProfile(userId);
       const validated = createReportSchema.parse(req.body);
       
-      // Verify user has access to the project (respects inspector mode)
-      // In inspector mode or as regular inspector, user must be assigned to project
-      const isProjectMember = await storage.isUserMemberOfProject(validated.projectId, userId);
-      if (!isEffectiveSystemAdmin(profile) && !isProjectMember) {
-        // Check if user is effective company admin for this project's company
-        const project = await storage.getProject(validated.projectId);
-        const hasCompanyAccess = project?.companyId && 
-          await isEffectiveCompanyAdmin(userId, project.companyId, profile);
-        
-        if (!hasCompanyAccess) {
-          return res.status(403).json({ message: "You are not assigned to this project" });
+      // If a project is specified, verify user has access to it
+      if (validated.projectId) {
+        // In inspector mode or as regular inspector, user must be assigned to project
+        const isProjectMember = await storage.isUserMemberOfProject(validated.projectId, userId);
+        if (!isEffectiveSystemAdmin(profile) && !isProjectMember) {
+          // Check if user is effective company admin for this project's company
+          const project = await storage.getProject(validated.projectId);
+          const hasCompanyAccess = project?.companyId && 
+            await isEffectiveCompanyAdmin(userId, project.companyId, profile);
+          
+          if (!hasCompanyAccess) {
+            return res.status(403).json({ message: "You are not assigned to this project" });
+          }
         }
       }
+      // If no project is specified, this is a personal/unassigned report - always allowed
       
       const report = await storage.createReport({
         ...validated,
+        projectId: validated.projectId || null,
         inspectorId: userId,
       });
       res.status(201).json(report);
