@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from "react";
-
-const ADMIN_MODE_KEY = "fieldReports_adminMode";
+import { useAuth } from "./use-auth";
+import { apiRequest } from "@/lib/queryClient";
 
 interface AdminModeContextType {
   isAdminMode: boolean;
@@ -11,27 +11,49 @@ interface AdminModeContextType {
 
 const AdminModeContext = createContext<AdminModeContextType | null>(null);
 
-function getInitialMode(): boolean {
-  if (typeof window !== "undefined") {
-    const stored = localStorage.getItem(ADMIN_MODE_KEY);
-    return stored === "true";
-  }
-  return true;
-}
-
 export function AdminModeProvider({ children }: { children: ReactNode }) {
-  const [isAdminMode, setIsAdminMode] = useState<boolean>(getInitialMode);
+  const { profile, isLoading } = useAuth();
+  const [isAdminMode, setIsAdminMode] = useState<boolean>(true);
+  const [initialized, setInitialized] = useState(false);
 
+  // Initialize from profile when it loads
   useEffect(() => {
-    localStorage.setItem(ADMIN_MODE_KEY, String(isAdminMode));
+    if (!isLoading && profile && !initialized) {
+      // Use the preference from database, default to true for admins
+      const preferAdminMode = profile.preferAdminMode ?? true;
+      setIsAdminMode(preferAdminMode);
+      setInitialized(true);
+    }
+  }, [profile, isLoading, initialized]);
+
+  // Reset initialized when profile changes (e.g., logout then login as different user)
+  useEffect(() => {
+    if (!profile) {
+      setInitialized(false);
+    }
+  }, [profile]);
+
+  const toggleMode = useCallback(async () => {
+    const newValue = !isAdminMode;
+    setIsAdminMode(newValue);
+    
+    // Save to database
+    try {
+      await apiRequest("PATCH", "/api/profile/admin-mode", { preferAdminMode: newValue });
+    } catch (error) {
+      console.error("Failed to save admin mode preference:", error);
+    }
   }, [isAdminMode]);
 
-  const toggleMode = useCallback(() => {
-    setIsAdminMode((prev) => !prev);
-  }, []);
-
-  const setAdminMode = useCallback((value: boolean) => {
+  const setAdminMode = useCallback(async (value: boolean) => {
     setIsAdminMode(value);
+    
+    // Save to database
+    try {
+      await apiRequest("PATCH", "/api/profile/admin-mode", { preferAdminMode: value });
+    } catch (error) {
+      console.error("Failed to save admin mode preference:", error);
+    }
   }, []);
 
   return (

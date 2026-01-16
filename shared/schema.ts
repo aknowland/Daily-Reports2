@@ -56,6 +56,8 @@ export const userProfiles = pgTable("user_profiles", {
   certifications: json("certifications").$type<string[]>().default([]),
   // Onboarding
   hasSeenOnboarding: boolean("has_seen_onboarding").default(false),
+  // Admin mode preference (for system admins)
+  preferAdminMode: boolean("prefer_admin_mode").default(true),
 });
 
 // Projects table
