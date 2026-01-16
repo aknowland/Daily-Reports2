@@ -235,17 +235,20 @@ export default function MyProjectsPage() {
               return (
                 <Card 
                   key={project.id} 
-                  className={isActive ? "ring-2 ring-primary" : ""}
+                  className={`hover-elevate ${isActive ? "ring-2 ring-primary" : ""}`}
                   data-testid={`card-project-${project.id}`}
                 >
                   <CardHeader>
                     <div className="flex items-start justify-between gap-2">
-                      <div className="flex items-center gap-2">
+                      <Link 
+                        href={`/reports?project=${project.id}`}
+                        className="flex items-center gap-2 cursor-pointer flex-1 min-w-0"
+                      >
                         <FolderOpen className="w-5 h-5 text-muted-foreground" />
-                        <CardTitle className="text-lg" data-testid={`text-project-name-${project.id}`}>
+                        <CardTitle className="text-lg hover:text-primary transition-colors" data-testid={`text-project-name-${project.id}`}>
                           {project.name}
                         </CardTitle>
-                      </div>
+                      </Link>
                       <div className="flex items-center gap-1">
                         {isPersonal && (
                           <Badge variant="secondary" data-testid={`badge-personal-${project.id}`}>
@@ -260,24 +263,34 @@ export default function MyProjectsPage() {
                         )}
                       </div>
                     </div>
-                    <CardDescription className="flex items-center gap-2">
-                      <Hash className="w-3 h-3" />
-                      {project.projectNumber}
-                    </CardDescription>
+                    <Link 
+                      href={`/reports?project=${project.id}`}
+                      className="block cursor-pointer"
+                    >
+                      <CardDescription className="flex items-center gap-2">
+                        <Hash className="w-3 h-3" />
+                        {project.projectNumber}
+                      </CardDescription>
+                    </Link>
                   </CardHeader>
                   <CardContent className="space-y-3">
-                    {project.client && (
-                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <Building2 className="w-4 h-4" />
-                        <span>{project.client}</span>
-                      </div>
-                    )}
-                    {project.address && (
-                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <MapPin className="w-4 h-4" />
-                        <span>{project.address}</span>
-                      </div>
-                    )}
+                    <Link 
+                      href={`/reports?project=${project.id}`}
+                      className="block cursor-pointer"
+                    >
+                      {project.client && (
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                          <Building2 className="w-4 h-4" />
+                          <span>{project.client}</span>
+                        </div>
+                      )}
+                      {project.address && (
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground mt-2">
+                          <MapPin className="w-4 h-4" />
+                          <span>{project.address}</span>
+                        </div>
+                      )}
+                    </Link>
                     <div className="flex flex-col gap-2 mt-2">
                       {isPersonal && adminCompanies.length > 0 && (
                         <Button
