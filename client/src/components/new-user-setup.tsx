@@ -47,13 +47,16 @@ export function NewUserSetup({ open, onComplete }: NewUserSetupProps) {
   const [projectNumber, setProjectNumber] = useState("");
   const [projectClient, setProjectClient] = useState("");
   const [projectAddress, setProjectAddress] = useState("");
+  const [createdCompanyId, setCreatedCompanyId] = useState<string | null>(null);
   const { toast } = useToast();
 
   const createCompanyMutation = useMutation({
     mutationFn: async (data: { name: string; address?: string; phone?: string; email?: string }) => {
-      return apiRequest("POST", "/api/my-companies", data);
+      const response = await apiRequest("POST", "/api/my-companies", data);
+      return response;
     },
-    onSuccess: () => {
+    onSuccess: (data: any) => {
+      setCreatedCompanyId(data.id);
       queryClient.invalidateQueries({ queryKey: ["/api/my-companies"] });
       queryClient.invalidateQueries({ queryKey: ["/api/my-company"] });
       queryClient.invalidateQueries({ queryKey: ["/api/profile"] });
@@ -78,9 +81,10 @@ export function NewUserSetup({ open, onComplete }: NewUserSetupProps) {
 
   const acceptInviteMutation = useMutation({
     mutationFn: async (token: string) => {
-      return apiRequest("POST", `/api/invites/${token}/accept`);
+      const response = await apiRequest("POST", `/api/invites/${token}/accept`);
+      return response;
     },
-    onSuccess: () => {
+    onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/my-companies"] });
       queryClient.invalidateQueries({ queryKey: ["/api/my-company"] });
       queryClient.invalidateQueries({ queryKey: ["/api/my-projects"] });
@@ -89,8 +93,22 @@ export function NewUserSetup({ open, onComplete }: NewUserSetupProps) {
         title: "Welcome!",
         description: "You've successfully joined the company.",
       });
-      setStep("done");
-      setTimeout(() => onComplete(), 1500);
+      
+      // If user was assigned projects via invite, complete onboarding
+      // Otherwise, only admins can create projects
+      if (data.projectsAssigned > 0) {
+        // Already assigned to projects, onboarding complete
+        setStep("done");
+        setTimeout(() => onComplete(), 1500);
+      } else if (data.companyId && data.role === "admin") {
+        // Admin with no projects - prompt to create one
+        setCreatedCompanyId(data.companyId);
+        setStep("project");
+      } else {
+        // Inspector with no projects - complete onboarding, they'll be assigned later
+        setStep("done");
+        setTimeout(() => onComplete(), 1500);
+      }
     },
     onError: (error: any) => {
       setInviteError(error.message || "Invalid or expired invite code");
@@ -98,11 +116,12 @@ export function NewUserSetup({ open, onComplete }: NewUserSetupProps) {
   });
 
   const createProjectMutation = useMutation({
-    mutationFn: async (data: { name: string; projectNumber: string; client?: string; address?: string }) => {
-      return apiRequest("POST", "/api/my-projects", data);
+    mutationFn: async (data: { name: string; projectNumber: string; client?: string; address?: string; companyId?: string }) => {
+      return apiRequest("POST", "/api/projects", data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/my-projects"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
       toast({
         title: "Project Created",
         description: "You're all set to create your first report!",
@@ -166,6 +185,7 @@ export function NewUserSetup({ open, onComplete }: NewUserSetupProps) {
       name: projectName.trim(),
       projectNumber: projectNumber.trim(),
       client: projectClient.trim() || undefined,
+      companyId: createdCompanyId || undefined,
       address: projectAddress.trim() || undefined,
     });
   };
