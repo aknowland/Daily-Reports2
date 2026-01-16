@@ -1130,14 +1130,12 @@ export async function registerRoutes(
       if (report.project?.address) {
         drawTableRow('Location', report.project.address);
       }
-      drawSectionDivider();
 
       // Report Details Section
       drawSectionHeader('REPORT DETAILS');
       drawTableRow('Inspector', report.inspectorName || 'Unknown');
       drawTableRow('Weather', `${report.weatherType || 'Not specified'}${report.weatherNotes ? ` - ${report.weatherNotes}` : ''}`);
       drawTableRow('Status', (report.status || 'draft').toUpperCase());
-      drawSectionDivider();
 
       // Work Activities Section - Columns: Contractor, Manpower, Work Activities
       const workActivities = (report.workActivities as WorkActivityRow[]) || [];
@@ -1186,7 +1184,6 @@ export async function registerRoutes(
           doc.text(activity.workDescription || '', startX + activityColWidths[0] + activityColWidths[1] + 4, rowY + 4, { width: activityColWidths[2] - 8 });
           doc.y = rowY + rowHeight;
         });
-        drawSectionDivider();
       }
 
       // Visitors Section
@@ -1196,14 +1193,12 @@ export async function registerRoutes(
         visitors.forEach((visitor) => {
           drawTableRow(visitor.name || 'Unknown', `${visitor.company || ''}${visitor.notes ? ` - ${visitor.notes}` : ''}`);
         });
-        drawSectionDivider();
       }
 
       // Materials Delivered
       if (report.materialsDelivered) {
         drawSectionHeader('MATERIALS DELIVERED');
         drawTableRow('Items', report.materialsDelivered);
-        drawSectionDivider();
       }
 
       // Issues/Safety Section
@@ -1215,28 +1210,24 @@ export async function registerRoutes(
         if (report.safetyFlag) {
           drawTableRow('Safety Incident', report.safetyDetails || 'No details provided');
         }
-        drawSectionDivider();
       }
 
       // Inspections
       if (report.inspections) {
         drawSectionHeader('INSPECTIONS');
         drawTableRow('Details', report.inspections);
-        drawSectionDivider();
       }
 
       // Additional Notes
       if (report.workPerformed) {
         drawSectionHeader('ADDITIONAL NOTES');
         drawTableRow('Notes', report.workPerformed);
-        drawSectionDivider();
       }
 
       // Equipment
       if (report.equipment) {
         drawSectionHeader('EQUIPMENT');
         drawTableRow('On Site', report.equipment);
-        drawSectionDivider();
       }
 
       // Photos - 2 columns layout with improved styling
@@ -1404,14 +1395,23 @@ export async function registerRoutes(
         doc.switchToPage(i);
         
         // Footer with page number and generation date
+        // Use lineBreak: false to prevent PDFKit from creating new pages
         const footerY = doc.page.height - 30;
         doc.fontSize(8).font('Helvetica').fillColor('#6b7280');
         
         // Left: Generated date
-        doc.text(`Generated: ${generatedDate}`, startX, footerY, { width: pageWidth / 2, align: 'left' });
+        doc.text(`Generated: ${generatedDate}`, startX, footerY, { 
+          width: pageWidth / 2, 
+          align: 'left',
+          lineBreak: false
+        });
         
         // Right: Page number
-        doc.text(`Page ${i + 1} of ${totalPages}`, startX + pageWidth / 2, footerY, { width: pageWidth / 2, align: 'right' });
+        doc.text(`Page ${i + 1} of ${totalPages}`, startX + pageWidth / 2, footerY, { 
+          width: pageWidth / 2, 
+          align: 'right',
+          lineBreak: false
+        });
         
         doc.fillColor('#000');
       }
