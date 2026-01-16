@@ -25,7 +25,7 @@ const ASSETS_DIR = path.join(process.cwd(), "public", "assets");
   }
 });
 
-// Role-based authorization middleware
+// Role-based authorization middleware (respects inspector mode)
 const isAdmin: RequestHandler = async (req: any, res, next) => {
   try {
     const userId = req.user?.claims?.sub;
@@ -34,7 +34,9 @@ const isAdmin: RequestHandler = async (req: any, res, next) => {
     }
 
     const profile = await storage.getUserProfile(userId);
-    if (!profile || profile.role !== "admin") {
+    
+    // Use effective admin check that respects inspector mode
+    if (!isEffectiveSystemAdmin(profile)) {
       return res.status(403).json({ message: "Forbidden: Admin access required" });
     }
 
@@ -43,6 +45,22 @@ const isAdmin: RequestHandler = async (req: any, res, next) => {
     console.error("Error checking admin role:", error);
     res.status(500).json({ message: "Internal server error" });
   }
+};
+
+// Helper to check if user is effectively acting as system admin
+// Returns true only if user has admin role AND has admin mode enabled (not in inspector mode)
+const isEffectiveSystemAdmin = (profile: any): boolean => {
+  return profile?.role === "admin" && profile?.preferAdminMode !== false;
+};
+
+// Helper to check if user is effectively acting as company admin for a given company
+// Returns true if user is a company admin AND has admin mode enabled
+const isEffectiveCompanyAdmin = async (userId: string, companyId: string, profile: any): Promise<boolean> => {
+  if (profile?.preferAdminMode === false) {
+    return false; // In inspector mode, no admin powers
+  }
+  const membership = await storage.getCompanyMember(companyId, userId);
+  return membership?.role === "admin";
 };
 
 // Multer config for photos
@@ -176,22 +194,37 @@ export async function registerRoutes(
         return next();
       }
 
-      // Admins can access all files
-      if (profile?.role === "admin") {
+      // System admins can access all files (when in admin mode)
+      if (isEffectiveSystemAdmin(profile)) {
         return res.sendFile(filePath);
       }
+
+      // Helper to check if user can access a report's files
+      const canAccessReportFile = async (report: any): Promise<boolean> => {
+        // Owner can always access
+        if (report.inspectorId === userId) return true;
+        
+        // Company admin (when in admin mode) can access reports in their company
+        if (report.projectId) {
+          const project = await storage.getProject(report.projectId);
+          if (project?.companyId && await isEffectiveCompanyAdmin(userId, project.companyId, profile)) {
+            return true;
+          }
+        }
+        return false;
+      };
 
       // Check ownership based on file type
       const pathParts = req.path.split('/');
       
       if (pathParts[1] === 'uploads') {
-        // Photo files - check if user owns the report that contains this photo
+        // Photo files - check if user owns the report or is company admin
         const filename = pathParts[2];
         const photoPath = `/storage/uploads/${filename}`;
         const photo = await storage.getPhotoByPath(photoPath);
         if (photo) {
           const report = await storage.getReport(photo.reportId);
-          if (report && report.inspectorId === userId) {
+          if (report && await canAccessReportFile(report)) {
             return res.sendFile(filePath);
           }
         }
@@ -201,7 +234,7 @@ export async function registerRoutes(
         const reportId = filename?.replace(/\.(png|pdf)$/, '');
         if (reportId) {
           const report = await storage.getReport(reportId);
-          if (report && report.inspectorId === userId) {
+          if (report && await canAccessReportFile(report)) {
             return res.sendFile(filePath);
           }
         }
@@ -236,10 +269,20 @@ export async function registerRoutes(
       const userId = req.user?.claims?.sub;
       const profile = await storage.getUserProfile(userId);
       
+      // Get user's assigned projects (needed for inspector mode or regular inspectors)
+      const assignedProjectIds = await storage.getProjectsForUser(userId);
+      
+      // If preferAdminMode is false (inspector toggle ON), show only assigned projects
+      if (profile?.preferAdminMode === false) {
+        const projectsList = await storage.getProjects();
+        const filtered = projectsList.filter(p => assignedProjectIds.includes(p.id));
+        return res.json(filtered);
+      }
+      
       let projectsList = await storage.getProjects();
       
-      // System admins see ALL projects
-      if (profile?.role === "admin") {
+      // System admins see ALL projects (when in admin mode)
+      if (isEffectiveSystemAdmin(profile)) {
         res.json(projectsList);
         return;
       }
@@ -249,9 +292,6 @@ export async function registerRoutes(
       const adminCompanyIds = userCompanyMemberships
         .filter(m => m.role === "admin")
         .map(m => m.companyId);
-      
-      // Get user's assigned projects
-      const assignedProjectIds = await storage.getProjectsForUser(userId);
       
       // Filter projects: include if user is company admin OR assigned to project
       projectsList = projectsList.filter(p => 
@@ -276,20 +316,17 @@ export async function registerRoutes(
         return res.status(404).json({ message: "Project not found" });
       }
       
-      // System admins can view any project
-      if (profile?.role === "admin") {
+      // System admins can view any project (when in admin mode)
+      if (isEffectiveSystemAdmin(profile)) {
         return res.json(project);
       }
       
-      // Company admins can view any project in their company
-      if (project.companyId) {
-        const membership = await storage.getCompanyMember(project.companyId, userId);
-        if (membership?.role === "admin") {
-          return res.json(project);
-        }
+      // Company admins can view any project in their company (when in admin mode)
+      if (project.companyId && await isEffectiveCompanyAdmin(userId, project.companyId, profile)) {
+        return res.json(project);
       }
       
-      // Regular inspectors can only view projects they're assigned to
+      // Regular inspectors (or admins in inspector mode) can only view projects they're assigned to
       const isProjectMember = await storage.isUserMemberOfProject(req.params.id, userId);
       if (!isProjectMember) {
         return res.status(403).json({ message: "Access denied" });
@@ -305,15 +342,15 @@ export async function registerRoutes(
   app.post("/api/projects", isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
       const { companyId, ...projectData } = req.body;
       
-      // If companyId is provided, check if user is admin of that company or global admin
+      // If companyId is provided, check if user is effective admin of that company or system admin (respects inspector mode)
       if (companyId) {
-        const membership = await storage.getCompanyMember(companyId, userId);
-        const profile = await storage.getUserProfile(userId);
-        const isGlobalAdmin = profile?.role === "admin";
+        const hasAdminAccess = isEffectiveSystemAdmin(profile) || 
+          await isEffectiveCompanyAdmin(userId, companyId, profile);
         
-        if (!isGlobalAdmin && (!membership || membership.role !== "admin")) {
+        if (!hasAdminAccess) {
           return res.status(403).json({ message: "You must be a company admin to create projects for this company" });
         }
       }
@@ -340,6 +377,7 @@ export async function registerRoutes(
     try {
       const userId = req.user?.claims?.sub;
       const projectId = req.params.id;
+      const profile = await storage.getUserProfile(userId);
       const { companyId: newCompanyId, ...otherUpdates } = req.body;
       
       // Get the project to check ownership
@@ -348,39 +386,34 @@ export async function registerRoutes(
         return res.status(404).json({ message: "Project not found" });
       }
       
-      // Check authorization: global admin, company admin, or project member
-      const profile = await storage.getUserProfile(userId);
-      const isGlobalAdmin = profile?.role === "admin";
+      // Check authorization (respects inspector mode): effective system admin, effective company admin, or project member
       const isProjectMember = await storage.isUserMemberOfProject(projectId, userId);
-      
-      let canEdit = isGlobalAdmin || isProjectMember;
-      
-      // If project belongs to a company, check if user is company admin
+      const effectiveSysAdmin = isEffectiveSystemAdmin(profile);
+      let effectiveCompAdmin = false;
       if (existingProject.companyId) {
-        const membership = await storage.getCompanyMember(existingProject.companyId, userId);
-        if (membership?.role === "admin") {
-          canEdit = true;
-        }
+        effectiveCompAdmin = await isEffectiveCompanyAdmin(userId, existingProject.companyId, profile);
       }
+      
+      const canEdit = effectiveSysAdmin || effectiveCompAdmin || isProjectMember;
       
       if (!canEdit) {
         return res.status(403).json({ message: "Access denied" });
       }
       
-      // Handle companyId assignment separately with extra authorization
+      // Handle companyId assignment separately with extra authorization (respects inspector mode)
       let updateData = { ...otherUpdates };
       if (newCompanyId !== undefined) {
-        // If assigning to a new company, user must be admin of that company
+        // If assigning to a new company, user must be effective admin of that company
         if (newCompanyId) {
-          const targetMembership = await storage.getCompanyMember(newCompanyId, userId);
-          if (!isGlobalAdmin && (!targetMembership || targetMembership.role !== "admin")) {
+          const hasTargetAccess = effectiveSysAdmin || await isEffectiveCompanyAdmin(userId, newCompanyId, profile);
+          if (!hasTargetAccess) {
             return res.status(403).json({ message: "You must be an admin of the target company to assign projects" });
           }
         }
         // Also check user can remove from current company (if it has one)
         if (existingProject.companyId && newCompanyId !== existingProject.companyId) {
-          const currentMembership = await storage.getCompanyMember(existingProject.companyId, userId);
-          if (!isGlobalAdmin && (!currentMembership || currentMembership.role !== "admin")) {
+          const hasCurrentAccess = effectiveSysAdmin || await isEffectiveCompanyAdmin(userId, existingProject.companyId, profile);
+          if (!hasCurrentAccess) {
             return res.status(403).json({ message: "You must be an admin of the current company to reassign projects" });
           }
         }
@@ -411,15 +444,11 @@ export async function registerRoutes(
         return res.status(404).json({ message: "Project not found" });
       }
       
-      // Check permissions: system admin or company admin of the project's company
-      const isSystemAdmin = profile?.role === "admin";
-      let isCompanyAdmin = false;
-      if (project.companyId) {
-        const membership = await storage.getCompanyMember(project.companyId, userId);
-        isCompanyAdmin = membership?.role === "admin";
-      }
+      // Check permissions: system admin or company admin (respects inspector mode)
+      const canDelete = isEffectiveSystemAdmin(profile) || 
+        (project.companyId && await isEffectiveCompanyAdmin(userId, project.companyId, profile));
       
-      if (!isSystemAdmin && !isCompanyAdmin) {
+      if (!canDelete) {
         return res.status(403).json({ message: "Access denied. Only admins can delete projects." });
       }
       
@@ -449,18 +478,18 @@ export async function registerRoutes(
   });
 
   // ========== PROJECT MEMBERS ==========
-  // Helper to check admin access for project
+  // Helper to check admin access for project (respects preferAdminMode)
   async function checkProjectAdminAccess(userId: string, projectId: string): Promise<{ allowed: boolean; project?: any }> {
     const profile = await storage.getUserProfile(userId);
     const project = await storage.getProject(projectId);
     if (!project) return { allowed: false };
     
-    const isSystemAdmin = profile?.role === "admin";
-    if (isSystemAdmin) return { allowed: true, project };
+    // System admin access (respects inspector mode)
+    if (isEffectiveSystemAdmin(profile)) return { allowed: true, project };
     
-    if (project.companyId) {
-      const membership = await storage.getCompanyMember(project.companyId, userId);
-      if (membership?.role === "admin") return { allowed: true, project };
+    // Company admin access (respects inspector mode)
+    if (project.companyId && await isEffectiveCompanyAdmin(userId, project.companyId, profile)) {
+      return { allowed: true, project };
     }
     
     return { allowed: false, project };
@@ -536,8 +565,15 @@ export async function registerRoutes(
       const userId = req.user?.claims?.sub;
       const profile = await storage.getUserProfile(userId);
       
-      // System admins see ALL reports
-      if (profile?.role === "admin") {
+      // If preferAdminMode is false (inspector toggle ON), show only user's own reports
+      if (profile?.preferAdminMode === false) {
+        const reports = await storage.getReports({ inspectorId: userId });
+        const stats = await storage.getReportStats({ inspectorId: userId });
+        return res.json({ reports, stats });
+      }
+      
+      // System admins see ALL reports (when in admin mode)
+      if (isEffectiveSystemAdmin(profile)) {
         const reports = await storage.getReports({});
         const stats = await storage.getReportStats({});
         return res.json({ reports, stats });
@@ -575,24 +611,21 @@ export async function registerRoutes(
       const userId = req.user?.claims?.sub;
       const profile = await storage.getUserProfile(userId);
       
-      // System admins can access any report
-      if (profile?.role === "admin") {
-        return res.json(report);
-      }
-      
       // Report owner can always access their own report
       if (report.inspectorId === userId) {
         return res.json(report);
       }
       
-      // Company admins can access reports in their company
+      // System admins can access any report (when in admin mode)
+      if (isEffectiveSystemAdmin(profile)) {
+        return res.json(report);
+      }
+      
+      // Company admins can access reports in their company (when in admin mode)
       if (report.projectId) {
         const project = await storage.getProject(report.projectId);
-        if (project?.companyId) {
-          const membership = await storage.getCompanyMember(project.companyId, userId);
-          if (membership?.role === "admin") {
-            return res.json(report);
-          }
+        if (project?.companyId && await isEffectiveCompanyAdmin(userId, project.companyId, profile)) {
+          return res.json(report);
         }
       }
       
@@ -609,10 +642,16 @@ export async function registerRoutes(
       const profile = await storage.getUserProfile(userId);
       const validated = createReportSchema.parse(req.body);
       
-      // Verify user has access to the project (admin or assigned member)
-      if (profile?.role !== "admin") {
-        const isProjectMember = await storage.isUserMemberOfProject(validated.projectId, userId);
-        if (!isProjectMember) {
+      // Verify user has access to the project (respects inspector mode)
+      // In inspector mode or as regular inspector, user must be assigned to project
+      const isProjectMember = await storage.isUserMemberOfProject(validated.projectId, userId);
+      if (!isEffectiveSystemAdmin(profile) && !isProjectMember) {
+        // Check if user is effective company admin for this project's company
+        const project = await storage.getProject(validated.projectId);
+        const hasCompanyAccess = project?.companyId && 
+          await isEffectiveCompanyAdmin(userId, project.companyId, profile);
+        
+        if (!hasCompanyAccess) {
           return res.status(403).json({ message: "You are not assigned to this project" });
         }
       }
@@ -641,26 +680,24 @@ export async function registerRoutes(
         return res.status(404).json({ message: "Report not found" });
       }
       
-      // Permission check:
-      // - System admins can edit any report
-      // - Company admins can edit any report in their company
+      // Permission check (respects inspector mode):
+      // - System admins can edit any report (when in admin mode)
+      // - Company admins can edit any report in their company (when in admin mode)
       // - Inspectors can only edit their own draft reports
-      const isSystemAdmin = profile?.role === "admin";
       const isOwner = existing.inspectorId === userId;
       
-      // Check if user is a company admin for the report's project
-      let isCompanyAdmin = false;
-      if (existing.projectId) {
+      // Check if user has effective admin powers for this report
+      let hasAdminAccess = isEffectiveSystemAdmin(profile);
+      if (!hasAdminAccess && existing.projectId) {
         const project = await storage.getProject(existing.projectId);
         if (project?.companyId) {
-          const membership = await storage.getCompanyMember(project.companyId, userId);
-          isCompanyAdmin = membership?.role === "admin";
+          hasAdminAccess = await isEffectiveCompanyAdmin(userId, project.companyId, profile);
         }
       }
       
       // Determine if user can edit
-      if (isSystemAdmin || isCompanyAdmin) {
-        // Admins can edit any report
+      if (hasAdminAccess) {
+        // Admins (in admin mode) can edit any report
       } else if (isOwner && existing.status === "draft") {
         // Inspectors can only edit their own drafts
       } else {
@@ -689,23 +726,19 @@ export async function registerRoutes(
         return res.status(404).json({ message: "Report not found" });
       }
       
-      // Permission check:
-      // - System admins can delete any report
-      // - Company admins can delete any report in their company
+      // Permission check (respects inspector mode):
+      // - System admins can delete any report (when in admin mode)
+      // - Company admins can delete any report in their company (when in admin mode)
       // - Inspectors cannot delete reports
-      const isSystemAdmin = profile?.role === "admin";
-      
-      // Check if user is a company admin for the report's project
-      let isCompanyAdmin = false;
-      if (existing.projectId) {
+      let hasAdminAccess = isEffectiveSystemAdmin(profile);
+      if (!hasAdminAccess && existing.projectId) {
         const project = await storage.getProject(existing.projectId);
         if (project?.companyId) {
-          const membership = await storage.getCompanyMember(project.companyId, userId);
-          isCompanyAdmin = membership?.role === "admin";
+          hasAdminAccess = await isEffectiveCompanyAdmin(userId, project.companyId, profile);
         }
       }
       
-      if (!isSystemAdmin && !isCompanyAdmin) {
+      if (!hasAdminAccess) {
         return res.status(403).json({ message: "Access denied. Only admins can delete reports." });
       }
       
@@ -729,19 +762,17 @@ export async function registerRoutes(
         return res.status(404).json({ message: "Report not found" });
       }
       
-      // Check permissions: system admin, company admin, or owner
-      const isSystemAdmin = profile?.role === "admin";
+      // Check permissions (respects inspector mode): admin or owner
       const isOwner = existing.inspectorId === userId;
-      let isCompanyAdmin = false;
-      if (existing.projectId) {
+      let hasAdminAccess = isEffectiveSystemAdmin(profile);
+      if (!hasAdminAccess && existing.projectId) {
         const project = await storage.getProject(existing.projectId);
         if (project?.companyId) {
-          const membership = await storage.getCompanyMember(project.companyId, userId);
-          isCompanyAdmin = membership?.role === "admin";
+          hasAdminAccess = await isEffectiveCompanyAdmin(userId, project.companyId, profile);
         }
       }
       
-      if (!isSystemAdmin && !isCompanyAdmin && !isOwner) {
+      if (!hasAdminAccess && !isOwner) {
         return res.status(403).json({ message: "Access denied" });
       }
       
@@ -798,19 +829,17 @@ export async function registerRoutes(
         return res.status(404).json({ message: "Report not found" });
       }
       
-      // Check permissions: system admin, company admin, or owner
-      const isSystemAdmin = profile?.role === "admin";
+      // Check permissions (respects inspector mode): admin or owner
       const isOwner = report.inspectorId === userId;
-      let isCompanyAdmin = false;
-      if (report.projectId) {
+      let hasAdminAccess = isEffectiveSystemAdmin(profile);
+      if (!hasAdminAccess && report.projectId) {
         const project = await storage.getProject(report.projectId);
         if (project?.companyId) {
-          const membership = await storage.getCompanyMember(project.companyId, userId);
-          isCompanyAdmin = membership?.role === "admin";
+          hasAdminAccess = await isEffectiveCompanyAdmin(userId, project.companyId, profile);
         }
       }
       
-      if (!isSystemAdmin && !isCompanyAdmin && !isOwner) {
+      if (!hasAdminAccess && !isOwner) {
         return res.status(403).json({ message: "Access denied" });
       }
       
@@ -839,19 +868,17 @@ export async function registerRoutes(
         return res.status(404).json({ message: "Report not found" });
       }
       
-      // Check permissions: system admin, company admin, or owner
-      const isSystemAdmin = profile?.role === "admin";
+      // Check permissions (respects inspector mode): admin or owner
       const isOwner = report.inspectorId === userId;
-      let isCompanyAdmin = false;
-      if (report.projectId) {
+      let hasAdminAccess = isEffectiveSystemAdmin(profile);
+      if (!hasAdminAccess && report.projectId) {
         const project = await storage.getProject(report.projectId);
         if (project?.companyId) {
-          const membership = await storage.getCompanyMember(project.companyId, userId);
-          isCompanyAdmin = membership?.role === "admin";
+          hasAdminAccess = await isEffectiveCompanyAdmin(userId, project.companyId, profile);
         }
       }
       
-      if (!isSystemAdmin && !isCompanyAdmin && !isOwner) {
+      if (!hasAdminAccess && !isOwner) {
         return res.status(403).json({ message: "Access denied" });
       }
       
@@ -880,19 +907,17 @@ export async function registerRoutes(
         return res.status(404).json({ message: "Report not found" });
       }
       
-      // Check permissions: system admin, company admin, or owner
-      const isSystemAdmin = profile?.role === "admin";
+      // Check permissions (respects inspector mode): admin or owner
       const isOwner = existing.inspectorId === userId;
-      let isCompanyAdmin = false;
-      if (existing.projectId) {
+      let hasAdminAccess = isEffectiveSystemAdmin(profile);
+      if (!hasAdminAccess && existing.projectId) {
         const project = await storage.getProject(existing.projectId);
         if (project?.companyId) {
-          const membership = await storage.getCompanyMember(project.companyId, userId);
-          isCompanyAdmin = membership?.role === "admin";
+          hasAdminAccess = await isEffectiveCompanyAdmin(userId, project.companyId, profile);
         }
       }
       
-      if (!isSystemAdmin && !isCompanyAdmin && !isOwner) {
+      if (!hasAdminAccess && !isOwner) {
         return res.status(403).json({ message: "Access denied" });
       }
       
@@ -938,19 +963,17 @@ export async function registerRoutes(
         return res.status(404).json({ message: "Report not found" });
       }
       
-      // Check permissions: system admin, company admin, or owner
-      const isSystemAdmin = profile?.role === "admin";
+      // Check permissions (respects inspector mode): admin or owner
       const isOwner = report.inspectorId === userId;
-      let isCompanyAdmin = false;
-      if (report.projectId) {
+      let hasAdminAccess = isEffectiveSystemAdmin(profile);
+      if (!hasAdminAccess && report.projectId) {
         const project = await storage.getProject(report.projectId);
         if (project?.companyId) {
-          const membership = await storage.getCompanyMember(project.companyId, userId);
-          isCompanyAdmin = membership?.role === "admin";
+          hasAdminAccess = await isEffectiveCompanyAdmin(userId, project.companyId, profile);
         }
       }
       
-      if (!isSystemAdmin && !isCompanyAdmin && !isOwner) {
+      if (!hasAdminAccess && !isOwner) {
         return res.status(403).json({ message: "Access denied" });
       }
 
@@ -1423,16 +1446,14 @@ export async function registerRoutes(
         return res.status(404).json({ message: "Report not found" });
       }
 
-      // Check permissions: admin, company admin, or owner
-      const isSystemAdmin = profile?.role === "admin";
-      let isCompanyAdminForReport = false;
-      if (report.project?.companyId && profile?.activeCompanyId === report.project.companyId) {
-        const membership = await storage.getCompanyMember(report.project.companyId, userId);
-        isCompanyAdminForReport = membership?.role === "admin";
-      }
+      // Check permissions (respects inspector mode): admin or owner
       const isOwner = report.inspectorId === userId;
+      let hasAdminAccess = isEffectiveSystemAdmin(profile);
+      if (!hasAdminAccess && report.project?.companyId) {
+        hasAdminAccess = await isEffectiveCompanyAdmin(userId, report.project.companyId, profile);
+      }
 
-      if (!isSystemAdmin && !isCompanyAdminForReport && !isOwner) {
+      if (!hasAdminAccess && !isOwner) {
         return res.status(403).json({ message: "Access denied" });
       }
 
@@ -1472,19 +1493,17 @@ export async function registerRoutes(
         return res.status(404).json({ message: "Report not found" });
       }
       
-      // Check permissions: system admin, company admin, or owner
-      const isSystemAdmin = profile?.role === "admin";
+      // Check permissions (respects inspector mode): admin or owner
       const isOwner = report.inspectorId === userId;
-      let isCompanyAdmin = false;
-      if (report.projectId) {
+      let hasAdminAccess = isEffectiveSystemAdmin(profile);
+      if (!hasAdminAccess && report.projectId) {
         const project = await storage.getProject(report.projectId);
         if (project?.companyId) {
-          const membership = await storage.getCompanyMember(project.companyId, userId);
-          isCompanyAdmin = membership?.role === "admin";
+          hasAdminAccess = await isEffectiveCompanyAdmin(userId, project.companyId, profile);
         }
       }
       
-      if (!isSystemAdmin && !isCompanyAdmin && !isOwner) {
+      if (!hasAdminAccess && !isOwner) {
         return res.status(403).json({ message: "Access denied" });
       }
 
@@ -2636,16 +2655,16 @@ export async function registerRoutes(
       const userId = req.user?.claims?.sub;
       const profile = await storage.getUserProfile(userId);
       
-      // Check membership or admin
+      // Check membership or admin (unless in inspector mode)
       const isMember = await storage.isUserMemberOfCompany(req.params.id, userId);
-      if (!isMember && profile?.role !== "admin") {
+      if (!isMember && (profile?.role !== "admin" || profile?.preferAdminMode === false)) {
         return res.status(403).json({ message: "Access denied" });
       }
 
       const projectsList = await storage.getProjectsByCompany(req.params.id);
       
-      // For non-admin, filter to only assigned projects
-      if (profile?.role !== "admin") {
+      // For non-admin OR when in inspector mode, filter to only assigned projects
+      if (profile?.role !== "admin" || profile?.preferAdminMode === false) {
         const assignedProjectIds = await storage.getProjectsForUser(userId);
         const filtered = projectsList.filter(p => assignedProjectIds.includes(p.id));
         return res.json(filtered);
