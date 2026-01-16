@@ -684,11 +684,15 @@ export async function registerRoutes(
         return res.status(404).json({ message: "Report not found" });
       }
       
+      const validated = updateReportSchema.parse(req.body);
+      
       // Permission check (respects inspector mode):
       // - System admins can edit any report (when in admin mode)
       // - Company admins can edit any report in their company (when in admin mode)
       // - Inspectors can only edit their own draft reports
+      // - Special case: owners can always assign their unassigned reports to a project
       const isOwner = existing.inspectorId === userId;
+      const isAssigningToProject = validated.projectId && !existing.projectId;
       
       // Check if user has effective admin powers for this report
       let hasAdminAccess = isEffectiveSystemAdmin(profile);
@@ -704,11 +708,31 @@ export async function registerRoutes(
         // Admins (in admin mode) can edit any report
       } else if (isOwner && existing.status === "draft") {
         // Inspectors can only edit their own drafts
+      } else if (isOwner && isAssigningToProject) {
+        // Owners can assign their unassigned reports to a project (even if submitted)
+        // But they can't edit other fields on submitted reports
+        const otherKeys = Object.keys(validated).filter(k => k !== "projectId");
+        if (otherKeys.length > 0) {
+          return res.status(403).json({ message: "You can only assign a project to submitted reports, not edit other fields." });
+        }
       } else {
         return res.status(403).json({ message: "Access denied. Only admins can edit submitted reports." });
       }
       
-      const validated = updateReportSchema.parse(req.body);
+      // If assigning to a new project, verify user has access to that project
+      if (validated.projectId && validated.projectId !== existing.projectId) {
+        const isProjectMember = await storage.isUserMemberOfProject(validated.projectId, userId);
+        if (!isEffectiveSystemAdmin(profile) && !isProjectMember) {
+          const project = await storage.getProject(validated.projectId);
+          const hasCompanyAccess = project?.companyId && 
+            await isEffectiveCompanyAdmin(userId, project.companyId, profile);
+          
+          if (!hasCompanyAccess) {
+            return res.status(403).json({ message: "You don't have access to the selected project" });
+          }
+        }
+      }
+      
       const report = await storage.updateReport(req.params.id, validated);
       res.json(report);
     } catch (error) {

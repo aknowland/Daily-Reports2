@@ -217,7 +217,7 @@ export function ReportDetailPanel({
                 </Link>
               </Button>
             )}
-            {!report.projectId && canEdit && (
+            {!report.projectId && isOwner && (
               <Button 
                 variant="outline" 
                 size="sm" 
