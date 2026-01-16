@@ -2399,6 +2399,27 @@ export async function registerRoutes(
     }
   });
 
+  // Update admin mode preference (for system admins)
+  app.patch("/api/profile/admin-mode", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const { preferAdminMode } = req.body;
+      
+      if (typeof preferAdminMode !== "boolean") {
+        return res.status(400).json({ message: "preferAdminMode must be a boolean" });
+      }
+      
+      const profile = await storage.createOrUpdateUserProfile({
+        userId,
+        preferAdminMode,
+      });
+      res.json(profile);
+    } catch (error) {
+      console.error("Error updating admin mode preference:", error);
+      res.status(500).json({ message: "Failed to update admin mode preference" });
+    }
+  });
+
   // ========== VOICE TRANSCRIPTION ==========
   app.post("/api/transcribe", isAuthenticated, async (req: any, res) => {
     try {
