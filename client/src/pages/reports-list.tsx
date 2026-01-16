@@ -154,6 +154,22 @@ export default function ReportsListPage() {
               data-testid="input-search-reports"
             />
           </div>
+          {!selectedProject && projects && projects.length > 1 && (
+            <Select value={projectFilter} onValueChange={setProjectFilter}>
+              <SelectTrigger className="w-full sm:w-48 h-10" data-testid="select-project-filter">
+                <FolderOpen className="w-4 h-4 mr-2" />
+                <SelectValue placeholder="Project" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Projects</SelectItem>
+                {projects.map((project) => (
+                  <SelectItem key={project.id} value={project.id}>
+                    {project.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
           <Select value={statusFilter} onValueChange={setStatusFilter}>
             <SelectTrigger className="w-full sm:w-40 h-10" data-testid="select-status-filter">
               <Filter className="w-4 h-4 mr-2" />
