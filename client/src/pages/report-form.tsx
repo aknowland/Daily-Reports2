@@ -96,7 +96,7 @@ export default function ReportFormPage() {
   useEffect(() => {
     if (existingReport) {
       setFormData({
-        projectId: existingReport.projectId,
+        projectId: existingReport.projectId || "",
         date: format(new Date(existingReport.date), "yyyy-MM-dd"),
         weatherType: (existingReport.weatherType || "clear") as typeof formData.weatherType,
         weatherNotes: existingReport.weatherNotes || "",
@@ -132,6 +132,7 @@ export default function ReportFormPage() {
       
       const reportData = {
         ...formData,
+        projectId: formData.projectId || null, // Send null for personal reports
         date: new Date(formData.date).toISOString(),
         status,
         inspectorId: user?.id,
@@ -203,14 +204,7 @@ export default function ReportFormPage() {
   });
 
   const handleSubmit = (status: "draft" | "submitted") => {
-    if (!formData.projectId) {
-      toast({
-        title: "Validation Error",
-        description: "Please select a project",
-        variant: "destructive",
-      });
-      return;
-    }
+    // Project is now optional - users can create personal/unassigned reports
 
     if (status === "submitted" && !signature) {
       toast({
@@ -260,15 +254,16 @@ export default function ReportFormPage() {
           <CardContent className="space-y-4">
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
-                <Label htmlFor="project">Project *</Label>
+                <Label htmlFor="project">Project (optional)</Label>
                 <Select 
-                  value={formData.projectId} 
-                  onValueChange={(value) => setFormData(prev => ({ ...prev, projectId: value }))}
+                  value={formData.projectId || "personal"} 
+                  onValueChange={(value) => setFormData(prev => ({ ...prev, projectId: value === "personal" ? "" : value }))}
                 >
                   <SelectTrigger id="project" className="h-12" data-testid="select-project">
                     <SelectValue placeholder="Select project" />
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="personal">Personal Report (No Project)</SelectItem>
                     {projects?.map((project) => (
                       <SelectItem key={project.id} value={project.id}>
                         {project.name} ({project.projectNumber})
