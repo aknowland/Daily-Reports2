@@ -56,25 +56,29 @@ export function CompanySwitcher({ activeCompanyId }: CompanySwitcherProps) {
 
   const createMutation = useMutation({
     mutationFn: async (name: string) => {
-      return apiRequest("POST", "/api/my-companies", { name });
+      const response = await apiRequest("POST", "/api/my-companies", { name });
+      return response;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/my-companies"] });
       queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
       queryClient.invalidateQueries({ queryKey: ["/api/auth/profile"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/profile"] });
       queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/my-projects"] });
       queryClient.invalidateQueries({ queryKey: ["/api/reports"] });
       setShowCreateDialog(false);
       setNewCompanyName("");
       toast({
         title: "Company Created",
-        description: "Your company has been created successfully.",
+        description: "Your company has been created successfully. You can now create projects.",
       });
     },
-    onError: () => {
+    onError: (error: any) => {
+      const message = error?.message || "Failed to create company.";
       toast({
         title: "Error",
-        description: "Failed to create company.",
+        description: message,
         variant: "destructive",
       });
     },
