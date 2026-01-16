@@ -253,15 +253,18 @@ export default function CompanyProjectsPage() {
         ) : (
           <div className="grid gap-4 md:grid-cols-2">
             {projects.map((project) => (
-              <Card key={project.id} data-testid={`card-project-${project.id}`}>
+              <Card key={project.id} className="hover-elevate" data-testid={`card-project-${project.id}`}>
                 <CardHeader>
                   <div className="flex items-start justify-between gap-2">
-                    <div className="flex items-center gap-2">
+                    <Link 
+                      href={`/reports?project=${project.id}`}
+                      className="flex items-center gap-2 cursor-pointer flex-1 min-w-0"
+                    >
                       <FolderOpen className="w-5 h-5 text-muted-foreground" />
-                      <CardTitle className="text-lg" data-testid={`text-project-name-${project.id}`}>
+                      <CardTitle className="text-lg hover:text-primary transition-colors" data-testid={`text-project-name-${project.id}`}>
                         {project.name}
                       </CardTitle>
-                    </div>
+                    </Link>
                     <div className="flex items-center gap-1">
                       <Button
                         variant="ghost"
@@ -282,25 +285,35 @@ export default function CompanyProjectsPage() {
                       </Button>
                     </div>
                   </div>
-                  <CardDescription className="flex items-center gap-2">
-                    <Hash className="w-3 h-3" />
-                    {project.projectNumber}
-                  </CardDescription>
+                  <Link 
+                    href={`/reports?project=${project.id}`}
+                    className="block cursor-pointer"
+                  >
+                    <CardDescription className="flex items-center gap-2">
+                      <Hash className="w-3 h-3" />
+                      {project.projectNumber}
+                    </CardDescription>
+                  </Link>
                 </CardHeader>
-                <CardContent className="space-y-2">
-                  {project.client && (
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <Building2 className="w-4 h-4" />
-                      <span>{project.client}</span>
-                    </div>
-                  )}
-                  {project.address && (
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <MapPin className="w-4 h-4" />
-                      <span>{project.address}</span>
-                    </div>
-                  )}
-                </CardContent>
+                <Link 
+                  href={`/reports?project=${project.id}`}
+                  className="block cursor-pointer"
+                >
+                  <CardContent className="space-y-2">
+                    {project.client && (
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <Building2 className="w-4 h-4" />
+                        <span>{project.client}</span>
+                      </div>
+                    )}
+                    {project.address && (
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <MapPin className="w-4 h-4" />
+                        <span>{project.address}</span>
+                      </div>
+                    )}
+                  </CardContent>
+                </Link>
               </Card>
             ))}
           </div>
