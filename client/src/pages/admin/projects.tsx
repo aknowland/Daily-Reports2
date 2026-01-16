@@ -40,7 +40,9 @@ import {
   Users,
   UserPlus,
   X,
+  FileText,
 } from "lucide-react";
+import { Link } from "wouter";
 import type { Project, ProjectMember, User } from "@shared/schema";
 
 type MemberWithUser = ProjectMember & { user?: User };
@@ -473,6 +475,16 @@ export default function AdminProjectsPage() {
                       </p>
                     </div>
                     <div className="flex gap-1">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        asChild
+                        data-testid={`button-reports-project-${project.id}`}
+                      >
+                        <Link href={`/reports?project=${project.id}`}>
+                          <FileText className="w-4 h-4" />
+                        </Link>
+                      </Button>
                       <Button
                         variant="ghost"
                         size="icon"
