@@ -40,7 +40,6 @@ import {
   Users,
   UserPlus,
   X,
-  FileText,
 } from "lucide-react";
 import { Link } from "wouter";
 import type { Project, ProjectMember, User } from "@shared/schema";
@@ -461,30 +460,23 @@ export default function AdminProjectsPage() {
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {filteredProjects?.map((project) => (
               <Card 
-                key={project.id} 
-                className="hover-elevate"
+                key={project.id}
+                className="hover-elevate h-full"
                 data-testid={`card-project-${project.id}`}
               >
                 <CardContent className="p-6">
                   <div className="flex items-start justify-between gap-2 mb-4">
-                    <div className="flex-1 min-w-0">
-                      <h3 className="font-semibold truncate">{project.name}</h3>
+                    <Link 
+                      href={`/reports?project=${project.id}`}
+                      className="flex-1 min-w-0 cursor-pointer"
+                    >
+                      <h3 className="font-semibold truncate hover:text-primary transition-colors">{project.name}</h3>
                       <p className="text-sm text-muted-foreground">
                         #{project.projectNumber}
                         {project.client && ` • ${project.client}`}
                       </p>
-                    </div>
+                    </Link>
                     <div className="flex gap-1">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        asChild
-                        data-testid={`button-reports-project-${project.id}`}
-                      >
-                        <Link href={`/reports?project=${project.id}`}>
-                          <FileText className="w-4 h-4" />
-                        </Link>
-                      </Button>
                       <Button
                         variant="ghost"
                         size="icon"
@@ -514,21 +506,26 @@ export default function AdminProjectsPage() {
                     </div>
                   </div>
 
-                  {project.address && (
-                    <div className="flex items-start gap-2 text-sm text-muted-foreground mb-2">
-                      <MapPin className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                      <span className="line-clamp-2">{project.address}</span>
-                    </div>
-                  )}
+                  <Link 
+                    href={`/reports?project=${project.id}`}
+                    className="block cursor-pointer"
+                  >
+                    {project.address && (
+                      <div className="flex items-start gap-2 text-sm text-muted-foreground mb-2">
+                        <MapPin className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                        <span className="line-clamp-2">{project.address}</span>
+                      </div>
+                    )}
 
-                  {(project.distributionEmails as string[])?.length > 0 && (
-                    <div className="flex items-start gap-2 text-sm text-muted-foreground">
-                      <Mail className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                      <span className="truncate">
-                        {(project.distributionEmails as string[]).length} recipient(s)
-                      </span>
-                    </div>
-                  )}
+                    {(project.distributionEmails as string[])?.length > 0 && (
+                      <div className="flex items-start gap-2 text-sm text-muted-foreground">
+                        <Mail className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                        <span className="truncate">
+                          {(project.distributionEmails as string[]).length} recipient(s)
+                        </span>
+                      </div>
+                    )}
+                  </Link>
                 </CardContent>
               </Card>
             ))}
