@@ -1794,6 +1794,105 @@ export async function registerRoutes(
     }
   });
 
+  // ========== BATCH EXPORT ==========
+  app.post("/api/reports/export", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      
+      const { reportIds, email } = req.body;
+      if (!reportIds || !Array.isArray(reportIds) || reportIds.length === 0) {
+        return res.status(400).json({ message: "Report IDs required" });
+      }
+      if (!email || typeof email !== 'string') {
+        return res.status(400).json({ message: "Email address required" });
+      }
+
+      // Fetch all reports and verify access
+      const reports = await Promise.all(
+        reportIds.map(id => storage.getReport(id))
+      );
+      
+      const validReports = reports.filter(r => r !== null);
+      if (validReports.length === 0) {
+        return res.status(404).json({ message: "No valid reports found" });
+      }
+
+      // Check that all reports have PDFs
+      const reportsWithPdfs = validReports.filter(r => r!.pdfPath);
+      if (reportsWithPdfs.length === 0) {
+        return res.status(400).json({ message: "None of the selected reports have PDFs generated" });
+      }
+
+      // Load PDF buffers
+      const attachments = [];
+      for (const report of reportsWithPdfs) {
+        try {
+          let pdfBuffer: Buffer;
+          if (report!.pdfPath!.startsWith('/objects/')) {
+            pdfBuffer = await objectStorage.downloadBuffer(report!.pdfPath!);
+          } else {
+            const localPath = path.join(process.cwd(), report!.pdfPath!.replace(/^\//, ''));
+            if (!fs.existsSync(localPath)) continue;
+            pdfBuffer = fs.readFileSync(localPath);
+          }
+          
+          const project = report!.project;
+          const projectName = project?.name || report!.customProjectName || 'Unassigned';
+          const pdfFilename = `Daily_Report_${projectName.replace(/[^a-zA-Z0-9]/g, '_')}_${report!.date}.pdf`;
+          
+          attachments.push({
+            filename: pdfFilename,
+            content: pdfBuffer
+          });
+        } catch (err) {
+          console.error('Error loading PDF for report:', report!.id, err);
+        }
+      }
+
+      if (attachments.length === 0) {
+        return res.status(400).json({ message: "Could not load any PDF files" });
+      }
+
+      // Send email with all PDFs attached
+      const { sendEmail } = await import('./replit_integrations/email/client');
+      
+      const dateRange = reportsWithPdfs.length === 1 
+        ? new Date(reportsWithPdfs[0]!.date).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+        : `${new Date(reportsWithPdfs[reportsWithPdfs.length - 1]!.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${new Date(reportsWithPdfs[0]!.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
+
+      const emailHtml = `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <h2 style="color: #2563eb;">Daily Field Reports Export</h2>
+          <p>Please find attached <strong>${attachments.length} daily field report${attachments.length !== 1 ? 's' : ''}</strong>.</p>
+          <p><strong>Date Range:</strong> ${dateRange}</p>
+          <hr style="border: 1px solid #e5e7eb; margin: 20px 0;" />
+          <p style="color: #6b7280; font-size: 12px;">This is an automated email from Field Daily Reports.</p>
+        </div>
+      `;
+
+      const emailResult = await sendEmail({
+        to: [email],
+        subject: `Daily Field Reports Export - ${attachments.length} Report${attachments.length !== 1 ? 's' : ''} - ${dateRange}`,
+        html: emailHtml,
+        attachments
+      });
+
+      if (emailResult.error) {
+        console.error("Resend API error:", emailResult.error);
+        return res.status(500).json({ 
+          message: "Failed to send email: " + (emailResult.error.message || "Unknown error")
+        });
+      }
+
+      console.log(`Exported ${attachments.length} reports to:`, email);
+      res.json({ message: `Successfully sent ${attachments.length} report(s) to ${email}` });
+    } catch (error) {
+      console.error("Error exporting reports:", error);
+      res.status(500).json({ message: "Failed to export reports" });
+    }
+  });
+
   // ========== ADMIN ROUTES ==========
   app.get("/api/admin/users", isAuthenticated, isAdmin, async (_req, res) => {
     try {
