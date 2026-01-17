@@ -1127,7 +1127,7 @@ export async function registerRoutes(
         try {
           const logoBuffer = await loadImageBuffer(company.logoPath);
           if (logoBuffer) {
-            doc.image(logoBuffer, startX, 10, { width: 150, height: 50, fit: [150, 50] });
+            doc.image(logoBuffer, startX, 8, { width: 180, height: 60, fit: [180, 60] });
           }
         } catch (err) {
           console.error('Error adding company logo:', err);
