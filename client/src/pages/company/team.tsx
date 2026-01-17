@@ -7,6 +7,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
@@ -47,10 +48,13 @@ import {
   HardHat,
   Loader2,
   FolderOpen,
+  ClipboardList,
+  Check,
+  X,
 } from "lucide-react";
 import { Link } from "wouter";
 import { useState } from "react";
-import type { CompanyMember, User, Project, Invite } from "@shared/schema";
+import type { CompanyMember, User, Project, Invite, JoinRequest } from "@shared/schema";
 
 const KNOWLAND_COMPANY_NAME = "Knowland Construction Services";
 
@@ -58,9 +62,11 @@ type MemberWithUser = CompanyMember & { user?: User };
 
 type InviteWithDetails = Invite & { projects?: Project[] };
 
+type JoinRequestWithUser = JoinRequest & { user?: User };
+
 export default function CompanyTeamPage() {
   const { toast } = useToast();
-  const { activeCompany, isCompanyAdmin, profile } = useAuth();
+  const { activeCompany, isCompanyAdmin, isEffectiveCompanyAdmin, profile } = useAuth();
   const [memberToRemove, setMemberToRemove] = useState<MemberWithUser | null>(null);
   const [showInviteDialog, setShowInviteDialog] = useState(false);
   const [inviteForm, setInviteForm] = useState({
@@ -71,18 +77,66 @@ export default function CompanyTeamPage() {
 
   const { data: members = [], isLoading, error } = useQuery<MemberWithUser[]>({
     queryKey: ["/api/companies", activeCompany?.id, "members"],
-    enabled: !!activeCompany?.id && isCompanyAdmin,
+    enabled: !!activeCompany?.id && isEffectiveCompanyAdmin,
   });
 
   const { data: projects = [] } = useQuery<Project[]>({
     queryKey: ["/api/companies", activeCompany?.id, "projects"],
-    enabled: !!activeCompany?.id && isCompanyAdmin,
+    enabled: !!activeCompany?.id && isEffectiveCompanyAdmin,
   });
 
   const { data: pendingInvites = [] } = useQuery<InviteWithDetails[]>({
     queryKey: ["/api/admin/invites"],
-    enabled: isCompanyAdmin,
+    enabled: isEffectiveCompanyAdmin,
     select: (data) => data.filter(inv => inv.companyId === activeCompany?.id && inv.status === "pending"),
+  });
+
+  const { data: joinRequests = [] } = useQuery<JoinRequestWithUser[]>({
+    queryKey: ["/api/companies", activeCompany?.id, "join-requests"],
+    enabled: !!activeCompany?.id && isEffectiveCompanyAdmin,
+  });
+
+  const pendingJoinRequests = joinRequests.filter(r => r.status === "pending");
+
+  const approveJoinMutation = useMutation({
+    mutationFn: async (requestId: string) => {
+      return apiRequest("POST", `/api/join-requests/${requestId}/approve`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/companies", activeCompany?.id, "join-requests"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/companies", activeCompany?.id, "members"] });
+      toast({
+        title: "Request Approved",
+        description: "User has been added to the company.",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to approve request.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const rejectJoinMutation = useMutation({
+    mutationFn: async (requestId: string) => {
+      return apiRequest("POST", `/api/join-requests/${requestId}/reject`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/companies", activeCompany?.id, "join-requests"] });
+      toast({
+        title: "Request Rejected",
+        description: "Join request has been rejected.",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to reject request.",
+        variant: "destructive",
+      });
+    },
   });
 
   const isKnowlandCompany = activeCompany?.name?.includes("Knowland Construction");
@@ -189,15 +243,20 @@ export default function CompanyTeamPage() {
     },
   });
 
-  if (!isCompanyAdmin || !activeCompany) {
+  if (!isEffectiveCompanyAdmin || !activeCompany) {
+    const isInspectorModeOn = isCompanyAdmin && profile?.preferAdminMode === false;
     return (
       <PageLayout title="Team Members">
         <div className="container px-4 py-6 mx-auto max-w-screen-lg">
           <Card>
             <CardContent className="flex flex-col items-center justify-center py-12">
-              <AlertCircle className="w-12 h-12 text-destructive mb-4" />
+              <AlertCircle className="w-12 h-12 text-muted-foreground mb-4" />
               <p className="text-lg font-medium">Access Denied</p>
-              <p className="text-muted-foreground">You must be a company admin to view this page</p>
+              <p className="text-muted-foreground text-center">
+                {isInspectorModeOn
+                  ? "You are viewing as an inspector. Toggle off inspector mode in the header to manage team members."
+                  : "You must be a company admin to view this page"}
+              </p>
             </CardContent>
           </Card>
         </div>
@@ -269,21 +328,16 @@ export default function CompanyTeamPage() {
 
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold" data-testid="title-team">Team Members</h1>
+            <h1 className="text-2xl font-bold" data-testid="title-team">Team Management</h1>
             <p className="text-muted-foreground">
-              Manage team members for {activeCompany.name}
+              Manage team for {activeCompany.name}
             </p>
           </div>
-          <div className="flex items-center gap-2">
-            <Badge variant="outline" className="flex items-center gap-1 no-default-hover-elevate no-default-active-elevate">
-              <Users className="w-3 h-3" />
-              {members.length} members
-            </Badge>
-            <Dialog open={showInviteDialog} onOpenChange={setShowInviteDialog}>
-              <DialogTrigger asChild>
-                <Button data-testid="button-invite-user">
-                  <UserPlus className="w-4 h-4 mr-2" />
-                  Invite User
+          <Dialog open={showInviteDialog} onOpenChange={setShowInviteDialog}>
+            <DialogTrigger asChild>
+              <Button data-testid="button-invite-user">
+                <UserPlus className="w-4 h-4 mr-2" />
+                Invite User
                 </Button>
               </DialogTrigger>
               <DialogContent className="sm:max-w-md">
@@ -399,132 +453,225 @@ export default function CompanyTeamPage() {
                     </Button>
                   </DialogFooter>
                 </form>
-              </DialogContent>
-            </Dialog>
-          </div>
+            </DialogContent>
+          </Dialog>
         </div>
 
-        {members.length === 0 ? (
-          <Card>
-            <CardContent className="flex flex-col items-center justify-center py-12">
-              <Users className="w-12 h-12 text-muted-foreground mb-4" />
-              <p className="text-lg font-medium">No team members</p>
-              <p className="text-muted-foreground">
-                Invite team members to your company
-              </p>
-            </CardContent>
-          </Card>
-        ) : (
-          <div className="space-y-4">
-            {members.map((member) => {
-              const isCurrentUser = member.userId === profile?.userId;
-              const displayName = member.user?.firstName && member.user?.lastName
-                ? `${member.user.firstName} ${member.user.lastName}`
-                : member.user?.email || "Unknown User";
-
-              return (
-                <Card key={member.id} data-testid={`card-member-${member.id}`}>
-                  <CardContent className="p-4">
-                    <div className="flex items-center justify-between gap-4">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <p className="font-medium truncate" data-testid={`text-member-name-${member.id}`}>
-                            {displayName}
-                          </p>
-                          {isCurrentUser && (
-                            <Badge variant="secondary" className="text-xs">You</Badge>
-                          )}
-                        </div>
-                        {member.user?.email && (
-                          <div className="flex items-center gap-1 text-sm text-muted-foreground mt-1">
-                            <Mail className="w-3 h-3" />
-                            <span className="truncate">{member.user.email}</span>
-                          </div>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Select
-                          value={member.role}
-                          onValueChange={(value) => updateRoleMutation.mutate({ userId: member.userId, role: value })}
-                          disabled={isCurrentUser || updateRoleMutation.isPending}
-                        >
-                          <SelectTrigger className="w-32" data-testid={`select-role-${member.id}`}>
-                            <Shield className="w-3 h-3 mr-1" />
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="inspector">Inspector</SelectItem>
-                            <SelectItem value="admin">Admin</SelectItem>
-                          </SelectContent>
-                        </Select>
-                        {!isCurrentUser && (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="text-destructive hover:text-destructive"
-                            onClick={() => setMemberToRemove(member)}
-                            data-testid={`button-remove-${member.id}`}
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
-                        )}
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              );
-            })}
-          </div>
-        )}
-
-        {/* Pending Invitations Section */}
-        {pendingInvites.length > 0 && (
-          <div className="space-y-4 mt-8">
-            <div className="flex items-center gap-2">
-              <h2 className="text-lg font-semibold">Pending Invitations</h2>
-              <Badge variant="secondary" className="no-default-hover-elevate no-default-active-elevate">
-                {pendingInvites.length}
+        <Tabs defaultValue="members" className="w-full">
+          <TabsList className="mb-4">
+            <TabsTrigger value="members" className="flex items-center gap-2" data-testid="tab-members">
+              <Users className="w-4 h-4" />
+              Members
+              <Badge variant="secondary" className="ml-1 no-default-hover-elevate no-default-active-elevate">
+                {members.length}
               </Badge>
-            </div>
-            {pendingInvites.map((invite) => (
-              <Card key={invite.id} className="border-dashed" data-testid={`card-pending-invite-${invite.id}`}>
-                <CardContent className="p-4">
-                  <div className="flex items-center justify-between gap-4">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <Mail className="w-4 h-4 text-muted-foreground" />
-                        <p className="font-medium truncate">{invite.email}</p>
-                        <Badge variant="outline" className="text-xs no-default-hover-elevate no-default-active-elevate">
-                          {invite.role === "admin" ? (
-                            <><Shield className="w-3 h-3 mr-1" />Admin</>
-                          ) : (
-                            <><HardHat className="w-3 h-3 mr-1" />Inspector</>
-                          )}
-                        </Badge>
-                      </div>
-                      {invite.projects && invite.projects.length > 0 && (
-                        <div className="flex items-center gap-1 text-sm text-muted-foreground mt-1">
-                          <FolderOpen className="w-3 h-3" />
-                          <span>{invite.projects.length} project{invite.projects.length > 1 ? "s" : ""} assigned</span>
-                        </div>
-                      )}
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="text-destructive hover:text-destructive"
-                      onClick={() => deleteInviteMutation.mutate(invite.id)}
-                      disabled={deleteInviteMutation.isPending}
-                      data-testid={`button-cancel-invite-${invite.id}`}
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
-                  </div>
+            </TabsTrigger>
+            <TabsTrigger value="requests" className="flex items-center gap-2" data-testid="tab-requests">
+              <ClipboardList className="w-4 h-4" />
+              Join Requests
+              {pendingJoinRequests.length > 0 && (
+                <Badge variant="default" className="ml-1 no-default-hover-elevate no-default-active-elevate">
+                  {pendingJoinRequests.length}
+                </Badge>
+              )}
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="members" className="space-y-4">
+            {members.length === 0 ? (
+              <Card>
+                <CardContent className="flex flex-col items-center justify-center py-12">
+                  <Users className="w-12 h-12 text-muted-foreground mb-4" />
+                  <p className="text-lg font-medium">No team members</p>
+                  <p className="text-muted-foreground">
+                    Invite team members to your company
+                  </p>
                 </CardContent>
               </Card>
-            ))}
-          </div>
-        )}
+            ) : (
+              <div className="space-y-4">
+                {members.map((member) => {
+                  const isCurrentUser = member.userId === profile?.userId;
+                  const displayName = member.user?.firstName && member.user?.lastName
+                    ? `${member.user.firstName} ${member.user.lastName}`
+                    : member.user?.email || "Unknown User";
+
+                  return (
+                    <Card key={member.id} data-testid={`card-member-${member.id}`}>
+                      <CardContent className="p-4">
+                        <div className="flex items-center justify-between gap-4">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <p className="font-medium truncate" data-testid={`text-member-name-${member.id}`}>
+                                {displayName}
+                              </p>
+                              {isCurrentUser && (
+                                <Badge variant="secondary" className="text-xs">You</Badge>
+                              )}
+                            </div>
+                            {member.user?.email && (
+                              <div className="flex items-center gap-1 text-sm text-muted-foreground mt-1">
+                                <Mail className="w-3 h-3" />
+                                <span className="truncate">{member.user.email}</span>
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Select
+                              value={member.role}
+                              onValueChange={(value) => updateRoleMutation.mutate({ userId: member.userId, role: value })}
+                              disabled={isCurrentUser || updateRoleMutation.isPending}
+                            >
+                              <SelectTrigger className="w-32" data-testid={`select-role-${member.id}`}>
+                                <Shield className="w-3 h-3 mr-1" />
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="inspector">Inspector</SelectItem>
+                                <SelectItem value="admin">Admin</SelectItem>
+                              </SelectContent>
+                            </Select>
+                            {!isCurrentUser && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="text-destructive hover:text-destructive"
+                                onClick={() => setMemberToRemove(member)}
+                                data-testid={`button-remove-${member.id}`}
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Pending Invitations Section */}
+            {pendingInvites.length > 0 && (
+              <div className="space-y-4 mt-8">
+                <div className="flex items-center gap-2">
+                  <h2 className="text-lg font-semibold">Pending Invitations</h2>
+                  <Badge variant="secondary" className="no-default-hover-elevate no-default-active-elevate">
+                    {pendingInvites.length}
+                  </Badge>
+                </div>
+                {pendingInvites.map((invite) => (
+                  <Card key={invite.id} className="border-dashed" data-testid={`card-pending-invite-${invite.id}`}>
+                    <CardContent className="p-4">
+                      <div className="flex items-center justify-between gap-4">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <Mail className="w-4 h-4 text-muted-foreground" />
+                            <p className="font-medium truncate">{invite.email}</p>
+                            <Badge variant="outline" className="text-xs no-default-hover-elevate no-default-active-elevate">
+                              {invite.role === "admin" ? (
+                                <><Shield className="w-3 h-3 mr-1" />Admin</>
+                              ) : (
+                                <><HardHat className="w-3 h-3 mr-1" />Inspector</>
+                              )}
+                            </Badge>
+                          </div>
+                          {invite.projects && invite.projects.length > 0 && (
+                            <div className="flex items-center gap-1 text-sm text-muted-foreground mt-1">
+                              <FolderOpen className="w-3 h-3" />
+                              <span>{invite.projects.length} project{invite.projects.length > 1 ? "s" : ""} assigned</span>
+                            </div>
+                          )}
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="text-destructive hover:text-destructive"
+                          onClick={() => deleteInviteMutation.mutate(invite.id)}
+                          disabled={deleteInviteMutation.isPending}
+                          data-testid={`button-cancel-invite-${invite.id}`}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </TabsContent>
+
+          <TabsContent value="requests" className="space-y-4">
+            {pendingJoinRequests.length === 0 ? (
+              <Card>
+                <CardContent className="flex flex-col items-center justify-center py-12">
+                  <UserPlus className="w-12 h-12 text-muted-foreground mb-4" />
+                  <p className="text-lg font-medium">No pending requests</p>
+                  <p className="text-muted-foreground">
+                    Join requests from users will appear here
+                  </p>
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="space-y-4">
+                {pendingJoinRequests.map((request) => {
+                  const displayName = request.user?.firstName && request.user?.lastName
+                    ? `${request.user.firstName} ${request.user.lastName}`
+                    : request.user?.email || "Unknown User";
+
+                  return (
+                    <Card key={request.id} data-testid={`card-request-${request.id}`}>
+                      <CardContent className="p-4">
+                        <div className="flex items-center justify-between gap-4">
+                          <div className="flex-1 min-w-0">
+                            <p className="font-medium" data-testid={`text-request-name-${request.id}`}>
+                              {displayName}
+                            </p>
+                            {request.user?.email && (
+                              <div className="flex items-center gap-1 text-sm text-muted-foreground mt-1">
+                                <Mail className="w-3 h-3" />
+                                <span className="truncate">{request.user.email}</span>
+                              </div>
+                            )}
+                            {request.message && (
+                              <p className="text-sm mt-2 text-muted-foreground italic">
+                                "{request.message}"
+                              </p>
+                            )}
+                            <p className="text-xs text-muted-foreground mt-2">
+                              Requested {new Date(request.createdAt || Date.now()).toLocaleDateString()}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => rejectJoinMutation.mutate(request.id)}
+                              disabled={rejectJoinMutation.isPending || approveJoinMutation.isPending}
+                              data-testid={`button-reject-${request.id}`}
+                            >
+                              <X className="w-4 h-4 mr-1" />
+                              Reject
+                            </Button>
+                            <Button
+                              size="sm"
+                              onClick={() => approveJoinMutation.mutate(request.id)}
+                              disabled={approveJoinMutation.isPending || rejectJoinMutation.isPending}
+                              data-testid={`button-approve-${request.id}`}
+                            >
+                              <Check className="w-4 h-4 mr-1" />
+                              Approve
+                            </Button>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
+            )}
+          </TabsContent>
+        </Tabs>
       </div>
 
       <AlertDialog open={!!memberToRemove} onOpenChange={() => setMemberToRemove(null)}>

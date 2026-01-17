@@ -68,6 +68,11 @@ export function useAuth() {
   const activeCompanyMembership = companies.find(c => c.companyId === activeCompanyId);
   const isCompanyAdmin = activeCompanyMembership?.role === "admin";
   const activeCompany = activeCompanyMembership?.company;
+  
+  // Effective admin checks respect preferAdminMode toggle (inspector mode)
+  const preferAdminMode = user?.profile?.preferAdminMode;
+  const isEffectiveSystemAdmin = user?.profile?.role === "admin" && preferAdminMode !== false;
+  const isEffectiveCompanyAdmin = isCompanyAdmin && preferAdminMode !== false;
 
   return {
     user,
@@ -76,6 +81,8 @@ export function useAuth() {
     isAuthenticated: !!user,
     isAdmin: user?.profile?.role === "admin",
     isCompanyAdmin,
+    isEffectiveSystemAdmin,
+    isEffectiveCompanyAdmin,
     activeCompany,
     companies,
     logout: logoutMutation.mutate,

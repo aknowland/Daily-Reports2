@@ -30,6 +30,7 @@ import CompanyProjectsPage from "@/pages/company/projects";
 import CompanyRequestsPage from "@/pages/company/requests";
 import CompanySettingsPage from "@/pages/company/settings";
 import BillingPage from "@/pages/billing";
+import LearnMorePage from "@/pages/learn-more";
 
 function LoadingScreen() {
   return (
@@ -52,6 +53,7 @@ function AuthenticatedRoutes() {
       <Route path="/reports/:id/edit" component={ReportFormPage} />
       <Route path="/profile" component={ProfilePage} />
       <Route path="/billing" component={BillingPage} />
+      <Route path="/learn-more" component={LearnMorePage} />
       <Route path="/companies" component={MyCompaniesPage} />
       <Route path="/my-projects" component={MyProjectsPage} />
       <Route path="/company/team" component={CompanyTeamPage} />
@@ -91,6 +93,7 @@ function AppContent() {
   return (
     <Switch>
       <Route path="/invite/:token" component={InviteAcceptPage} />
+      <Route path="/learn-more" component={LearnMorePage} />
       {!isAuthenticated ? (
         <Route component={LandingPage} />
       ) : (
