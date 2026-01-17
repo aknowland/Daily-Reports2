@@ -1531,9 +1531,68 @@ export async function registerRoutes(
       // Approval line
       doc.fontSize(7).font('Helvetica').text('Approved By: ______________________________________', timeX, sigY + 36);
 
+      // ===== PHOTOS ON PAGE 2 =====
+      if (photos.length > 0) {
+        doc.addPage();
+        doc.fontSize(12).font('Helvetica-Bold').text('PHOTO DOCUMENTATION', startX, 25);
+        doc.fontSize(9).font('Helvetica').text(`${projectName} - ${dateStr}`, startX, 42);
+        
+        const photoGap = 12;
+        const photoWidth = (pageWidth - photoGap) / 2;
+        const photoHeight = 160;
+        const captionHeight = 18;
+        
+        let currentPhotoY = 55;
+        let currentPhotoX = startX;
+        
+        for (let i = 0; i < photos.length; i++) {
+          // Stop if we would need page 3 - limit to 2 pages total
+          if (currentPhotoY + photoHeight + captionHeight > doc.page.height - 35) {
+            break; // Don't add more pages, stop adding photos
+          }
+          
+          const photo = photos[i];
+          const photoBuffer = await loadImageBuffer(photo.filePath);
+          
+          if (photoBuffer) {
+            try {
+              doc.strokeColor('#ccc').lineWidth(0.5)
+                .rect(currentPhotoX, currentPhotoY, photoWidth, photoHeight).stroke();
+              doc.strokeColor('#000');
+              
+              doc.image(photoBuffer, currentPhotoX + 2, currentPhotoY + 2, {
+                width: photoWidth - 4,
+                height: photoHeight - 4,
+                fit: [photoWidth - 4, photoHeight - 4],
+                align: 'center',
+                valign: 'center'
+              });
+              
+              if (photo.caption) {
+                doc.fontSize(8).font('Helvetica-Oblique').fillColor('#333')
+                  .text(photo.caption, currentPhotoX, currentPhotoY + photoHeight + 2, {
+                    width: photoWidth,
+                    align: 'center'
+                  });
+                doc.fillColor('#000');
+              }
+            } catch (err) {
+              console.error('Error adding photo to PDF:', err);
+            }
+          }
+          
+          if (currentPhotoX === startX) {
+            currentPhotoX = startX + photoWidth + photoGap;
+          } else {
+            currentPhotoX = startX;
+            currentPhotoY += photoHeight + captionHeight + 8;
+          }
+        }
+      }
+
       // ===== FOOTER ON PAGES 1 AND 2 =====
       const range = doc.bufferedPageRange();
-      const totalPages = Math.min(range.count, 2); // Only pages 1 and 2
+      const totalPages = range.count;
       
       for (let i = 0; i < totalPages; i++) {
         doc.switchToPage(i);
