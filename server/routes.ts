@@ -2377,6 +2377,115 @@ export async function registerRoutes(
     }
   });
 
+  // Get all companies for a user with their roles (for admin)
+  app.get("/api/admin/users/:id/companies", isAuthenticated, isAdmin, async (req, res) => {
+    try {
+      const userId = req.params.id;
+      const memberships = await storage.getCompaniesForUser(userId);
+      res.json(memberships);
+    } catch (error) {
+      console.error("Error fetching user companies:", error);
+      res.status(500).json({ message: "Failed to fetch user companies" });
+    }
+  });
+
+  // Assign user to a company (for admin)
+  app.post("/api/admin/users/:id/companies", isAuthenticated, isAdmin, async (req, res) => {
+    try {
+      const userId = req.params.id;
+      const { companyId, role } = req.body;
+      
+      if (!companyId) {
+        return res.status(400).json({ message: "companyId is required" });
+      }
+      
+      // Validate role
+      const validRoles = ["inspector", "admin"];
+      const memberRole = role && validRoles.includes(role) ? role : "inspector";
+      
+      // Check if user exists
+      const user = await storage.getUserById(userId);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      
+      // Check if company exists
+      const company = await storage.getCompany(companyId);
+      if (!company) {
+        return res.status(404).json({ message: "Company not found" });
+      }
+      
+      // Check if already a member
+      const existingMembership = await storage.getCompanyMember(companyId, userId);
+      if (existingMembership) {
+        return res.status(409).json({ message: "User is already a member of this company" });
+      }
+      
+      // Add user to company
+      const membership = await storage.addCompanyMember(companyId, userId, memberRole);
+      res.status(201).json(membership);
+    } catch (error) {
+      console.error("Error assigning user to company:", error);
+      res.status(500).json({ message: "Failed to assign user to company" });
+    }
+  });
+
+  // Update user's company role or remove from company (for admin)
+  app.put("/api/admin/users/:id/companies/:companyId", isAuthenticated, isAdmin, async (req, res) => {
+    try {
+      const userId = req.params.id;
+      const companyId = req.params.companyId;
+      const { role } = req.body;
+      
+      // Validate role
+      const validRoles = ["inspector", "admin"];
+      if (!role || !validRoles.includes(role)) {
+        return res.status(400).json({ message: "Invalid role. Must be 'inspector' or 'admin'" });
+      }
+      
+      // Check if membership exists
+      const existingMembership = await storage.getCompanyMember(companyId, userId);
+      if (!existingMembership) {
+        return res.status(404).json({ message: "User is not a member of this company" });
+      }
+      
+      // Update role
+      const updatedMembership = await storage.updateCompanyMemberRole(companyId, userId, role);
+      res.json(updatedMembership);
+    } catch (error) {
+      console.error("Error updating user company role:", error);
+      res.status(500).json({ message: "Failed to update user company role" });
+    }
+  });
+
+  // Remove user from a company (for admin)
+  app.delete("/api/admin/users/:id/companies/:companyId", isAuthenticated, isAdmin, async (req, res) => {
+    try {
+      const userId = req.params.id;
+      const companyId = req.params.companyId;
+      
+      // Check if membership exists
+      const existingMembership = await storage.getCompanyMember(companyId, userId);
+      if (!existingMembership) {
+        return res.status(404).json({ message: "User is not a member of this company" });
+      }
+      
+      // Remove from company
+      await storage.removeCompanyMember(companyId, userId);
+      
+      // If this was their active company, clear it
+      const profile = await storage.getUserProfile(userId);
+      if (profile?.activeCompanyId === companyId) {
+        await storage.setActiveCompany(userId, null);
+      }
+      
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error removing user from company:", error);
+      res.status(500).json({ message: "Failed to remove user from company" });
+    }
+  });
+
   app.get("/api/admin/settings", isAuthenticated, isAdmin, async (_req, res) => {
     try {
       const settings = await storage.getSettings();
