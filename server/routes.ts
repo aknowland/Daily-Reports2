@@ -1332,17 +1332,18 @@ export async function registerRoutes(
       let currentWaY = waY + 16;
       const maxWaRows = Math.max(workActivities.length, 2);
       const minRowHeight = 16;
+      const maxRowHeight = 32; // Limit row height to prevent overflow
       
       for (let i = 0; i < maxWaRows; i++) {
         const activity = workActivities[i];
         
-        // Calculate row height based on content
+        // Calculate row height based on content, with maximum limit
         let rowHeight = minRowHeight;
         if (activity) {
           doc.fontSize(8).font('Helvetica');
           const contractorHeight = doc.heightOfString(activity.contractor || '', { width: waCols[0] - 6 });
           const descHeight = doc.heightOfString(activity.workDescription || '', { width: waCols[2] - 6 });
-          rowHeight = Math.max(minRowHeight, contractorHeight + 8, descHeight + 8);
+          rowHeight = Math.min(maxRowHeight, Math.max(minRowHeight, contractorHeight + 8, descHeight + 8));
         }
         
         doc.rect(startX, currentWaY, waCols[0], rowHeight).stroke();
@@ -1350,9 +1351,9 @@ export async function registerRoutes(
         doc.rect(startX + waCols[0] + waCols[1], currentWaY, waCols[2], rowHeight).stroke();
         if (activity) {
           doc.fontSize(8).font('Helvetica');
-          doc.text(activity.contractor || '', startX + 3, currentWaY + 4, { width: waCols[0] - 6 });
+          doc.text(activity.contractor || '', startX + 3, currentWaY + 4, { width: waCols[0] - 6, height: rowHeight - 6, ellipsis: true });
           doc.text(String(activity.headcount || ''), startX + waCols[0] + 18, currentWaY + 4);
-          doc.text(activity.workDescription || '', startX + waCols[0] + waCols[1] + 3, currentWaY + 4, { width: waCols[2] - 6 });
+          doc.text(activity.workDescription || '', startX + waCols[0] + waCols[1] + 3, currentWaY + 4, { width: waCols[2] - 6, height: rowHeight - 6, ellipsis: true });
         }
         currentWaY += rowHeight;
       }
