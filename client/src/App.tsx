@@ -29,6 +29,7 @@ import CompanyTeamPage from "@/pages/company/team";
 import CompanyProjectsPage from "@/pages/company/projects";
 import CompanyRequestsPage from "@/pages/company/requests";
 import CompanySettingsPage from "@/pages/company/settings";
+import BillingPage from "@/pages/billing";
 
 function LoadingScreen() {
   return (
@@ -50,6 +51,7 @@ function AuthenticatedRoutes() {
       <Route path="/reports/:id" component={ReportDetailPage} />
       <Route path="/reports/:id/edit" component={ReportFormPage} />
       <Route path="/profile" component={ProfilePage} />
+      <Route path="/billing" component={BillingPage} />
       <Route path="/companies" component={MyCompaniesPage} />
       <Route path="/my-projects" component={MyProjectsPage} />
       <Route path="/company/team" component={CompanyTeamPage} />

@@ -59,6 +59,8 @@ export interface IStorage {
   getUserProfile(userId: string): Promise<UserProfile | undefined>;
   createOrUpdateUserProfile(data: InsertUserProfile): Promise<UserProfile>;
   updateUserStripeInfo(userId: string, data: { stripeCustomerId?: string; stripeSubscriptionId?: string; subscriptionStatus?: string }): Promise<UserProfile | undefined>;
+  incrementReportCount(userId: string): Promise<void>;
+  resetReportCount(userId: string): Promise<void>;
   
   // Users (admin)
   getAllUsers(): Promise<(User & { profile?: UserProfile })[]>;
@@ -436,6 +438,25 @@ export class DatabaseStorage implements IStorage {
       .where(eq(userProfiles.userId, userId))
       .returning();
     return profile;
+  }
+
+  async incrementReportCount(userId: string): Promise<void> {
+    await db
+      .update(userProfiles)
+      .set({ 
+        monthlyReportCount: sql`COALESCE(${userProfiles.monthlyReportCount}, 0) + 1`
+      })
+      .where(eq(userProfiles.userId, userId));
+  }
+
+  async resetReportCount(userId: string): Promise<void> {
+    await db
+      .update(userProfiles)
+      .set({ 
+        monthlyReportCount: 0,
+        reportCountResetAt: new Date()
+      })
+      .where(eq(userProfiles.userId, userId));
   }
 
   // Users (admin)

@@ -9,6 +9,7 @@ import { ReportDetailPanel } from "@/components/reports/report-detail-panel";
 import { Skeleton } from "@/components/ui/skeleton";
 import { OnboardingModal } from "@/components/onboarding-modal";
 import { NewUserSetup } from "@/components/new-user-setup";
+import { SubscriptionBanner } from "@/components/ui/subscription-banner";
 import { useAuth } from "@/hooks/use-auth";
 import { 
   Plus, 
@@ -97,6 +98,8 @@ export default function DashboardPage() {
             Here's an overview of your daily reports
           </p>
         </div>
+
+        <SubscriptionBanner />
 
         <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
           <Card data-testid="card-stat-total">
