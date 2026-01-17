@@ -1401,23 +1401,8 @@ export async function registerRoutes(
         qcX += 60;
       });
 
-      // ===== DSA COMPLIANCE STATEMENT =====
-      doc.y = qcY + 16;
-      const dsaY = doc.y;
-      doc.fontSize(8).font('Helvetica-Bold').text('THE WORK INSPECTED', startX, dsaY);
-      doc.rect(startX + 95, dsaY - 1, checkSize, checkSize).stroke();
-      doc.fontSize(7).font('Helvetica').text('WAS', startX + 104, dsaY);
-      doc.rect(startX + 125, dsaY - 1, checkSize, checkSize).stroke();
-      doc.text('WAS NOT', startX + 134, dsaY);
-      doc.fontSize(8).font('Helvetica').text('IN ACCORDANCE WITH DSA APPROVED DOCUMENTS', startX + 180, dsaY);
-      doc.rect(startX + 395, dsaY - 1, checkSize, checkSize).stroke();
-      doc.fontSize(7).text('MET', startX + 404, dsaY);
-      doc.rect(startX + 425, dsaY - 1, checkSize, checkSize).stroke();
-      doc.text('DID NOT MEET', startX + 434, dsaY);
-      doc.fontSize(8).font('Helvetica-Bold').text('REQUIREMENTS', startX + 495, dsaY);
-
       // ===== PHOTOS ATTACHED =====
-      doc.y = dsaY + 18;
+      doc.y = qcY + 16;
       const photos = report.photos || [];
       doc.fontSize(8).font('Helvetica-Bold').text('PHOTOS ATTACHED:', startX, doc.y);
       doc.font('Helvetica').text(`${photos.length} photo(s) - See attached sheet`, startX + 95, doc.y);
