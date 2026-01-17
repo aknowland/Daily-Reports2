@@ -1481,8 +1481,8 @@ export async function registerRoutes(
 
       // ===== PHOTOS ATTACHED =====
       const photos = report.photos || [];
-      doc.fontSize(8).font('Helvetica-Bold').text('PHOTOS ATTACHED:', startX, doc.y);
-      doc.font('Helvetica').text(`${photos.length} photo(s) - See attached sheet`, startX + 95, doc.y);
+      doc.fontSize(8).font('Helvetica-Bold').text('PHOTOS ATTACHED:', startX, doc.y, { lineBreak: false });
+      doc.font('Helvetica').text(`${photos.length} photo(s) - See attached sheet`, startX + 95, doc.y, { lineBreak: false });
 
       // ===== SIGNATURE SECTION =====
       // Ensure signature fits on page 1 by clamping Y position
@@ -1490,7 +1490,7 @@ export async function registerRoutes(
       doc.y = Math.min(doc.y + 20, maxSignatureStartY);
       const sigY = doc.y;
 
-      doc.fontSize(7).font('Helvetica').text('SIGNATURE OF INSPECTOR', startX, sigY);
+      doc.fontSize(7).font('Helvetica').text('SIGNATURE OF INSPECTOR', startX, sigY, { lineBreak: false });
       
       if (report.signaturePath) {
         const sigBuffer = await loadImageBuffer(report.signaturePath);
@@ -1505,11 +1505,11 @@ export async function registerRoutes(
       
       doc.moveTo(startX, sigY + 48).lineTo(startX + 200, sigY + 48).stroke();
 
-      doc.fontSize(7).text('INSPECTOR NAME', startX, sigY + 52);
-      doc.font('Helvetica-Bold').text(inspectorName, startX + 75, sigY + 52);
+      doc.fontSize(7).text('INSPECTOR NAME', startX, sigY + 52, { lineBreak: false });
+      doc.font('Helvetica-Bold').text(inspectorName, startX + 75, sigY + 52, { lineBreak: false });
       
-      doc.fontSize(7).font('Helvetica').text('LICENSE NO.', startX, sigY + 64);
-      doc.font('Helvetica-Bold').text(inspectorProfile?.licenseNumber || 'N/A', startX + 60, sigY + 64);
+      doc.fontSize(7).font('Helvetica').text('LICENSE NO.', startX, sigY + 64, { lineBreak: false });
+      doc.font('Helvetica-Bold').text(inspectorProfile?.licenseNumber || 'N/A', startX + 60, sigY + 64, { lineBreak: false });
 
       // Time tracking boxes - right side
       const timeX = 320;
@@ -1517,33 +1517,33 @@ export async function registerRoutes(
       const timeInStr = signedTime ? signedTime.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }) : '--';
       
       doc.rect(timeX, sigY, 45, 28).stroke();
-      doc.fontSize(7).font('Helvetica').text('TIME IN', timeX + 2, sigY + 2);
-      doc.fontSize(10).font('Helvetica-Bold').text(timeInStr, timeX + 2, sigY + 12);
+      doc.fontSize(7).font('Helvetica').text('TIME IN', timeX + 2, sigY + 2, { lineBreak: false });
+      doc.fontSize(10).font('Helvetica-Bold').text(timeInStr, timeX + 2, sigY + 12, { lineBreak: false });
 
       doc.rect(timeX + 45, sigY, 45, 28).stroke();
-      doc.fontSize(7).font('Helvetica').text('TIME OUT', timeX + 47, sigY + 2);
-      doc.fontSize(10).font('Helvetica-Bold').text('--', timeX + 47, sigY + 12);
+      doc.fontSize(7).font('Helvetica').text('TIME OUT', timeX + 47, sigY + 2, { lineBreak: false });
+      doc.fontSize(10).font('Helvetica-Bold').text('--', timeX + 47, sigY + 12, { lineBreak: false });
 
       doc.rect(timeX + 90, sigY, 40, 28).stroke();
-      doc.fontSize(7).font('Helvetica').text('REG HRS', timeX + 92, sigY + 2);
-      doc.fontSize(10).font('Helvetica-Bold').text('--', timeX + 102, sigY + 12);
+      doc.fontSize(7).font('Helvetica').text('REG HRS', timeX + 92, sigY + 2, { lineBreak: false });
+      doc.fontSize(10).font('Helvetica-Bold').text('--', timeX + 102, sigY + 12, { lineBreak: false });
 
       doc.rect(timeX + 130, sigY, 40, 28).stroke();
-      doc.fontSize(7).font('Helvetica').text('OT HRS', timeX + 132, sigY + 2);
-      doc.fontSize(10).font('Helvetica-Bold').text('--', timeX + 142, sigY + 12);
+      doc.fontSize(7).font('Helvetica').text('OT HRS', timeX + 132, sigY + 2, { lineBreak: false });
+      doc.fontSize(10).font('Helvetica-Bold').text('--', timeX + 142, sigY + 12, { lineBreak: false });
 
       doc.rect(timeX + 170, sigY, 45, 28).stroke();
-      doc.fontSize(7).font('Helvetica').text('SAMPLES', timeX + 172, sigY + 2);
-      doc.fontSize(10).font('Helvetica-Bold').text(String(photos.length), timeX + 186, sigY + 12);
+      doc.fontSize(7).font('Helvetica').text('SAMPLES', timeX + 172, sigY + 2, { lineBreak: false });
+      doc.fontSize(10).font('Helvetica-Bold').text(String(photos.length), timeX + 186, sigY + 12, { lineBreak: false });
 
       // Approval line
-      doc.fontSize(7).font('Helvetica').text('Approved By: ______________________________________', timeX, sigY + 36);
+      doc.fontSize(7).font('Helvetica').text('Approved By: ______________________________________', timeX, sigY + 36, { lineBreak: false });
 
       // ===== PHOTOS ON PAGE 2 =====
       if (photos.length > 0) {
         doc.addPage();
-        doc.fontSize(12).font('Helvetica-Bold').text('PHOTO DOCUMENTATION', startX, 25);
-        doc.fontSize(9).font('Helvetica').text(`${projectName} - ${dateStr}`, startX, 42);
+        doc.fontSize(12).font('Helvetica-Bold').text('PHOTO DOCUMENTATION', startX, 25, { lineBreak: false });
+        doc.fontSize(9).font('Helvetica').text(`${projectName} - ${dateStr}`, startX, 42, { lineBreak: false });
         
         const photoGap = 12;
         const photoWidth = (pageWidth - photoGap) / 2;
@@ -1580,7 +1580,10 @@ export async function registerRoutes(
                 doc.fontSize(8).font('Helvetica-Oblique').fillColor('#333')
                   .text(photo.caption, currentPhotoX, currentPhotoY + photoHeight + 2, {
                     width: photoWidth,
-                    align: 'center'
+                    height: captionHeight,
+                    align: 'center',
+                    ellipsis: true,
+                    lineBreak: false
                   });
                 doc.fillColor('#000');
               }
@@ -1606,9 +1609,9 @@ export async function registerRoutes(
         doc.switchToPage(i);
         const footerY = doc.page.height - 22;
         doc.fontSize(7).font('Helvetica').fillColor('#555');
-        doc.text('CC: Architect, Engineer, Project Inspector, Owner', startX, footerY);
+        doc.text('CC: Architect, Engineer, Project Inspector, Owner', startX, footerY, { lineBreak: false });
         if (company?.email) {
-          doc.text(company.email, 420, footerY, { width: 150, align: 'right' });
+          doc.text(company.email, 420, footerY, { width: 150, align: 'right', lineBreak: false });
         }
         doc.fillColor('#000');
       }
