@@ -61,6 +61,7 @@ export function Header({ title = "Field Daily Reports" }: HeaderProps) {
   ];
 
   const companyAdminNavItems = [
+    { href: "/company/dashboard", label: "Company Dashboard", icon: LayoutDashboard },
     { href: "/company/team", label: "Team Members", icon: Users },
     { href: "/company/projects", label: "Company Projects", icon: FolderOpen },
     { href: "/company/requests", label: "Join Requests", icon: ClipboardList },
