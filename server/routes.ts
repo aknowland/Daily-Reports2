@@ -1377,8 +1377,21 @@ export async function registerRoutes(
       
       doc.text(summaryText, startX + 4, sumY + 4, { width: pageWidth - 8 });
 
-      // ===== EQUIPMENT & MATERIALS =====
+      // ===== QC CHECKLIST ROW =====
       doc.y = sumY + sumH + 8;
+      const qcY = doc.y;
+      doc.fontSize(8).font('Helvetica-Bold').text('QC CHECKLIST:', startX, qcY);
+      
+      const qcItems = ['FSA-5', 'On Time', 'File # Checked', 'Plan Reviewed', 'Specs Reviewed', 'Prev Reports', 'Tests per Spec', 'Samples Safe'];
+      let qcX = startX + 75;
+      qcItems.forEach((item) => {
+        doc.rect(qcX, qcY - 1, checkSize, checkSize).stroke();
+        doc.fontSize(7).font('Helvetica').text(item, qcX + 9, qcY);
+        qcX += 60;
+      });
+
+      // ===== EQUIPMENT & MATERIALS =====
+      doc.y = qcY + 16;
       
       if (report.equipment || report.materialsDelivered) {
         const eqMatY = doc.y;
@@ -1460,20 +1473,7 @@ export async function registerRoutes(
       doc.text(visitorsText, startX + 50, visitorsY, { width: pageWidth - 55 });
       doc.y = visitorsY + Math.max(visitorsH, 10) + 8;
 
-      // ===== QC CHECKLIST ROW =====
-      const qcY = doc.y;
-      doc.fontSize(8).font('Helvetica-Bold').text('QC CHECKLIST:', startX, qcY);
-      
-      const qcItems = ['FSA-5', 'On Time', 'File # Checked', 'Plan Reviewed', 'Specs Reviewed', 'Prev Reports', 'Tests per Spec', 'Samples Safe'];
-      let qcX = startX + 75;
-      qcItems.forEach((item) => {
-        doc.rect(qcX, qcY - 1, checkSize, checkSize).stroke();
-        doc.fontSize(7).font('Helvetica').text(item, qcX + 9, qcY);
-        qcX += 60;
-      });
-
       // ===== PHOTOS ATTACHED =====
-      doc.y = qcY + 16;
       const photos = report.photos || [];
       doc.fontSize(8).font('Helvetica-Bold').text('PHOTOS ATTACHED:', startX, doc.y);
       doc.font('Helvetica').text(`${photos.length} photo(s) - See attached sheet`, startX + 95, doc.y);
