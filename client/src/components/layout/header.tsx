@@ -16,7 +16,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
-import { LogOut, User, Settings, Menu, LayoutDashboard, FolderOpen, Users, UserPlus, Building2, ClipboardList, FilePlus, Shield } from "lucide-react";
+import { LogOut, User, Settings, HardHat, Menu, LayoutDashboard, FolderOpen, Users, UserPlus, Building2, ClipboardList, FilePlus, Shield } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
@@ -25,7 +25,6 @@ import { ProjectSwitcher } from "./project-switcher";
 import { ModeToggle } from "./mode-toggle";
 import { useAdminMode } from "@/hooks/use-admin-mode";
 import { Separator } from "@/components/ui/separator";
-import appLogo from "@assets/generated_images/clipboard_hardhat_combo_logo.png";
 
 interface HeaderProps {
   title?: string;
@@ -122,8 +121,8 @@ export function Header({ title = "Field Daily Reports" }: HeaderProps) {
               <SheetContent side="left" className="w-64 overflow-y-auto">
                 <SheetHeader>
                   <SheetTitle className="flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center overflow-hidden">
-                      <img src={appLogo} alt="Field Daily Reports" className="w-6 h-6 object-contain" />
+                    <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
+                      <HardHat className="w-5 h-5 text-primary-foreground" />
                     </div>
                     Field Daily Reports
                   </SheetTitle>
@@ -188,8 +187,8 @@ export function Header({ title = "Field Daily Reports" }: HeaderProps) {
           )}
           <Link href="/">
             <div className="flex items-center gap-2 cursor-pointer" data-testid="link-home">
-              <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center overflow-hidden">
-                <img src={appLogo} alt="Field Daily Reports" className="w-6 h-6 object-contain" />
+              <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
+                <HardHat className="w-5 h-5 text-primary-foreground" />
               </div>
               <span className="font-semibold text-lg hidden sm:inline">{title}</span>
             </div>
