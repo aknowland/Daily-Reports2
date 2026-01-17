@@ -517,14 +517,14 @@ export default function MyProjectsPage() {
               <div className="space-y-2">
                 <Label htmlFor="companyId">Affiliate with Company (Optional)</Label>
                 <Select 
-                  value={formData.companyId} 
-                  onValueChange={(value) => setFormData({ ...formData, companyId: value })}
+                  value={formData.companyId || "__none__"} 
+                  onValueChange={(value) => setFormData({ ...formData, companyId: value === "__none__" ? "" : value })}
                 >
                   <SelectTrigger data-testid="select-create-company">
                     <SelectValue placeholder="No company (personal project)" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">No company (personal project)</SelectItem>
+                    <SelectItem value="__none__">No company (personal project)</SelectItem>
                     {companies.map((membership) => (
                       <SelectItem key={membership.companyId} value={membership.companyId}>
                         <div className="flex items-center gap-2">
