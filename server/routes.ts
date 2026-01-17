@@ -863,8 +863,16 @@ export async function registerRoutes(
       doc.fontSize(12).font('Helvetica').text(dateRangeStr, { align: 'center', width: pageWidth });
       doc.moveDown(1.5);
       
-      // Company info section
-      if (company) {
+      // FROM section - Use contractor info from user profile if available, otherwise fall back to company
+      const hasContractorInfo = profile?.contractorCompanyName;
+      if (hasContractorInfo) {
+        doc.fontSize(10).font('Helvetica-Bold').text('FROM:', startX);
+        doc.fontSize(10).font('Helvetica').text(profile.contractorCompanyName!, startX);
+        if (profile.contractorAddress) doc.text(profile.contractorAddress);
+        if (profile.contractorPhone) doc.text(`Phone: ${profile.contractorPhone}`);
+        if (profile.contractorEmail) doc.text(`Email: ${profile.contractorEmail}`);
+        doc.moveDown();
+      } else if (company) {
         doc.fontSize(10).font('Helvetica-Bold').text('FROM:', startX);
         doc.fontSize(10).font('Helvetica').text(company.name, startX);
         if (company.address) doc.text(company.address);
