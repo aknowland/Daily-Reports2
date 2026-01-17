@@ -175,6 +175,23 @@ export async function registerRoutes(
   await setupAuth(app);
   registerAuthRoutes(app);
 
+  // Test email endpoint (temporary)
+  app.post("/api/test-email", async (req: any, res) => {
+    try {
+      const { sendEmail } = await import('./replit_integrations/email/client');
+      const result = await sendEmail({
+        to: "austin@k2media.org",
+        subject: "Field Daily Reports - Test Email",
+        html: "<h1>Test Email</h1><p>If you receive this, the email integration is working correctly!</p>",
+      });
+      console.log("Test email result:", result);
+      res.json({ success: true, result });
+    } catch (error: any) {
+      console.error("Test email error:", error);
+      res.status(500).json({ success: false, error: error.message });
+    }
+  });
+
   // Serve static files from storage (authenticated access with ownership check)
   app.use("/storage", isAuthenticated, async (req: any, res, next) => {
     try {
