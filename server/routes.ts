@@ -1149,9 +1149,9 @@ export async function registerRoutes(
       
       doc.strokeColor('#000').lineWidth(0.5);
 
-      // Row 1: DCN#, Report No., Job No.
+      // Row 1: Project #, Report No., Status
       doc.rect(gridX, gridTop, 60, 16).stroke();
-      doc.fontSize(5).font('Helvetica').text('DCN #', gridX + 2, gridTop + 2);
+      doc.fontSize(5).font('Helvetica').text('Project #', gridX + 2, gridTop + 2);
       doc.fontSize(7).font('Helvetica-Bold').text(report.project?.projectNumber || 'N/A', gridX + 2, gridTop + 8);
 
       doc.rect(gridX + 60, gridTop, 50, 16).stroke();
@@ -1159,8 +1159,8 @@ export async function registerRoutes(
       doc.fontSize(7).font('Helvetica-Bold').text('1', gridX + 90, gridTop + 8);
 
       doc.rect(gridX + 110, gridTop, 55, 16).stroke();
-      doc.fontSize(5).font('Helvetica').text('Job No.', gridX + 112, gridTop + 2);
-      doc.fontSize(7).font('Helvetica-Bold').text(req.params.id.slice(-6).toUpperCase(), gridX + 112, gridTop + 8);
+      doc.fontSize(5).font('Helvetica').text('Status', gridX + 112, gridTop + 2);
+      doc.fontSize(7).font('Helvetica-Bold').text((report.status || 'draft').toUpperCase(), gridX + 112, gridTop + 8);
 
       // Row 2: DSA File No., Date, Time
       doc.rect(gridX, gridTop + 16, 60, 16).stroke();
@@ -1270,9 +1270,9 @@ export async function registerRoutes(
         currentWaY += 12;
       }
 
-      // ===== INSPECTION SUMMARY =====
+      // ===== DAILY SUMMARY =====
       doc.y = currentWaY + 6;
-      doc.fontSize(7).font('Helvetica-Bold').text('INSPECTION SUMMARY', startX, doc.y);
+      doc.fontSize(7).font('Helvetica-Bold').text('DAILY SUMMARY', startX, doc.y);
       doc.y += 10;
 
       const sumY = doc.y;
@@ -1365,8 +1365,8 @@ export async function registerRoutes(
       
       doc.moveTo(startX, sigY + 40).lineTo(startX + 180, sigY + 40).stroke();
 
-      doc.fontSize(5).text('SPECIALTY', startX, sigY + 44);
-      doc.font('Helvetica-Bold').text(inspectorProfile?.title || 'Inspector', startX + 50, sigY + 44);
+      doc.fontSize(5).text('PROJECT INSPECTOR NAME', startX, sigY + 44);
+      doc.font('Helvetica-Bold').text(inspectorName, startX + 85, sigY + 44);
       
       doc.fontSize(5).font('Helvetica').text('LICENSE NO.', startX, sigY + 54);
       doc.font('Helvetica-Bold').text(inspectorProfile?.licenseNumber || 'N/A', startX + 50, sigY + 54);
