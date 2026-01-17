@@ -37,6 +37,7 @@ import {
   FileText,
   Loader2,
   Calendar,
+  Download,
 } from "lucide-react";
 import { Link } from "wouter";
 import { useState } from "react";
@@ -94,6 +95,7 @@ export default function MyProjectsPage() {
   const [invoiceEndDate, setInvoiceEndDate] = useState<Date | undefined>(endOfMonth(subMonths(new Date(), 1)));
   const [invoiceData, setInvoiceData] = useState<InvoiceData | null>(null);
   const [isLoadingInvoice, setIsLoadingInvoice] = useState(false);
+  const [isExportingPdf, setIsExportingPdf] = useState(false);
 
   const { data: projects = [], isLoading, error } = useQuery<Project[]>({
     queryKey: ["/api/my-projects"],
@@ -207,6 +209,47 @@ export default function MyProjectsPage() {
       });
     } finally {
       setIsLoadingInvoice(false);
+    }
+  };
+
+  const exportInvoicePdf = async () => {
+    if (!invoiceProject || !invoiceStartDate || !invoiceEndDate) return;
+    
+    setIsExportingPdf(true);
+    try {
+      const startStr = format(invoiceStartDate, "yyyy-MM-dd");
+      const endStr = format(invoiceEndDate, "yyyy-MM-dd");
+      const response = await fetch(
+        `/api/projects/${invoiceProject.id}/invoice-pdf?startDate=${startStr}&endDate=${endStr}`,
+        { credentials: "include" }
+      );
+      
+      if (!response.ok) {
+        throw new Error("Failed to generate invoice PDF");
+      }
+      
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Invoice_${invoiceProject.projectNumber || invoiceProject.name}_${startStr}_to_${endStr}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      
+      toast({
+        title: "PDF Exported",
+        description: "Invoice PDF has been downloaded.",
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to export invoice PDF",
+        variant: "destructive",
+      });
+    } finally {
+      setIsExportingPdf(false);
     }
   };
 
@@ -703,7 +746,7 @@ export default function MyProjectsPage() {
             )}
           </div>
           
-          <DialogFooter>
+          <DialogFooter className="gap-2 sm:gap-0">
             <Button
               variant="outline"
               onClick={() => {
@@ -715,6 +758,25 @@ export default function MyProjectsPage() {
             >
               Close
             </Button>
+            {invoiceData && invoiceData.reports.length > 0 && (
+              <Button
+                onClick={exportInvoicePdf}
+                disabled={isExportingPdf}
+                data-testid="button-export-invoice-pdf"
+              >
+                {isExportingPdf ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Exporting...
+                  </>
+                ) : (
+                  <>
+                    <Download className="w-4 h-4 mr-2" />
+                    Export PDF
+                  </>
+                )}
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
