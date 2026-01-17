@@ -1256,7 +1256,8 @@ export async function registerRoutes(
         doc.circle(iconX, iconY, iconSize - 1).fill('#f59e0b');
       }
       
-      doc.lineWidth(1);
+      // Reset all colors and line width back to defaults
+      doc.fillColor('#000').strokeColor('#000').lineWidth(1);
       doc.fontSize(6).font('Helvetica').text(`${weatherLabel}${weatherText ? ' - ' + weatherText : ''}`, startX + 62, doc.y);
 
       // ===== TYPE OF WORK - Checkboxes =====
