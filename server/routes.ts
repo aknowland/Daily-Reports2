@@ -1243,18 +1243,39 @@ export async function registerRoutes(
         });
       }
 
-      // Issues/Safety Section (combined with notes for compact display)
-      if (report.issuesFlag || report.safetyFlag || report.workPerformed) {
-        drawSectionHeader('NOTES & ISSUES');
-        if (report.workPerformed) {
-          drawTableRow('Notes', report.workPerformed);
-        }
+      // Materials Delivered
+      if (report.materialsDelivered) {
+        drawSectionHeader('MATERIALS DELIVERED');
+        drawTableRow('Items', report.materialsDelivered);
+      }
+
+      // Issues/Safety Section
+      if (report.issuesFlag || report.safetyFlag) {
+        drawSectionHeader('ISSUES & SAFETY');
         if (report.issuesFlag) {
           drawTableRow('Issues/Delays', report.issuesDetails || 'No details provided');
         }
         if (report.safetyFlag) {
           drawTableRow('Safety Incident', report.safetyDetails || 'No details provided');
         }
+      }
+
+      // Inspections
+      if (report.inspections) {
+        drawSectionHeader('INSPECTIONS');
+        drawTableRow('Details', report.inspections);
+      }
+
+      // Additional Notes
+      if (report.workPerformed) {
+        drawSectionHeader('ADDITIONAL NOTES');
+        drawTableRow('Notes', report.workPerformed);
+      }
+
+      // Equipment
+      if (report.equipment) {
+        drawSectionHeader('EQUIPMENT');
+        drawTableRow('On Site', report.equipment);
       }
 
       // Photos - 2 columns layout, limited to 4 photos max for 2-page PDF
