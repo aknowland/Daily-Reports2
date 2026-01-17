@@ -1010,80 +1010,84 @@ export async function registerRoutes(
       const filePath = path.join(REPORTS_DIR, filename);
       const pdfPath = `/storage/reports/${filename}`;
 
-      const doc = new PDFDocument({ margin: 36, bufferPages: true }); // Smaller margins
+      // Disable automatic page creation to enforce strict 2-page limit
+      const doc = new PDFDocument({ margin: 36, bufferPages: true, autoFirstPage: true });
       const writeStream = fs.createWriteStream(filePath);
       doc.pipe(writeStream);
 
       const pageWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
-      const leftColWidth = 100; // Narrower labels
+      const leftColWidth = 100;
       const rightColWidth = pageWidth - leftColWidth;
       const startX = doc.page.margins.left;
+      const pageBottom = doc.page.height - doc.page.margins.bottom - 25;
       
       // PDF color scheme
       const PRIMARY_BLUE = '#1e40af';
       const PRIMARY_BLUE_BORDER = '#1e3a8a';
-      const DIVIDER_GRAY = '#d1d5db';
       
-      // Track pages for 2-page limit
+      // STRICT 2-page limit enforcement
       let currentPage = 1;
       const MAX_PAGES = 2;
+      let pageLimitReached = false;
       
-      // Helper: check if we can add more content
+      // Helper: check if we can add content, set flag if limit reached
       const canAddContent = (heightNeeded: number): boolean => {
-        if (doc.y + heightNeeded <= doc.page.height - doc.page.margins.bottom - 20) return true;
-        return currentPage < MAX_PAGES;
+        if (pageLimitReached) return false;
+        if (doc.y + heightNeeded <= pageBottom) return true;
+        if (currentPage < MAX_PAGES) return true;
+        pageLimitReached = true;
+        return false;
       };
       
-      // Helper function to draw a compact table row
-      const drawTableRow = (label: string, value: string, options?: { bold?: boolean }): boolean => {
-        const textVal = value || 'N/A';
-        doc.fontSize(8);
-        const rowHeight = Math.max(13, doc.heightOfString(textVal, { width: rightColWidth - 8 }) + 3);
-        
-        if (doc.y + rowHeight > doc.page.height - doc.page.margins.bottom - 20) {
-          if (currentPage >= MAX_PAGES) return false;
-          doc.addPage();
-          currentPage++;
+      // Helper: try to get space for content, returns false if page limit reached
+      const ensureSpace = (heightNeeded: number): boolean => {
+        if (pageLimitReached) return false;
+        if (doc.y + heightNeeded <= pageBottom) return true;
+        if (currentPage >= MAX_PAGES) {
+          pageLimitReached = true;
+          return false;
         }
+        doc.addPage();
+        currentPage++;
+        return true;
+      };
+      
+      // Helper function to draw a compact table row - returns false if skipped
+      const drawTableRow = (label: string, value: string, options?: { bold?: boolean }): boolean => {
+        if (pageLimitReached) return false;
+        
+        const textVal = (value || 'N/A').substring(0, 500); // Truncate long text
+        doc.fontSize(8);
+        const rowHeight = Math.max(13, Math.min(doc.heightOfString(textVal, { width: rightColWidth - 8 }) + 3, 60)); // Max row height
+        
+        if (!ensureSpace(rowHeight)) return false;
         
         const rowY = doc.y;
         doc.rect(startX, rowY, leftColWidth, rowHeight).stroke();
         doc.rect(startX + leftColWidth, rowY, rightColWidth, rowHeight).stroke();
         
-        doc.fontSize(8).font('Helvetica-Bold').text(label, startX + 4, rowY + 2, { width: leftColWidth - 8 });
+        doc.fontSize(8).font('Helvetica-Bold').text(label, startX + 4, rowY + 2, { width: leftColWidth - 8, lineBreak: false });
         doc.fontSize(8).font(options?.bold ? 'Helvetica-Bold' : 'Helvetica')
-          .text(textVal, startX + leftColWidth + 4, rowY + 2, { width: rightColWidth - 8 });
+          .text(textVal, startX + leftColWidth + 4, rowY + 2, { width: rightColWidth - 8, height: rowHeight - 4, ellipsis: true });
         
         doc.y = rowY + rowHeight;
         return true;
       };
-      
-      // Helper function to draw a subtle section divider
-      const drawSectionDivider = () => {
-        doc.moveDown(0.3);
-        const dividerY = doc.y;
-        doc.strokeColor(DIVIDER_GRAY).lineWidth(0.5)
-          .moveTo(startX, dividerY)
-          .lineTo(startX + pageWidth, dividerY)
-          .stroke();
-        doc.strokeColor('#000').lineWidth(1);
-        doc.moveDown(0.2);
-      };
 
       // Helper function to draw compact section header
       const drawSectionHeader = (title: string): boolean => {
-        if (doc.y + 30 > doc.page.height - doc.page.margins.bottom - 20) {
-          if (currentPage >= MAX_PAGES) return false;
-          doc.addPage();
-          currentPage++;
-        } else {
-          doc.moveDown(0.4);
+        if (pageLimitReached) return false;
+        
+        if (!ensureSpace(30)) return false;
+        
+        if (doc.y > doc.page.margins.top + 10) {
+          doc.moveDown(0.3);
         }
         
         const headerY = doc.y;
         doc.rect(startX, headerY, pageWidth, 14).fillAndStroke(PRIMARY_BLUE, PRIMARY_BLUE_BORDER);
         doc.fillColor('#ffffff').fontSize(8).font('Helvetica-Bold')
-          .text(title, startX + 5, headerY + 3, { width: pageWidth - 10 });
+          .text(title, startX + 5, headerY + 3, { width: pageWidth - 10, lineBreak: false });
         doc.y = headerY + 14;
         doc.fillColor('#000');
         return true;
@@ -1117,36 +1121,36 @@ export async function registerRoutes(
           }
         }
         
-        // Compact contact info on the right
+        // Compact contact info on the right - use lineBreak: false to prevent auto-pagination
         const contactX = startX + pageWidth - 180;
         let contactY = logoTopY;
         doc.fontSize(9).font('Helvetica-Bold').fillColor('#000');
         if (company?.name) {
-          doc.text(company.name, contactX, contactY, { width: 180, align: 'right' });
+          doc.text(company.name.substring(0, 40), contactX, contactY, { width: 180, align: 'right', lineBreak: false });
           contactY += 11;
         }
         doc.font('Helvetica').fontSize(8);
         if (company?.address) {
-          doc.text(company.address, contactX, contactY, { width: 180, align: 'right' });
+          doc.text(company.address.substring(0, 50), contactX, contactY, { width: 180, align: 'right', lineBreak: false });
           contactY += 10;
         }
         if (company?.phone) {
-          doc.text(company.phone, contactX, contactY, { width: 180, align: 'right' });
+          doc.text(company.phone.substring(0, 25), contactX, contactY, { width: 180, align: 'right', lineBreak: false });
           contactY += 10;
         }
         if (company?.email) {
-          doc.text(company.email, contactX, contactY, { width: 180, align: 'right' });
+          doc.text(company.email.substring(0, 40), contactX, contactY, { width: 180, align: 'right', lineBreak: false });
         }
       }
       
-      // Title - compact, positioned beside logo
+      // Title - compact, positioned beside logo, no line breaks
       const titleY = hasLogo ? logoTopY + 10 : doc.page.margins.top;
       const titleX = hasLogo ? startX + logoSize + 15 : startX;
       const titleWidth = hasLogo ? pageWidth - logoSize - 200 : pageWidth;
-      doc.fontSize(14).font('Helvetica-Bold').text('DAILY FIELD REPORT', titleX, titleY, { width: titleWidth });
+      doc.fontSize(14).font('Helvetica-Bold').text('DAILY FIELD REPORT', titleX, titleY, { width: titleWidth, lineBreak: false });
       doc.fontSize(8).font('Helvetica').text(new Date(report.date).toLocaleDateString('en-US', { 
         weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' 
-      }), titleX, titleY + 16, { width: titleWidth });
+      }), titleX, titleY + 16, { width: titleWidth, lineBreak: false });
       
       // Start content after header
       doc.y = Math.max(logoEndY, titleY + 30) + 5;
@@ -1170,11 +1174,12 @@ export async function registerRoutes(
 
       // Work Activities Section - compact 3-column table
       const workActivities = (report.workActivities as WorkActivityRow[]) || [];
-      if (workActivities.length > 0 && canAddContent(40)) {
+      if (!pageLimitReached && workActivities.length > 0 && canAddContent(40)) {
         if (drawSectionHeader('WORK ACTIVITIES')) {
           const activityColWidths = [130, 50, pageWidth - 130 - 50];
           
-          const drawActivityTableHeader = () => {
+          const drawActivityTableHeader = (): boolean => {
+            if (pageLimitReached) return false;
             const hdrY = doc.y;
             const headerBg = '#e5e7eb';
             doc.rect(startX, hdrY, activityColWidths[0], 12).fillAndStroke(headerBg, '#000');
@@ -1182,27 +1187,24 @@ export async function registerRoutes(
             doc.rect(startX + activityColWidths[0] + activityColWidths[1], hdrY, activityColWidths[2], 12).fillAndStroke(headerBg, '#000');
             
             doc.fillColor('#000').fontSize(7).font('Helvetica-Bold');
-            doc.text('Contractor/Trade', startX + 3, hdrY + 3, { width: activityColWidths[0] - 6 });
-            doc.text('Crew', startX + activityColWidths[0] + 3, hdrY + 3, { width: activityColWidths[1] - 6 });
-            doc.text('Work Activities', startX + activityColWidths[0] + activityColWidths[1] + 3, hdrY + 3, { width: activityColWidths[2] - 6 });
+            doc.text('Contractor/Trade', startX + 3, hdrY + 3, { width: activityColWidths[0] - 6, lineBreak: false });
+            doc.text('Crew', startX + activityColWidths[0] + 3, hdrY + 3, { width: activityColWidths[1] - 6, lineBreak: false });
+            doc.text('Work Activities', startX + activityColWidths[0] + activityColWidths[1] + 3, hdrY + 3, { width: activityColWidths[2] - 6, lineBreak: false });
             doc.y = hdrY + 12;
+            return true;
           };
           
           drawActivityTableHeader();
           
           for (const activity of workActivities) {
-            if (currentPage >= MAX_PAGES && doc.y > doc.page.height - doc.page.margins.bottom - 40) break;
+            if (pageLimitReached) break;
             
             doc.fontSize(7);
-            const descHeight = doc.heightOfString(activity.workDescription || '', { width: activityColWidths[2] - 6 });
-            const rowHeight = Math.max(11, descHeight + 4);
+            const descText = (activity.workDescription || '').substring(0, 200); // Truncate
+            const descHeight = doc.heightOfString(descText, { width: activityColWidths[2] - 6 });
+            const rowHeight = Math.max(11, Math.min(descHeight + 4, 40)); // Max height 40
             
-            if (doc.y + rowHeight > doc.page.height - doc.page.margins.bottom - 20) {
-              if (currentPage >= MAX_PAGES) break;
-              doc.addPage();
-              currentPage++;
-              drawActivityTableHeader();
-            }
+            if (!ensureSpace(rowHeight)) break;
             
             const rowY = doc.y;
             doc.rect(startX, rowY, activityColWidths[0], rowHeight).stroke();
@@ -1210,9 +1212,9 @@ export async function registerRoutes(
             doc.rect(startX + activityColWidths[0] + activityColWidths[1], rowY, activityColWidths[2], rowHeight).stroke();
             
             doc.fontSize(7).font('Helvetica');
-            doc.text(activity.contractor || '', startX + 3, rowY + 2, { width: activityColWidths[0] - 6 });
-            doc.text(String(activity.headcount || 0), startX + activityColWidths[0] + 3, rowY + 2, { width: activityColWidths[1] - 6 });
-            doc.text(activity.workDescription || '', startX + activityColWidths[0] + activityColWidths[1] + 3, rowY + 2, { width: activityColWidths[2] - 6 });
+            doc.text((activity.contractor || '').substring(0, 30), startX + 3, rowY + 2, { width: activityColWidths[0] - 6, height: rowHeight - 4, ellipsis: true });
+            doc.text(String(activity.headcount || 0), startX + activityColWidths[0] + 3, rowY + 2, { width: activityColWidths[1] - 6, lineBreak: false });
+            doc.text(descText, startX + activityColWidths[0] + activityColWidths[1] + 3, rowY + 2, { width: activityColWidths[2] - 6, height: rowHeight - 4, ellipsis: true });
             doc.y = rowY + rowHeight;
           }
         }
@@ -1220,85 +1222,89 @@ export async function registerRoutes(
 
       // Visitors Section
       const visitors = (report.visitors as VisitorRow[]) || [];
-      if (visitors.length > 0) {
-        drawSectionHeader('VISITORS');
-        visitors.forEach((visitor) => {
-          drawTableRow(visitor.name || 'Unknown', `${visitor.company || ''}${visitor.notes ? ` - ${visitor.notes}` : ''}`);
-        });
+      if (!pageLimitReached && visitors.length > 0 && canAddContent(30)) {
+        if (drawSectionHeader('VISITORS')) {
+          for (const visitor of visitors) {
+            if (pageLimitReached) break;
+            drawTableRow(visitor.name || 'Unknown', `${visitor.company || ''}${visitor.notes ? ` - ${visitor.notes}` : ''}`);
+          }
+        }
       }
 
       // Materials Delivered
-      if (report.materialsDelivered) {
-        drawSectionHeader('MATERIALS DELIVERED');
-        drawTableRow('Items', report.materialsDelivered);
+      if (!pageLimitReached && report.materialsDelivered && canAddContent(30)) {
+        if (drawSectionHeader('MATERIALS DELIVERED')) {
+          drawTableRow('Items', report.materialsDelivered);
+        }
       }
 
       // Issues/Safety Section
-      if (report.issuesFlag || report.safetyFlag) {
-        drawSectionHeader('ISSUES & SAFETY');
-        if (report.issuesFlag) {
-          drawTableRow('Issues/Delays', report.issuesDetails || 'No details provided');
-        }
-        if (report.safetyFlag) {
-          drawTableRow('Safety Incident', report.safetyDetails || 'No details provided');
+      if (!pageLimitReached && (report.issuesFlag || report.safetyFlag) && canAddContent(30)) {
+        if (drawSectionHeader('ISSUES & SAFETY')) {
+          if (!pageLimitReached && report.issuesFlag) {
+            drawTableRow('Issues/Delays', report.issuesDetails || 'No details provided');
+          }
+          if (!pageLimitReached && report.safetyFlag) {
+            drawTableRow('Safety Incident', report.safetyDetails || 'No details provided');
+          }
         }
       }
 
       // Inspections
-      if (report.inspections) {
-        drawSectionHeader('INSPECTIONS');
-        drawTableRow('Details', report.inspections);
+      if (!pageLimitReached && report.inspections && canAddContent(30)) {
+        if (drawSectionHeader('INSPECTIONS')) {
+          drawTableRow('Details', report.inspections);
+        }
       }
 
       // Additional Notes
-      if (report.workPerformed) {
-        drawSectionHeader('ADDITIONAL NOTES');
-        drawTableRow('Notes', report.workPerformed);
+      if (!pageLimitReached && report.workPerformed && canAddContent(30)) {
+        if (drawSectionHeader('ADDITIONAL NOTES')) {
+          drawTableRow('Notes', report.workPerformed);
+        }
       }
 
       // Equipment
-      if (report.equipment) {
-        drawSectionHeader('EQUIPMENT');
-        drawTableRow('On Site', report.equipment);
+      if (!pageLimitReached && report.equipment && canAddContent(30)) {
+        if (drawSectionHeader('EQUIPMENT')) {
+          drawTableRow('On Site', report.equipment);
+        }
       }
 
-      // Photos - 2 columns, smaller, max 4 photos for 2-page limit
+      // Photos - max 4 photos, only if space available
       const photos = report.photos || [];
       const maxPhotos = Math.min(photos.length, 4);
-      if (maxPhotos > 0 && canAddContent(100)) {
-        const photoHeight = 90;
-        const photoPadding = 4;
-        const photoGap = 10;
-        const captionHeight = 12;
+      if (!pageLimitReached && maxPhotos > 0 && canAddContent(80)) {
+        const photoHeight = 75;
+        const photoPadding = 3;
+        const photoGap = 8;
+        const captionHeight = 10;
         
         if (drawSectionHeader(`PHOTOS${photos.length > 4 ? ` (${maxPhotos} of ${photos.length})` : ''}`)) {
           const photoWidth = (pageWidth - photoGap) / 2;
           let currentY = doc.y;
           
           for (let i = 0; i < maxPhotos; i += 2) {
-            if (currentPage >= MAX_PAGES && currentY > doc.page.height - photoHeight - 40) break;
+            if (pageLimitReached) break;
             
-            if (currentY > doc.page.height - photoHeight - captionHeight - 40) {
-              if (currentPage >= MAX_PAGES) break;
-              doc.addPage();
-              currentPage++;
-              currentY = doc.page.margins.top;
-            }
+            const neededHeight = photoHeight + captionHeight + 4;
+            if (!ensureSpace(neededHeight)) break;
+            currentY = doc.y;
             
             // Left photo
             const leftPhoto = photos[i];
             const leftPhotoPath = path.join(process.cwd(), leftPhoto.filePath.replace(/^\//, ''));
             if (fs.existsSync(leftPhotoPath)) {
               try {
-                doc.lineWidth(1).strokeColor('#374151').rect(startX, currentY, photoWidth, photoHeight).stroke();
-                doc.lineWidth(1).strokeColor('#000');
+                doc.lineWidth(0.5).strokeColor('#374151').rect(startX, currentY, photoWidth, photoHeight).stroke();
+                doc.strokeColor('#000');
                 doc.image(leftPhotoPath, startX + photoPadding, currentY + photoPadding, { 
                   width: photoWidth - (photoPadding * 2), height: photoHeight - (photoPadding * 2),
                   fit: [photoWidth - (photoPadding * 2), photoHeight - (photoPadding * 2)], align: 'center', valign: 'center'
                 });
                 if (leftPhoto.caption) {
                   doc.fontSize(6).font('Helvetica-Oblique').fillColor('#4b5563')
-                    .text(leftPhoto.caption.substring(0, 40), startX, currentY + photoHeight + 2, { width: photoWidth, align: 'center' });
+                    .text(leftPhoto.caption.substring(0, 35), startX, currentY + photoHeight + 1, { width: photoWidth, align: 'center', lineBreak: false });
                   doc.fillColor('#000');
                 }
               } catch (err) { console.error('Error adding photo:', err); }
@@ -1311,45 +1317,45 @@ export async function registerRoutes(
               const rightX = startX + photoWidth + photoGap;
               if (fs.existsSync(rightPhotoPath)) {
                 try {
-                  doc.lineWidth(1).strokeColor('#374151').rect(rightX, currentY, photoWidth, photoHeight).stroke();
-                  doc.lineWidth(1).strokeColor('#000');
+                  doc.lineWidth(0.5).strokeColor('#374151').rect(rightX, currentY, photoWidth, photoHeight).stroke();
+                  doc.strokeColor('#000');
                   doc.image(rightPhotoPath, rightX + photoPadding, currentY + photoPadding, { 
                     width: photoWidth - (photoPadding * 2), height: photoHeight - (photoPadding * 2),
                     fit: [photoWidth - (photoPadding * 2), photoHeight - (photoPadding * 2)], align: 'center', valign: 'center'
                   });
                   if (rightPhoto.caption) {
                     doc.fontSize(6).font('Helvetica-Oblique').fillColor('#4b5563')
-                      .text(rightPhoto.caption.substring(0, 40), rightX, currentY + photoHeight + 2, { width: photoWidth, align: 'center' });
+                      .text(rightPhoto.caption.substring(0, 35), rightX, currentY + photoHeight + 1, { width: photoWidth, align: 'center', lineBreak: false });
                     doc.fillColor('#000');
                   }
                 } catch (err) { console.error('Error adding photo:', err); }
               }
             }
             
-            currentY += photoHeight + captionHeight + 4;
+            currentY += photoHeight + captionHeight + 3;
             doc.y = currentY;
           }
         }
       }
 
       // Signature Section - compact, only if space available
-      if (report.signaturePath && canAddContent(60)) {
+      if (!pageLimitReached && report.signaturePath && canAddContent(50)) {
         if (drawSectionHeader('SIGNATURE')) {
           const sigPath = path.join(process.cwd(), report.signaturePath.replace(/^\//, ''));
           if (fs.existsSync(sigPath)) {
             const sigBoxY = doc.y;
-            const sigBoxHeight = 45;
-            doc.lineWidth(0.5).strokeColor('#374151').rect(startX, sigBoxY, 140, sigBoxHeight).stroke();
+            const sigBoxHeight = 40;
+            doc.lineWidth(0.5).strokeColor('#374151').rect(startX, sigBoxY, 120, sigBoxHeight).stroke();
             doc.strokeColor('#000');
             
-            doc.image(sigPath, startX + 3, sigBoxY + 3, { width: 134, height: sigBoxHeight - 6, fit: [134, sigBoxHeight - 6] });
+            doc.image(sigPath, startX + 2, sigBoxY + 2, { width: 116, height: sigBoxHeight - 4, fit: [116, sigBoxHeight - 4] });
             
             // Name/date on the right, inline with signature
             doc.fontSize(7).font('Helvetica').fillColor('#374151');
-            doc.text(`${report.inspectorName || 'Inspector'}`, startX + 150, sigBoxY + 8);
-            doc.text(`${new Date(report.date).toLocaleDateString('en-US')}`, startX + 150, sigBoxY + 20);
+            doc.text(`${report.inspectorName || 'Inspector'}`, startX + 130, sigBoxY + 6, { lineBreak: false });
+            doc.text(`${new Date(report.date).toLocaleDateString('en-US')}`, startX + 130, sigBoxY + 17, { lineBreak: false });
             if (report.signedAt) {
-              doc.fontSize(6).text(`Signed: ${new Date(report.signedAt).toLocaleString('en-US')}`, startX + 150, sigBoxY + 32);
+              doc.fontSize(6).text(`Signed: ${new Date(report.signedAt).toLocaleString('en-US')}`, startX + 130, sigBoxY + 28, { lineBreak: false });
             }
             doc.fillColor('#000');
             
@@ -1358,32 +1364,32 @@ export async function registerRoutes(
         }
       }
 
-      // Professional Disclaimer - only add if there's enough space, don't add new page for just disclaimer
-      const disclaimerHeight = 50;
-      if (doc.y + disclaimerHeight < doc.page.height - doc.page.margins.bottom - 40) {
-        doc.moveDown(0.8);
-        doc.fontSize(7).font('Helvetica-Oblique').fillColor('#6b7280')
+      // Professional Disclaimer - only add if there's enough space on current page
+      const disclaimerHeight = 40;
+      if (!pageLimitReached && doc.y + disclaimerHeight < pageBottom) {
+        doc.moveDown(0.5);
+        doc.fontSize(6).font('Helvetica-Oblique').fillColor('#6b7280')
           .text(
-            'This report is a record of field observations made on the date indicated. The information contained herein represents conditions observed at the time of inspection. Any work not observed or documented in this report does not imply acceptance or approval. This document is confidential and intended for authorized recipients only.',
+            'This report documents field observations on the date indicated. Work not observed does not imply acceptance. Confidential document for authorized recipients only.',
             startX, doc.y, 
-            { width: pageWidth, align: 'justify' }
+            { width: pageWidth, align: 'justify', lineBreak: true }
           );
         doc.fillColor('#000');
       }
 
-      // Add page numbers to all pages using buffered pages
+      // Add page numbers - strictly limit to MAX_PAGES
       const range = doc.bufferedPageRange();
-      const totalPages = range.count;
+      const actualPages = Math.min(range.count, MAX_PAGES);
       const generatedDate = new Date().toLocaleString('en-US', {
         year: 'numeric', month: 'short', day: 'numeric',
         hour: '2-digit', minute: '2-digit'
       });
       
-      for (let i = 0; i < totalPages; i++) {
+      // Only add footers to pages we want to keep (MAX_PAGES)
+      for (let i = 0; i < actualPages; i++) {
         doc.switchToPage(i);
         
         // Footer with page number and generation date
-        // Use lineBreak: false to prevent PDFKit from creating new pages
         const footerY = doc.page.height - 30;
         doc.fontSize(8).font('Helvetica').fillColor('#6b7280');
         
@@ -1394,8 +1400,8 @@ export async function registerRoutes(
           lineBreak: false
         });
         
-        // Right: Page number
-        doc.text(`Page ${i + 1} of ${totalPages}`, startX + pageWidth / 2, footerY, { 
+        // Right: Page number - always show "of MAX_PAGES" to indicate limit
+        doc.text(`Page ${i + 1} of ${actualPages}`, startX + pageWidth / 2, footerY, { 
           width: pageWidth / 2, 
           align: 'right',
           lineBreak: false
@@ -1403,7 +1409,7 @@ export async function registerRoutes(
         
         doc.fillColor('#000');
       }
-
+      
       doc.end();
 
       // Wait for write to complete
@@ -1411,6 +1417,26 @@ export async function registerRoutes(
         writeStream.on('finish', resolve);
         writeStream.on('error', reject);
       });
+
+      // If we have more pages than MAX_PAGES, trim excess pages using pdf-lib
+      if (range.count > MAX_PAGES) {
+        console.log(`PDF has ${range.count} pages, trimming to ${MAX_PAGES}`);
+        const { PDFDocument } = await import('pdf-lib');
+        
+        // Read the generated PDF
+        const pdfBytes = fs.readFileSync(filePath);
+        const srcDoc = await PDFDocument.load(pdfBytes);
+        
+        // Create a new PDF with only MAX_PAGES
+        const newDoc = await PDFDocument.create();
+        const pagesToCopy = await newDoc.copyPages(srcDoc, Array.from({ length: MAX_PAGES }, (_, i) => i));
+        pagesToCopy.forEach(page => newDoc.addPage(page));
+        
+        // Save the trimmed PDF
+        const trimmedBytes = await newDoc.save();
+        fs.writeFileSync(filePath, trimmedBytes);
+        console.log(`PDF trimmed to ${MAX_PAGES} pages successfully`);
+      }
 
       await storage.updateReport(req.params.id, { pdfPath });
 
