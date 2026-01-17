@@ -1927,6 +1927,19 @@ export async function registerRoutes(
 
   const updateCompanySchema = createCompanySchema.partial();
 
+  // List all companies (for join request dropdown - authenticated users only)
+  app.get("/api/companies", isAuthenticated, async (_req, res) => {
+    try {
+      const companiesList = await storage.getCompanies();
+      // Return minimal info for security (id and name only)
+      const publicCompanies = companiesList.map(c => ({ id: c.id, name: c.name }));
+      res.json(publicCompanies);
+    } catch (error) {
+      console.error("Error fetching companies:", error);
+      res.status(500).json({ message: "Failed to fetch companies" });
+    }
+  });
+
   // Get all companies (admin only)
   app.get("/api/admin/companies", isAuthenticated, isAdmin, async (_req, res) => {
     try {

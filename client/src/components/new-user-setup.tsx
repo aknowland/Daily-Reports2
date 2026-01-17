@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,9 +23,13 @@ import {
   Loader2,
   CheckCircle2,
   AlertCircle,
+  Search,
+  UserPlus,
+  Check,
 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent } from "@/components/ui/card";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 interface NewUserSetupProps {
   open: boolean;
@@ -36,7 +40,7 @@ type Step = "company" | "project" | "done";
 
 export function NewUserSetup({ open, onComplete }: NewUserSetupProps) {
   const [step, setStep] = useState<Step>("company");
-  const [companyTab, setCompanyTab] = useState<"create" | "invite">("create");
+  const [companyTab, setCompanyTab] = useState<"create" | "invite" | "request">("create");
   const [inviteCode, setInviteCode] = useState("");
   const [inviteError, setInviteError] = useState("");
   const [companyName, setCompanyName] = useState("");
@@ -48,7 +52,25 @@ export function NewUserSetup({ open, onComplete }: NewUserSetupProps) {
   const [projectClient, setProjectClient] = useState("");
   const [projectAddress, setProjectAddress] = useState("");
   const [createdCompanyId, setCreatedCompanyId] = useState<string | null>(null);
+  const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null);
+  const [companySearchQuery, setCompanySearchQuery] = useState("");
+  const [requestMessage, setRequestMessage] = useState("");
   const { toast } = useToast();
+
+  // Fetch all companies for the dropdown
+  const { data: allCompanies = [], isLoading: companiesLoading } = useQuery<{ id: string; name: string }[]>({
+    queryKey: ["/api/companies"],
+    enabled: companyTab === "request",
+  });
+
+  // Filter companies based on search query
+  const filteredCompanies = useMemo(() => {
+    if (!companySearchQuery.trim()) return allCompanies;
+    const query = companySearchQuery.toLowerCase();
+    return allCompanies.filter(c => c.name.toLowerCase().includes(query));
+  }, [allCompanies, companySearchQuery]);
+
+  const selectedCompany = allCompanies.find(c => c.id === selectedCompanyId);
 
   const createCompanyMutation = useMutation({
     mutationFn: async (data: { name: string; address?: string; phone?: string; email?: string }) => {
@@ -115,6 +137,30 @@ export function NewUserSetup({ open, onComplete }: NewUserSetupProps) {
     },
   });
 
+  const joinRequestMutation = useMutation({
+    mutationFn: async (data: { companyId: string; message?: string }) => {
+      const response = await apiRequest("POST", "/api/join-requests", data);
+      return response;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/my-join-requests"] });
+      toast({
+        title: "Request Sent!",
+        description: "Your request to join has been sent to the company admin for approval.",
+      });
+      // Complete onboarding - they can create personal reports while waiting
+      setStep("done");
+      setTimeout(() => onComplete(), 1500);
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Request Failed",
+        description: error.message || "Failed to send join request",
+        variant: "destructive",
+      });
+    },
+  });
+
   const createProjectMutation = useMutation({
     mutationFn: async (data: { name: string; projectNumber: string; client?: string; address?: string; companyId?: string }) => {
       return apiRequest("POST", "/api/projects", data);
@@ -162,6 +208,21 @@ export function NewUserSetup({ open, onComplete }: NewUserSetupProps) {
     }
     setInviteError("");
     acceptInviteMutation.mutate(inviteCode.trim());
+  };
+
+  const handleJoinRequest = () => {
+    if (!selectedCompanyId) {
+      toast({
+        title: "Company Required",
+        description: "Please select a company to request to join",
+        variant: "destructive",
+      });
+      return;
+    }
+    joinRequestMutation.mutate({
+      companyId: selectedCompanyId,
+      message: requestMessage.trim() || undefined,
+    });
   };
 
   const handleCreateProject = () => {
@@ -214,15 +275,19 @@ export function NewUserSetup({ open, onComplete }: NewUserSetupProps) {
               </DialogDescription>
             </DialogHeader>
 
-            <Tabs value={companyTab} onValueChange={(v) => setCompanyTab(v as "create" | "invite")} className="mt-4">
-              <TabsList className="grid w-full grid-cols-2">
+            <Tabs value={companyTab} onValueChange={(v) => setCompanyTab(v as "create" | "invite" | "request")} className="mt-4">
+              <TabsList className="grid w-full grid-cols-3">
                 <TabsTrigger value="create" data-testid="tab-create-company">
                   <Plus className="w-4 h-4 mr-2" />
-                  Create Company
+                  Create
                 </TabsTrigger>
                 <TabsTrigger value="invite" data-testid="tab-use-invite">
                   <Mail className="w-4 h-4 mr-2" />
-                  I Have an Invite
+                  Invite
+                </TabsTrigger>
+                <TabsTrigger value="request" data-testid="tab-request-join">
+                  <UserPlus className="w-4 h-4 mr-2" />
+                  Request
                 </TabsTrigger>
               </TabsList>
 
@@ -330,6 +395,99 @@ export function NewUserSetup({ open, onComplete }: NewUserSetupProps) {
                   ) : (
                     <>
                       Join Company
+                      <ChevronRight className="w-4 h-4 ml-2" />
+                    </>
+                  )}
+                </Button>
+              </TabsContent>
+
+              <TabsContent value="request" className="space-y-4 mt-4">
+                <p className="text-sm text-muted-foreground">
+                  Search for an existing company and request to join. An admin will review your request.
+                </p>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="companySearch">Search Company</Label>
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <Input
+                      id="companySearch"
+                      placeholder="Type company name..."
+                      value={companySearchQuery}
+                      onChange={(e) => setCompanySearchQuery(e.target.value)}
+                      className="pl-9"
+                      data-testid="input-company-search"
+                    />
+                  </div>
+                </div>
+
+                {companiesLoading ? (
+                  <div className="flex items-center justify-center py-4">
+                    <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+                  </div>
+                ) : filteredCompanies.length === 0 ? (
+                  <div className="text-center py-4 text-muted-foreground">
+                    {companySearchQuery ? "No companies found matching your search" : "No companies available"}
+                  </div>
+                ) : (
+                  <ScrollArea className="h-[180px] border rounded-md">
+                    <div className="p-2 space-y-1">
+                      {filteredCompanies.map((company) => (
+                        <button
+                          key={company.id}
+                          type="button"
+                          onClick={() => setSelectedCompanyId(company.id)}
+                          className={`w-full text-left px-3 py-2 rounded-md flex items-center justify-between transition-colors ${
+                            selectedCompanyId === company.id
+                              ? "bg-primary text-primary-foreground"
+                              : "hover-elevate"
+                          }`}
+                          data-testid={`company-option-${company.id}`}
+                        >
+                          <span className="flex items-center gap-2">
+                            <Building2 className="w-4 h-4" />
+                            {company.name}
+                          </span>
+                          {selectedCompanyId === company.id && (
+                            <Check className="w-4 h-4" />
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  </ScrollArea>
+                )}
+
+                {selectedCompany && (
+                  <div className="p-3 bg-muted/50 rounded-md">
+                    <p className="text-sm font-medium">Selected: {selectedCompany.name}</p>
+                  </div>
+                )}
+
+                <div className="space-y-2">
+                  <Label htmlFor="requestMessage">Message (optional)</Label>
+                  <Input
+                    id="requestMessage"
+                    placeholder="Why do you want to join?"
+                    value={requestMessage}
+                    onChange={(e) => setRequestMessage(e.target.value)}
+                    data-testid="input-request-message"
+                  />
+                </div>
+
+                <Button
+                  className="w-full"
+                  onClick={handleJoinRequest}
+                  disabled={joinRequestMutation.isPending || !selectedCompanyId}
+                  data-testid="button-request-join"
+                >
+                  {joinRequestMutation.isPending ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Sending Request...
+                    </>
+                  ) : (
+                    <>
+                      Request to Join
                       <ChevronRight className="w-4 h-4 ml-2" />
                     </>
                   )}
