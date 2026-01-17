@@ -86,6 +86,7 @@ export default function MyProjectsPage() {
     projectNumber: "",
     client: "",
     address: "",
+    companyId: "",
   });
   
   // Invoice dialog state
@@ -123,13 +124,21 @@ export default function MyProjectsPage() {
 
   const createMutation = useMutation({
     mutationFn: async (data: typeof formData) => {
-      return apiRequest("POST", "/api/projects", data);
+      // Only include companyId if one is selected
+      const payload = {
+        name: data.name,
+        projectNumber: data.projectNumber,
+        client: data.client,
+        address: data.address,
+        ...(data.companyId ? { companyId: data.companyId } : {}),
+      };
+      return apiRequest("POST", "/api/projects", payload);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/my-projects"] });
       queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
       setShowCreateDialog(false);
-      setFormData({ name: "", projectNumber: "", client: "", address: "" });
+      setFormData({ name: "", projectNumber: "", client: "", address: "", companyId: "" });
       toast({
         title: "Project Created",
         description: "Your new project has been created.",
@@ -460,7 +469,7 @@ export default function MyProjectsPage() {
           <DialogHeader>
             <DialogTitle>Create Project</DialogTitle>
             <DialogDescription>
-              Create a personal project. You can assign it to a company later.
+              Create a new project. Optionally affiliate it with one of your companies.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 pt-4">
@@ -504,13 +513,40 @@ export default function MyProjectsPage() {
                 data-testid="input-project-address"
               />
             </div>
+            {companies.length > 0 && (
+              <div className="space-y-2">
+                <Label htmlFor="companyId">Affiliate with Company (Optional)</Label>
+                <Select 
+                  value={formData.companyId} 
+                  onValueChange={(value) => setFormData({ ...formData, companyId: value })}
+                >
+                  <SelectTrigger data-testid="select-create-company">
+                    <SelectValue placeholder="No company (personal project)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">No company (personal project)</SelectItem>
+                    {companies.map((membership) => (
+                      <SelectItem key={membership.companyId} value={membership.companyId}>
+                        <div className="flex items-center gap-2">
+                          <Building2 className="w-4 h-4" />
+                          {membership.company?.name || "Unknown Company"}
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Affiliating with a company makes the project visible to company admins.
+                </p>
+              </div>
+            )}
           </div>
           <DialogFooter className="gap-2">
             <Button
               variant="outline"
               onClick={() => {
                 setShowCreateDialog(false);
-                setFormData({ name: "", projectNumber: "", client: "", address: "" });
+                setFormData({ name: "", projectNumber: "", client: "", address: "", companyId: "" });
               }}
               data-testid="button-cancel"
             >

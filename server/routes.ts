@@ -418,13 +418,13 @@ export async function registerRoutes(
       const profile = await storage.getUserProfile(userId);
       const { companyId, ...projectData } = req.body;
       
-      // If companyId is provided, check if user is effective admin of that company or system admin (respects inspector mode)
+      // If companyId is provided, check if user is a member of that company (any role) or system admin
       if (companyId) {
-        const hasAdminAccess = isEffectiveSystemAdmin(profile) || 
-          await isEffectiveCompanyAdmin(userId, companyId, profile);
+        const isSystemAdmin = isEffectiveSystemAdmin(profile);
+        const isMember = await storage.isUserMemberOfCompany(companyId, userId);
         
-        if (!hasAdminAccess) {
-          return res.status(403).json({ message: "You must be a company admin to create projects for this company" });
+        if (!isSystemAdmin && !isMember) {
+          return res.status(403).json({ message: "You must be a member of this company to create projects for it" });
         }
       }
       
