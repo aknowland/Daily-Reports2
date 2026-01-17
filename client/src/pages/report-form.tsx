@@ -78,7 +78,60 @@ export default function ReportFormPage() {
     issuesDetails: "",
     safetyFlag: false,
     safetyDetails: "",
+    // Time tracking
+    timeIn: "",
+    lunchStart: "",
+    lunchEnd: "",
+    timeOut: "",
+    regularHours: "",
+    otHours: "",
   });
+
+  // Calculate regular hours when time fields change
+  useEffect(() => {
+    const { timeIn, lunchStart, lunchEnd, timeOut } = formData;
+    
+    const parseTime = (t: string): number | null => {
+      if (!t) return null;
+      const [h, m] = t.split(":").map(Number);
+      if (isNaN(h) || isNaN(m)) return null;
+      return h * 60 + m;
+    };
+    
+    // Clear if required fields are missing
+    if (!timeIn || !timeOut) {
+      if (formData.regularHours !== "") {
+        setFormData(prev => ({ ...prev, regularHours: "" }));
+      }
+      return;
+    }
+    
+    const inMins = parseTime(timeIn);
+    const outMins = parseTime(timeOut);
+    
+    // Clear if invalid or timeOut <= timeIn
+    if (inMins === null || outMins === null || outMins <= inMins) {
+      if (formData.regularHours !== "") {
+        setFormData(prev => ({ ...prev, regularHours: "" }));
+      }
+      return;
+    }
+    
+    let totalMinutes = outMins - inMins;
+    
+    // Subtract lunch if both times provided and valid
+    if (lunchStart && lunchEnd) {
+      const lunchStartMins = parseTime(lunchStart);
+      const lunchEndMins = parseTime(lunchEnd);
+      if (lunchStartMins !== null && lunchEndMins !== null && lunchEndMins > lunchStartMins) {
+        totalMinutes -= (lunchEndMins - lunchStartMins);
+      }
+    }
+    
+    const hours = Math.max(0, totalMinutes / 60);
+    const regularHrs = Math.min(hours, 8).toFixed(2);
+    setFormData(prev => ({ ...prev, regularHours: regularHrs }));
+  }, [formData.timeIn, formData.lunchStart, formData.lunchEnd, formData.timeOut]);
 
   const [photos, setPhotos] = useState<PhotoItem[]>([]);
   const [signature, setSignature] = useState("");
@@ -130,6 +183,12 @@ export default function ReportFormPage() {
         issuesDetails: existingReport.issuesDetails || "",
         safetyFlag: existingReport.safetyFlag || false,
         safetyDetails: existingReport.safetyDetails || "",
+        timeIn: existingReport.timeIn || "",
+        lunchStart: existingReport.lunchStart || "",
+        lunchEnd: existingReport.lunchEnd || "",
+        timeOut: existingReport.timeOut || "",
+        regularHours: existingReport.regularHours || "",
+        otHours: existingReport.otHours || "",
       });
 
       if (existingReport.photos) {
@@ -374,6 +433,89 @@ export default function ReportFormPage() {
                 className="h-12 bg-muted"
                 data-testid="input-inspector"
               />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Time Tracking</CardTitle>
+            <p className="text-sm text-muted-foreground">Record your work hours for invoicing</p>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid gap-4 grid-cols-2 sm:grid-cols-4">
+              <div className="space-y-2">
+                <Label htmlFor="timeIn">Time In</Label>
+                <Input
+                  id="timeIn"
+                  type="time"
+                  value={formData.timeIn}
+                  onChange={(e) => setFormData(prev => ({ ...prev, timeIn: e.target.value }))}
+                  className="h-12"
+                  data-testid="input-time-in"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="lunchStart">Lunch Start</Label>
+                <Input
+                  id="lunchStart"
+                  type="time"
+                  value={formData.lunchStart}
+                  onChange={(e) => setFormData(prev => ({ ...prev, lunchStart: e.target.value }))}
+                  className="h-12"
+                  data-testid="input-lunch-start"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="lunchEnd">Lunch End</Label>
+                <Input
+                  id="lunchEnd"
+                  type="time"
+                  value={formData.lunchEnd}
+                  onChange={(e) => setFormData(prev => ({ ...prev, lunchEnd: e.target.value }))}
+                  className="h-12"
+                  data-testid="input-lunch-end"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="timeOut">Time Out</Label>
+                <Input
+                  id="timeOut"
+                  type="time"
+                  value={formData.timeOut}
+                  onChange={(e) => setFormData(prev => ({ ...prev, timeOut: e.target.value }))}
+                  className="h-12"
+                  data-testid="input-time-out"
+                />
+              </div>
+            </div>
+            <div className="grid gap-4 grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="regularHours">Regular Hours</Label>
+                <Input
+                  id="regularHours"
+                  type="text"
+                  value={formData.regularHours}
+                  disabled
+                  className="h-12 bg-muted font-medium"
+                  placeholder="Auto-calculated"
+                  data-testid="input-regular-hours"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="otHours">OT Hours</Label>
+                <Input
+                  id="otHours"
+                  type="number"
+                  step="0.25"
+                  min="0"
+                  value={formData.otHours}
+                  onChange={(e) => setFormData(prev => ({ ...prev, otHours: e.target.value }))}
+                  className="h-12"
+                  placeholder="0.00"
+                  data-testid="input-ot-hours"
+                />
+              </div>
             </div>
           </CardContent>
         </Card>
