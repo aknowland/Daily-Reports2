@@ -825,7 +825,27 @@ export async function registerRoutes(
         });
       }
       
-      // Generate PDF
+      const totalHours = totalRegularHours + totalOTHours;
+      
+      // Create invoice record FIRST with atomic retry for race condition handling
+      // This ensures we have a guaranteed unique invoice number before generating PDF
+      const expectedInvoiceNumber = await storage.getNextInvoiceNumber();
+      const invoiceResult = await storage.createInvoice({
+        invoiceNumber: expectedInvoiceNumber,
+        projectId: projectId,
+        generatedById: userId,
+        startDate: start,
+        endDate: end,
+        regularHours: totalRegularHours.toFixed(2),
+        otHours: totalOTHours.toFixed(2),
+        totalHours: totalHours.toFixed(2),
+        reportCount: reports.length,
+      });
+      
+      // Use the actual invoice number returned (may differ due to retry)
+      const invoiceNumber = invoiceResult.invoiceNumber;
+      
+      // Generate PDF with the confirmed invoice number
       const doc = new PDFDocument({ size: 'LETTER', margin: 50 });
       const chunks: Buffer[] = [];
       
@@ -833,7 +853,7 @@ export async function registerRoutes(
       doc.on('end', () => {
         const pdfBuffer = Buffer.concat(chunks);
         const dateStr = format(start, "yyyy-MM-dd") + "_to_" + format(end, "yyyy-MM-dd");
-        const filename = `Invoice_${project.projectNumber || project.name}_${dateStr}.pdf`;
+        const filename = `Invoice_${invoiceNumber}_${project.projectNumber || project.name}_${dateStr}.pdf`;
         
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
@@ -854,13 +874,18 @@ export async function registerRoutes(
         }
       }
       
-      // Title
+      // Title with Invoice Number
       doc.fontSize(20).font('Helvetica-Bold').text('INVOICE', startX, headerY, { align: 'center', width: pageWidth });
-      doc.moveDown(0.5);
+      doc.moveDown(0.3);
+      
+      // Invoice number
+      const paddedInvoiceNum = String(invoiceNumber).padStart(5, '0');
+      doc.fontSize(12).font('Helvetica-Bold').text(`Invoice #: INV-${paddedInvoiceNum}`, { align: 'center', width: pageWidth });
+      doc.moveDown(0.3);
       
       // Date range
       const dateRangeStr = `${format(start, "MMMM d, yyyy")} - ${format(end, "MMMM d, yyyy")}`;
-      doc.fontSize(12).font('Helvetica').text(dateRangeStr, { align: 'center', width: pageWidth });
+      doc.fontSize(11).font('Helvetica').text(dateRangeStr, { align: 'center', width: pageWidth });
       doc.moveDown(1.5);
       
       // FROM section - Use contractor info from user profile if available, otherwise fall back to company
@@ -3470,6 +3495,10 @@ export async function registerRoutes(
         licenseNumber: normalize(data.licenseNumber),
         licenseState: normalize(data.licenseState),
         certifications: data.certifications || [],
+        contractorCompanyName: normalize(data.contractorCompanyName),
+        contractorAddress: normalize(data.contractorAddress),
+        contractorPhone: normalize(data.contractorPhone),
+        contractorEmail: normalize(data.contractorEmail),
       });
       
       res.json(profile);
