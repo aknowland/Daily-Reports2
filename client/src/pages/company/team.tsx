@@ -4,6 +4,9 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
@@ -25,28 +28,124 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import {
   Users,
   ArrowLeft,
   AlertCircle,
   Mail,
   Shield,
   Trash2,
+  UserPlus,
+  HardHat,
+  Loader2,
+  FolderOpen,
 } from "lucide-react";
 import { Link } from "wouter";
 import { useState } from "react";
-import type { CompanyMember, User } from "@shared/schema";
+import type { CompanyMember, User, Project, Invite } from "@shared/schema";
+
+const KNOWLAND_COMPANY_NAME = "Knowland Construction Services";
 
 type MemberWithUser = CompanyMember & { user?: User };
+
+type InviteWithDetails = Invite & { projects?: Project[] };
 
 export default function CompanyTeamPage() {
   const { toast } = useToast();
   const { activeCompany, isCompanyAdmin, profile } = useAuth();
   const [memberToRemove, setMemberToRemove] = useState<MemberWithUser | null>(null);
+  const [showInviteDialog, setShowInviteDialog] = useState(false);
+  const [inviteForm, setInviteForm] = useState({
+    email: "",
+    role: "inspector" as "inspector" | "admin",
+    projectIds: [] as string[],
+  });
 
   const { data: members = [], isLoading, error } = useQuery<MemberWithUser[]>({
     queryKey: ["/api/companies", activeCompany?.id, "members"],
     enabled: !!activeCompany?.id && isCompanyAdmin,
   });
+
+  const { data: projects = [] } = useQuery<Project[]>({
+    queryKey: ["/api/companies", activeCompany?.id, "projects"],
+    enabled: !!activeCompany?.id && isCompanyAdmin,
+  });
+
+  const { data: pendingInvites = [] } = useQuery<InviteWithDetails[]>({
+    queryKey: ["/api/admin/invites"],
+    enabled: isCompanyAdmin,
+    select: (data) => data.filter(inv => inv.companyId === activeCompany?.id && inv.status === "pending"),
+  });
+
+  const isKnowlandCompany = activeCompany?.name?.includes("Knowland Construction");
+
+  const createInviteMutation = useMutation({
+    mutationFn: async (data: typeof inviteForm & { companyId: string }) => {
+      return apiRequest("POST", "/api/admin/invites", data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/invites"] });
+      setShowInviteDialog(false);
+      setInviteForm({ email: "", role: "inspector", projectIds: [] });
+      toast({
+        title: "Invitation Sent",
+        description: "The invitation has been sent successfully.",
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to send invitation",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const deleteInviteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      return apiRequest("DELETE", `/api/admin/invites/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/invites"] });
+      toast({
+        title: "Invitation Cancelled",
+        description: "The invitation has been cancelled.",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to cancel invitation.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleInviteSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!activeCompany?.id) return;
+    createInviteMutation.mutate({
+      ...inviteForm,
+      companyId: activeCompany.id,
+    });
+  };
+
+  const toggleProject = (projectId: string) => {
+    setInviteForm(prev => ({
+      ...prev,
+      projectIds: prev.projectIds.includes(projectId)
+        ? prev.projectIds.filter(id => id !== projectId)
+        : [...prev.projectIds, projectId],
+    }));
+  };
 
   const updateRoleMutation = useMutation({
     mutationFn: async ({ userId, role }: { userId: string; role: string }) => {
@@ -175,10 +274,134 @@ export default function CompanyTeamPage() {
               Manage team members for {activeCompany.name}
             </p>
           </div>
-          <Badge variant="outline" className="flex items-center gap-1">
-            <Users className="w-3 h-3" />
-            {members.length} members
-          </Badge>
+          <div className="flex items-center gap-2">
+            <Badge variant="outline" className="flex items-center gap-1 no-default-hover-elevate no-default-active-elevate">
+              <Users className="w-3 h-3" />
+              {members.length} members
+            </Badge>
+            <Dialog open={showInviteDialog} onOpenChange={setShowInviteDialog}>
+              <DialogTrigger asChild>
+                <Button data-testid="button-invite-user">
+                  <UserPlus className="w-4 h-4 mr-2" />
+                  Invite User
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-md">
+                <DialogHeader>
+                  <DialogTitle>Invite Team Member</DialogTitle>
+                  <DialogDescription>
+                    Send an invitation to join {activeCompany.name}
+                  </DialogDescription>
+                </DialogHeader>
+                <form onSubmit={handleInviteSubmit}>
+                  <div className="space-y-4 py-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="invite-email">Email Address</Label>
+                      <Input
+                        id="invite-email"
+                        type="email"
+                        placeholder="user@example.com"
+                        value={inviteForm.email}
+                        onChange={(e) => setInviteForm({ ...inviteForm, email: e.target.value })}
+                        required
+                        data-testid="input-invite-email"
+                      />
+                    </div>
+
+                    {!isKnowlandCompany && (
+                      <div className="rounded-md border bg-muted/50 p-3 space-y-2">
+                        <div className="flex items-center gap-2 text-sm font-medium">
+                          <AlertCircle className="w-4 h-4 text-primary" />
+                          Subscription Information
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          New users will need an active subscription to create unlimited reports:
+                        </p>
+                        <div className="text-xs space-y-1 pl-2">
+                          <p><strong>Free:</strong> 5 reports/month (no payment required)</p>
+                          <p><strong>Independent Pro:</strong> $49/month (unlimited reports)</p>
+                          <p><strong>Company User:</strong> $79/month per user</p>
+                          <p><strong>Company Account:</strong> $499/month (unlimited users)</p>
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          Users can start with Free and upgrade later.
+                        </p>
+                      </div>
+                    )}
+
+                    <div className="space-y-2">
+                      <Label htmlFor="invite-role">Role</Label>
+                      <Select
+                        value={inviteForm.role}
+                        onValueChange={(role: "inspector" | "admin") => 
+                          setInviteForm({ ...inviteForm, role })
+                        }
+                      >
+                        <SelectTrigger data-testid="select-invite-role">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="inspector">
+                            <div className="flex items-center gap-2">
+                              <HardHat className="w-4 h-4" />
+                              Inspector
+                            </div>
+                          </SelectItem>
+                          <SelectItem value="admin">
+                            <div className="flex items-center gap-2">
+                              <Shield className="w-4 h-4" />
+                              Admin
+                            </div>
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {projects.length > 0 && (
+                      <div className="space-y-2">
+                        <Label>Assign to Projects (optional)</Label>
+                        <div className="border rounded-md max-h-32 overflow-y-auto p-2 space-y-1">
+                          {projects.map((project) => (
+                            <label
+                              key={project.id}
+                              className="flex items-center gap-2 p-2 rounded hover-elevate cursor-pointer"
+                            >
+                              <Checkbox
+                                checked={inviteForm.projectIds.includes(project.id)}
+                                onCheckedChange={() => toggleProject(project.id)}
+                              />
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium truncate">{project.name}</p>
+                              </div>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  <DialogFooter>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => setShowInviteDialog(false)}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      type="submit"
+                      disabled={createInviteMutation.isPending || !inviteForm.email}
+                      data-testid="button-send-invite"
+                    >
+                      {createInviteMutation.isPending && (
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      )}
+                      Send Invite
+                    </Button>
+                  </DialogFooter>
+                </form>
+              </DialogContent>
+            </Dialog>
+          </div>
         </div>
 
         {members.length === 0 ? (
@@ -251,6 +474,55 @@ export default function CompanyTeamPage() {
                 </Card>
               );
             })}
+          </div>
+        )}
+
+        {/* Pending Invitations Section */}
+        {pendingInvites.length > 0 && (
+          <div className="space-y-4 mt-8">
+            <div className="flex items-center gap-2">
+              <h2 className="text-lg font-semibold">Pending Invitations</h2>
+              <Badge variant="secondary" className="no-default-hover-elevate no-default-active-elevate">
+                {pendingInvites.length}
+              </Badge>
+            </div>
+            {pendingInvites.map((invite) => (
+              <Card key={invite.id} className="border-dashed" data-testid={`card-pending-invite-${invite.id}`}>
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <Mail className="w-4 h-4 text-muted-foreground" />
+                        <p className="font-medium truncate">{invite.email}</p>
+                        <Badge variant="outline" className="text-xs no-default-hover-elevate no-default-active-elevate">
+                          {invite.role === "admin" ? (
+                            <><Shield className="w-3 h-3 mr-1" />Admin</>
+                          ) : (
+                            <><HardHat className="w-3 h-3 mr-1" />Inspector</>
+                          )}
+                        </Badge>
+                      </div>
+                      {invite.projects && invite.projects.length > 0 && (
+                        <div className="flex items-center gap-1 text-sm text-muted-foreground mt-1">
+                          <FolderOpen className="w-3 h-3" />
+                          <span>{invite.projects.length} project{invite.projects.length > 1 ? "s" : ""} assigned</span>
+                        </div>
+                      )}
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="text-destructive hover:text-destructive"
+                      onClick={() => deleteInviteMutation.mutate(invite.id)}
+                      disabled={deleteInviteMutation.isPending}
+                      data-testid={`button-cancel-invite-${invite.id}`}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
           </div>
         )}
       </div>
