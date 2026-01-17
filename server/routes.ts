@@ -1006,10 +1006,38 @@ export async function registerRoutes(
       const profile = await storage.getUserProfile(userId);
       
       // If preferAdminMode is false (inspector toggle ON), show only user's own reports
+      // filtered by active company
       if (profile?.preferAdminMode === false) {
-        const reports = await storage.getReports({ inspectorId: userId });
+        const activeCompanyId = profile?.activeCompanyId;
+        
+        // Get all user's reports
+        const allReports = await storage.getReports({ inspectorId: userId });
+        
+        // If active company is set, filter reports to only show those from:
+        // - Projects in the active company
+        // - Personal reports (no project or project has no company)
+        if (activeCompanyId) {
+          const filteredReports = allReports.filter((report: any) => {
+            // Personal report (no project)
+            if (!report.projectId) return true;
+            // Report's project must be in active company or have no company
+            const project = report.project;
+            if (!project) return true; // Allow if project data not loaded
+            return project.companyId === activeCompanyId || project.companyId === null;
+          });
+          
+          // Recalculate stats for filtered reports
+          const filteredStats = {
+            total: filteredReports.length,
+            drafts: filteredReports.filter((r: any) => r.status === 'draft').length,
+            submitted: filteredReports.filter((r: any) => r.status === 'submitted').length,
+          };
+          
+          return res.json({ reports: filteredReports, stats: filteredStats });
+        }
+        
         const stats = await storage.getReportStats({ inspectorId: userId });
-        return res.json({ reports, stats });
+        return res.json({ reports: allReports, stats });
       }
       
       // System admins see ALL reports (when in admin mode)
