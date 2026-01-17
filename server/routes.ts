@@ -13,6 +13,7 @@ import { z } from "zod";
 import PDFDocument from "pdfkit";
 import { format } from "date-fns";
 import { speechToText, openai } from "./replit_integrations/audio/client";
+import { isSharePointConnected, getSharePointSites, getDrives, getDriveItems, getFileDownloadUrl } from "./replit_integrations/sharepoint/client";
 
 // Initialize object storage service for persistent file storage
 const objectStorage = new ObjectStorageService();
@@ -4286,6 +4287,90 @@ Transcript: "${transcript}"`;
     } catch (error) {
       console.error("Error creating portal session:", error);
       res.status(500).json({ message: "Failed to create portal session" });
+    }
+  });
+
+  // SharePoint Integration Routes - requires company admin access
+  const isCompanyAdminMiddleware: RequestHandler = async (req: any, res, next) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      if (!userId) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+
+      const profile = await storage.getUserProfile(userId);
+      
+      // System admins can access
+      if (isEffectiveSystemAdmin(profile)) {
+        return next();
+      }
+      
+      // Check if user is admin of any company
+      const companies = await storage.getCompaniesForUser(userId);
+      const isAnyCompanyAdmin = companies.some((c: any) => c.role === "admin");
+      
+      if (isAnyCompanyAdmin && profile?.preferAdminMode !== false) {
+        return next();
+      }
+      
+      return res.status(403).json({ message: "Company admin access required" });
+    } catch (error) {
+      console.error("Error checking company admin role:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  };
+
+  app.get("/api/sharepoint/status", isAuthenticated, isCompanyAdminMiddleware, async (req: any, res) => {
+    try {
+      const connected = await isSharePointConnected();
+      res.json({ connected });
+    } catch (error) {
+      console.error("Error checking SharePoint status:", error);
+      res.json({ connected: false });
+    }
+  });
+
+  app.get("/api/sharepoint/sites", isAuthenticated, isCompanyAdminMiddleware, async (req: any, res) => {
+    try {
+      const sites = await getSharePointSites();
+      res.json(sites);
+    } catch (error: any) {
+      console.error("Error fetching SharePoint sites:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch sites" });
+    }
+  });
+
+  app.get("/api/sharepoint/sites/:siteId/drives", isAuthenticated, isCompanyAdminMiddleware, async (req: any, res) => {
+    try {
+      const { siteId } = req.params;
+      const drives = await getDrives(siteId);
+      res.json(drives);
+    } catch (error: any) {
+      console.error("Error fetching drives:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch drives" });
+    }
+  });
+
+  app.get("/api/sharepoint/sites/:siteId/items", isAuthenticated, isCompanyAdminMiddleware, async (req: any, res) => {
+    try {
+      const { siteId } = req.params;
+      const { driveId, path: itemPath } = req.query;
+      const items = await getDriveItems(siteId, driveId as string, itemPath as string);
+      res.json(items);
+    } catch (error: any) {
+      console.error("Error fetching drive items:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch items" });
+    }
+  });
+
+  app.get("/api/sharepoint/sites/:siteId/items/:itemId/download", isAuthenticated, isCompanyAdminMiddleware, async (req: any, res) => {
+    try {
+      const { siteId, itemId } = req.params;
+      const downloadUrl = await getFileDownloadUrl(siteId, itemId);
+      res.json({ downloadUrl });
+    } catch (error: any) {
+      console.error("Error getting download URL:", error);
+      res.status(500).json({ message: error.message || "Failed to get download URL" });
     }
   });
 
