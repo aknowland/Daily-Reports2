@@ -1377,8 +1377,31 @@ export async function registerRoutes(
       
       doc.text(summaryText, startX + 4, sumY + 4, { width: pageWidth - 8 });
 
-      // ===== FLAGS ROW: Issues / Safety / Visitors =====
+      // ===== EQUIPMENT & MATERIALS =====
       doc.y = sumY + sumH + 8;
+      
+      if (report.equipment || report.materialsDelivered) {
+        const eqMatY = doc.y;
+        const halfWidth = (pageWidth - 8) / 2;
+        
+        // Equipment section
+        doc.fontSize(8).font('Helvetica-Bold').text('EQUIPMENT:', startX, eqMatY);
+        const equipmentText = report.equipment || 'None';
+        doc.fontSize(8).font('Helvetica');
+        const equipH = doc.heightOfString(equipmentText, { width: halfWidth - 60 });
+        doc.text(equipmentText, startX + 60, eqMatY, { width: halfWidth - 60 });
+        
+        // Materials section
+        doc.fontSize(8).font('Helvetica-Bold').text('MATERIALS:', startX + halfWidth + 4, eqMatY);
+        const materialsText = report.materialsDelivered || 'None';
+        doc.fontSize(8).font('Helvetica');
+        const matH = doc.heightOfString(materialsText, { width: halfWidth - 60 });
+        doc.text(materialsText, startX + halfWidth + 64, eqMatY, { width: halfWidth - 60 });
+        
+        doc.y = eqMatY + Math.max(equipH, matH, 12) + 8;
+      }
+
+      // ===== FLAGS ROW: Issues / Safety =====
       const flagY = doc.y;
 
       doc.fontSize(8).font('Helvetica-Bold').text('ISSUES/DELAYS:', startX, flagY);
@@ -1397,13 +1420,47 @@ export async function registerRoutes(
       if (!report.safetyFlag) doc.rect(startX + 246, flagY, 5, 5).fill('#000');
       doc.text('No', startX + 254, flagY);
 
+      doc.y = flagY + 12;
+      
+      // Show issues details if flagged
+      if (report.issuesFlag && report.issuesDetails) {
+        const issueDetailsY = doc.y;
+        doc.fontSize(8).font('Helvetica-Oblique').fillColor('#333');
+        const issueDetailsH = doc.heightOfString(report.issuesDetails, { width: pageWidth - 10 });
+        doc.text(`Issues: ${report.issuesDetails}`, startX + 5, issueDetailsY, { width: pageWidth - 10 });
+        doc.fillColor('#000');
+        doc.y = issueDetailsY + issueDetailsH + 4;
+      }
+      
+      // Show safety details if flagged
+      if (report.safetyFlag && report.safetyDetails) {
+        const safetyDetailsY = doc.y;
+        doc.fontSize(8).font('Helvetica-Oblique').fillColor('#333');
+        const safetyDetailsH = doc.heightOfString(report.safetyDetails, { width: pageWidth - 10 });
+        doc.text(`Safety: ${report.safetyDetails}`, startX + 5, safetyDetailsY, { width: pageWidth - 10 });
+        doc.fillColor('#000');
+        doc.y = safetyDetailsY + safetyDetailsH + 4;
+      }
+
+      // ===== VISITORS SECTION =====
+      doc.y += 4;
+      const visitorsY = doc.y;
       const visitors = (report.visitors as VisitorRow[]) || [];
-      const visitorsText = visitors.map(v => `${v.name}${v.company ? ` (${v.company})` : ''}`).join(', ') || 'None';
-      doc.fontSize(8).font('Helvetica-Bold').text('VISITORS:', startX + 290, flagY);
-      doc.font('Helvetica').text(visitorsText, startX + 335, flagY, { width: 230 });
+      const visitorsText = visitors.length > 0 
+        ? visitors.map(v => {
+            let text = v.name;
+            if (v.company) text += ` (${v.company})`;
+            if (v.notes) text += ` - ${v.notes}`;
+            return text;
+          }).join('; ')
+        : 'None';
+      doc.fontSize(8).font('Helvetica-Bold').text('VISITORS:', startX, visitorsY);
+      doc.fontSize(8).font('Helvetica');
+      const visitorsH = doc.heightOfString(visitorsText, { width: pageWidth - 55 });
+      doc.text(visitorsText, startX + 50, visitorsY, { width: pageWidth - 55 });
+      doc.y = visitorsY + Math.max(visitorsH, 10) + 8;
 
       // ===== QC CHECKLIST ROW =====
-      doc.y = flagY + 16;
       const qcY = doc.y;
       doc.fontSize(8).font('Helvetica-Bold').text('QC CHECKLIST:', startX, qcY);
       
