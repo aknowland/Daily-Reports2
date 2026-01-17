@@ -1127,7 +1127,7 @@ export async function registerRoutes(
         try {
           const logoBuffer = await loadImageBuffer(company.logoPath);
           if (logoBuffer) {
-            doc.image(logoBuffer, startX, 12, { width: 120, height: 40, fit: [120, 40] });
+            doc.image(logoBuffer, startX, 10, { width: 150, height: 50, fit: [150, 50] });
           }
         } catch (err) {
           console.error('Error adding company logo:', err);
@@ -1178,7 +1178,7 @@ export async function registerRoutes(
       doc.fontSize(9).font('Helvetica-Bold').text(timeStr, gridX + 112, gridTop + 27);
 
       // Title - positioned below the logo
-      doc.fontSize(14).font('Helvetica-Bold').text('DAILY FIELD INSPECTION REPORT', startX, gridTop + 24);
+      doc.fontSize(14).font('Helvetica-Bold').text('DAILY FIELD REPORT', startX, gridTop + 30);
 
       // Weather row with drawn icon
       doc.y = gridTop + 46;
@@ -1282,7 +1282,6 @@ export async function registerRoutes(
       const projectName = report.project?.name || report.customProjectName || 'Unassigned Report';
       const projectAddress = report.project?.address || 'N/A';
       const inspectorName = report.inspectorName || 'Unknown';
-      const inspectorLicense = inspectorProfile?.licenseNumber ? `, ${inspectorProfile.licenseNumber}` : '';
       const clientName = report.project?.client || 'N/A';
 
       // Project Name row
@@ -1296,7 +1295,7 @@ export async function registerRoutes(
       doc.fillColor('#fff').fontSize(8).font('Helvetica-Bold').text('Inspector', startX + col1W + 3, projY + 5);
       doc.fillColor('#000');
       doc.rect(startX + col1W + 55, projY, col2W - 55, 18).stroke();
-      doc.fontSize(9).font('Helvetica-Bold').text(inspectorName + inspectorLicense, startX + col1W + 58, projY + 5, { width: col2W - 65 });
+      doc.fontSize(9).font('Helvetica-Bold').text(inspectorName, startX + col1W + 58, projY + 5, { width: col2W - 65 });
 
       // Project Address row
       doc.rect(startX, projY + 18, 75, 18).fillAndStroke('#000', '#000');
