@@ -1370,13 +1370,14 @@ export async function registerRoutes(
       if (report.notes) summaryParts.push(report.notes);
       const summaryText = summaryParts.join('\n\n') || 'No inspection details recorded.';
       
-      // Calculate dynamic height based on content
+      // Calculate dynamic height based on content, with maximum limit
       doc.fontSize(9).font('Helvetica');
       const summaryTextHeight = doc.heightOfString(summaryText, { width: pageWidth - 8 });
-      const sumH = Math.max(50, summaryTextHeight + 12);
+      const maxSumH = 80; // Maximum height to prevent overflow
+      const sumH = Math.min(maxSumH, Math.max(50, summaryTextHeight + 12));
       doc.rect(startX, sumY, pageWidth, sumH).stroke();
       
-      doc.text(summaryText, startX + 4, sumY + 4, { width: pageWidth - 8 });
+      doc.text(summaryText, startX + 4, sumY + 4, { width: pageWidth - 8, height: sumH - 8, ellipsis: true });
 
       // ===== QC CHECKLIST ROW =====
       doc.y = sumY + sumH + 8;
@@ -1393,6 +1394,7 @@ export async function registerRoutes(
 
       // ===== EQUIPMENT & MATERIALS =====
       doc.y = qcY + 16;
+      const maxEqMatH = 24; // Maximum height for equipment/materials text
       
       if (report.equipment || report.materialsDelivered) {
         const eqMatY = doc.y;
@@ -1402,15 +1404,15 @@ export async function registerRoutes(
         doc.fontSize(8).font('Helvetica-Bold').text('EQUIPMENT:', startX, eqMatY);
         const equipmentText = report.equipment || 'None';
         doc.fontSize(8).font('Helvetica');
-        const equipH = doc.heightOfString(equipmentText, { width: halfWidth - 60 });
-        doc.text(equipmentText, startX + 60, eqMatY, { width: halfWidth - 60 });
+        const equipH = Math.min(maxEqMatH, doc.heightOfString(equipmentText, { width: halfWidth - 60 }));
+        doc.text(equipmentText, startX + 60, eqMatY, { width: halfWidth - 60, height: equipH, ellipsis: true });
         
         // Materials section
         doc.fontSize(8).font('Helvetica-Bold').text('MATERIALS:', startX + halfWidth + 4, eqMatY);
         const materialsText = report.materialsDelivered || 'None';
         doc.fontSize(8).font('Helvetica');
-        const matH = doc.heightOfString(materialsText, { width: halfWidth - 60 });
-        doc.text(materialsText, startX + halfWidth + 64, eqMatY, { width: halfWidth - 60 });
+        const matH = Math.min(maxEqMatH, doc.heightOfString(materialsText, { width: halfWidth - 60 }));
+        doc.text(materialsText, startX + halfWidth + 64, eqMatY, { width: halfWidth - 60, height: matH, ellipsis: true });
         
         doc.y = eqMatY + Math.max(equipH, matH, 12) + 8;
       }
@@ -1435,13 +1437,14 @@ export async function registerRoutes(
       doc.text('No', startX + 254, flagY);
 
       doc.y = flagY + 12;
+      const maxDetailsH = 20; // Maximum height for issues/safety details
       
       // Show issues details if flagged
       if (report.issuesFlag && report.issuesDetails) {
         const issueDetailsY = doc.y;
         doc.fontSize(8).font('Helvetica-Oblique').fillColor('#333');
-        const issueDetailsH = doc.heightOfString(report.issuesDetails, { width: pageWidth - 10 });
-        doc.text(`Issues: ${report.issuesDetails}`, startX + 5, issueDetailsY, { width: pageWidth - 10 });
+        const issueDetailsH = Math.min(maxDetailsH, doc.heightOfString(report.issuesDetails, { width: pageWidth - 10 }));
+        doc.text(`Issues: ${report.issuesDetails}`, startX + 5, issueDetailsY, { width: pageWidth - 10, height: issueDetailsH, ellipsis: true });
         doc.fillColor('#000');
         doc.y = issueDetailsY + issueDetailsH + 4;
       }
@@ -1450,8 +1453,8 @@ export async function registerRoutes(
       if (report.safetyFlag && report.safetyDetails) {
         const safetyDetailsY = doc.y;
         doc.fontSize(8).font('Helvetica-Oblique').fillColor('#333');
-        const safetyDetailsH = doc.heightOfString(report.safetyDetails, { width: pageWidth - 10 });
-        doc.text(`Safety: ${report.safetyDetails}`, startX + 5, safetyDetailsY, { width: pageWidth - 10 });
+        const safetyDetailsH = Math.min(maxDetailsH, doc.heightOfString(report.safetyDetails, { width: pageWidth - 10 }));
+        doc.text(`Safety: ${report.safetyDetails}`, startX + 5, safetyDetailsY, { width: pageWidth - 10, height: safetyDetailsH, ellipsis: true });
         doc.fillColor('#000');
         doc.y = safetyDetailsY + safetyDetailsH + 4;
       }
@@ -1470,8 +1473,9 @@ export async function registerRoutes(
         : 'None';
       doc.fontSize(8).font('Helvetica-Bold').text('VISITORS:', startX, visitorsY);
       doc.fontSize(8).font('Helvetica');
-      const visitorsH = doc.heightOfString(visitorsText, { width: pageWidth - 55 });
-      doc.text(visitorsText, startX + 50, visitorsY, { width: pageWidth - 55 });
+      const maxVisitorsH = 20; // Maximum height for visitors text
+      const visitorsH = Math.min(maxVisitorsH, doc.heightOfString(visitorsText, { width: pageWidth - 55 }));
+      doc.text(visitorsText, startX + 50, visitorsY, { width: pageWidth - 55, height: visitorsH, ellipsis: true });
       doc.y = visitorsY + Math.max(visitorsH, 10) + 8;
 
       // ===== PHOTOS ATTACHED =====
