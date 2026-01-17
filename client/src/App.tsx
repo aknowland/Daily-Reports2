@@ -31,6 +31,7 @@ import CompanyRequestsPage from "@/pages/company/requests";
 import CompanySettingsPage from "@/pages/company/settings";
 import BillingPage from "@/pages/billing";
 import LearnMorePage from "@/pages/learn-more";
+import PricingPage from "@/pages/pricing";
 
 function LoadingScreen() {
   return (
@@ -94,6 +95,7 @@ function AppContent() {
     <Switch>
       <Route path="/invite/:token" component={InviteAcceptPage} />
       <Route path="/learn-more" component={LearnMorePage} />
+      <Route path="/pricing" component={PricingPage} />
       {!isAuthenticated ? (
         <Route component={LandingPage} />
       ) : (
