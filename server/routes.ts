@@ -2314,6 +2314,35 @@ export async function registerRoutes(
     }
   });
 
+  app.delete("/api/admin/users/:id", isAuthenticated, isAdmin, async (req: any, res) => {
+    try {
+      const userId = req.params.id;
+      const currentUserId = req.user?.claims?.sub;
+      
+      // Prevent deleting yourself
+      if (userId === currentUserId) {
+        return res.status(400).json({ message: "You cannot delete your own account" });
+      }
+      
+      // Check if user exists
+      const user = await storage.getUserById(userId);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      
+      // Delete the user and all their related data
+      const deleted = await storage.deleteUser(userId);
+      if (!deleted) {
+        return res.status(500).json({ message: "Failed to delete user" });
+      }
+      
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting user:", error);
+      res.status(500).json({ message: "Failed to delete user" });
+    }
+  });
+
   app.patch("/api/admin/users/:id/role", isAuthenticated, isAdmin, async (req, res) => {
     try {
       const { role } = req.body;

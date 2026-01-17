@@ -122,6 +122,7 @@ export interface IStorage {
   
   // Get user by ID
   getUserById(userId: string): Promise<User | undefined>;
+  deleteUser(userId: string): Promise<boolean>;
 
   // Invoices
   getNextInvoiceNumber(): Promise<number>;
@@ -874,6 +875,22 @@ export class DatabaseStorage implements IStorage {
   async getUserById(userId: string): Promise<User | undefined> {
     const [user] = await db.select().from(users).where(eq(users.id, userId));
     return user;
+  }
+
+  async deleteUser(userId: string): Promise<boolean> {
+    // Delete in order to respect foreign key constraints
+    // 1. Delete user's project memberships
+    await db.delete(projectMembers).where(eq(projectMembers.userId, userId));
+    
+    // 2. Delete user's company memberships
+    await db.delete(companyMembers).where(eq(companyMembers.userId, userId));
+    
+    // 3. Delete user's profile
+    await db.delete(userProfiles).where(eq(userProfiles.userId, userId));
+    
+    // 4. Delete the user (sessions are managed externally by auth integration)
+    const result = await db.delete(users).where(eq(users.id, userId));
+    return (result.rowCount ?? 0) > 0;
   }
 
   async getNextInvoiceNumber(): Promise<number> {
