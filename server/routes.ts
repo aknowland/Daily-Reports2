@@ -214,7 +214,9 @@ export async function registerRoutes(
           const report = await storage.getReport(reportId);
           if (report && await canAccessReportFile(report)) {
             const objectFile = await objectStorage.getObjectEntityFile(objectPath);
-            return await objectStorage.downloadObject(objectFile, res);
+            // Disable caching for PDFs to ensure latest version is served
+            const isPdf = filename?.endsWith('.pdf');
+            return await objectStorage.downloadObject(objectFile, res, isPdf ? 0 : 3600);
           }
         }
       } else if (folder === 'logos') {
