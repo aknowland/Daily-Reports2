@@ -1620,13 +1620,6 @@ export async function registerRoutes(
         console.error(`WARNING: PDF has ${totalPages} pages. Extra pages detected!`);
       }
       
-      for (let i = 0; i < totalPages; i++) {
-        doc.switchToPage(i);
-        const footerY = doc.page.height - 22;
-        doc.fontSize(7).font('Helvetica').fillColor('#555');
-        doc.text('CC: Architect, Engineer, Project Inspector, Owner', startX, footerY, { lineBreak: false });
-        doc.fillColor('#000');
-      }
       
       doc.end();
 
