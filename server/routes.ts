@@ -1485,7 +1485,9 @@ export async function registerRoutes(
       doc.font('Helvetica').text(`${photos.length} photo(s) - See attached sheet`, startX + 95, doc.y);
 
       // ===== SIGNATURE SECTION =====
-      doc.y += 20;
+      // Ensure signature fits on page 1 by clamping Y position
+      const maxSignatureStartY = doc.page.height - 130; // Leave room for signature + footer
+      doc.y = Math.min(doc.y + 20, maxSignatureStartY);
       const sigY = doc.y;
 
       doc.fontSize(7).font('Helvetica').text('SIGNATURE OF INSPECTOR', startX, sigY);
@@ -1808,18 +1810,34 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Email address required" });
       }
 
-      // Fetch all reports and verify access
+      // Fetch all reports
       const reports = await Promise.all(
         reportIds.map(id => storage.getReport(id))
       );
       
-      const validReports = reports.filter(r => r !== null);
-      if (validReports.length === 0) {
-        return res.status(404).json({ message: "No valid reports found" });
+      // Filter to valid reports and check access for each
+      const accessibleReports = [];
+      for (const report of reports) {
+        if (!report) continue;
+        
+        // Check permissions: must be owner or admin
+        const isOwner = report.inspectorId === userId;
+        let hasAdminAccess = isEffectiveSystemAdmin(profile);
+        if (!hasAdminAccess && report.project?.companyId) {
+          hasAdminAccess = await isEffectiveCompanyAdmin(userId, report.project.companyId, profile);
+        }
+        
+        if (isOwner || hasAdminAccess) {
+          accessibleReports.push(report);
+        }
+      }
+      
+      if (accessibleReports.length === 0) {
+        return res.status(403).json({ message: "No accessible reports found" });
       }
 
-      // Check that all reports have PDFs
-      const reportsWithPdfs = validReports.filter(r => r!.pdfPath);
+      // Check that accessible reports have PDFs
+      const reportsWithPdfs = accessibleReports.filter(r => r.pdfPath);
       if (reportsWithPdfs.length === 0) {
         return res.status(400).json({ message: "None of the selected reports have PDFs generated" });
       }
