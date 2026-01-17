@@ -61,7 +61,10 @@ async function initStripe() {
   }
 }
 
-await initStripe();
+// Initialize Stripe asynchronously (wrapped for CommonJS compatibility)
+(async () => {
+  await initStripe();
+})();
 
 app.post(
   '/api/stripe/webhook',
