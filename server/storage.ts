@@ -58,6 +58,7 @@ export interface IStorage {
   // User Profiles
   getUserProfile(userId: string): Promise<UserProfile | undefined>;
   createOrUpdateUserProfile(data: InsertUserProfile): Promise<UserProfile>;
+  updateUserStripeInfo(userId: string, data: { stripeCustomerId?: string; stripeSubscriptionId?: string; subscriptionStatus?: string }): Promise<UserProfile | undefined>;
   
   // Users (admin)
   getAllUsers(): Promise<(User & { profile?: UserProfile })[]>;
@@ -419,6 +420,20 @@ export class DatabaseStorage implements IStorage {
         target: userProfiles.userId,
         set: data,
       })
+      .returning();
+    return profile;
+  }
+
+  async updateUserStripeInfo(userId: string, data: { stripeCustomerId?: string; stripeSubscriptionId?: string; subscriptionStatus?: string }): Promise<UserProfile | undefined> {
+    const updateData: any = {};
+    if (data.stripeCustomerId !== undefined) updateData.stripeCustomerId = data.stripeCustomerId;
+    if (data.stripeSubscriptionId !== undefined) updateData.stripeSubscriptionId = data.stripeSubscriptionId;
+    if (data.subscriptionStatus !== undefined) updateData.subscriptionStatus = data.subscriptionStatus;
+    
+    const [profile] = await db
+      .update(userProfiles)
+      .set(updateData)
+      .where(eq(userProfiles.userId, userId))
       .returning();
     return profile;
   }

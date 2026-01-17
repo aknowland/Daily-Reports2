@@ -3867,5 +3867,235 @@ Transcript: "${transcript}"`;
     }
   });
 
+  // ========== STRIPE SUBSCRIPTION ROUTES ==========
+  
+  // Get subscription products and prices
+  app.get("/api/subscription/products", isAuthenticated, async (req: any, res) => {
+    try {
+      const { stripeService } = await import("./stripeService");
+      const rows = await stripeService.listProductsWithPrices();
+      
+      // Group prices by product
+      const productsMap = new Map<string, any>();
+      for (const row of rows) {
+        const productId = (row as any).product_id;
+        if (!productsMap.has(productId)) {
+          productsMap.set(productId, {
+            id: productId,
+            name: (row as any).product_name,
+            description: (row as any).product_description,
+            active: (row as any).product_active,
+            metadata: (row as any).product_metadata,
+            prices: []
+          });
+        }
+        if ((row as any).price_id) {
+          productsMap.get(productId).prices.push({
+            id: (row as any).price_id,
+            unit_amount: (row as any).unit_amount,
+            currency: (row as any).currency,
+            recurring: (row as any).recurring,
+            active: (row as any).price_active,
+            metadata: (row as any).price_metadata,
+          });
+        }
+      }
+      
+      res.json({ products: Array.from(productsMap.values()) });
+    } catch (error) {
+      console.error("Error fetching subscription products:", error);
+      res.status(500).json({ message: "Failed to fetch subscription products" });
+    }
+  });
+
+  // Get Stripe publishable key
+  app.get("/api/subscription/config", isAuthenticated, async (req: any, res) => {
+    try {
+      const { getStripePublishableKey } = await import("./stripeClient");
+      const publishableKey = await getStripePublishableKey();
+      res.json({ publishableKey });
+    } catch (error) {
+      console.error("Error fetching Stripe config:", error);
+      res.status(500).json({ message: "Failed to fetch Stripe config" });
+    }
+  });
+
+  // Get user's subscription status
+  app.get("/api/subscription/status", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      const companies = await storage.getCompaniesForUser(userId);
+      
+      // Check if user has any active company subscriptions
+      const activeCompanySubscription = companies.find(c => 
+        (c as any).company?.subscriptionStatus === 'active'
+      );
+      
+      // Determine subscription type
+      let subscriptionType = 'free'; // default - independent free tier
+      let status = profile?.subscriptionStatus || 'none';
+      let reportsRemaining = 5 - (profile?.monthlyReportCount || 0);
+      
+      if (activeCompanySubscription) {
+        // User is part of a company with active subscription
+        subscriptionType = 'company_user';
+        status = 'active';
+        reportsRemaining = -1; // unlimited
+      } else if (profile?.subscriptionStatus === 'active') {
+        // User has personal subscription
+        subscriptionType = 'independent_pro';
+        reportsRemaining = -1; // unlimited
+      }
+      
+      res.json({
+        subscriptionType,
+        status,
+        reportsRemaining: reportsRemaining < 0 ? null : Math.max(0, reportsRemaining),
+        monthlyReportCount: profile?.monthlyReportCount || 0,
+        stripeCustomerId: profile?.stripeCustomerId,
+        stripeSubscriptionId: profile?.stripeSubscriptionId,
+      });
+    } catch (error) {
+      console.error("Error fetching subscription status:", error);
+      res.status(500).json({ message: "Failed to fetch subscription status" });
+    }
+  });
+
+  // Create checkout session for user subscription
+  app.post("/api/subscription/checkout", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const { priceId, type } = req.body; // type: 'independent_pro' | 'company_user' | 'company'
+      
+      if (!priceId) {
+        return res.status(400).json({ message: "Price ID is required" });
+      }
+      
+      const { stripeService } = await import("./stripeService");
+      const profile = await storage.getUserProfile(userId);
+      const user = await storage.getUserById(userId);
+      
+      // Create or get Stripe customer
+      let customerId = profile?.stripeCustomerId;
+      if (!customerId) {
+        const customer = await stripeService.createCustomer(
+          user?.email || '',
+          userId,
+          `${profile?.firstName || ''} ${profile?.lastName || ''}`.trim() || undefined
+        );
+        await storage.updateUserStripeInfo(userId, { stripeCustomerId: customer.id });
+        customerId = customer.id;
+      }
+      
+      const baseUrl = `${req.protocol}://${req.get('host')}`;
+      const session = await stripeService.createCheckoutSession(
+        customerId,
+        priceId,
+        `${baseUrl}/subscription/success?session_id={CHECKOUT_SESSION_ID}`,
+        `${baseUrl}/subscription/cancel`,
+        { userId, type: type || 'independent_pro' }
+      );
+      
+      res.json({ url: session.url });
+    } catch (error) {
+      console.error("Error creating checkout session:", error);
+      res.status(500).json({ message: "Failed to create checkout session" });
+    }
+  });
+
+  // Create checkout session for company subscription
+  app.post("/api/subscription/company-checkout", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const { priceId, companyId } = req.body;
+      
+      if (!priceId || !companyId) {
+        return res.status(400).json({ message: "Price ID and Company ID are required" });
+      }
+      
+      // Check if user is admin of this company
+      const profile = await storage.getUserProfile(userId);
+      const isCompanyAdmin = await isEffectiveCompanyAdmin(userId, companyId, profile);
+      if (!isCompanyAdmin && !isEffectiveSystemAdmin(profile)) {
+        return res.status(403).json({ message: "Only company admins can manage company subscriptions" });
+      }
+      
+      const { stripeService } = await import("./stripeService");
+      const company = await storage.getCompany(companyId);
+      
+      if (!company) {
+        return res.status(404).json({ message: "Company not found" });
+      }
+      
+      // Create or get Stripe customer for company
+      let customerId = company.stripeCustomerId;
+      if (!customerId) {
+        const customer = await stripeService.createCustomer(
+          company.email || '',
+          companyId,
+          company.name
+        );
+        await storage.updateCompany(companyId, { stripeCustomerId: customer.id });
+        customerId = customer.id;
+      }
+      
+      const baseUrl = `${req.protocol}://${req.get('host')}`;
+      const session = await stripeService.createCheckoutSession(
+        customerId,
+        priceId,
+        `${baseUrl}/subscription/success?session_id={CHECKOUT_SESSION_ID}&company=${companyId}`,
+        `${baseUrl}/subscription/cancel`,
+        { companyId, type: 'company' }
+      );
+      
+      res.json({ url: session.url });
+    } catch (error) {
+      console.error("Error creating company checkout session:", error);
+      res.status(500).json({ message: "Failed to create checkout session" });
+    }
+  });
+
+  // Create customer portal session
+  app.post("/api/subscription/portal", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const { companyId } = req.body;
+      
+      const { stripeService } = await import("./stripeService");
+      let customerId: string | null | undefined;
+      
+      if (companyId) {
+        // Company billing portal
+        const profile = await storage.getUserProfile(userId);
+        const isCompanyAdmin = await isEffectiveCompanyAdmin(userId, companyId, profile);
+        if (!isCompanyAdmin && !isEffectiveSystemAdmin(profile)) {
+          return res.status(403).json({ message: "Only company admins can access billing" });
+        }
+        const company = await storage.getCompany(companyId);
+        customerId = company?.stripeCustomerId;
+      } else {
+        // User billing portal
+        const profile = await storage.getUserProfile(userId);
+        customerId = profile?.stripeCustomerId;
+      }
+      
+      if (!customerId) {
+        return res.status(400).json({ message: "No billing account found" });
+      }
+      
+      const baseUrl = `${req.protocol}://${req.get('host')}`;
+      const session = await stripeService.createCustomerPortalSession(
+        customerId,
+        `${baseUrl}/settings`
+      );
+      
+      res.json({ url: session.url });
+    } catch (error) {
+      console.error("Error creating portal session:", error);
+      res.status(500).json({ message: "Failed to create portal session" });
+    }
+  });
+
   return httpServer;
 }

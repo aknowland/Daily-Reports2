@@ -13,6 +13,7 @@ export const weatherTypeEnum = pgEnum("weather_type", ["clear", "cloudy", "rain"
 export const reportStatusEnum = pgEnum("report_status", ["draft", "submitted"]);
 export const distributionStatusEnum = pgEnum("distribution_status", ["pending", "sent", "failed"]);
 export const inviteStatusEnum = pgEnum("invite_status", ["pending", "accepted", "expired"]);
+export const subscriptionStatusEnum = pgEnum("subscription_status", ["active", "canceled", "past_due", "trialing", "none"]);
 
 // Companies table
 export const companies = pgTable("companies", {
@@ -23,6 +24,9 @@ export const companies = pgTable("companies", {
   email: varchar("email"),
   logoPath: varchar("logo_path"),
   createdById: varchar("created_by_id"),
+  stripeCustomerId: varchar("stripe_customer_id"),
+  stripeSubscriptionId: varchar("stripe_subscription_id"),
+  subscriptionStatus: subscriptionStatusEnum("subscription_status").default("none"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -59,6 +63,12 @@ export const userProfiles = pgTable("user_profiles", {
   contractorAddress: text("contractor_address"),
   contractorPhone: varchar("contractor_phone"),
   contractorEmail: varchar("contractor_email"),
+  // Subscription fields for individual users
+  stripeCustomerId: varchar("stripe_customer_id"),
+  stripeSubscriptionId: varchar("stripe_subscription_id"),
+  subscriptionStatus: subscriptionStatusEnum("subscription_status").default("none"),
+  monthlyReportCount: integer("monthly_report_count").default(0),
+  reportCountResetAt: timestamp("report_count_reset_at"),
   // Onboarding
   hasSeenOnboarding: boolean("has_seen_onboarding").default(false),
   // Admin mode preference (for system admins)
