@@ -105,7 +105,7 @@ export interface IStorage {
   isUserMemberOfCompany(companyId: string, userId: string): Promise<boolean>;
 
   // Active Company
-  setActiveCompany(userId: string, companyId: string): Promise<UserProfile | undefined>;
+  setActiveCompany(userId: string, companyId: string | null): Promise<UserProfile | undefined>;
   getProjectsByCompany(companyId: string): Promise<Project[]>;
   clearActiveCompanyForCompany(companyId: string): Promise<void>;
 
@@ -794,7 +794,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Active Company
-  async setActiveCompany(userId: string, companyId: string): Promise<UserProfile | undefined> {
+  async setActiveCompany(userId: string, companyId: string | null): Promise<UserProfile | undefined> {
     const [profile] = await db
       .update(userProfiles)
       .set({ activeCompanyId: companyId })

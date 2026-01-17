@@ -110,9 +110,13 @@ POST   /api/reports/:id/distribute - Send to recipients
 
 Admin:
 GET    /api/admin/users              - List all users
-PATCH  /api/admin/users/:id/role     - Update user role
+PATCH  /api/admin/users/:id/role     - Update user system role
 GET    /api/admin/users/:id/projects - Get user's assigned projects
 PUT    /api/admin/users/:id/projects - Update user's project assignments
+GET    /api/admin/users/:id/companies     - Get user's company memberships
+POST   /api/admin/users/:id/companies     - Assign user to a company
+PUT    /api/admin/users/:id/companies/:companyId - Update user's company role
+DELETE /api/admin/users/:id/companies/:companyId - Remove user from a company
 GET    /api/admin/settings           - Get app settings
 POST   /api/admin/settings           - Update settings
 POST   /api/admin/logo               - Upload company logo
