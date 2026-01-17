@@ -1180,11 +1180,43 @@ export async function registerRoutes(
       // Title
       doc.fontSize(12).font('Helvetica-Bold').text('DAILY FIELD INSPECTION REPORT', startX, gridTop + 10);
 
-      // Weather row
+      // Weather row with icon and color
       doc.y = gridTop + 38;
-      const weatherText = `${report.weatherType || 'Clear'}, ${report.weatherNotes || ''}`.trim();
+      const weatherType = (report.weatherType || 'clear').toLowerCase();
+      const weatherText = `${report.weatherNotes || ''}`.trim();
+      
+      // Weather icon and color mapping
+      const weatherConfig: Record<string, { icon: string; color: string; label: string }> = {
+        'clear': { icon: '☀', color: '#f59e0b', label: 'Clear' },
+        'sunny': { icon: '☀', color: '#f59e0b', label: 'Sunny' },
+        'partly-cloudy': { icon: '⛅', color: '#6b7280', label: 'Partly Cloudy' },
+        'cloudy': { icon: '☁', color: '#9ca3af', label: 'Cloudy' },
+        'overcast': { icon: '☁', color: '#6b7280', label: 'Overcast' },
+        'rainy': { icon: '🌧', color: '#3b82f6', label: 'Rainy' },
+        'rain': { icon: '🌧', color: '#3b82f6', label: 'Rain' },
+        'stormy': { icon: '⛈', color: '#4b5563', label: 'Stormy' },
+        'snowy': { icon: '❄', color: '#93c5fd', label: 'Snowy' },
+        'snow': { icon: '❄', color: '#93c5fd', label: 'Snow' },
+        'windy': { icon: '💨', color: '#6b7280', label: 'Windy' },
+        'foggy': { icon: '🌫', color: '#9ca3af', label: 'Foggy' },
+        'fog': { icon: '🌫', color: '#9ca3af', label: 'Fog' },
+        'hot': { icon: '🔥', color: '#ef4444', label: 'Hot' },
+        'cold': { icon: '❄', color: '#3b82f6', label: 'Cold' },
+      };
+      const weather = weatherConfig[weatherType] || weatherConfig['clear'];
+      
       doc.fontSize(6).font('Helvetica-Bold').text('WEATHER:', startX, doc.y);
-      doc.font('Helvetica').text(weatherText, startX + 50, doc.y);
+      
+      // Draw colored weather indicator circle
+      doc.circle(startX + 52, doc.y + 3, 4).fill(weather.color);
+      doc.fillColor('#000');
+      
+      // Weather label and notes
+      doc.fontSize(6).font('Helvetica-Bold').fillColor(weather.color).text(weather.label, startX + 60, doc.y);
+      doc.fillColor('#000');
+      if (weatherText) {
+        doc.font('Helvetica').text(` - ${weatherText}`, startX + 60 + doc.widthOfString(weather.label) + 2, doc.y);
+      }
 
       // ===== TYPE OF WORK - Checkboxes =====
       doc.y += 12;
@@ -1293,21 +1325,45 @@ export async function registerRoutes(
       doc.y = sumY + sumH + 6;
       const flagY = doc.y;
 
-      doc.fontSize(6).font('Helvetica-Bold').text('ISSUES/DELAYS:', startX, flagY);
-      doc.rect(startX + 55, flagY - 1, checkSize, checkSize).stroke();
-      if (report.issuesFlag) doc.rect(startX + 56, flagY, 5, 5).fill('#000');
-      doc.fontSize(5).font('Helvetica').text('Yes', startX + 64, flagY);
+      // Issues/Delays with orange coloring when flagged
+      const issuesColor = report.issuesFlag ? '#f97316' : '#000';
+      doc.fontSize(6).font('Helvetica-Bold').fillColor(issuesColor).text('ISSUES/DELAYS:', startX, flagY);
+      doc.fillColor('#000');
+      
+      // Orange filled checkbox for Yes if issues flagged
+      if (report.issuesFlag) {
+        doc.rect(startX + 55, flagY - 1, checkSize, checkSize).fillAndStroke('#f97316', '#f97316');
+        doc.fillColor('#fff').fontSize(5).font('Helvetica-Bold').text('✓', startX + 56, flagY - 1);
+        doc.fillColor('#000');
+      } else {
+        doc.rect(startX + 55, flagY - 1, checkSize, checkSize).stroke();
+      }
+      doc.fontSize(5).font('Helvetica').fillColor(report.issuesFlag ? '#f97316' : '#000').text('Yes', startX + 64, flagY);
+      doc.fillColor('#000');
+      
       doc.rect(startX + 80, flagY - 1, checkSize, checkSize).stroke();
       if (!report.issuesFlag) doc.rect(startX + 81, flagY, 5, 5).fill('#000');
-      doc.text('No', startX + 89, flagY);
+      doc.fontSize(5).font('Helvetica').text('No', startX + 89, flagY);
 
-      doc.fontSize(6).font('Helvetica-Bold').text('SAFETY INCIDENTS:', startX + 115, flagY);
-      doc.rect(startX + 180, flagY - 1, checkSize, checkSize).stroke();
-      if (report.safetyFlag) doc.rect(startX + 181, flagY, 5, 5).fill('#000');
-      doc.fontSize(5).font('Helvetica').text('Yes', startX + 189, flagY);
-      doc.rect(startX + 205, flagY - 1, checkSize, checkSize).stroke();
-      if (!report.safetyFlag) doc.rect(startX + 206, flagY, 5, 5).fill('#000');
-      doc.text('No', startX + 214, flagY);
+      // Safety Incidents with red coloring when flagged
+      const safetyColor = report.safetyFlag ? '#dc2626' : '#000';
+      doc.fontSize(6).font('Helvetica-Bold').fillColor(safetyColor).text('SAFETY INCIDENTS:', startX + 115, flagY);
+      doc.fillColor('#000');
+      
+      // Red filled checkbox for Yes if safety flagged
+      if (report.safetyFlag) {
+        doc.rect(startX + 188, flagY - 1, checkSize, checkSize).fillAndStroke('#dc2626', '#dc2626');
+        doc.fillColor('#fff').fontSize(5).font('Helvetica-Bold').text('✓', startX + 189, flagY - 1);
+        doc.fillColor('#000');
+      } else {
+        doc.rect(startX + 188, flagY - 1, checkSize, checkSize).stroke();
+      }
+      doc.fontSize(5).font('Helvetica').fillColor(report.safetyFlag ? '#dc2626' : '#000').text('Yes', startX + 197, flagY);
+      doc.fillColor('#000');
+      
+      doc.rect(startX + 213, flagY - 1, checkSize, checkSize).stroke();
+      if (!report.safetyFlag) doc.rect(startX + 214, flagY, 5, 5).fill('#000');
+      doc.fontSize(5).font('Helvetica').text('No', startX + 222, flagY);
 
       const visitors = (report.visitors as VisitorRow[]) || [];
       const visitorsText = visitors.map(v => `${v.name}${v.company ? ` (${v.company})` : ''}`).join(', ') || 'None';
