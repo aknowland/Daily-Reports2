@@ -39,7 +39,8 @@ Field Daily Reports helps construction inspection teams document their daily wor
 └── server/replit_integrations/
     ├── auth/               # Replit Auth integration
     ├── object_storage/     # Persistent file storage (photos, signatures, PDFs, logos)
-    └── email/              # Resend email integration
+    ├── email/              # Resend email integration
+    └── sharepoint/         # SharePoint document library integration
 ```
 
 ## Key Features
