@@ -1184,10 +1184,10 @@ export async function registerRoutes(
       doc.fontSize(6).font('Helvetica-Bold').text('WEATHER:', startX, doc.y);
       doc.font('Helvetica').text(weatherText, startX + 50, doc.y);
 
-      // ===== TYPE OF INSPECTION - Checkboxes =====
+      // ===== TYPE OF WORK - Checkboxes =====
       doc.y += 12;
       const typeY = doc.y;
-      doc.fontSize(6).font('Helvetica-Bold').text('TYPE OF INSPECTION', startX, typeY);
+      doc.fontSize(6).font('Helvetica-Bold').text('TYPE OF WORK', startX, typeY);
       
       const inspectionTypes = ['Reinf. Concrete', 'Structural Steel', 'Reinf. Masonry', 'Fire Proofing', 'Shotcrete', 'Anchors', 'Other'];
       let typeX = startX + 85;
@@ -1350,7 +1350,7 @@ export async function registerRoutes(
       doc.y += 16;
       const sigY = doc.y;
 
-      doc.fontSize(5).font('Helvetica').text('SIGNATURE OF SPECIAL INSPECTOR', startX, sigY);
+      doc.fontSize(5).font('Helvetica').text('SIGNATURE OF INSPECTOR', startX, sigY);
       
       if (report.signaturePath) {
         const sigBuffer = await loadImageBuffer(report.signaturePath);
@@ -1365,8 +1365,8 @@ export async function registerRoutes(
       
       doc.moveTo(startX, sigY + 40).lineTo(startX + 180, sigY + 40).stroke();
 
-      doc.fontSize(5).text('PROJECT INSPECTOR NAME', startX, sigY + 44);
-      doc.font('Helvetica-Bold').text(inspectorName, startX + 85, sigY + 44);
+      doc.fontSize(5).text('INSPECTOR NAME', startX, sigY + 44);
+      doc.font('Helvetica-Bold').text(inspectorName, startX + 60, sigY + 44);
       
       doc.fontSize(5).font('Helvetica').text('LICENSE NO.', startX, sigY + 54);
       doc.font('Helvetica-Bold').text(inspectorProfile?.licenseNumber || 'N/A', startX + 50, sigY + 54);
@@ -1396,9 +1396,8 @@ export async function registerRoutes(
       doc.fontSize(5).font('Helvetica').text('SAMPLES', timeX + 152, sigY + 2);
       doc.fontSize(8).font('Helvetica-Bold').text(String(photos.length), timeX + 166, sigY + 10);
 
-      // Approval lines
+      // Approval line
       doc.fontSize(5).font('Helvetica').text('Approved By: ______________________________________', timeX, sigY + 30);
-      doc.text('Project Inspector: __________________________________', timeX, sigY + 42);
 
       // ===== PHOTOS ON ADDITIONAL PAGES =====
       if (photos.length > 0) {
