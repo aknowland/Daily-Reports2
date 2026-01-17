@@ -10,7 +10,7 @@ import {
   ArrowRight,
   Smartphone
 } from "lucide-react";
-import inspectorLogo from "@assets/generated_images/inspector_hardhat_clipboard_logo.png";
+import appLogo from "@assets/generated_images/clipboard_hardhat_combo_logo.png";
 
 export default function LandingPage() {
   const features = [
@@ -52,7 +52,7 @@ export default function LandingPage() {
         <div className="container flex h-14 max-w-screen-2xl items-center justify-between px-4">
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center overflow-hidden">
-              <img src={inspectorLogo} alt="Field Daily Reports" className="w-6 h-6 object-contain" />
+              <img src={appLogo} alt="Field Daily Reports" className="w-6 h-6 object-contain" />
             </div>
             <span className="font-semibold text-lg">Field Daily Reports</span>
           </div>
@@ -200,7 +200,7 @@ export default function LandingPage() {
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
             <div className="flex items-center gap-2">
               <div className="w-6 h-6 rounded bg-primary flex items-center justify-center overflow-hidden">
-                <img src={inspectorLogo} alt="Field Daily Reports" className="w-5 h-5 object-contain" />
+                <img src={appLogo} alt="Field Daily Reports" className="w-5 h-5 object-contain" />
               </div>
               <span className="text-sm text-muted-foreground">
                 © 2026 Field Daily Reports. All rights reserved.
