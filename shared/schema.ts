@@ -114,6 +114,7 @@ export const visitorRowSchema = z.object({
 export const dailyReports = pgTable("daily_reports", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   projectId: varchar("project_id").references(() => projects.id), // Nullable to allow personal/unassigned reports
+  customProjectName: text("custom_project_name"), // For unassigned reports - user-entered project name
   inspectorId: varchar("inspector_id").notNull(),
   date: timestamp("date").notNull(),
   weatherType: weatherTypeEnum("weather_type").default("clear"),

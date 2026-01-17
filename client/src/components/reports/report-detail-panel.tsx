@@ -192,13 +192,17 @@ export function ReportDetailPanel({
           <div className="flex items-start justify-between gap-4 pr-8">
             <div className="space-y-1">
               <SheetTitle className="text-xl">
-                {report.project?.name || (report.projectId ? "Report" : "Personal Report")}
+                {report.project?.name || report.customProjectName || "Unassigned Report"}
               </SheetTitle>
               {report.project ? (
                 <SheetDescription className="flex items-center gap-2">
                   <Hash className="w-3 h-3" />
                   {report.project?.projectNumber}
                   {report.project?.client && ` • ${report.project.client}`}
+                </SheetDescription>
+              ) : report.customProjectName ? (
+                <SheetDescription className="text-muted-foreground">
+                  Custom project (not assigned)
                 </SheetDescription>
               ) : !report.projectId ? (
                 <SheetDescription className="text-muted-foreground">

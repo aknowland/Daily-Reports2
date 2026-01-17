@@ -79,6 +79,7 @@ export default function ReportsListPage() {
     const matchesSearch = 
       report.project?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       report.project?.projectNumber?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      report.customProjectName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       report.workPerformed?.toLowerCase().includes(searchTerm.toLowerCase());
     
     const matchesStatus = statusFilter === "all" || report.status === statusFilter;

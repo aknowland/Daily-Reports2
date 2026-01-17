@@ -23,10 +23,18 @@ import {
   AddRowButton,
 } from "@/components/reports/repeatable-row";
 import { EmailDistributionDialog } from "@/components/reports/email-distribution-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Loader2, Save, Send, ArrowLeft } from "lucide-react";
+import { Loader2, Save, Send, ArrowLeft, FolderPlus, FileText } from "lucide-react";
 import { format } from "date-fns";
 import type { Project, DailyReport, VisitorRow, WorkActivityRow } from "@shared/schema";
 import { VoiceInput } from "@/components/ui/voice-input";
@@ -56,6 +64,7 @@ export default function ReportFormPage() {
 
   const [formData, setFormData] = useState({
     projectId: "",
+    customProjectName: "",
     date: format(new Date(), "yyyy-MM-dd"),
     weatherType: "clear" as const,
     weatherNotes: "",
@@ -76,10 +85,20 @@ export default function ReportFormPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [showEmailDialog, setShowEmailDialog] = useState(false);
   const [submittedReportId, setSubmittedReportId] = useState<string | null>(null);
+  const [showNoProjectsDialog, setShowNoProjectsDialog] = useState(false);
+  const [hasShownNoProjectsDialog, setHasShownNoProjectsDialog] = useState(false);
 
   const { data: projects, isLoading: loadingProjects } = useQuery<Project[]>({
     queryKey: ["/api/projects"],
   });
+
+  // Show dialog when user has no projects (only for new reports, only once)
+  useEffect(() => {
+    if (!isEditing && !loadingProjects && projects && projects.length === 0 && !hasShownNoProjectsDialog) {
+      setShowNoProjectsDialog(true);
+      setHasShownNoProjectsDialog(true);
+    }
+  }, [isEditing, loadingProjects, projects, hasShownNoProjectsDialog]);
 
   const { data: existingReport, isLoading: loadingReport } = useQuery<DailyReport & { photos?: { id: string; filePath: string; caption: string }[] }>({
     queryKey: ["/api/reports", id],
@@ -97,6 +116,7 @@ export default function ReportFormPage() {
     if (existingReport) {
       setFormData({
         projectId: existingReport.projectId || "",
+        customProjectName: existingReport.customProjectName || "",
         date: format(new Date(existingReport.date), "yyyy-MM-dd"),
         weatherType: (existingReport.weatherType || "clear") as typeof formData.weatherType,
         weatherNotes: existingReport.weatherNotes || "",
@@ -133,6 +153,7 @@ export default function ReportFormPage() {
       const reportData = {
         ...formData,
         projectId: formData.projectId || null, // Send null for personal reports
+        customProjectName: formData.projectId ? null : (formData.customProjectName || null), // Only save custom name if no project selected
         date: new Date(formData.date).toISOString(),
         status,
         inspectorId: user?.id,
@@ -257,13 +278,17 @@ export default function ReportFormPage() {
                 <Label htmlFor="project">Project (optional)</Label>
                 <Select 
                   value={formData.projectId || "personal"} 
-                  onValueChange={(value) => setFormData(prev => ({ ...prev, projectId: value === "personal" ? "" : value }))}
+                  onValueChange={(value) => setFormData(prev => ({ 
+                    ...prev, 
+                    projectId: value === "personal" ? "" : value,
+                    customProjectName: value === "personal" ? prev.customProjectName : "" 
+                  }))}
                 >
                   <SelectTrigger id="project" className="h-12" data-testid="select-project">
                     <SelectValue placeholder="Select project" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="personal">Personal Report (No Project)</SelectItem>
+                    <SelectItem value="personal">Unassigned Report</SelectItem>
                     {projects?.map((project) => (
                       <SelectItem key={project.id} value={project.id}>
                         {project.name} ({project.projectNumber})
@@ -272,6 +297,20 @@ export default function ReportFormPage() {
                   </SelectContent>
                 </Select>
               </div>
+
+              {!formData.projectId && (
+                <div className="space-y-2 sm:col-span-2">
+                  <Label htmlFor="customProjectName">Project Name</Label>
+                  <Input
+                    id="customProjectName"
+                    value={formData.customProjectName}
+                    onChange={(e) => setFormData(prev => ({ ...prev, customProjectName: e.target.value }))}
+                    placeholder="Enter project name for this report"
+                    className="h-12"
+                    data-testid="input-custom-project-name"
+                  />
+                </div>
+              )}
 
               <div className="space-y-2">
                 <Label htmlFor="date">Date *</Label>
@@ -689,6 +728,47 @@ export default function ReportFormPage() {
           </Button>
         </div>
       </div>
+      {/* No Projects Dialog - shown when user has no projects assigned */}
+      <Dialog open={showNoProjectsDialog} onOpenChange={setShowNoProjectsDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>No Projects Assigned</DialogTitle>
+            <DialogDescription>
+              You don't have any projects yet. Would you like to create a new project or continue with an unassigned report?
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-3 py-4">
+            <Button
+              variant="default"
+              className="h-14 justify-start gap-3"
+              onClick={() => {
+                setShowNoProjectsDialog(false);
+                navigate("/my-projects");
+              }}
+              data-testid="button-create-project"
+            >
+              <FolderPlus className="w-5 h-5" />
+              <div className="text-left">
+                <div className="font-medium">Create New Project</div>
+                <div className="text-xs text-primary-foreground/70">Set up a project for organizing reports</div>
+              </div>
+            </Button>
+            <Button
+              variant="outline"
+              className="h-14 justify-start gap-3"
+              onClick={() => setShowNoProjectsDialog(false)}
+              data-testid="button-continue-unassigned"
+            >
+              <FileText className="w-5 h-5" />
+              <div className="text-left">
+                <div className="font-medium">Continue Unassigned</div>
+                <div className="text-xs text-muted-foreground">Create a report without a project</div>
+              </div>
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* Email Distribution Dialog */}
       {submittedReportId && (
         <EmailDistributionDialog
@@ -701,7 +781,7 @@ export default function ReportFormPage() {
             }
           }}
           reportId={submittedReportId}
-          projectName={projects?.find(p => p.id === formData.projectId)?.name}
+          projectName={projects?.find(p => p.id === formData.projectId)?.name || formData.customProjectName || undefined}
           defaultEmails={projects?.find(p => p.id === formData.projectId)?.distributionEmails || []}
         />
       )}

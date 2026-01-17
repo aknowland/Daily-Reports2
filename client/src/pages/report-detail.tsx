@@ -199,11 +199,11 @@ export default function ReportDetailPage() {
           </Button>
           <div className="flex-1">
             <div className="flex items-center gap-2 flex-wrap">
-              <h1 className="text-xl font-bold">{report.project?.name || "Report"}</h1>
+              <h1 className="text-xl font-bold">{report.project?.name || report.customProjectName || "Unassigned Report"}</h1>
               <StatusBadge status={report.status || "draft"} />
             </div>
             <p className="text-sm text-muted-foreground">
-              #{report.project?.projectNumber}
+              {report.project?.projectNumber ? `#${report.project.projectNumber}` : ""}
               {report.project?.client && ` • ${report.project.client}`}
             </p>
           </div>
