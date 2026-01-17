@@ -1485,6 +1485,10 @@ export async function registerRoutes(
       doc.font('Helvetica').text(`${photos.length} photo(s) - See attached sheet`, startX + 95, doc.y, { lineBreak: false });
 
       // ===== SIGNATURE SECTION =====
+      // DEBUG: Log Y position and page info before signature
+      const preSignaturePages = doc.bufferedPageRange().count;
+      console.log(`PDF Debug: Before signature - doc.y=${doc.y.toFixed(0)}, page.height=${doc.page.height.toFixed(0)}, pages=${preSignaturePages}`);
+      
       // Ensure signature fits on page 1 by clamping Y position
       const maxSignatureStartY = doc.page.height - 130; // Leave room for signature + footer
       doc.y = Math.min(doc.y + 20, maxSignatureStartY);
@@ -1540,8 +1544,13 @@ export async function registerRoutes(
       doc.fontSize(7).font('Helvetica').text('Approved By: ______________________________________', timeX, sigY + 36, { lineBreak: false });
 
       // ===== PHOTOS ON PAGE 2 =====
+      // DEBUG: Log page count after signature section
+      const postSignaturePages = doc.bufferedPageRange().count;
+      console.log(`PDF Debug: After signature section - pages=${postSignaturePages}`);
+      
       if (photos.length > 0) {
         doc.addPage();
+        console.log(`PDF Debug: Added page 2 for photos, now pages=${doc.bufferedPageRange().count}`);
         doc.fontSize(12).font('Helvetica-Bold').text('PHOTO DOCUMENTATION', startX, 25, { lineBreak: false });
         doc.fontSize(9).font('Helvetica').text(`${projectName} - ${dateStr}`, startX, 42, { lineBreak: false });
         
@@ -1604,6 +1613,12 @@ export async function registerRoutes(
       // ===== FOOTER ON PAGES 1 AND 2 =====
       const range = doc.bufferedPageRange();
       const totalPages = range.count;
+      
+      // DEBUG: Log page count to identify source of extra pages
+      console.log(`PDF Generation Debug: Total pages before footer = ${totalPages}, expected max = 2`);
+      if (totalPages > 2) {
+        console.error(`WARNING: PDF has ${totalPages} pages. Extra pages detected!`);
+      }
       
       for (let i = 0; i < totalPages; i++) {
         doc.switchToPage(i);
