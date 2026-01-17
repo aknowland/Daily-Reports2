@@ -1136,15 +1136,15 @@ export async function registerRoutes(
 
       // Company name and contact - upper right
       const companyName = (company?.name || 'FIELD DAILY REPORTS').toUpperCase();
-      doc.fontSize(9).font('Helvetica-Bold').text(companyName, 280, 12, { width: 290, align: 'right' });
+      doc.fontSize(11).font('Helvetica-Bold').text(companyName, 280, 12, { width: 290, align: 'right' });
       const contactLine = [company?.address, company?.phone, company?.email].filter(Boolean).join('  |  ');
       if (contactLine) {
-        doc.fontSize(5.5).font('Helvetica').text(contactLine, 280, 24, { width: 290, align: 'right' });
+        doc.fontSize(7.5).font('Helvetica').text(contactLine, 280, 26, { width: 290, align: 'right' });
       }
 
       // Form grid boxes - right side
       const gridX = 380;
-      const gridTop = 38;
+      const gridTop = 42;
       const reportDate = new Date(report.date);
       const dateStr = reportDate.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: '2-digit' });
       const timeStr = reportDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
@@ -1152,46 +1152,46 @@ export async function registerRoutes(
       doc.strokeColor('#000').lineWidth(0.5);
 
       // Row 1: Project #, Report No., Status
-      doc.rect(gridX, gridTop, 60, 16).stroke();
-      doc.fontSize(5).font('Helvetica').text('Project #', gridX + 2, gridTop + 2);
-      doc.fontSize(7).font('Helvetica-Bold').text(report.project?.projectNumber || 'N/A', gridX + 2, gridTop + 8);
+      doc.rect(gridX, gridTop, 60, 18).stroke();
+      doc.fontSize(7).font('Helvetica').text('Project #', gridX + 2, gridTop + 2);
+      doc.fontSize(9).font('Helvetica-Bold').text(report.project?.projectNumber || 'N/A', gridX + 2, gridTop + 9);
 
-      doc.rect(gridX + 60, gridTop, 50, 16).stroke();
-      doc.fontSize(5).font('Helvetica').text('Report No.', gridX + 62, gridTop + 2);
-      doc.fontSize(7).font('Helvetica-Bold').text('1', gridX + 90, gridTop + 8);
+      doc.rect(gridX + 60, gridTop, 50, 18).stroke();
+      doc.fontSize(7).font('Helvetica').text('Report No.', gridX + 62, gridTop + 2);
+      doc.fontSize(9).font('Helvetica-Bold').text('1', gridX + 90, gridTop + 9);
 
-      doc.rect(gridX + 110, gridTop, 55, 16).stroke();
-      doc.fontSize(5).font('Helvetica').text('Status', gridX + 112, gridTop + 2);
-      doc.fontSize(7).font('Helvetica-Bold').text((report.status || 'draft').toUpperCase(), gridX + 112, gridTop + 8);
+      doc.rect(gridX + 110, gridTop, 55, 18).stroke();
+      doc.fontSize(7).font('Helvetica').text('Status', gridX + 112, gridTop + 2);
+      doc.fontSize(9).font('Helvetica-Bold').text((report.status || 'draft').toUpperCase(), gridX + 112, gridTop + 9);
 
       // Row 2: DSA File No., Date, Time
-      doc.rect(gridX, gridTop + 16, 60, 16).stroke();
-      doc.fontSize(5).font('Helvetica').text('DSA File No.', gridX + 2, gridTop + 18);
-      doc.fontSize(7).font('Helvetica-Bold').text('--', gridX + 2, gridTop + 24);
+      doc.rect(gridX, gridTop + 18, 60, 18).stroke();
+      doc.fontSize(7).font('Helvetica').text('DSA File No.', gridX + 2, gridTop + 20);
+      doc.fontSize(9).font('Helvetica-Bold').text('--', gridX + 2, gridTop + 27);
 
-      doc.rect(gridX + 60, gridTop + 16, 50, 16).stroke();
-      doc.fontSize(5).font('Helvetica').text('Date', gridX + 62, gridTop + 18);
-      doc.fontSize(7).font('Helvetica-Bold').text(dateStr, gridX + 62, gridTop + 24);
+      doc.rect(gridX + 60, gridTop + 18, 50, 18).stroke();
+      doc.fontSize(7).font('Helvetica').text('Date', gridX + 62, gridTop + 20);
+      doc.fontSize(9).font('Helvetica-Bold').text(dateStr, gridX + 62, gridTop + 27);
 
-      doc.rect(gridX + 110, gridTop + 16, 55, 16).stroke();
-      doc.fontSize(5).font('Helvetica').text('Time', gridX + 112, gridTop + 18);
-      doc.fontSize(7).font('Helvetica-Bold').text(timeStr, gridX + 112, gridTop + 24);
+      doc.rect(gridX + 110, gridTop + 18, 55, 18).stroke();
+      doc.fontSize(7).font('Helvetica').text('Time', gridX + 112, gridTop + 20);
+      doc.fontSize(9).font('Helvetica-Bold').text(timeStr, gridX + 112, gridTop + 27);
 
       // Title - positioned below the logo
-      doc.fontSize(12).font('Helvetica-Bold').text('DAILY FIELD INSPECTION REPORT', startX, gridTop + 22);
+      doc.fontSize(14).font('Helvetica-Bold').text('DAILY FIELD INSPECTION REPORT', startX, gridTop + 24);
 
       // Weather row with drawn icon
-      doc.y = gridTop + 42;
+      doc.y = gridTop + 46;
       const weatherType = (report.weatherType || 'clear').toLowerCase();
       const weatherText = `${report.weatherNotes || ''}`.trim();
       const weatherLabel = (report.weatherType || 'Clear').charAt(0).toUpperCase() + (report.weatherType || 'clear').slice(1);
       
-      doc.fontSize(6).font('Helvetica-Bold').text('WEATHER:', startX, doc.y);
+      doc.fontSize(8).font('Helvetica-Bold').text('WEATHER:', startX, doc.y);
       
       // Draw weather icon based on type
-      const iconX = startX + 48;
-      const iconY = doc.y + 2;
-      const iconSize = 5;
+      const iconX = startX + 55;
+      const iconY = doc.y + 3;
+      const iconSize = 6;
       
       if (weatherType === 'clear' || weatherType === 'sunny' || weatherType === 'hot') {
         // Sun icon - circle with rays
@@ -1258,23 +1258,23 @@ export async function registerRoutes(
       
       // Reset all colors and line width back to defaults
       doc.fillColor('#000').strokeColor('#000').lineWidth(1);
-      doc.fontSize(6).font('Helvetica').text(`${weatherLabel}${weatherText ? ' - ' + weatherText : ''}`, startX + 62, doc.y);
+      doc.fontSize(8).font('Helvetica').text(`${weatherLabel}${weatherText ? ' - ' + weatherText : ''}`, startX + 70, doc.y);
 
       // ===== TYPE OF WORK - Checkboxes =====
-      doc.y += 12;
+      doc.y += 16;
       const typeY = doc.y;
-      doc.fontSize(6).font('Helvetica-Bold').text('TYPE OF WORK', startX, typeY);
+      doc.fontSize(8).font('Helvetica-Bold').text('TYPE OF WORK', startX, typeY);
       
       const inspectionTypes = ['Reinf. Concrete', 'Structural Steel', 'Reinf. Masonry', 'Fire Proofing', 'Shotcrete', 'Anchors', 'Other'];
-      let typeX = startX + 85;
+      let typeX = startX + 95;
       inspectionTypes.forEach((type) => {
         doc.rect(typeX, typeY - 1, checkSize, checkSize).stroke();
-        doc.fontSize(5).font('Helvetica').text(type, typeX + 9, typeY);
-        typeX += 65;
+        doc.fontSize(7).font('Helvetica').text(type, typeX + 9, typeY);
+        typeX += 68;
       });
 
       // ===== PROJECT INFO SECTION =====
-      doc.y = typeY + 14;
+      doc.y = typeY + 18;
       const projY = doc.y;
       const col1W = pageWidth * 0.55;
       const col2W = pageWidth * 0.45;
@@ -1286,73 +1286,73 @@ export async function registerRoutes(
       const clientName = report.project?.client || 'N/A';
 
       // Project Name row
-      doc.rect(startX, projY, 65, 14).fillAndStroke('#000', '#000');
-      doc.fillColor('#fff').fontSize(6).font('Helvetica-Bold').text('Project Name', startX + 3, projY + 4);
+      doc.rect(startX, projY, 75, 18).fillAndStroke('#000', '#000');
+      doc.fillColor('#fff').fontSize(8).font('Helvetica-Bold').text('Project Name', startX + 3, projY + 5);
       doc.fillColor('#000');
-      doc.rect(startX + 65, projY, col1W - 65, 14).stroke();
-      doc.fontSize(7).font('Helvetica-Bold').text(projectName, startX + 68, projY + 4, { width: col1W - 75 });
+      doc.rect(startX + 75, projY, col1W - 75, 18).stroke();
+      doc.fontSize(9).font('Helvetica-Bold').text(projectName, startX + 78, projY + 5, { width: col1W - 85 });
 
-      doc.rect(startX + col1W, projY, 50, 14).fillAndStroke('#000', '#000');
-      doc.fillColor('#fff').fontSize(6).font('Helvetica-Bold').text('Inspector', startX + col1W + 3, projY + 4);
+      doc.rect(startX + col1W, projY, 55, 18).fillAndStroke('#000', '#000');
+      doc.fillColor('#fff').fontSize(8).font('Helvetica-Bold').text('Inspector', startX + col1W + 3, projY + 5);
       doc.fillColor('#000');
-      doc.rect(startX + col1W + 50, projY, col2W - 50, 14).stroke();
-      doc.fontSize(7).font('Helvetica-Bold').text(inspectorName + inspectorLicense, startX + col1W + 53, projY + 4, { width: col2W - 60 });
+      doc.rect(startX + col1W + 55, projY, col2W - 55, 18).stroke();
+      doc.fontSize(9).font('Helvetica-Bold').text(inspectorName + inspectorLicense, startX + col1W + 58, projY + 5, { width: col2W - 65 });
 
       // Project Address row
-      doc.rect(startX, projY + 14, 65, 14).fillAndStroke('#000', '#000');
-      doc.fillColor('#fff').fontSize(6).font('Helvetica-Bold').text('Project Address', startX + 3, projY + 18);
+      doc.rect(startX, projY + 18, 75, 18).fillAndStroke('#000', '#000');
+      doc.fillColor('#fff').fontSize(8).font('Helvetica-Bold').text('Project Address', startX + 3, projY + 23);
       doc.fillColor('#000');
-      doc.rect(startX + 65, projY + 14, col1W - 65, 14).stroke();
-      doc.fontSize(7).font('Helvetica-Bold').text(projectAddress, startX + 68, projY + 18, { width: col1W - 75 });
+      doc.rect(startX + 75, projY + 18, col1W - 75, 18).stroke();
+      doc.fontSize(9).font('Helvetica-Bold').text(projectAddress, startX + 78, projY + 23, { width: col1W - 85 });
 
-      doc.rect(startX + col1W, projY + 14, 50, 14).fillAndStroke('#000', '#000');
-      doc.fillColor('#fff').fontSize(6).font('Helvetica-Bold').text('Client', startX + col1W + 3, projY + 18);
+      doc.rect(startX + col1W, projY + 18, 55, 18).fillAndStroke('#000', '#000');
+      doc.fillColor('#fff').fontSize(8).font('Helvetica-Bold').text('Client', startX + col1W + 3, projY + 23);
       doc.fillColor('#000');
-      doc.rect(startX + col1W + 50, projY + 14, col2W - 50, 14).stroke();
-      doc.fontSize(7).font('Helvetica-Bold').text(clientName, startX + col1W + 53, projY + 18, { width: col2W - 60 });
+      doc.rect(startX + col1W + 55, projY + 18, col2W - 55, 18).stroke();
+      doc.fontSize(9).font('Helvetica-Bold').text(clientName, startX + col1W + 58, projY + 23, { width: col2W - 65 });
 
       // ===== WORK ACTIVITIES TABLE =====
-      doc.y = projY + 34;
-      doc.fontSize(7).font('Helvetica-Bold').text('WORK ACTIVITIES', startX, doc.y);
-      doc.y += 10;
+      doc.y = projY + 42;
+      doc.fontSize(9).font('Helvetica-Bold').text('WORK ACTIVITIES', startX, doc.y);
+      doc.y += 14;
 
       const waY = doc.y;
       const waCols = [130, 50, pageWidth - 180];
       
       // Header row
-      doc.rect(startX, waY, waCols[0], 12).fillAndStroke('#e0e0e0', '#000');
-      doc.rect(startX + waCols[0], waY, waCols[1], 12).fillAndStroke('#e0e0e0', '#000');
-      doc.rect(startX + waCols[0] + waCols[1], waY, waCols[2], 12).fillAndStroke('#e0e0e0', '#000');
-      doc.fillColor('#000').fontSize(6).font('Helvetica-Bold');
-      doc.text('CONTRACTOR / TRADE', startX + 3, waY + 3);
-      doc.text('COUNT', startX + waCols[0] + 3, waY + 3);
-      doc.text('WORK DESCRIPTION', startX + waCols[0] + waCols[1] + 3, waY + 3);
+      doc.rect(startX, waY, waCols[0], 16).fillAndStroke('#e0e0e0', '#000');
+      doc.rect(startX + waCols[0], waY, waCols[1], 16).fillAndStroke('#e0e0e0', '#000');
+      doc.rect(startX + waCols[0] + waCols[1], waY, waCols[2], 16).fillAndStroke('#e0e0e0', '#000');
+      doc.fillColor('#000').fontSize(8).font('Helvetica-Bold');
+      doc.text('CONTRACTOR / TRADE', startX + 3, waY + 4);
+      doc.text('COUNT', startX + waCols[0] + 3, waY + 4);
+      doc.text('WORK DESCRIPTION', startX + waCols[0] + waCols[1] + 3, waY + 4);
 
       const workActivities = (report.workActivities as WorkActivityRow[]) || [];
-      let currentWaY = waY + 12;
+      let currentWaY = waY + 16;
       const maxWaRows = Math.max(workActivities.length, 2);
       
       for (let i = 0; i < maxWaRows; i++) {
         const activity = workActivities[i];
-        doc.rect(startX, currentWaY, waCols[0], 12).stroke();
-        doc.rect(startX + waCols[0], currentWaY, waCols[1], 12).stroke();
-        doc.rect(startX + waCols[0] + waCols[1], currentWaY, waCols[2], 12).stroke();
+        doc.rect(startX, currentWaY, waCols[0], 16).stroke();
+        doc.rect(startX + waCols[0], currentWaY, waCols[1], 16).stroke();
+        doc.rect(startX + waCols[0] + waCols[1], currentWaY, waCols[2], 16).stroke();
         if (activity) {
-          doc.fontSize(6).font('Helvetica');
-          doc.text(activity.contractor || '', startX + 3, currentWaY + 3, { width: waCols[0] - 6 });
-          doc.text(String(activity.headcount || ''), startX + waCols[0] + 18, currentWaY + 3);
-          doc.text(activity.workDescription || '', startX + waCols[0] + waCols[1] + 3, currentWaY + 3, { width: waCols[2] - 6 });
+          doc.fontSize(8).font('Helvetica');
+          doc.text(activity.contractor || '', startX + 3, currentWaY + 4, { width: waCols[0] - 6 });
+          doc.text(String(activity.headcount || ''), startX + waCols[0] + 18, currentWaY + 4);
+          doc.text(activity.workDescription || '', startX + waCols[0] + waCols[1] + 3, currentWaY + 4, { width: waCols[2] - 6 });
         }
-        currentWaY += 12;
+        currentWaY += 16;
       }
 
       // ===== DAILY SUMMARY =====
-      doc.y = currentWaY + 6;
-      doc.fontSize(7).font('Helvetica-Bold').text('DAILY SUMMARY', startX, doc.y);
-      doc.y += 10;
+      doc.y = currentWaY + 8;
+      doc.fontSize(9).font('Helvetica-Bold').text('DAILY SUMMARY', startX, doc.y);
+      doc.y += 14;
 
       const sumY = doc.y;
-      const sumH = 100;
+      const sumH = 90;
       doc.rect(startX, sumY, pageWidth, sumH).stroke();
 
       const summaryParts: string[] = [];
@@ -1361,125 +1361,125 @@ export async function registerRoutes(
       if (report.notes) summaryParts.push(report.notes);
       const summaryText = summaryParts.join('\n\n') || 'No inspection details recorded.';
       
-      doc.fontSize(7).font('Helvetica').text(summaryText, startX + 4, sumY + 4, { width: pageWidth - 8, height: sumH - 8 });
+      doc.fontSize(9).font('Helvetica').text(summaryText, startX + 4, sumY + 4, { width: pageWidth - 8, height: sumH - 8 });
 
       // ===== FLAGS ROW: Issues / Safety / Visitors =====
-      doc.y = sumY + sumH + 6;
+      doc.y = sumY + sumH + 8;
       const flagY = doc.y;
 
-      doc.fontSize(6).font('Helvetica-Bold').text('ISSUES/DELAYS:', startX, flagY);
-      doc.rect(startX + 55, flagY - 1, checkSize, checkSize).stroke();
-      if (report.issuesFlag) doc.rect(startX + 56, flagY, 5, 5).fill('#000');
-      doc.fontSize(5).font('Helvetica').text('Yes', startX + 64, flagY);
-      doc.rect(startX + 80, flagY - 1, checkSize, checkSize).stroke();
-      if (!report.issuesFlag) doc.rect(startX + 81, flagY, 5, 5).fill('#000');
-      doc.text('No', startX + 89, flagY);
+      doc.fontSize(8).font('Helvetica-Bold').text('ISSUES/DELAYS:', startX, flagY);
+      doc.rect(startX + 70, flagY - 1, checkSize, checkSize).stroke();
+      if (report.issuesFlag) doc.rect(startX + 71, flagY, 5, 5).fill('#000');
+      doc.fontSize(7).font('Helvetica').text('Yes', startX + 79, flagY);
+      doc.rect(startX + 98, flagY - 1, checkSize, checkSize).stroke();
+      if (!report.issuesFlag) doc.rect(startX + 99, flagY, 5, 5).fill('#000');
+      doc.text('No', startX + 107, flagY);
 
-      doc.fontSize(6).font('Helvetica-Bold').text('SAFETY INCIDENTS:', startX + 115, flagY);
-      doc.rect(startX + 180, flagY - 1, checkSize, checkSize).stroke();
-      if (report.safetyFlag) doc.rect(startX + 181, flagY, 5, 5).fill('#000');
-      doc.fontSize(5).font('Helvetica').text('Yes', startX + 189, flagY);
-      doc.rect(startX + 205, flagY - 1, checkSize, checkSize).stroke();
-      if (!report.safetyFlag) doc.rect(startX + 206, flagY, 5, 5).fill('#000');
-      doc.text('No', startX + 214, flagY);
+      doc.fontSize(8).font('Helvetica-Bold').text('SAFETY INCIDENTS:', startX + 135, flagY);
+      doc.rect(startX + 215, flagY - 1, checkSize, checkSize).stroke();
+      if (report.safetyFlag) doc.rect(startX + 216, flagY, 5, 5).fill('#000');
+      doc.fontSize(7).font('Helvetica').text('Yes', startX + 224, flagY);
+      doc.rect(startX + 245, flagY - 1, checkSize, checkSize).stroke();
+      if (!report.safetyFlag) doc.rect(startX + 246, flagY, 5, 5).fill('#000');
+      doc.text('No', startX + 254, flagY);
 
       const visitors = (report.visitors as VisitorRow[]) || [];
       const visitorsText = visitors.map(v => `${v.name}${v.company ? ` (${v.company})` : ''}`).join(', ') || 'None';
-      doc.fontSize(6).font('Helvetica-Bold').text('VISITORS:', startX + 250, flagY);
-      doc.font('Helvetica').text(visitorsText, startX + 285, flagY, { width: 270 });
+      doc.fontSize(8).font('Helvetica-Bold').text('VISITORS:', startX + 290, flagY);
+      doc.font('Helvetica').text(visitorsText, startX + 335, flagY, { width: 230 });
 
       // ===== QC CHECKLIST ROW =====
-      doc.y = flagY + 12;
+      doc.y = flagY + 16;
       const qcY = doc.y;
-      doc.fontSize(6).font('Helvetica-Bold').text('QC CHECKLIST:', startX, qcY);
+      doc.fontSize(8).font('Helvetica-Bold').text('QC CHECKLIST:', startX, qcY);
       
       const qcItems = ['FSA-5', 'On Time', 'File # Checked', 'Plan Reviewed', 'Specs Reviewed', 'Prev Reports', 'Tests per Spec', 'Samples Safe'];
-      let qcX = startX + 60;
+      let qcX = startX + 75;
       qcItems.forEach((item) => {
         doc.rect(qcX, qcY - 1, checkSize, checkSize).stroke();
-        doc.fontSize(5).font('Helvetica').text(item, qcX + 9, qcY);
+        doc.fontSize(7).font('Helvetica').text(item, qcX + 9, qcY);
         qcX += 60;
       });
 
       // ===== DSA COMPLIANCE STATEMENT =====
-      doc.y = qcY + 12;
+      doc.y = qcY + 16;
       const dsaY = doc.y;
-      doc.fontSize(6).font('Helvetica-Bold').text('THE WORK INSPECTED', startX, dsaY);
-      doc.rect(startX + 80, dsaY - 1, checkSize, checkSize).stroke();
-      doc.fontSize(5).font('Helvetica').text('WAS', startX + 89, dsaY);
-      doc.rect(startX + 110, dsaY - 1, checkSize, checkSize).stroke();
-      doc.text('WAS NOT', startX + 119, dsaY);
-      doc.fontSize(6).font('Helvetica').text('IN ACCORDANCE WITH DSA APPROVED DOCUMENTS', startX + 160, dsaY);
-      doc.rect(startX + 355, dsaY - 1, checkSize, checkSize).stroke();
-      doc.fontSize(5).text('MET', startX + 364, dsaY);
-      doc.rect(startX + 385, dsaY - 1, checkSize, checkSize).stroke();
-      doc.text('DID NOT MEET', startX + 394, dsaY);
-      doc.fontSize(6).font('Helvetica-Bold').text('REQUIREMENTS', startX + 450, dsaY);
+      doc.fontSize(8).font('Helvetica-Bold').text('THE WORK INSPECTED', startX, dsaY);
+      doc.rect(startX + 95, dsaY - 1, checkSize, checkSize).stroke();
+      doc.fontSize(7).font('Helvetica').text('WAS', startX + 104, dsaY);
+      doc.rect(startX + 125, dsaY - 1, checkSize, checkSize).stroke();
+      doc.text('WAS NOT', startX + 134, dsaY);
+      doc.fontSize(8).font('Helvetica').text('IN ACCORDANCE WITH DSA APPROVED DOCUMENTS', startX + 180, dsaY);
+      doc.rect(startX + 395, dsaY - 1, checkSize, checkSize).stroke();
+      doc.fontSize(7).text('MET', startX + 404, dsaY);
+      doc.rect(startX + 425, dsaY - 1, checkSize, checkSize).stroke();
+      doc.text('DID NOT MEET', startX + 434, dsaY);
+      doc.fontSize(8).font('Helvetica-Bold').text('REQUIREMENTS', startX + 495, dsaY);
 
       // ===== PHOTOS ATTACHED =====
-      doc.y = dsaY + 14;
+      doc.y = dsaY + 18;
       const photos = report.photos || [];
-      doc.fontSize(6).font('Helvetica-Bold').text('PHOTOS ATTACHED:', startX, doc.y);
-      doc.font('Helvetica').text(`${photos.length} photo(s) - See attached sheet`, startX + 80, doc.y);
+      doc.fontSize(8).font('Helvetica-Bold').text('PHOTOS ATTACHED:', startX, doc.y);
+      doc.font('Helvetica').text(`${photos.length} photo(s) - See attached sheet`, startX + 95, doc.y);
 
       // ===== SIGNATURE SECTION =====
-      doc.y += 16;
+      doc.y += 20;
       const sigY = doc.y;
 
-      doc.fontSize(5).font('Helvetica').text('SIGNATURE OF INSPECTOR', startX, sigY);
+      doc.fontSize(7).font('Helvetica').text('SIGNATURE OF INSPECTOR', startX, sigY);
       
       if (report.signaturePath) {
         const sigBuffer = await loadImageBuffer(report.signaturePath);
         if (sigBuffer) {
           try {
-            doc.image(sigBuffer, startX, sigY + 6, { width: 130, height: 30, fit: [130, 30] });
+            doc.image(sigBuffer, startX, sigY + 8, { width: 140, height: 35, fit: [140, 35] });
           } catch (err) {
             console.error('Error adding signature:', err);
           }
         }
       }
       
-      doc.moveTo(startX, sigY + 40).lineTo(startX + 180, sigY + 40).stroke();
+      doc.moveTo(startX, sigY + 48).lineTo(startX + 200, sigY + 48).stroke();
 
-      doc.fontSize(5).text('INSPECTOR NAME', startX, sigY + 44);
-      doc.font('Helvetica-Bold').text(inspectorName, startX + 60, sigY + 44);
+      doc.fontSize(7).text('INSPECTOR NAME', startX, sigY + 52);
+      doc.font('Helvetica-Bold').text(inspectorName, startX + 75, sigY + 52);
       
-      doc.fontSize(5).font('Helvetica').text('LICENSE NO.', startX, sigY + 54);
-      doc.font('Helvetica-Bold').text(inspectorProfile?.licenseNumber || 'N/A', startX + 50, sigY + 54);
+      doc.fontSize(7).font('Helvetica').text('LICENSE NO.', startX, sigY + 64);
+      doc.font('Helvetica-Bold').text(inspectorProfile?.licenseNumber || 'N/A', startX + 60, sigY + 64);
 
       // Time tracking boxes - right side
       const timeX = 320;
       const signedTime = report.signedAt ? new Date(report.signedAt) : null;
       const timeInStr = signedTime ? signedTime.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }) : '--';
       
-      doc.rect(timeX, sigY, 40, 24).stroke();
-      doc.fontSize(5).font('Helvetica').text('TIME IN', timeX + 2, sigY + 2);
-      doc.fontSize(8).font('Helvetica-Bold').text(timeInStr, timeX + 2, sigY + 10);
+      doc.rect(timeX, sigY, 45, 28).stroke();
+      doc.fontSize(7).font('Helvetica').text('TIME IN', timeX + 2, sigY + 2);
+      doc.fontSize(10).font('Helvetica-Bold').text(timeInStr, timeX + 2, sigY + 12);
 
-      doc.rect(timeX + 40, sigY, 40, 24).stroke();
-      doc.fontSize(5).font('Helvetica').text('TIME OUT', timeX + 42, sigY + 2);
-      doc.fontSize(8).font('Helvetica-Bold').text('--', timeX + 42, sigY + 10);
+      doc.rect(timeX + 45, sigY, 45, 28).stroke();
+      doc.fontSize(7).font('Helvetica').text('TIME OUT', timeX + 47, sigY + 2);
+      doc.fontSize(10).font('Helvetica-Bold').text('--', timeX + 47, sigY + 12);
 
-      doc.rect(timeX + 80, sigY, 35, 24).stroke();
-      doc.fontSize(5).font('Helvetica').text('REG HRS', timeX + 82, sigY + 2);
-      doc.fontSize(8).font('Helvetica-Bold').text('--', timeX + 92, sigY + 10);
+      doc.rect(timeX + 90, sigY, 40, 28).stroke();
+      doc.fontSize(7).font('Helvetica').text('REG HRS', timeX + 92, sigY + 2);
+      doc.fontSize(10).font('Helvetica-Bold').text('--', timeX + 102, sigY + 12);
 
-      doc.rect(timeX + 115, sigY, 35, 24).stroke();
-      doc.fontSize(5).font('Helvetica').text('OT HRS', timeX + 117, sigY + 2);
-      doc.fontSize(8).font('Helvetica-Bold').text('--', timeX + 127, sigY + 10);
+      doc.rect(timeX + 130, sigY, 40, 28).stroke();
+      doc.fontSize(7).font('Helvetica').text('OT HRS', timeX + 132, sigY + 2);
+      doc.fontSize(10).font('Helvetica-Bold').text('--', timeX + 142, sigY + 12);
 
-      doc.rect(timeX + 150, sigY, 40, 24).stroke();
-      doc.fontSize(5).font('Helvetica').text('SAMPLES', timeX + 152, sigY + 2);
-      doc.fontSize(8).font('Helvetica-Bold').text(String(photos.length), timeX + 166, sigY + 10);
+      doc.rect(timeX + 170, sigY, 45, 28).stroke();
+      doc.fontSize(7).font('Helvetica').text('SAMPLES', timeX + 172, sigY + 2);
+      doc.fontSize(10).font('Helvetica-Bold').text(String(photos.length), timeX + 186, sigY + 12);
 
       // Approval line
-      doc.fontSize(5).font('Helvetica').text('Approved By: ______________________________________', timeX, sigY + 30);
+      doc.fontSize(7).font('Helvetica').text('Approved By: ______________________________________', timeX, sigY + 36);
 
       // ===== PHOTOS ON ADDITIONAL PAGES =====
       if (photos.length > 0) {
         doc.addPage();
-        doc.fontSize(10).font('Helvetica-Bold').text('PHOTO DOCUMENTATION', startX, 25);
-        doc.fontSize(7).font('Helvetica').text(`${projectName} - ${dateStr}`, startX, 38);
+        doc.fontSize(12).font('Helvetica-Bold').text('PHOTO DOCUMENTATION', startX, 25);
+        doc.fontSize(9).font('Helvetica').text(`${projectName} - ${dateStr}`, startX, 42);
         
         const photoGap = 12;
         const photoWidth = (pageWidth - photoGap) / 2;
@@ -1513,7 +1513,7 @@ export async function registerRoutes(
               });
               
               if (photo.caption) {
-                doc.fontSize(6).font('Helvetica-Oblique').fillColor('#333')
+                doc.fontSize(8).font('Helvetica-Oblique').fillColor('#333')
                   .text(photo.caption, currentPhotoX, currentPhotoY + photoHeight + 2, {
                     width: photoWidth,
                     align: 'center'
