@@ -1,6 +1,6 @@
 import { 
   projects, dailyReports, photos, distributionLogs, appSettings, userProfiles, projectMembers, invites,
-  companies, companyMembers, joinRequests,
+  companies, companyMembers, joinRequests, invoices,
   type Project, type InsertProject,
   type DailyReport, type InsertDailyReport,
   type Photo, type InsertPhoto,
@@ -13,6 +13,7 @@ import {
   type CompanyMember, type InsertCompanyMember,
   type JoinRequest, type InsertJoinRequest,
   type DailyReportWithDetails,
+  type Invoice,
 } from "@shared/schema";
 import { users, type User } from "@shared/models/auth";
 import { db } from "./db";
@@ -121,6 +122,20 @@ export interface IStorage {
   
   // Get user by ID
   getUserById(userId: string): Promise<User | undefined>;
+
+  // Invoices
+  getNextInvoiceNumber(): Promise<number>;
+  createInvoice(data: {
+    invoiceNumber: number;
+    projectId: string;
+    generatedById: string;
+    startDate: Date;
+    endDate: Date;
+    regularHours: string;
+    otHours: string;
+    totalHours: string;
+    reportCount: number;
+  }): Promise<{ id: string; invoiceNumber: number }>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -859,6 +874,40 @@ export class DatabaseStorage implements IStorage {
   async getUserById(userId: string): Promise<User | undefined> {
     const [user] = await db.select().from(users).where(eq(users.id, userId));
     return user;
+  }
+
+  async getNextInvoiceNumber(): Promise<number> {
+    // Use database sequence for atomic, race-condition-free invoice number generation
+    const result = await db.execute(sql`SELECT nextval('invoice_number_seq') as next_num`);
+    return Number((result.rows[0] as any)?.next_num || 1);
+  }
+
+  async createInvoice(data: {
+    invoiceNumber: number;
+    projectId: string;
+    generatedById: string;
+    startDate: Date;
+    endDate: Date;
+    regularHours: string;
+    otHours: string;
+    totalHours: string;
+    reportCount: number;
+  }): Promise<{ id: string; invoiceNumber: number }> {
+    const [invoice] = await db
+      .insert(invoices)
+      .values({
+        invoiceNumber: data.invoiceNumber,
+        projectId: data.projectId,
+        generatedById: data.generatedById,
+        startDate: data.startDate,
+        endDate: data.endDate,
+        regularHours: data.regularHours,
+        otHours: data.otHours,
+        totalHours: data.totalHours,
+        reportCount: data.reportCount,
+      })
+      .returning();
+    return { id: invoice.id, invoiceNumber: invoice.invoiceNumber };
   }
 }
 
