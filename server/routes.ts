@@ -1023,14 +1023,28 @@ export async function registerRoutes(
       const PRIMARY_BLUE = '#1e40af';
       const PRIMARY_BLUE_BORDER = '#1e3a8a';
       const DIVIDER_GRAY = '#d1d5db';
+      
+      // Track current page to enforce 2-page limit
+      let currentPage = 1;
+      const MAX_PAGES = 2;
+      
+      // Helper to check if we can add content (returns false if at page limit and no space)
+      const canAddContent = (heightNeeded: number): boolean => {
+        const hasSpace = doc.y + heightNeeded <= doc.page.height - doc.page.margins.bottom - 30;
+        if (hasSpace) return true;
+        // If we're already at page 2, can't add more
+        return currentPage < MAX_PAGES;
+      };
 
-      // Helper function to draw a table row with border (with page break handling)
-      const drawTableRow = (label: string, value: string, options?: { bold?: boolean }) => {
+      // Helper function to draw a table row with border (with strict 2-page limit)
+      const drawTableRow = (label: string, value: string, options?: { bold?: boolean }): boolean => {
         const rowHeight = Math.max(16, doc.heightOfString(value || 'N/A', { width: rightColWidth - 10 }) + 4);
         
         // Check if we need a new page
         if (doc.y + rowHeight > doc.page.height - doc.page.margins.bottom - 30) {
+          if (currentPage >= MAX_PAGES) return false; // At page limit, skip
           doc.addPage();
+          currentPage++;
         }
         
         const rowY = doc.y;
@@ -1047,6 +1061,7 @@ export async function registerRoutes(
           .text(value || 'N/A', startX + leftColWidth + 5, rowY + 3, { width: rightColWidth - 10 });
         
         doc.y = rowY + rowHeight;
+        return true;
       };
       
       // Helper function to draw a subtle section divider
@@ -1061,11 +1076,13 @@ export async function registerRoutes(
         doc.moveDown(0.3);
       };
 
-      // Helper function to draw section header with extra spacing before (with page break handling)
-      const drawSectionHeader = (title: string) => {
+      // Helper function to draw section header with extra spacing (with strict 2-page limit)
+      const drawSectionHeader = (title: string): boolean => {
         // Check if we need a new page (need room for header + at least one row)
         if (doc.y + 50 > doc.page.height - doc.page.margins.bottom - 30) {
+          if (currentPage >= MAX_PAGES) return false; // At page limit, skip
           doc.addPage();
+          currentPage++;
         } else {
           doc.moveDown(0.6);
         }
@@ -1078,6 +1095,7 @@ export async function registerRoutes(
         doc.y = headerY + 18;
         // Reset fill color for subsequent content
         doc.fillColor('#000');
+        return true;
       };
 
       // Header with company logo in top left and contact info on right (same row)
@@ -1190,13 +1208,15 @@ export async function registerRoutes(
         
         drawActivityTableHeader();
         
-        workActivities.forEach((activity) => {
+        for (const activity of workActivities) {
           const descHeight = doc.heightOfString(activity.workDescription || '', { width: activityColWidths[2] - 8 });
           const rowHeight = Math.max(16, descHeight + 6);
           
-          // Check if we need a new page
+          // Check if we need a new page (with 2-page limit)
           if (doc.y + rowHeight > doc.page.height - doc.page.margins.bottom - 30) {
+            if (currentPage >= MAX_PAGES) break; // Stop adding activities at page limit
             doc.addPage();
+            currentPage++;
             drawActivityTableHeader();
           }
           
@@ -1211,7 +1231,7 @@ export async function registerRoutes(
           doc.text(String(activity.headcount || 0), startX + activityColWidths[0] + 4, rowY + 4, { width: activityColWidths[1] - 8 });
           doc.text(activity.workDescription || '', startX + activityColWidths[0] + activityColWidths[1] + 4, rowY + 4, { width: activityColWidths[2] - 8 });
           doc.y = rowY + rowHeight;
-        });
+        }
       }
 
       // Visitors Section
@@ -1223,15 +1243,12 @@ export async function registerRoutes(
         });
       }
 
-      // Materials Delivered
-      if (report.materialsDelivered) {
-        drawSectionHeader('MATERIALS DELIVERED');
-        drawTableRow('Items', report.materialsDelivered);
-      }
-
-      // Issues/Safety Section
-      if (report.issuesFlag || report.safetyFlag) {
-        drawSectionHeader('ISSUES & SAFETY');
+      // Issues/Safety Section (combined with notes for compact display)
+      if (report.issuesFlag || report.safetyFlag || report.workPerformed) {
+        drawSectionHeader('NOTES & ISSUES');
+        if (report.workPerformed) {
+          drawTableRow('Notes', report.workPerformed);
+        }
         if (report.issuesFlag) {
           drawTableRow('Issues/Delays', report.issuesDetails || 'No details provided');
         }
@@ -1240,161 +1257,173 @@ export async function registerRoutes(
         }
       }
 
-      // Inspections
-      if (report.inspections) {
-        drawSectionHeader('INSPECTIONS');
-        drawTableRow('Details', report.inspections);
-      }
-
-      // Additional Notes
-      if (report.workPerformed) {
-        drawSectionHeader('ADDITIONAL NOTES');
-        drawTableRow('Notes', report.workPerformed);
-      }
-
-      // Equipment
-      if (report.equipment) {
-        drawSectionHeader('EQUIPMENT');
-        drawTableRow('On Site', report.equipment);
-      }
-
-      // Photos - 2 columns layout with improved styling
+      // Photos - 2 columns layout, limited to 4 photos max for 2-page PDF
       const photos = report.photos || [];
-      if (photos.length > 0) {
-        const photoHeight = 140;
-        const photoPadding = 6;
-        const photoGap = 16;
-        const captionHeight = 20;
-        // Ensure enough space for header + at least one photo row
-        if (doc.y + 18 + photoHeight + captionHeight + 30 > doc.page.height - doc.page.margins.bottom - 30) {
-          doc.addPage();
-        }
-        drawSectionHeader('PHOTOS');
-        doc.moveDown(0.3);
+      const maxPhotos = Math.min(photos.length, 4); // Limit to 4 photos
+      // Only attempt photos if we have photos AND have space or can add a page
+      if (maxPhotos > 0 && (currentPage < MAX_PAGES || canAddContent(160))) {
+        const photoHeight = 120; // Slightly smaller photos
+        const photoPadding = 4;
+        const photoGap = 12;
+        const captionHeight = 16;
         
-        const photoWidth = (pageWidth - photoGap) / 2;
-        let currentY = doc.y;
+        // Check if we need space for photos
+        const needsNewPage = doc.y + 18 + photoHeight + captionHeight + 30 > doc.page.height - doc.page.margins.bottom - 30;
         
-        for (let i = 0; i < photos.length; i += 2) {
-          // Check if we need a new page
-          if (currentY > doc.page.height - photoHeight - captionHeight - 60) {
+        if (needsNewPage) {
+          if (currentPage >= MAX_PAGES) {
+            // Skip photos section entirely if at page limit - goto signature section
+          } else {
             doc.addPage();
-            currentY = doc.page.margins.top;
-          }
-          
-          // Left photo
-          const leftPhoto = photos[i];
-          const leftPhotoPath = path.join(process.cwd(), leftPhoto.filePath.replace(/^\//, ''));
-          if (fs.existsSync(leftPhotoPath)) {
-            try {
-              // Draw thicker border with subtle shadow effect
-              doc.lineWidth(1.5).strokeColor('#374151')
-                .rect(startX, currentY, photoWidth, photoHeight).stroke();
-              doc.lineWidth(1).strokeColor('#000');
+            currentPage++;
+            const headerDrawn = drawSectionHeader(`PHOTOS${photos.length > 4 ? ` (showing 4 of ${photos.length})` : ''}`);
+            if (!headerDrawn) {
+              // Header couldn't be drawn, skip photos
+            } else {
+              doc.moveDown(0.2);
               
-              doc.image(leftPhotoPath, startX + photoPadding, currentY + photoPadding, { 
-                width: photoWidth - (photoPadding * 2), 
-                height: photoHeight - (photoPadding * 2), 
-                fit: [photoWidth - (photoPadding * 2), photoHeight - (photoPadding * 2)],
-                align: 'center',
-                valign: 'center'
-              });
-              // Styled caption with italic font
-              if (leftPhoto.caption) {
-                const caption = leftPhoto.caption.length > 50 ? leftPhoto.caption.substring(0, 50) + '...' : leftPhoto.caption;
-                doc.fontSize(8).font('Helvetica-Oblique').fillColor('#4b5563')
-                  .text(caption, startX, currentY + photoHeight + 4, { width: photoWidth, align: 'center' });
-                doc.fillColor('#000');
-              }
-            } catch (err) {
-              console.error('Error adding left photo:', err);
-            }
-          }
-          
-          // Right photo (if exists)
-          if (i + 1 < photos.length) {
-            const rightPhoto = photos[i + 1];
-            const rightPhotoPath = path.join(process.cwd(), rightPhoto.filePath.replace(/^\//, ''));
-            const rightX = startX + photoWidth + photoGap;
-            if (fs.existsSync(rightPhotoPath)) {
-              try {
-                // Draw thicker border
-                doc.lineWidth(1.5).strokeColor('#374151')
-                  .rect(rightX, currentY, photoWidth, photoHeight).stroke();
-                doc.lineWidth(1).strokeColor('#000');
+              const photoWidth = (pageWidth - photoGap) / 2;
+              let currentY = doc.y;
+              
+              for (let i = 0; i < maxPhotos; i += 2) {
+                if (currentY > doc.page.height - photoHeight - captionHeight - 60) break;
                 
-                doc.image(rightPhotoPath, rightX + photoPadding, currentY + photoPadding, { 
-                  width: photoWidth - (photoPadding * 2), 
-                  height: photoHeight - (photoPadding * 2), 
-                  fit: [photoWidth - (photoPadding * 2), photoHeight - (photoPadding * 2)],
-                  align: 'center',
-                  valign: 'center'
-                });
-                // Styled caption with italic font
-                if (rightPhoto.caption) {
-                  const caption = rightPhoto.caption.length > 50 ? rightPhoto.caption.substring(0, 50) + '...' : rightPhoto.caption;
-                  doc.fontSize(8).font('Helvetica-Oblique').fillColor('#4b5563')
-                    .text(caption, rightX, currentY + photoHeight + 4, { width: photoWidth, align: 'center' });
-                  doc.fillColor('#000');
+                // Left photo
+                const leftPhoto = photos[i];
+                const leftPhotoPath = path.join(process.cwd(), leftPhoto.filePath.replace(/^\//, ''));
+                if (fs.existsSync(leftPhotoPath)) {
+                  try {
+                    doc.lineWidth(1.5).strokeColor('#374151').rect(startX, currentY, photoWidth, photoHeight).stroke();
+                    doc.lineWidth(1).strokeColor('#000');
+                    doc.image(leftPhotoPath, startX + photoPadding, currentY + photoPadding, { 
+                      width: photoWidth - (photoPadding * 2), height: photoHeight - (photoPadding * 2), 
+                      fit: [photoWidth - (photoPadding * 2), photoHeight - (photoPadding * 2)], align: 'center', valign: 'center'
+                    });
+                    if (leftPhoto.caption) {
+                      const caption = leftPhoto.caption.length > 50 ? leftPhoto.caption.substring(0, 50) + '...' : leftPhoto.caption;
+                      doc.fontSize(8).font('Helvetica-Oblique').fillColor('#4b5563').text(caption, startX, currentY + photoHeight + 4, { width: photoWidth, align: 'center' });
+                      doc.fillColor('#000');
+                    }
+                  } catch (err) { console.error('Error adding left photo:', err); }
                 }
-              } catch (err) {
-                console.error('Error adding right photo:', err);
+                
+                // Right photo
+                if (i + 1 < maxPhotos) {
+                  const rightPhoto = photos[i + 1];
+                  const rightPhotoPath = path.join(process.cwd(), rightPhoto.filePath.replace(/^\//, ''));
+                  const rightX = startX + photoWidth + photoGap;
+                  if (fs.existsSync(rightPhotoPath)) {
+                    try {
+                      doc.lineWidth(1.5).strokeColor('#374151').rect(rightX, currentY, photoWidth, photoHeight).stroke();
+                      doc.lineWidth(1).strokeColor('#000');
+                      doc.image(rightPhotoPath, rightX + photoPadding, currentY + photoPadding, { 
+                        width: photoWidth - (photoPadding * 2), height: photoHeight - (photoPadding * 2),
+                        fit: [photoWidth - (photoPadding * 2), photoHeight - (photoPadding * 2)], align: 'center', valign: 'center'
+                      });
+                      if (rightPhoto.caption) {
+                        const caption = rightPhoto.caption.length > 50 ? rightPhoto.caption.substring(0, 50) + '...' : rightPhoto.caption;
+                        doc.fontSize(8).font('Helvetica-Oblique').fillColor('#4b5563').text(caption, rightX, currentY + photoHeight + 4, { width: photoWidth, align: 'center' });
+                        doc.fillColor('#000');
+                      }
+                    } catch (err) { console.error('Error adding right photo:', err); }
+                  }
+                }
+                
+                currentY += photoHeight + captionHeight + 8;
+                doc.y = currentY;
               }
             }
           }
-          
-          currentY += photoHeight + captionHeight + 8;
-          doc.y = currentY;
+        } else {
+          // We have space on current page
+          const headerDrawn = drawSectionHeader(`PHOTOS${photos.length > 4 ? ` (showing 4 of ${photos.length})` : ''}`);
+          if (headerDrawn) {
+            doc.moveDown(0.2);
+            
+            const photoWidth = (pageWidth - photoGap) / 2;
+            let currentY = doc.y;
+            
+            for (let i = 0; i < maxPhotos; i += 2) {
+              if (currentY > doc.page.height - photoHeight - captionHeight - 60) break;
+              
+              // Left photo
+              const leftPhoto = photos[i];
+              const leftPhotoPath = path.join(process.cwd(), leftPhoto.filePath.replace(/^\//, ''));
+              if (fs.existsSync(leftPhotoPath)) {
+                try {
+                  doc.lineWidth(1.5).strokeColor('#374151').rect(startX, currentY, photoWidth, photoHeight).stroke();
+                  doc.lineWidth(1).strokeColor('#000');
+                  doc.image(leftPhotoPath, startX + photoPadding, currentY + photoPadding, { 
+                    width: photoWidth - (photoPadding * 2), height: photoHeight - (photoPadding * 2), 
+                    fit: [photoWidth - (photoPadding * 2), photoHeight - (photoPadding * 2)], align: 'center', valign: 'center'
+                  });
+                  if (leftPhoto.caption) {
+                    const caption = leftPhoto.caption.length > 50 ? leftPhoto.caption.substring(0, 50) + '...' : leftPhoto.caption;
+                    doc.fontSize(8).font('Helvetica-Oblique').fillColor('#4b5563').text(caption, startX, currentY + photoHeight + 4, { width: photoWidth, align: 'center' });
+                    doc.fillColor('#000');
+                  }
+                } catch (err) { console.error('Error adding left photo:', err); }
+              }
+              
+              // Right photo
+              if (i + 1 < maxPhotos) {
+                const rightPhoto = photos[i + 1];
+                const rightPhotoPath = path.join(process.cwd(), rightPhoto.filePath.replace(/^\//, ''));
+                const rightX = startX + photoWidth + photoGap;
+                if (fs.existsSync(rightPhotoPath)) {
+                  try {
+                    doc.lineWidth(1.5).strokeColor('#374151').rect(rightX, currentY, photoWidth, photoHeight).stroke();
+                    doc.lineWidth(1).strokeColor('#000');
+                    doc.image(rightPhotoPath, rightX + photoPadding, currentY + photoPadding, { 
+                      width: photoWidth - (photoPadding * 2), height: photoHeight - (photoPadding * 2),
+                      fit: [photoWidth - (photoPadding * 2), photoHeight - (photoPadding * 2)], align: 'center', valign: 'center'
+                    });
+                    if (rightPhoto.caption) {
+                      const caption = rightPhoto.caption.length > 50 ? rightPhoto.caption.substring(0, 50) + '...' : rightPhoto.caption;
+                      doc.fontSize(8).font('Helvetica-Oblique').fillColor('#4b5563').text(caption, rightX, currentY + photoHeight + 4, { width: photoWidth, align: 'center' });
+                      doc.fillColor('#000');
+                    }
+                  } catch (err) { console.error('Error adding right photo:', err); }
+                }
+              }
+              
+              currentY += photoHeight + captionHeight + 8;
+              doc.y = currentY;
+            }
+          }
         }
       }
 
-      // Signature Section
+      // Signature Section - compact version to fit on 2 pages
       if (report.signaturePath) {
-        // Check if we need a new page for signature (need 200px of space)
-        if (doc.y > doc.page.height - doc.page.margins.bottom - 200) {
-          doc.addPage();
-        }
-        
-        drawSectionHeader('SIGNATURE');
-        doc.moveDown(0.3);
-        
-        const sigPath = path.join(process.cwd(), report.signaturePath.replace(/^\//, ''));
-        if (fs.existsSync(sigPath)) {
-          // Draw signature in a bordered box with label
-          const sigBoxY = doc.y;
-          const sigBoxHeight = 80;
-          doc.lineWidth(1).strokeColor('#374151')
-            .rect(startX, sigBoxY, pageWidth, sigBoxHeight).stroke();
-          doc.strokeColor('#000');
+        // Only add signature if there's room, otherwise skip (no new page)
+        const sigSpaceNeeded = 100;
+        if (doc.y + sigSpaceNeeded < doc.page.height - doc.page.margins.bottom - 30) {
+          drawSectionHeader('SIGNATURE');
           
-          doc.image(sigPath, startX + 10, sigBoxY + 5, { 
-            width: 150,
-            height: sigBoxHeight - 10,
-            fit: [150, sigBoxHeight - 10]
-          });
-          
-          // Signature line and label on the right
-          const sigLineX = startX + 180;
-          const sigLineY = sigBoxY + sigBoxHeight - 20;
-          doc.strokeColor(DIVIDER_GRAY).lineWidth(0.5)
-            .moveTo(sigLineX, sigLineY)
-            .lineTo(startX + pageWidth - 20, sigLineY)
-            .stroke();
-          doc.strokeColor('#000').lineWidth(1);
-          doc.fontSize(7).font('Helvetica').fillColor('#6b7280')
-            .text('Inspector Signature', sigLineX, sigLineY + 3, { width: pageWidth - 200 });
-          doc.fillColor('#000');
-          
-          doc.y = sigBoxY + sigBoxHeight;
-        }
-        
-        // Add inspector name and report date below signature
-        drawTableRow('Inspector', report.inspectorName || 'Unknown');
-        drawTableRow('Report Date', new Date(report.date).toLocaleDateString('en-US', { 
-          weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' 
-        }));
-        if (report.signedAt) {
-          drawTableRow('Signed At', new Date(report.signedAt).toLocaleString('en-US'));
+          const sigPath = path.join(process.cwd(), report.signaturePath.replace(/^\//, ''));
+          if (fs.existsSync(sigPath)) {
+            const sigBoxY = doc.y;
+            const sigBoxHeight = 60; // Smaller signature box
+            
+            doc.image(sigPath, startX + 5, sigBoxY + 2, { 
+              width: 120,
+              height: sigBoxHeight - 4,
+              fit: [120, sigBoxHeight - 4]
+            });
+            
+            // Inspector name and date inline
+            doc.fontSize(8).font('Helvetica').fillColor('#374151')
+              .text(`${report.inspectorName || 'Inspector'} - ${new Date(report.date).toLocaleDateString()}`, 
+                startX + 140, sigBoxY + 20);
+            if (report.signedAt) {
+              doc.text(`Signed: ${new Date(report.signedAt).toLocaleString('en-US')}`, 
+                startX + 140, sigBoxY + 35);
+            }
+            doc.fillColor('#000');
+            
+            doc.y = sigBoxY + sigBoxHeight;
+          }
         }
       }
 
