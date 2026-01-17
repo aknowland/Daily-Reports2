@@ -3159,16 +3159,19 @@ export async function registerRoutes(
     }
   });
 
-  // Get pending join requests for a company (company admins only)
+  // Get pending join requests for a company (system admin or company admins)
   app.get("/api/companies/:id/join-requests", isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user?.claims?.sub;
       const companyId = req.params.id;
       
-      // Check if user is a company admin
-      const membership = await storage.getCompanyMember(companyId, userId);
-      if (!membership || membership.role !== "admin") {
-        return res.status(403).json({ message: "Only company admins can view join requests" });
+      // Check if user is a company admin OR system admin (respects inspector mode)
+      const profile = await storage.getUserProfile(userId);
+      const hasSystemAdminAccess = isEffectiveSystemAdmin(profile);
+      const hasCompanyAdminAccess = await isEffectiveCompanyAdmin(userId, companyId, profile);
+      
+      if (!hasSystemAdminAccess && !hasCompanyAdminAccess) {
+        return res.status(403).json({ message: "Only admins can view join requests" });
       }
 
       const requests = await storage.getJoinRequestsForCompany(companyId);
@@ -3179,7 +3182,7 @@ export async function registerRoutes(
     }
   });
 
-  // Approve join request (company admins only)
+  // Approve join request (system admin or company admins)
   app.post("/api/join-requests/:id/approve", isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user?.claims?.sub;
@@ -3190,10 +3193,13 @@ export async function registerRoutes(
         return res.status(404).json({ message: "Join request not found" });
       }
 
-      // Check if user is a company admin
-      const membership = await storage.getCompanyMember(request.companyId, userId);
-      if (!membership || membership.role !== "admin") {
-        return res.status(403).json({ message: "Only company admins can approve join requests" });
+      // Check if user is a company admin OR system admin (respects inspector mode)
+      const profile = await storage.getUserProfile(userId);
+      const hasSystemAdminAccess = isEffectiveSystemAdmin(profile);
+      const hasCompanyAdminAccess = await isEffectiveCompanyAdmin(userId, request.companyId, profile);
+      
+      if (!hasSystemAdminAccess && !hasCompanyAdminAccess) {
+        return res.status(403).json({ message: "Only admins can approve join requests" });
       }
 
       // Update request status
@@ -3209,7 +3215,7 @@ export async function registerRoutes(
     }
   });
 
-  // Reject join request (company admins only)
+  // Reject join request (system admin or company admins)
   app.post("/api/join-requests/:id/reject", isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user?.claims?.sub;
@@ -3220,10 +3226,13 @@ export async function registerRoutes(
         return res.status(404).json({ message: "Join request not found" });
       }
 
-      // Check if user is a company admin
-      const membership = await storage.getCompanyMember(request.companyId, userId);
-      if (!membership || membership.role !== "admin") {
-        return res.status(403).json({ message: "Only company admins can reject join requests" });
+      // Check if user is a company admin OR system admin (respects inspector mode)
+      const profile = await storage.getUserProfile(userId);
+      const hasSystemAdminAccess = isEffectiveSystemAdmin(profile);
+      const hasCompanyAdminAccess = await isEffectiveCompanyAdmin(userId, request.companyId, profile);
+      
+      if (!hasSystemAdminAccess && !hasCompanyAdminAccess) {
+        return res.status(403).json({ message: "Only admins can reject join requests" });
       }
 
       // Update request status
