@@ -135,31 +135,21 @@ export default function ReportsListPage() {
     const matchesStatus = statusFilter === "all" || report.status === statusFilter;
     const matchesProject = projectFilter === "all" || report.projectId === projectFilter;
     
-    let matchesDateRange = true;
-    if (dateRange?.from) {
-      const reportDate = new Date(report.date);
-      if (dateRange.from) {
-        matchesDateRange = reportDate >= dateRange.from;
-      }
-      if (dateRange.to && matchesDateRange) {
-        matchesDateRange = reportDate <= dateRange.to;
-      }
-    }
-
-    return matchesSearch && matchesStatus && matchesProject && matchesDateRange;
+    return matchesSearch && matchesStatus && matchesProject;
   });
   
-  const reportsToExport = filteredReports.filter(r => r.status === "submitted");
+  // Reports to export: submitted reports filtered by export date range
+  const reportsToExport = reports.filter(r => {
+    if (r.status !== "submitted") return false;
+    if (!dateRange?.from) return false;
+    
+    const reportDate = new Date(r.date);
+    if (reportDate < dateRange.from) return false;
+    if (dateRange.to && reportDate > dateRange.to) return false;
+    return true;
+  });
   
   const handleOpenExportModal = () => {
-    if (reportsToExport.length === 0) {
-      toast({
-        title: "No reports to export",
-        description: "Select a date range with submitted reports to export.",
-        variant: "destructive",
-      });
-      return;
-    }
     setExportModalOpen(true);
   };
   
@@ -202,11 +192,10 @@ export default function ReportsListPage() {
             <Button 
               variant="outline" 
               onClick={handleOpenExportModal}
-              disabled={reportsToExport.length === 0}
               data-testid="button-export-reports"
             >
-              <Mail className="w-4 h-4 mr-2" />
-              Export ({reportsToExport.length})
+              <Download className="w-4 h-4 mr-2" />
+              Export
             </Button>
             <Button asChild data-testid="button-new-report">
               <Link href="/reports/new">
@@ -283,50 +272,6 @@ export default function ReportsListPage() {
               <SelectItem value="submitted">Submitted</SelectItem>
             </SelectContent>
           </Select>
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button
-                variant="outline"
-                className="w-full sm:w-auto justify-start text-left font-normal h-10"
-                data-testid="button-date-range"
-              >
-                <CalendarIcon className="mr-2 h-4 w-4" />
-                {dateRange?.from ? (
-                  dateRange.to ? (
-                    <>
-                      {format(dateRange.from, "MMM d")} - {format(dateRange.to, "MMM d")}
-                    </>
-                  ) : (
-                    format(dateRange.from, "MMM d, yyyy")
-                  )
-                ) : (
-                  <span>Date Range</span>
-                )}
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-auto p-0" align="end">
-              <Calendar
-                initialFocus
-                mode="range"
-                defaultMonth={dateRange?.from}
-                selected={dateRange}
-                onSelect={setDateRange}
-                numberOfMonths={2}
-              />
-              {dateRange && (
-                <div className="p-2 border-t">
-                  <Button 
-                    variant="ghost" 
-                    size="sm" 
-                    className="w-full"
-                    onClick={() => setDateRange(undefined)}
-                  >
-                    Clear dates
-                  </Button>
-                </div>
-              )}
-            </PopoverContent>
-          </Popover>
         </div>
 
         {isLoading ? (
@@ -415,22 +360,70 @@ export default function ReportsListPage() {
         isCompanyAdmin={isCompanyAdmin}
       />
 
-      <Dialog open={exportModalOpen} onOpenChange={setExportModalOpen}>
-        <DialogContent>
+      <Dialog open={exportModalOpen} onOpenChange={(open) => {
+        setExportModalOpen(open);
+        if (!open) {
+          setDateRange(undefined);
+          setExportEmail("");
+        }
+      }}>
+        <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>Export Reports</DialogTitle>
             <DialogDescription>
-              Send {reportsToExport.length} report{reportsToExport.length !== 1 ? 's' : ''} to an email address.
-              {dateRange?.from && (
-                <span className="block mt-1">
-                  Date range: {format(dateRange.from, "MMM d, yyyy")}
-                  {dateRange.to && ` - ${format(dateRange.to, "MMM d, yyyy")}`}
-                </span>
-              )}
+              Select a date range and email address to export submitted reports.
             </DialogDescription>
           </DialogHeader>
           
           <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Date Range</Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className="w-full justify-start text-left font-normal"
+                    data-testid="button-export-date-range"
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {dateRange?.from ? (
+                      dateRange.to ? (
+                        <>
+                          {format(dateRange.from, "MMM d, yyyy")} - {format(dateRange.to, "MMM d, yyyy")}
+                        </>
+                      ) : (
+                        format(dateRange.from, "MMM d, yyyy")
+                      )
+                    ) : (
+                      <span className="text-muted-foreground">Select date range...</span>
+                    )}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    initialFocus
+                    mode="range"
+                    defaultMonth={dateRange?.from}
+                    selected={dateRange}
+                    onSelect={setDateRange}
+                    numberOfMonths={2}
+                  />
+                  {dateRange && (
+                    <div className="p-2 border-t">
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        className="w-full"
+                        onClick={() => setDateRange(undefined)}
+                      >
+                        Clear dates
+                      </Button>
+                    </div>
+                  )}
+                </PopoverContent>
+              </Popover>
+            </div>
+            
             <div className="space-y-2">
               <Label htmlFor="export-email">Email Address</Label>
               <Input
@@ -443,22 +436,30 @@ export default function ReportsListPage() {
               />
             </div>
             
-            <div className="text-sm text-muted-foreground">
-              <p className="font-medium mb-2">Reports to send:</p>
-              <ul className="max-h-32 overflow-y-auto space-y-1">
-                {reportsToExport.slice(0, 5).map((report) => (
-                  <li key={report.id} className="flex items-center gap-2">
-                    <FileText className="w-3 h-3" />
-                    {report.project?.name || report.customProjectName || "Unassigned"} - {format(new Date(report.date), "MMM d, yyyy")}
-                  </li>
-                ))}
-                {reportsToExport.length > 5 && (
-                  <li className="text-muted-foreground">
-                    ...and {reportsToExport.length - 5} more
-                  </li>
+            {dateRange?.from && (
+              <div className="text-sm">
+                <p className="font-medium mb-2">
+                  {reportsToExport.length} report{reportsToExport.length !== 1 ? 's' : ''} found:
+                </p>
+                {reportsToExport.length > 0 ? (
+                  <ul className="max-h-32 overflow-y-auto space-y-1 text-muted-foreground">
+                    {reportsToExport.slice(0, 5).map((report) => (
+                      <li key={report.id} className="flex items-center gap-2">
+                        <FileText className="w-3 h-3" />
+                        {report.project?.name || report.customProjectName || "Unassigned"} - {format(new Date(report.date), "MMM d, yyyy")}
+                      </li>
+                    ))}
+                    {reportsToExport.length > 5 && (
+                      <li className="text-muted-foreground">
+                        ...and {reportsToExport.length - 5} more
+                      </li>
+                    )}
+                  </ul>
+                ) : (
+                  <p className="text-muted-foreground">No submitted reports in this date range.</p>
                 )}
-              </ul>
-            </div>
+              </div>
+            )}
           </div>
           
           <DialogFooter>
@@ -467,7 +468,7 @@ export default function ReportsListPage() {
             </Button>
             <Button 
               onClick={handleExport} 
-              disabled={exportMutation.isPending}
+              disabled={exportMutation.isPending || reportsToExport.length === 0 || !exportEmail.trim()}
               data-testid="button-send-export"
             >
               {exportMutation.isPending ? (
@@ -478,7 +479,7 @@ export default function ReportsListPage() {
               ) : (
                 <>
                   <Mail className="w-4 h-4 mr-2" />
-                  Send Reports
+                  Send {reportsToExport.length} Report{reportsToExport.length !== 1 ? 's' : ''}
                 </>
               )}
             </Button>
