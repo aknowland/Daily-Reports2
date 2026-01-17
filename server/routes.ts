@@ -631,6 +631,110 @@ export async function registerRoutes(
     }
   });
 
+  // ========== INVOICE HOURS CALCULATION ==========
+  app.get("/api/projects/:id/invoice-hours", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const projectId = req.params.id;
+      const { startDate, endDate } = req.query;
+      
+      if (!startDate || !endDate) {
+        return res.status(400).json({ message: "Start date and end date are required" });
+      }
+      
+      // Validate dates
+      const start = new Date(startDate as string);
+      const end = new Date(endDate as string);
+      if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+        return res.status(400).json({ message: "Invalid date format" });
+      }
+      if (start > end) {
+        return res.status(400).json({ message: "Start date must be before end date" });
+      }
+      
+      // Check access to project
+      const profile = await storage.getUserProfile(userId);
+      const project = await storage.getProject(projectId);
+      
+      if (!project) {
+        return res.status(404).json({ message: "Project not found" });
+      }
+      
+      // Allow access if user is system admin, company admin, or member of project
+      const isProjectMember = await storage.isUserMemberOfProject(projectId, userId);
+      const hasCompanyAccess = project.companyId && await isEffectiveCompanyAdmin(userId, project.companyId, profile);
+      
+      if (!isEffectiveSystemAdmin(profile) && !hasCompanyAccess && !isProjectMember) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      // Get all reports for this project within date range
+      const reports = await storage.getReportsForInvoice(projectId, new Date(startDate as string), new Date(endDate as string));
+      
+      // Calculate totals
+      let totalRegularHours = 0;
+      let totalOTHours = 0;
+      const reportDetails: Array<{
+        id: string;
+        date: Date;
+        inspectorName: string;
+        timeIn: string | null;
+        timeOut: string | null;
+        regularHours: number;
+        otHours: number;
+      }> = [];
+      
+      for (const report of reports) {
+        const regHrs = parseFloat(report.regularHours || "0") || 0;
+        const otHrs = parseFloat(report.otHours || "0") || 0;
+        totalRegularHours += regHrs;
+        totalOTHours += otHrs;
+        
+        // Get inspector name
+        const inspectorProfile = await storage.getUserProfile(report.inspectorId);
+        const inspectorUser = await storage.getUserById(report.inspectorId);
+        const inspectorName = inspectorProfile?.firstName && inspectorProfile?.lastName
+          ? `${inspectorProfile.firstName} ${inspectorProfile.lastName}`
+          : inspectorUser?.firstName && inspectorUser?.lastName
+          ? `${inspectorUser.firstName} ${inspectorUser.lastName}`
+          : inspectorUser?.email || 'Unknown';
+        
+        reportDetails.push({
+          id: report.id,
+          date: report.date,
+          inspectorName,
+          timeIn: report.timeIn,
+          timeOut: report.timeOut,
+          regularHours: regHrs,
+          otHours: otHrs,
+        });
+      }
+      
+      res.json({
+        project: {
+          id: project.id,
+          name: project.name,
+          projectNumber: project.projectNumber,
+          client: project.client,
+        },
+        dateRange: {
+          startDate,
+          endDate,
+        },
+        totals: {
+          regularHours: totalRegularHours,
+          otHours: totalOTHours,
+          totalHours: totalRegularHours + totalOTHours,
+          reportCount: reports.length,
+        },
+        reports: reportDetails,
+      });
+    } catch (error) {
+      console.error("Error calculating invoice hours:", error);
+      res.status(500).json({ message: "Failed to calculate invoice hours" });
+    }
+  });
+
   // ========== REPORTS ==========
   app.get("/api/reports", isAuthenticated, async (req: any, res) => {
     try {

@@ -115,6 +115,12 @@ export interface IStorage {
 
   // Reports by project (for cascade checks)
   getReportsByProject(projectId: string): Promise<DailyReport[]>;
+  
+  // Reports for invoice (within date range)
+  getReportsForInvoice(projectId: string, startDate: Date, endDate: Date): Promise<DailyReport[]>;
+  
+  // Get user by ID
+  getUserById(userId: string): Promise<User | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -832,6 +838,27 @@ export class DatabaseStorage implements IStorage {
       .select()
       .from(dailyReports)
       .where(eq(dailyReports.projectId, projectId));
+  }
+  
+  async getReportsForInvoice(projectId: string, startDate: Date, endDate: Date): Promise<DailyReport[]> {
+    // Set endDate to end of day
+    const endOfDay = new Date(endDate);
+    endOfDay.setHours(23, 59, 59, 999);
+    
+    return db
+      .select()
+      .from(dailyReports)
+      .where(and(
+        eq(dailyReports.projectId, projectId),
+        sql`${dailyReports.date} >= ${startDate}`,
+        sql`${dailyReports.date} <= ${endOfDay}`
+      ))
+      .orderBy(dailyReports.date);
+  }
+  
+  async getUserById(userId: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.id, userId));
+    return user;
   }
 }
 
