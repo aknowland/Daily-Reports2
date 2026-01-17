@@ -18,7 +18,7 @@ Field Daily Reports helps construction inspection teams document their daily wor
 - **Backend**: Node.js + Express
 - **Database**: PostgreSQL with Drizzle ORM
 - **Authentication**: Replit Auth (OpenID Connect)
-- **File Storage**: Local filesystem (storage/)
+- **File Storage**: Replit Object Storage (persistent cloud storage)
 
 ## Project Structure
 
@@ -36,10 +36,10 @@ Field Daily Reports helps construction inspection teams document their daily wor
 ├── shared/                 # Shared types and schemas
 │   ├── schema.ts           # Drizzle database schema
 │   └── models/             # Auth models
-└── storage/                # File uploads
-    ├── uploads/            # Report photos
-    ├── signatures/         # Digital signatures
-    └── reports/            # Generated PDFs
+└── server/replit_integrations/
+    ├── auth/               # Replit Auth integration
+    ├── object_storage/     # Persistent file storage (photos, signatures, PDFs, logos)
+    └── email/              # Resend email integration
 ```
 
 ## Key Features
