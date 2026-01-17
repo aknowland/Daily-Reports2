@@ -3,6 +3,7 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { setupAuth, isAuthenticated, registerAuthRoutes } from "./replit_integrations/auth";
 import { insertProjectSchema, insertDailyReportSchema, updateUserProfileSchema, WorkActivityRow, VisitorRow } from "@shared/schema";
+import { ObjectStorageService, registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
@@ -10,6 +11,9 @@ import { randomUUID } from "crypto";
 import { z } from "zod";
 import PDFDocument from "pdfkit";
 import { speechToText, openai } from "./replit_integrations/audio/client";
+
+// Initialize object storage service for persistent file storage
+const objectStorage = new ObjectStorageService();
 
 // Ensure upload directories exist
 const UPLOAD_DIR = path.join(process.cwd(), "storage");
@@ -63,17 +67,9 @@ const isEffectiveCompanyAdmin = async (userId: string, companyId: string, profil
   return membership?.role === "admin";
 };
 
-// Multer config for photos
-const photoStorage = multer.diskStorage({
-  destination: (_req, _file, cb) => cb(null, PHOTOS_DIR),
-  filename: (_req, file, cb) => {
-    const ext = path.extname(file.originalname);
-    cb(null, `${randomUUID()}${ext}`);
-  },
-});
-
+// Multer config for photos - use memory storage for object storage upload
 const photoUpload = multer({
-  storage: photoStorage,
+  storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
   fileFilter: (_req, file, cb) => {
     if (file.mimetype.startsWith("image/")) {
@@ -84,14 +80,9 @@ const photoUpload = multer({
   },
 });
 
-// Multer config for app logo (admin settings)
-const logoStorage = multer.diskStorage({
-  destination: (_req, _file, cb) => cb(null, ASSETS_DIR),
-  filename: (_req, _file, cb) => cb(null, "logo.png"),
-});
-
+// Multer config for app logo (admin settings) - use memory storage for object storage
 const logoUpload = multer({
-  storage: logoStorage,
+  storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
   fileFilter: (_req, file, cb) => {
     if (file.mimetype.startsWith("image/")) {
@@ -102,17 +93,9 @@ const logoUpload = multer({
   },
 });
 
-// Multer config for company logos
-const companyLogoStorage = multer.diskStorage({
-  destination: (_req, _file, cb) => cb(null, LOGOS_DIR),
-  filename: (_req, file, cb) => {
-    const ext = path.extname(file.originalname);
-    cb(null, `${randomUUID()}${ext}`);
-  },
-});
-
+// Multer config for company logos - use memory storage for object storage
 const companyLogoUpload = multer({
-  storage: companyLogoStorage,
+  storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
   fileFilter: (_req, file, cb) => {
     if (file.mimetype.startsWith("image/")) {
@@ -174,6 +157,9 @@ export async function registerRoutes(
   // Set up auth before other routes
   await setupAuth(app);
   registerAuthRoutes(app);
+  
+  // Register object storage routes for persistent file storage
+  registerObjectStorageRoutes(app);
 
   // Serve static files from storage (authenticated access with ownership check)
   app.use("/storage", isAuthenticated, async (req: any, res, next) => {
@@ -825,9 +811,19 @@ export async function registerRoutes(
           }
         }
         
+        // Upload to object storage instead of local disk
+        const ext = path.extname(file.originalname);
+        const filename = `${randomUUID()}${ext}`;
+        const objectPath = await objectStorage.uploadBuffer({
+          buffer: file.buffer,
+          filename,
+          contentType: file.mimetype,
+          folder: "photos",
+        });
+        
         const photo = await storage.createPhoto({
           reportId: req.params.id,
-          filePath: `/storage/uploads/${file.filename}`,
+          filePath: objectPath,
           caption,
         });
         createdPhotos.push(photo);
@@ -954,20 +950,19 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Invalid signature data" });
       }
 
-      // Ensure signature directory exists
-      if (!fs.existsSync(SIGNATURES_DIR)) {
-        fs.mkdirSync(SIGNATURES_DIR, { recursive: true });
-      }
-
       // Extract base64 data
       const base64Data = signature.replace(/^data:image\/\w+;base64,/, "");
       const buffer = Buffer.from(base64Data, "base64");
       
+      // Upload to object storage for persistence
       const filename = `${req.params.id}.png`;
-      const filePath = path.join(SIGNATURES_DIR, filename);
-      fs.writeFileSync(filePath, buffer);
+      const signaturePath = await objectStorage.uploadBuffer({
+        buffer,
+        filename,
+        contentType: "image/png",
+        folder: "signatures",
+      });
 
-      const signaturePath = `/storage/signatures/${filename}`;
       await storage.updateReport(req.params.id, {
         signaturePath,
         signedAt: new Date(),
@@ -1005,15 +1000,21 @@ export async function registerRoutes(
         return res.status(403).json({ message: "Access denied" });
       }
 
-      // Generate PDF using pdfkit
+      // Generate PDF using pdfkit - stream to buffer for object storage
       const filename = `${req.params.id}.pdf`;
-      const filePath = path.join(REPORTS_DIR, filename);
-      const pdfPath = `/storage/reports/${filename}`;
 
       // Disable automatic page creation to enforce strict 2-page limit
       const doc = new PDFDocument({ margin: 36, bufferPages: true, autoFirstPage: true });
-      const writeStream = fs.createWriteStream(filePath);
-      doc.pipe(writeStream);
+      
+      // Collect PDF data in chunks
+      const pdfChunks: Buffer[] = [];
+      doc.on('data', (chunk: Buffer) => pdfChunks.push(chunk));
+      
+      // Promise to wait for PDF completion
+      const pdfComplete = new Promise<Buffer>((resolve, reject) => {
+        doc.on('end', () => resolve(Buffer.concat(pdfChunks)));
+        doc.on('error', reject);
+      });
 
       const pageWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
       const leftColWidth = 100;
@@ -1105,19 +1106,36 @@ export async function registerRoutes(
         company = await storage.getCompany(report.project.companyId);
         
         if (company?.logoPath) {
-          const logoFilePath = path.join(process.cwd(), company.logoPath.replace(/^\//, ''));
-          if (fs.existsSync(logoFilePath)) {
-            try {
-              doc.image(logoFilePath, startX, logoTopY, {
+          try {
+            // Try to load logo from object storage or local filesystem
+            let logoBuffer: Buffer | null = null;
+            
+            if (company.logoPath.startsWith('/objects/')) {
+              // Load from object storage
+              try {
+                logoBuffer = await objectStorage.downloadBuffer(company.logoPath);
+              } catch (err) {
+                console.error('Error downloading logo from object storage:', err);
+              }
+            } else {
+              // Fallback to local filesystem for legacy paths
+              const logoFilePath = path.join(process.cwd(), company.logoPath.replace(/^\//, ''));
+              if (fs.existsSync(logoFilePath)) {
+                logoBuffer = fs.readFileSync(logoFilePath);
+              }
+            }
+            
+            if (logoBuffer) {
+              doc.image(logoBuffer, startX, logoTopY, {
                 width: logoSize,
                 height: logoSize,
                 fit: [logoSize, logoSize]
               });
               hasLogo = true;
               logoEndY = logoTopY + logoSize;
-            } catch (err) {
-              console.error('Error adding company logo to PDF:', err);
             }
+          } catch (err) {
+            console.error('Error adding company logo to PDF:', err);
           }
         }
         
@@ -1271,6 +1289,23 @@ export async function registerRoutes(
         }
       }
 
+      // Helper function to load image from object storage or local filesystem
+      const loadImageBuffer = async (imagePath: string): Promise<Buffer | null> => {
+        try {
+          if (imagePath.startsWith('/objects/')) {
+            return await objectStorage.downloadBuffer(imagePath);
+          } else {
+            const localPath = path.join(process.cwd(), imagePath.replace(/^\//, ''));
+            if (fs.existsSync(localPath)) {
+              return fs.readFileSync(localPath);
+            }
+          }
+        } catch (err) {
+          console.error('Error loading image:', imagePath, err);
+        }
+        return null;
+      };
+
       // Photos - max 4 photos, only if space available
       const photos = report.photos || [];
       const maxPhotos = Math.min(photos.length, 4);
@@ -1293,12 +1328,12 @@ export async function registerRoutes(
             
             // Left photo
             const leftPhoto = photos[i];
-            const leftPhotoPath = path.join(process.cwd(), leftPhoto.filePath.replace(/^\//, ''));
-            if (fs.existsSync(leftPhotoPath)) {
+            const leftPhotoBuffer = await loadImageBuffer(leftPhoto.filePath);
+            if (leftPhotoBuffer) {
               try {
                 doc.lineWidth(0.5).strokeColor('#374151').rect(startX, currentY, photoWidth, photoHeight).stroke();
                 doc.strokeColor('#000');
-                doc.image(leftPhotoPath, startX + photoPadding, currentY + photoPadding, { 
+                doc.image(leftPhotoBuffer, startX + photoPadding, currentY + photoPadding, { 
                   width: photoWidth - (photoPadding * 2), height: photoHeight - (photoPadding * 2),
                   fit: [photoWidth - (photoPadding * 2), photoHeight - (photoPadding * 2)], align: 'center', valign: 'center'
                 });
@@ -1313,13 +1348,13 @@ export async function registerRoutes(
             // Right photo
             if (i + 1 < maxPhotos) {
               const rightPhoto = photos[i + 1];
-              const rightPhotoPath = path.join(process.cwd(), rightPhoto.filePath.replace(/^\//, ''));
+              const rightPhotoBuffer = await loadImageBuffer(rightPhoto.filePath);
               const rightX = startX + photoWidth + photoGap;
-              if (fs.existsSync(rightPhotoPath)) {
+              if (rightPhotoBuffer) {
                 try {
                   doc.lineWidth(0.5).strokeColor('#374151').rect(rightX, currentY, photoWidth, photoHeight).stroke();
                   doc.strokeColor('#000');
-                  doc.image(rightPhotoPath, rightX + photoPadding, currentY + photoPadding, { 
+                  doc.image(rightPhotoBuffer, rightX + photoPadding, currentY + photoPadding, { 
                     width: photoWidth - (photoPadding * 2), height: photoHeight - (photoPadding * 2),
                     fit: [photoWidth - (photoPadding * 2), photoHeight - (photoPadding * 2)], align: 'center', valign: 'center'
                   });
@@ -1341,14 +1376,14 @@ export async function registerRoutes(
       // Signature Section - compact, only if space available
       if (!pageLimitReached && report.signaturePath && canAddContent(50)) {
         if (drawSectionHeader('SIGNATURE')) {
-          const sigPath = path.join(process.cwd(), report.signaturePath.replace(/^\//, ''));
-          if (fs.existsSync(sigPath)) {
+          const sigBuffer = await loadImageBuffer(report.signaturePath);
+          if (sigBuffer) {
             const sigBoxY = doc.y;
             const sigBoxHeight = 40;
             doc.lineWidth(0.5).strokeColor('#374151').rect(startX, sigBoxY, 120, sigBoxHeight).stroke();
             doc.strokeColor('#000');
             
-            doc.image(sigPath, startX + 2, sigBoxY + 2, { width: 116, height: sigBoxHeight - 4, fit: [116, sigBoxHeight - 4] });
+            doc.image(sigBuffer, startX + 2, sigBoxY + 2, { width: 116, height: sigBoxHeight - 4, fit: [116, sigBoxHeight - 4] });
             
             // Name/date on the right, inline with signature
             doc.fontSize(7).font('Helvetica').fillColor('#374151');
@@ -1412,31 +1447,34 @@ export async function registerRoutes(
       
       doc.end();
 
-      // Wait for write to complete
-      await new Promise<void>((resolve, reject) => {
-        writeStream.on('finish', resolve);
-        writeStream.on('error', reject);
-      });
+      // Wait for PDF generation to complete
+      let pdfBuffer = await pdfComplete;
 
       // If we have more pages than MAX_PAGES, trim excess pages using pdf-lib
       if (range.count > MAX_PAGES) {
         console.log(`PDF has ${range.count} pages, trimming to ${MAX_PAGES}`);
         const { PDFDocument } = await import('pdf-lib');
         
-        // Read the generated PDF
-        const pdfBytes = fs.readFileSync(filePath);
-        const srcDoc = await PDFDocument.load(pdfBytes);
+        const srcDoc = await PDFDocument.load(pdfBuffer);
         
         // Create a new PDF with only MAX_PAGES
         const newDoc = await PDFDocument.create();
         const pagesToCopy = await newDoc.copyPages(srcDoc, Array.from({ length: MAX_PAGES }, (_, i) => i));
         pagesToCopy.forEach(page => newDoc.addPage(page));
         
-        // Save the trimmed PDF
+        // Get the trimmed PDF
         const trimmedBytes = await newDoc.save();
-        fs.writeFileSync(filePath, trimmedBytes);
+        pdfBuffer = Buffer.from(trimmedBytes);
         console.log(`PDF trimmed to ${MAX_PAGES} pages successfully`);
       }
+
+      // Upload PDF to object storage for persistence
+      const pdfPath = await objectStorage.uploadBuffer({
+        buffer: pdfBuffer,
+        filename,
+        contentType: "application/pdf",
+        folder: "reports",
+      });
 
       await storage.updateReport(req.params.id, { pdfPath });
 
@@ -1473,13 +1511,7 @@ export async function registerRoutes(
         return res.status(400).json({ message: "No PDF to delete" });
       }
 
-      // Delete the file
-      const filePath = path.join(process.cwd(), report.pdfPath.replace(/^\//, ''));
-      if (fs.existsSync(filePath)) {
-        fs.unlinkSync(filePath);
-      }
-
-      // Update the report
+      // Simply clear the pdfPath - object storage files don't need explicit deletion
       await storage.updateReport(req.params.id, { pdfPath: null });
 
       res.json({ message: "PDF deleted successfully" });
@@ -1524,12 +1556,22 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Please generate a PDF before distributing the report" });
       }
 
-      // Read PDF file
-      const pdfPath = path.join(process.cwd(), report.pdfPath.replace(/^\//, ''));
-      if (!fs.existsSync(pdfPath)) {
+      // Read PDF file from object storage or local filesystem
+      let pdfBuffer: Buffer;
+      try {
+        if (report.pdfPath.startsWith('/objects/')) {
+          pdfBuffer = await objectStorage.downloadBuffer(report.pdfPath);
+        } else {
+          const localPath = path.join(process.cwd(), report.pdfPath.replace(/^\//, ''));
+          if (!fs.existsSync(localPath)) {
+            return res.status(400).json({ message: "PDF file not found. Please regenerate the PDF." });
+          }
+          pdfBuffer = fs.readFileSync(localPath);
+        }
+      } catch (err) {
+        console.error('Error reading PDF:', err);
         return res.status(400).json({ message: "PDF file not found. Please regenerate the PDF." });
       }
-      const pdfBuffer = fs.readFileSync(pdfPath);
 
       // Get project and company info for email
       const project = report.project;
@@ -1703,13 +1745,19 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/admin/logo", isAuthenticated, isAdmin, logoUpload.single("logo"), async (req, res) => {
+  app.post("/api/admin/logo", isAuthenticated, isAdmin, logoUpload.single("logo"), async (req: any, res) => {
     try {
       if (!req.file) {
         return res.status(400).json({ message: "No logo file provided" });
       }
 
-      const logoPath = "/assets/logo.png";
+      // Upload to object storage for persistence
+      const logoPath = await objectStorage.uploadBuffer({
+        buffer: req.file.buffer,
+        filename: "admin-logo.png",
+        contentType: req.file.mimetype,
+        folder: "logos",
+      });
       await storage.setSetting("company_logo", logoPath);
 
       res.json({ logoPath });
@@ -2036,10 +2084,6 @@ export async function registerRoutes(
       const isGlobalAdmin = profile?.role === "admin";
       
       if (!isGlobalAdmin && (!membership || membership.role !== "admin")) {
-        // Delete uploaded file if unauthorized
-        if (req.file) {
-          fs.unlinkSync(req.file.path);
-        }
         return res.status(403).json({ message: "Only company admins can upload logos" });
       }
       
@@ -2047,16 +2091,15 @@ export async function registerRoutes(
         return res.status(400).json({ message: "No logo file provided" });
       }
       
-      const logoPath = `/storage/logos/${req.file.filename}`;
-      
-      // Delete old logo if exists
-      const existingCompany = await storage.getCompany(companyId);
-      if (existingCompany?.logoPath) {
-        const oldLogoPath = path.join(process.cwd(), existingCompany.logoPath.replace(/^\//, ''));
-        if (fs.existsSync(oldLogoPath)) {
-          fs.unlinkSync(oldLogoPath);
-        }
-      }
+      // Upload to object storage for persistence
+      const ext = path.extname(req.file.originalname) || '.png';
+      const filename = `${companyId}${ext}`;
+      const logoPath = await objectStorage.uploadBuffer({
+        buffer: req.file.buffer,
+        filename,
+        contentType: req.file.mimetype,
+        folder: "logos",
+      });
       
       await storage.updateCompany(companyId, { logoPath });
       res.json({ logoPath });
@@ -2081,14 +2124,8 @@ export async function registerRoutes(
         return res.status(403).json({ message: "Only company admins can delete logos" });
       }
       
-      const company = await storage.getCompany(companyId);
-      if (company?.logoPath) {
-        const logoPath = path.join(process.cwd(), company.logoPath.replace(/^\//, ''));
-        if (fs.existsSync(logoPath)) {
-          fs.unlinkSync(logoPath);
-        }
-        await storage.updateCompany(companyId, { logoPath: null });
-      }
+      // Simply clear the logoPath - object storage files don't need explicit deletion
+      await storage.updateCompany(companyId, { logoPath: null });
       
       res.json({ message: "Logo deleted" });
     } catch (error) {
