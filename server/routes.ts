@@ -1144,7 +1144,7 @@ export async function registerRoutes(
 
       // Form grid boxes - right side
       const gridX = 380;
-      const gridTop = 52;
+      const gridTop = 72;
       const reportDate = new Date(report.date);
       const dateStr = reportDate.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: '2-digit' });
       const timeStr = reportDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
