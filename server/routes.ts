@@ -1660,10 +1660,6 @@ export async function registerRoutes(
       doc.fontSize(7).font('Helvetica').text('OT HRS', timeX + 132, sigY + 2, { lineBreak: false });
       doc.fontSize(10).font('Helvetica-Bold').text(otHrsStr, timeX + 142, sigY + 12, { lineBreak: false });
 
-      doc.rect(timeX + 170, sigY, 45, 28).stroke();
-      doc.fontSize(7).font('Helvetica').text('SAMPLES', timeX + 172, sigY + 2, { lineBreak: false });
-      doc.fontSize(10).font('Helvetica-Bold').text(String(photos.length), timeX + 186, sigY + 12, { lineBreak: false });
-
       // Approval line
       doc.fontSize(7).font('Helvetica').text('Approved By: ______________________________________', timeX, sigY + 36, { lineBreak: false });
 
