@@ -24,22 +24,38 @@ async function initStripe() {
 
   try {
     console.log('Initializing Stripe schema...');
-    await runMigrations({ databaseUrl });
-    console.log('Stripe schema ready');
+    try {
+      await runMigrations({ databaseUrl });
+      console.log('Stripe schema ready');
+    } catch (migrationError: any) {
+      // If migration fails but stripe tables exist, continue anyway
+      if (migrationError.message?.includes('already exists') || 
+          migrationError.cause?.includes('already exists')) {
+        console.log('Stripe schema already exists, continuing...');
+      } else {
+        console.error('Stripe migration error (non-fatal):', migrationError.message);
+        console.log('Continuing without full Stripe schema...');
+      }
+    }
 
-    const stripeSync = await getStripeSync();
+    try {
+      const stripeSync = await getStripeSync();
 
-    console.log('Setting up managed webhook...');
-    const webhookBaseUrl = `https://${process.env.REPLIT_DOMAINS?.split(',')[0]}`;
-    const { webhook } = await stripeSync.findOrCreateManagedWebhook(
-      `${webhookBaseUrl}/api/stripe/webhook`
-    );
-    console.log(`Webhook configured: ${webhook.url}`);
+      console.log('Setting up managed webhook...');
+      const webhookBaseUrl = `https://${process.env.REPLIT_DOMAINS?.split(',')[0]}`;
+      const { webhook } = await stripeSync.findOrCreateManagedWebhook(
+        `${webhookBaseUrl}/api/stripe/webhook`
+      );
+      console.log(`Webhook configured: ${webhook.url}`);
 
-    console.log('Syncing Stripe data...');
-    stripeSync.syncBackfill()
-      .then(() => console.log('Stripe data synced'))
-      .catch((err: any) => console.error('Error syncing Stripe data:', err));
+      console.log('Syncing Stripe data...');
+      stripeSync.syncBackfill()
+        .then(() => console.log('Stripe data synced'))
+        .catch((err: any) => console.error('Error syncing Stripe data:', err));
+    } catch (webhookError: any) {
+      console.error('Webhook setup error (non-fatal):', webhookError.message);
+      console.log('Stripe checkout and billing portal will still work.');
+    }
   } catch (error) {
     console.error('Failed to initialize Stripe:', error);
   }

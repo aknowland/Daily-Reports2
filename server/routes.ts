@@ -1110,6 +1110,45 @@ export async function registerRoutes(
       const profile = await storage.getUserProfile(userId);
       const validated = createReportSchema.parse(req.body);
       
+      // Check free tier report limit
+      const FREE_TIER_LIMIT = 5;
+      const companies = await storage.getCompaniesForUser(userId);
+      const hasActiveCompanySubscription = companies.some(c => 
+        (c as any).company?.subscriptionStatus === 'active'
+      );
+      const hasActiveUserSubscription = profile?.subscriptionStatus === 'active';
+      
+      // Track if we need to increment free tier count after creation
+      let shouldIncrementCount = false;
+      
+      if (!hasActiveCompanySubscription && !hasActiveUserSubscription) {
+        // User is on free tier - check report count
+        let currentCount = profile?.monthlyReportCount || 0;
+        
+        // Reset count if we're in a new month
+        const resetAt = profile?.reportCountResetAt;
+        const now = new Date();
+        const needsReset = !resetAt || new Date(resetAt).getMonth() !== now.getMonth() || 
+                           new Date(resetAt).getFullYear() !== now.getFullYear();
+        
+        if (needsReset) {
+          // Reset the count for new month
+          await storage.resetReportCount(userId);
+          currentCount = 0;
+        }
+        
+        if (currentCount >= FREE_TIER_LIMIT) {
+          return res.status(403).json({ 
+            message: "Free tier limit reached",
+            error: "REPORT_LIMIT_EXCEEDED",
+            currentCount,
+            limit: FREE_TIER_LIMIT,
+          });
+        }
+        
+        shouldIncrementCount = true;
+      }
+      
       // If a project is specified, verify user has access to it
       if (validated.projectId) {
         // In inspector mode or as regular inspector, user must be assigned to project
@@ -1132,6 +1171,12 @@ export async function registerRoutes(
         projectId: validated.projectId || null,
         inspectorId: userId,
       });
+      
+      // Increment report count for free tier users
+      if (shouldIncrementCount) {
+        await storage.incrementReportCount(userId);
+      }
+      
       res.status(201).json(report);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -3933,32 +3978,76 @@ Transcript: "${transcript}"`;
       );
       
       // Determine subscription type
-      let subscriptionType = 'free'; // default - independent free tier
+      let subscriptionType: 'company' | 'independent' | 'free' = 'free'; // default - independent free tier
+      let hasActiveSubscription = false;
       let status = profile?.subscriptionStatus || 'none';
-      let reportsRemaining = 5 - (profile?.monthlyReportCount || 0);
+      const FREE_TIER_LIMIT = 5;
       
       if (activeCompanySubscription) {
         // User is part of a company with active subscription
-        subscriptionType = 'company_user';
+        subscriptionType = 'company';
+        hasActiveSubscription = true;
         status = 'active';
-        reportsRemaining = -1; // unlimited
       } else if (profile?.subscriptionStatus === 'active') {
         // User has personal subscription
-        subscriptionType = 'independent_pro';
-        reportsRemaining = -1; // unlimited
+        subscriptionType = 'independent';
+        hasActiveSubscription = true;
       }
       
       res.json({
+        hasActiveSubscription,
         subscriptionType,
         status,
-        reportsRemaining: reportsRemaining < 0 ? null : Math.max(0, reportsRemaining),
+        currentPeriodEnd: null, // Could fetch from Stripe if needed
         monthlyReportCount: profile?.monthlyReportCount || 0,
-        stripeCustomerId: profile?.stripeCustomerId,
-        stripeSubscriptionId: profile?.stripeSubscriptionId,
+        reportLimit: hasActiveSubscription ? null : FREE_TIER_LIMIT,
       });
     } catch (error) {
       console.error("Error fetching subscription status:", error);
       res.status(500).json({ message: "Failed to fetch subscription status" });
+    }
+  });
+  
+  // Get subscription prices
+  app.get("/api/subscription/prices", isAuthenticated, async (req: any, res) => {
+    try {
+      // Query from stripe.prices and stripe.products tables
+      const results = await db.execute(sql`
+        SELECT 
+          p.id as price_id,
+          p.unit_amount,
+          p.currency,
+          p.recurring,
+          p.active as price_active,
+          p.metadata as price_metadata,
+          pr.id as product_id,
+          pr.name as product_name,
+          pr.description as product_description,
+          pr.metadata as product_metadata,
+          pr.active as product_active
+        FROM stripe.prices p
+        JOIN stripe.products pr ON p.product = pr.id
+        WHERE p.active = true AND pr.active = true
+        ORDER BY p.unit_amount ASC
+      `);
+      
+      const prices = results.rows.map((row: any) => ({
+        id: row.price_id,
+        unit_amount: row.unit_amount,
+        currency: row.currency,
+        recurring: row.recurring,
+        product: {
+          id: row.product_id,
+          name: row.product_name,
+          description: row.product_description,
+          metadata: row.product_metadata,
+        }
+      }));
+      
+      res.json(prices);
+    } catch (error) {
+      console.error("Error fetching subscription prices:", error);
+      res.status(500).json({ message: "Failed to fetch subscription prices" });
     }
   });
 

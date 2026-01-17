@@ -30,7 +30,9 @@ import {
   Plus, 
   X,
   ArrowLeft,
-  Building2
+  Building2,
+  CreditCard,
+  ChevronRight
 } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { Link } from "wouter";
@@ -190,6 +192,23 @@ export default function ProfilePage() {
             </div>
           </CardHeader>
         </Card>
+
+        <Link href="/billing">
+          <Card className="cursor-pointer hover-elevate" data-testid="card-billing-link">
+            <CardHeader className="flex-row items-center justify-between gap-2">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+                  <CreditCard className="w-5 h-5 text-primary" />
+                </div>
+                <div>
+                  <CardTitle className="text-base">Billing & Subscription</CardTitle>
+                  <CardDescription>Manage your subscription plan and billing</CardDescription>
+                </div>
+              </div>
+              <ChevronRight className="w-5 h-5 text-muted-foreground" />
+            </CardHeader>
+          </Card>
+        </Link>
 
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
