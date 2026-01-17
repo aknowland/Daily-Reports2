@@ -1496,7 +1496,7 @@ export async function registerRoutes(
       const qcY = doc.y;
       doc.fontSize(8).font('Helvetica-Bold').text('QC CHECKLIST:', startX, qcY);
       
-      const qcItems = ['FSA-5', 'On Time', 'File # Checked', 'Plan Reviewed', 'Specs Reviewed', 'Prev Reports', 'Tests per Spec', 'Samples Safe'];
+      const qcItems = ['FSA-5', 'On Time', 'File # Checked', 'Plan Reviewed', 'Specs Reviewed', 'Prev Reports', 'Tests per Spec'];
       let qcX = startX + 75;
       qcItems.forEach((item) => {
         doc.rect(qcX, qcY - 1, checkSize, checkSize).stroke();
