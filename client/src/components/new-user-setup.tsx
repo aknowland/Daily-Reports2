@@ -257,8 +257,8 @@ export function NewUserSetup({ open, onComplete }: NewUserSetupProps) {
   };
 
   return (
-    <Dialog open={open} onOpenChange={() => {}}>
-      <DialogContent className="sm:max-w-lg" onPointerDownOutside={(e) => e.preventDefault()}>
+    <Dialog open={open} onOpenChange={(isOpen) => { if (!isOpen) onComplete(); }}>
+      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto" onPointerDownOutside={(e) => e.preventDefault()}>
         {step === "company" && (
           <>
             <DialogHeader>
