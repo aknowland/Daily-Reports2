@@ -42,13 +42,15 @@ import {
   Copy,
   FolderOpen,
 } from "lucide-react";
-import type { Project, Invite } from "@shared/schema";
+import type { Project, Invite, Company } from "@shared/schema";
 import type { User } from "@shared/models/auth";
 import { format } from "date-fns";
+import { Building2 } from "lucide-react";
 
 type InviteWithDetails = Invite & { 
   invitedByUser?: User; 
-  projects?: Project[] 
+  projects?: Project[];
+  company?: Company;
 };
 
 export default function AdminInvitesPage() {
@@ -58,11 +60,16 @@ export default function AdminInvitesPage() {
   const [formData, setFormData] = useState({
     email: "",
     role: "inspector" as "inspector" | "admin",
+    companyId: "" as string,
     projectIds: [] as string[],
   });
 
   const { data: invites, isLoading, error } = useQuery<InviteWithDetails[]>({
     queryKey: ["/api/admin/invites"],
+  });
+
+  const { data: companies } = useQuery<Company[]>({
+    queryKey: ["/api/companies"],
   });
 
   const { data: projects } = useQuery<Project[]>({
@@ -115,9 +122,15 @@ export default function AdminInvitesPage() {
     setFormData({
       email: "",
       role: "inspector",
+      companyId: "",
       projectIds: [],
     });
   };
+  
+  // Filter projects based on selected company
+  const filteredProjects = formData.companyId 
+    ? projects?.filter(p => p.companyId === formData.companyId)
+    : projects;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -213,6 +226,33 @@ export default function AdminInvitesPage() {
                   </div>
 
                   <div className="space-y-2">
+                    <Label htmlFor="company">Organization</Label>
+                    <Select
+                      value={formData.companyId}
+                      onValueChange={(companyId) => 
+                        setFormData({ ...formData, companyId, projectIds: [] })
+                      }
+                    >
+                      <SelectTrigger data-testid="select-invite-company">
+                        <SelectValue placeholder="Select an organization" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {companies?.map((company) => (
+                          <SelectItem key={company.id} value={company.id}>
+                            <div className="flex items-center gap-2">
+                              <Building2 className="w-4 h-4" />
+                              {company.name}
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      The organization name will appear in the invitation email
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
                     <Label htmlFor="role">Role</Label>
                     <Select
                       value={formData.role}
@@ -243,12 +283,16 @@ export default function AdminInvitesPage() {
                   <div className="space-y-2">
                     <Label>Assign to Projects</Label>
                     <div className="border rounded-md max-h-48 overflow-y-auto p-2 space-y-2">
-                      {projects?.length === 0 ? (
+                      {!formData.companyId ? (
                         <p className="text-sm text-muted-foreground p-2">
-                          No projects available
+                          Select an organization first to see projects
+                        </p>
+                      ) : filteredProjects?.length === 0 ? (
+                        <p className="text-sm text-muted-foreground p-2">
+                          No projects available for this organization
                         </p>
                       ) : (
-                        projects?.map((project) => (
+                        filteredProjects?.map((project) => (
                           <div
                             key={project.id}
                             className="flex items-center gap-2 p-2 rounded hover-elevate cursor-pointer"
@@ -375,7 +419,16 @@ export default function AdminInvitesPage() {
                             )}
                           </Badge>
                         </div>
-                        <div className="flex items-center gap-2 text-sm text-muted-foreground mt-1">
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground mt-1 flex-wrap">
+                          {invite.company && (
+                            <>
+                              <span className="flex items-center gap-1">
+                                <Building2 className="w-3 h-3" />
+                                {invite.company.name}
+                              </span>
+                              <span>|</span>
+                            </>
+                          )}
                           <span>Expires: {format(new Date(invite.expiresAt), "MMM d, yyyy")}</span>
                           {invite.projects && invite.projects.length > 0 && (
                             <>
