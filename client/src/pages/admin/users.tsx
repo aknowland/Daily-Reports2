@@ -51,6 +51,8 @@ export default function AdminUsersPage() {
   const [selectedProjectIds, setSelectedProjectIds] = useState<string[]>([]);
   const [projectDialogOpen, setProjectDialogOpen] = useState(false);
   const [companyDialogOpen, setCompanyDialogOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [userToDelete, setUserToDelete] = useState<UserWithProfile | null>(null);
   const [newCompanyId, setNewCompanyId] = useState<string>("");
   const [newCompanyRole, setNewCompanyRole] = useState<"inspector" | "admin">("inspector");
 
@@ -186,6 +188,39 @@ export default function AdminUsersPage() {
       });
     },
   });
+
+  const deleteUserMutation = useMutation({
+    mutationFn: async (userId: string) => {
+      return apiRequest("DELETE", `/api/admin/users/${userId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
+      setDeleteDialogOpen(false);
+      setUserToDelete(null);
+      toast({
+        title: "User Deleted",
+        description: "The user has been permanently deleted",
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to delete user",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleDeleteUser = (user: UserWithProfile) => {
+    setUserToDelete(user);
+    setDeleteDialogOpen(true);
+  };
+
+  const confirmDeleteUser = () => {
+    if (userToDelete) {
+      deleteUserMutation.mutate(userToDelete.id);
+    }
+  };
 
   const handleOpenProjectDialog = (user: UserWithProfile) => {
     setSelectedUser(user);
@@ -417,6 +452,14 @@ export default function AdminUsersPage() {
                           </SelectItem>
                         </SelectContent>
                       </Select>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleDeleteUser(user)}
+                        data-testid={`button-delete-user-${user.id}`}
+                      >
+                        <Trash2 className="w-4 h-4 text-destructive" />
+                      </Button>
                     </div>
                   </div>
                 </CardContent>
@@ -615,6 +658,43 @@ export default function AdminUsersPage() {
               data-testid="button-close-companies"
             >
               Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete User</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete {userToDelete ? getDisplayName(userToDelete) : "this user"}? 
+              This will permanently remove the user and all their data including company memberships, 
+              project assignments, and profile information. This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setDeleteDialogOpen(false)}
+              data-testid="button-cancel-delete"
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={confirmDeleteUser}
+              disabled={deleteUserMutation.isPending}
+              data-testid="button-confirm-delete"
+            >
+              {deleteUserMutation.isPending ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                "Delete User"
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>

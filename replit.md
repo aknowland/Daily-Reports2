@@ -110,6 +110,7 @@ POST   /api/reports/:id/distribute - Send to recipients
 
 Admin:
 GET    /api/admin/users              - List all users
+DELETE /api/admin/users/:id          - Delete user (system admin only, cascades memberships)
 PATCH  /api/admin/users/:id/role     - Update user system role
 GET    /api/admin/users/:id/projects - Get user's assigned projects
 PUT    /api/admin/users/:id/projects - Update user's project assignments
