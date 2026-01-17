@@ -1,15 +1,16 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { 
-  HardHat, 
   Camera, 
   PenTool, 
   FileText, 
   Mail, 
   Shield,
   CheckCircle,
-  ArrowRight
+  ArrowRight,
+  Smartphone
 } from "lucide-react";
+import inspectorLogo from "@assets/generated_images/inspector_hardhat_clipboard_logo.png";
 
 export default function LandingPage() {
   const features = [
@@ -39,7 +40,7 @@ export default function LandingPage() {
       description: "All data stored securely with automatic backups",
     },
     {
-      icon: <HardHat className="w-6 h-6" />,
+      icon: <Smartphone className="w-6 h-6" />,
       title: "Built for the Field",
       description: "Mobile-first design optimized for construction site conditions",
     },
@@ -50,8 +51,8 @@ export default function LandingPage() {
       <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="container flex h-14 max-w-screen-2xl items-center justify-between px-4">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
-              <HardHat className="w-5 h-5 text-primary-foreground" />
+            <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center overflow-hidden">
+              <img src={inspectorLogo} alt="Field Daily Reports" className="w-6 h-6 object-contain" />
             </div>
             <span className="font-semibold text-lg">Field Daily Reports</span>
           </div>
@@ -198,8 +199,8 @@ export default function LandingPage() {
         <div className="container px-4 mx-auto max-w-screen-xl">
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
             <div className="flex items-center gap-2">
-              <div className="w-6 h-6 rounded bg-primary flex items-center justify-center">
-                <HardHat className="w-4 h-4 text-primary-foreground" />
+              <div className="w-6 h-6 rounded bg-primary flex items-center justify-center overflow-hidden">
+                <img src={inspectorLogo} alt="Field Daily Reports" className="w-5 h-5 object-contain" />
               </div>
               <span className="text-sm text-muted-foreground">
                 © 2026 Field Daily Reports. All rights reserved.
