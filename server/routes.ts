@@ -2735,12 +2735,12 @@ export async function registerRoutes(
       const userId = req.user?.claims?.sub;
       const companyId = req.params.id;
       
-      // Check if user is a company admin
-      const membership = await storage.getCompanyMember(companyId, userId);
+      // Check if user is a company admin (respects inspector mode)
       const profile = await storage.getUserProfile(userId);
-      const isGlobalAdmin = profile?.role === "admin";
+      const hasSystemAdminAccess = isEffectiveSystemAdmin(profile);
+      const hasCompanyAdminAccess = await isEffectiveCompanyAdmin(userId, companyId, profile);
       
-      if (!isGlobalAdmin && (!membership || membership.role !== "admin")) {
+      if (!hasSystemAdminAccess && !hasCompanyAdminAccess) {
         return res.status(403).json({ message: "Only company admins can upload logos" });
       }
       
@@ -2772,12 +2772,12 @@ export async function registerRoutes(
       const userId = req.user?.claims?.sub;
       const companyId = req.params.id;
       
-      // Check if user is a company admin
-      const membership = await storage.getCompanyMember(companyId, userId);
+      // Check if user is a company admin (respects inspector mode)
       const profile = await storage.getUserProfile(userId);
-      const isGlobalAdmin = profile?.role === "admin";
+      const hasSystemAdminAccess = isEffectiveSystemAdmin(profile);
+      const hasCompanyAdminAccess = await isEffectiveCompanyAdmin(userId, companyId, profile);
       
-      if (!isGlobalAdmin && (!membership || membership.role !== "admin")) {
+      if (!hasSystemAdminAccess && !hasCompanyAdminAccess) {
         return res.status(403).json({ message: "Only company admins can delete logos" });
       }
       
