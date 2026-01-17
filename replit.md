@@ -49,7 +49,7 @@ Field Daily Reports helps construction inspection teams document their daily wor
 - **Admin**: Manage projects, users, and settings
 
 ### Daily Report Fields
-- Project selection
+- Project selection (or custom project name for unassigned reports)
 - Date and weather conditions
 - Work Activities (unified entries combining contractor/trade, headcount, and work description)
 - Additional work notes
@@ -59,6 +59,12 @@ Field Daily Reports helps construction inspection teams document their daily wor
 - Notes and observations
 - Photo uploads with captions
 - Digital signature
+
+### Unassigned Reports
+- Reports can be created without assigning to a formal project
+- Users can enter a custom project name (customProjectName field) for unassigned reports
+- Custom project name displays in list views, detail views, PDFs, and email distribution
+- When a report is assigned to a project, the custom project name is cleared
 
 ### Inspector Profile
 - Inspectors can set their firstName and lastName in their profile
