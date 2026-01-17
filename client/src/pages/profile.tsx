@@ -29,8 +29,10 @@ import {
   Shield, 
   Plus, 
   X,
-  ArrowLeft
+  ArrowLeft,
+  Building2
 } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
 import { Link } from "wouter";
 import { updateUserProfileSchema, type UserProfile, type UpdateUserProfile } from "@shared/schema";
 
@@ -54,6 +56,10 @@ export default function ProfilePage() {
       licenseNumber: "",
       licenseState: "",
       certifications: [],
+      contractorCompanyName: "",
+      contractorAddress: "",
+      contractorPhone: "",
+      contractorEmail: "",
     },
   });
 
@@ -67,6 +73,10 @@ export default function ProfilePage() {
         licenseNumber: profile.licenseNumber || "",
         licenseState: profile.licenseState || "",
         certifications: profile.certifications || [],
+        contractorCompanyName: profile.contractorCompanyName || "",
+        contractorAddress: profile.contractorAddress || "",
+        contractorPhone: profile.contractorPhone || "",
+        contractorEmail: profile.contractorEmail || "",
       });
       setCertifications(profile.certifications || []);
     }
@@ -387,6 +397,99 @@ export default function ProfilePage() {
                       No certifications added yet. Add your professional certifications above.
                     </p>
                   )}
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card data-testid="card-contractor">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2" data-testid="title-contractor">
+                  <Building2 className="w-5 h-5" />
+                  Independent Contractor Information
+                </CardTitle>
+                <CardDescription data-testid="desc-contractor">
+                  If you're an independent contractor, add your company information for invoicing
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <FormField
+                  control={form.control}
+                  name="contractorCompanyName"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel data-testid="label-contractor-company">Company Name</FormLabel>
+                      <FormControl>
+                        <Input
+                          placeholder="e.g., Smith Inspections LLC"
+                          {...field}
+                          value={field.value || ""}
+                          data-testid="input-contractor-company"
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="contractorAddress"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel data-testid="label-contractor-address">Business Address</FormLabel>
+                      <FormControl>
+                        <Textarea
+                          placeholder="123 Main St, Suite 100&#10;City, State 12345"
+                          rows={2}
+                          {...field}
+                          value={field.value || ""}
+                          data-testid="input-contractor-address"
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <FormField
+                    control={form.control}
+                    name="contractorPhone"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel data-testid="label-contractor-phone">Business Phone</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="tel"
+                            placeholder="(555) 123-4567"
+                            {...field}
+                            value={field.value || ""}
+                            data-testid="input-contractor-phone"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="contractorEmail"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel data-testid="label-contractor-email">Business Email</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="email"
+                            placeholder="billing@yourcompany.com"
+                            {...field}
+                            value={field.value || ""}
+                            data-testid="input-contractor-email"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
                 </div>
               </CardContent>
             </Card>

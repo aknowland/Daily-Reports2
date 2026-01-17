@@ -54,6 +54,11 @@ export const userProfiles = pgTable("user_profiles", {
   licenseNumber: varchar("license_number"),
   licenseState: varchar("license_state"),
   certifications: json("certifications").$type<string[]>().default([]),
+  // Independent contractor fields
+  contractorCompanyName: varchar("contractor_company_name"),
+  contractorAddress: text("contractor_address"),
+  contractorPhone: varchar("contractor_phone"),
+  contractorEmail: varchar("contractor_email"),
   // Onboarding
   hasSeenOnboarding: boolean("has_seen_onboarding").default(false),
   // Admin mode preference (for system admins)
@@ -272,6 +277,10 @@ export const updateUserProfileSchema = createInsertSchema(userProfiles)
     licenseNumber: true,
     licenseState: true,
     certifications: true,
+    contractorCompanyName: true,
+    contractorAddress: true,
+    contractorPhone: true,
+    contractorEmail: true,
   })
   .partial();
 
