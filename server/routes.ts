@@ -142,6 +142,13 @@ const createReportSchema = z.object({
   safetyDetails: z.string().optional(),
   notes: z.string().optional(),
   status: z.enum(["draft", "submitted"]).optional(),
+  // Time tracking fields
+  timeIn: z.string().optional(),
+  lunchStart: z.string().optional(),
+  lunchEnd: z.string().optional(),
+  timeOut: z.string().optional(),
+  regularHours: z.string().optional(),
+  otHours: z.string().optional(),
 });
 
 const updateReportSchema = createReportSchema.partial();
@@ -1517,24 +1524,37 @@ export async function registerRoutes(
 
       // Time tracking boxes - right side
       const timeX = 320;
-      const signedTime = report.signedAt ? new Date(report.signedAt) : null;
-      const timeInStr = signedTime ? signedTime.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }) : '--';
+      
+      // Format time from 24h HH:MM to 12h format
+      const formatTimeDisplay = (time: string | null | undefined): string => {
+        if (!time) return '--';
+        const [h, m] = time.split(':').map(Number);
+        if (isNaN(h) || isNaN(m)) return '--';
+        const ampm = h >= 12 ? 'PM' : 'AM';
+        const h12 = h % 12 || 12;
+        return `${h12}:${m.toString().padStart(2, '0')}${ampm}`;
+      };
+      
+      const timeInStr = formatTimeDisplay(report.timeIn);
+      const timeOutStr = formatTimeDisplay(report.timeOut);
+      const regHrsStr = report.regularHours || '--';
+      const otHrsStr = report.otHours || '--';
       
       doc.rect(timeX, sigY, 45, 28).stroke();
       doc.fontSize(7).font('Helvetica').text('TIME IN', timeX + 2, sigY + 2, { lineBreak: false });
-      doc.fontSize(10).font('Helvetica-Bold').text(timeInStr, timeX + 2, sigY + 12, { lineBreak: false });
+      doc.fontSize(9).font('Helvetica-Bold').text(timeInStr, timeX + 2, sigY + 12, { lineBreak: false });
 
       doc.rect(timeX + 45, sigY, 45, 28).stroke();
       doc.fontSize(7).font('Helvetica').text('TIME OUT', timeX + 47, sigY + 2, { lineBreak: false });
-      doc.fontSize(10).font('Helvetica-Bold').text('--', timeX + 47, sigY + 12, { lineBreak: false });
+      doc.fontSize(9).font('Helvetica-Bold').text(timeOutStr, timeX + 47, sigY + 12, { lineBreak: false });
 
       doc.rect(timeX + 90, sigY, 40, 28).stroke();
       doc.fontSize(7).font('Helvetica').text('REG HRS', timeX + 92, sigY + 2, { lineBreak: false });
-      doc.fontSize(10).font('Helvetica-Bold').text('--', timeX + 102, sigY + 12, { lineBreak: false });
+      doc.fontSize(10).font('Helvetica-Bold').text(regHrsStr, timeX + 102, sigY + 12, { lineBreak: false });
 
       doc.rect(timeX + 130, sigY, 40, 28).stroke();
       doc.fontSize(7).font('Helvetica').text('OT HRS', timeX + 132, sigY + 2, { lineBreak: false });
-      doc.fontSize(10).font('Helvetica-Bold').text('--', timeX + 142, sigY + 12, { lineBreak: false });
+      doc.fontSize(10).font('Helvetica-Bold').text(otHrsStr, timeX + 142, sigY + 12, { lineBreak: false });
 
       doc.rect(timeX + 170, sigY, 45, 28).stroke();
       doc.fontSize(7).font('Helvetica').text('SAMPLES', timeX + 172, sigY + 2, { lineBreak: false });
