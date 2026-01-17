@@ -1080,7 +1080,7 @@ export async function registerRoutes(
       // Generate PDF using pdfkit - stream to buffer for object storage
       const filename = `${req.params.id}.pdf`;
 
-      const doc = new PDFDocument({ margin: 50, bufferPages: true });
+      const doc = new PDFDocument({ margin: 30, bufferPages: true });
       
       // Collect PDF data in chunks
       const pdfChunks: Buffer[] = [];
@@ -1092,263 +1092,9 @@ export async function registerRoutes(
         doc.on('error', reject);
       });
 
-      const pageWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
-      const leftColWidth = 120;
-      const rightColWidth = pageWidth - leftColWidth;
-      const startX = doc.page.margins.left;
-      
-      // PDF color scheme - darker, more professional blue
-      const PRIMARY_BLUE = '#1e40af';
-      const PRIMARY_BLUE_BORDER = '#1e3a8a';
-      const DIVIDER_GRAY = '#d1d5db';
-      
-      // Helper function to draw a table row with border (with automatic page breaks)
-      const drawTableRow = (label: string, value: string, options?: { bold?: boolean }) => {
-        const rowHeight = Math.max(16, doc.heightOfString(value || 'N/A', { width: rightColWidth - 10 }) + 4);
-        
-        // Check if we need a new page
-        if (doc.y + rowHeight > doc.page.height - doc.page.margins.bottom - 30) {
-          doc.addPage();
-        }
-        
-        const rowY = doc.y;
-        
-        // Draw cell borders
-        doc.rect(startX, rowY, leftColWidth, rowHeight).stroke();
-        doc.rect(startX + leftColWidth, rowY, rightColWidth, rowHeight).stroke();
-        
-        // Draw label (left cell)
-        doc.fontSize(9).font('Helvetica-Bold').text(label, startX + 5, rowY + 3, { width: leftColWidth - 10 });
-        
-        // Draw value (right cell)
-        doc.fontSize(9).font(options?.bold ? 'Helvetica-Bold' : 'Helvetica')
-          .text(value || 'N/A', startX + leftColWidth + 5, rowY + 3, { width: rightColWidth - 10 });
-        
-        doc.y = rowY + rowHeight;
-      };
-      
-      // Helper function to draw a subtle section divider
-      const drawSectionDivider = () => {
-        doc.moveDown(0.5);
-        const dividerY = doc.y;
-        doc.strokeColor(DIVIDER_GRAY).lineWidth(0.5)
-          .moveTo(startX, dividerY)
-          .lineTo(startX + pageWidth, dividerY)
-          .stroke();
-        doc.strokeColor('#000').lineWidth(1);
-        doc.moveDown(0.3);
-      };
-
-      // Helper function to draw section header with extra spacing (with automatic page breaks)
-      const drawSectionHeader = (title: string) => {
-        // Check if we need a new page (need room for header + at least one row)
-        if (doc.y + 50 > doc.page.height - doc.page.margins.bottom - 30) {
-          doc.addPage();
-        } else {
-          doc.moveDown(0.6);
-        }
-        
-        const headerY = doc.y;
-        // Darker blue background with white text for section headers - larger font
-        doc.rect(startX, headerY, pageWidth, 18).fillAndStroke(PRIMARY_BLUE, PRIMARY_BLUE_BORDER);
-        doc.fillColor('#ffffff').fontSize(10).font('Helvetica-Bold')
-          .text(title, startX + 6, headerY + 4, { width: pageWidth - 12 });
-        doc.y = headerY + 18;
-        // Reset fill color for subsequent content
-        doc.fillColor('#000');
-      };
-
-      // Header with company logo in top left and contact info on right (same row)
-      const logoSize = 170;
-      let hasLogo = false;
-      const logoTopY = 10; // Position logo at top of page
-      let logoEndY = logoTopY;
-      let company: any = null;
-      
-      // Get company info
-      if (report.project?.companyId) {
-        company = await storage.getCompany(report.project.companyId);
-        
-        // Add company logo in top left if exists
-        if (company?.logoPath) {
-          try {
-            // Try to load logo from object storage or local filesystem
-            let logoBuffer: Buffer | null = null;
-            
-            if (company.logoPath.startsWith('/objects/')) {
-              // Load from object storage
-              try {
-                logoBuffer = await objectStorage.downloadBuffer(company.logoPath);
-              } catch (err) {
-                console.error('Error downloading logo from object storage:', err);
-              }
-            } else {
-              // Fallback to local filesystem for legacy paths
-              const logoFilePath = path.join(process.cwd(), company.logoPath.replace(/^\//, ''));
-              if (fs.existsSync(logoFilePath)) {
-                logoBuffer = fs.readFileSync(logoFilePath);
-              }
-            }
-            
-            if (logoBuffer) {
-              doc.image(logoBuffer, startX, logoTopY, {
-                width: logoSize,
-                height: logoSize,
-                fit: [logoSize, logoSize]
-              });
-              hasLogo = true;
-              logoEndY = logoTopY + logoSize;
-            }
-          } catch (err) {
-            console.error('Error adding company logo to PDF:', err);
-          }
-        }
-        
-        // Contact info on the right side (same row as logo)
-        const contactX = startX + pageWidth - 200;
-        let contactY = logoTopY;
-        doc.fontSize(10).font('Helvetica-Bold').fillColor('#000');
-        if (company?.name) {
-          doc.text(company.name, contactX, contactY, { width: 200, align: 'right' });
-          contactY += 14;
-        }
-        doc.font('Helvetica').fontSize(9);
-        if (company?.address) {
-          doc.text(company.address, contactX, contactY, { width: 200, align: 'right' });
-          contactY += 12;
-        }
-        if (company?.phone) {
-          doc.text(company.phone, contactX, contactY, { width: 200, align: 'right' });
-          contactY += 12;
-        }
-        if (company?.email) {
-          doc.text(company.email, contactX, contactY, { width: 200, align: 'right' });
-        }
-      }
-      
-      // Title centered below logo with tighter spacing
-      const titleY = hasLogo ? logoEndY - 15 : doc.page.margins.top;
-      doc.fontSize(16).font('Helvetica-Bold').text('DAILY FIELD REPORT', startX, titleY, { 
-        width: pageWidth,
-        align: 'center' 
-      });
-      doc.fontSize(9).font('Helvetica').text(new Date(report.date).toLocaleDateString('en-US', { 
-        weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' 
-      }), startX, titleY + 18, { align: 'center', width: pageWidth });
-      
-      // Set consistent position after header block
-      doc.y = titleY + 32;
-
-      // Project Information Section
-      drawSectionHeader('PROJECT INFORMATION');
-      drawTableRow('Project Name', report.project?.name || report.customProjectName || 'Unassigned Report', { bold: true });
-      drawTableRow('Project Number', report.project?.projectNumber || 'N/A');
-      if (report.project?.client) {
-        drawTableRow('Client', report.project.client);
-      }
-      if (report.project?.address) {
-        drawTableRow('Location', report.project.address);
-      }
-
-      // Report Details Section
-      drawSectionHeader('REPORT DETAILS');
-      drawTableRow('Inspector', report.inspectorName || 'Unknown');
-      drawTableRow('Weather', `${report.weatherType || 'Not specified'}${report.weatherNotes ? ` - ${report.weatherNotes}` : ''}`);
-      drawTableRow('Status', (report.status || 'draft').toUpperCase());
-
-      // Work Activities Section - Columns: Contractor, Manpower, Work Activities
-      const workActivities = (report.workActivities as WorkActivityRow[]) || [];
-      if (workActivities.length > 0) {
-        drawSectionHeader('WORK ACTIVITIES');
-        
-        // Column widths: Contractor (150), Manpower (60), Work Activities (remaining)
-        const activityColWidths = [150, 60, pageWidth - 150 - 60];
-        
-        // Helper to draw the work activities table header
-        const drawActivityTableHeader = () => {
-          const hdrY = doc.y;
-          const headerBg = '#e5e7eb';
-          doc.rect(startX, hdrY, activityColWidths[0], 14).fillAndStroke(headerBg, '#000');
-          doc.rect(startX + activityColWidths[0], hdrY, activityColWidths[1], 14).fillAndStroke(headerBg, '#000');
-          doc.rect(startX + activityColWidths[0] + activityColWidths[1], hdrY, activityColWidths[2], 14).fillAndStroke(headerBg, '#000');
-          
-          doc.fillColor('#000').fontSize(8).font('Helvetica-Bold');
-          doc.text('Contractor/Trade', startX + 4, hdrY + 3, { width: activityColWidths[0] - 8 });
-          doc.text('Crew', startX + activityColWidths[0] + 4, hdrY + 3, { width: activityColWidths[1] - 8 });
-          doc.text('Work Activities', startX + activityColWidths[0] + activityColWidths[1] + 4, hdrY + 3, { width: activityColWidths[2] - 8 });
-          doc.y = hdrY + 14;
-        };
-        
-        drawActivityTableHeader();
-        
-        for (const activity of workActivities) {
-          doc.fontSize(9);
-          const descHeight = doc.heightOfString(activity.workDescription || '', { width: activityColWidths[2] - 8 });
-          const rowHeight = Math.max(16, descHeight + 4);
-          
-          // Check if we need a new page
-          if (doc.y + rowHeight > doc.page.height - doc.page.margins.bottom - 30) {
-            doc.addPage();
-            drawActivityTableHeader();
-          }
-          
-          const rowY = doc.y;
-          
-          doc.rect(startX, rowY, activityColWidths[0], rowHeight).stroke();
-          doc.rect(startX + activityColWidths[0], rowY, activityColWidths[1], rowHeight).stroke();
-          doc.rect(startX + activityColWidths[0] + activityColWidths[1], rowY, activityColWidths[2], rowHeight).stroke();
-          
-          doc.fontSize(9).font('Helvetica');
-          doc.text(activity.contractor || '', startX + 4, rowY + 4, { width: activityColWidths[0] - 8 });
-          doc.text(String(activity.headcount || 0), startX + activityColWidths[0] + 4, rowY + 4, { width: activityColWidths[1] - 8 });
-          doc.text(activity.workDescription || '', startX + activityColWidths[0] + activityColWidths[1] + 4, rowY + 4, { width: activityColWidths[2] - 8 });
-          doc.y = rowY + rowHeight;
-        }
-      }
-
-      // Visitors Section
-      const visitors = (report.visitors as VisitorRow[]) || [];
-      if (visitors.length > 0) {
-        drawSectionHeader('VISITORS');
-        visitors.forEach((visitor) => {
-          drawTableRow(visitor.name || 'Unknown', `${visitor.company || ''}${visitor.notes ? ` - ${visitor.notes}` : ''}`);
-        });
-      }
-
-      // Materials Delivered
-      if (report.materialsDelivered) {
-        drawSectionHeader('MATERIALS DELIVERED');
-        drawTableRow('Items', report.materialsDelivered);
-      }
-
-      // Issues/Safety Section
-      if (report.issuesFlag || report.safetyFlag) {
-        drawSectionHeader('ISSUES & SAFETY');
-        if (report.issuesFlag) {
-          drawTableRow('Issues/Delays', report.issuesDetails || 'No details provided');
-        }
-        if (report.safetyFlag) {
-          drawTableRow('Safety Incident', report.safetyDetails || 'No details provided');
-        }
-      }
-
-      // Inspections
-      if (report.inspections) {
-        drawSectionHeader('INSPECTIONS');
-        drawTableRow('Details', report.inspections);
-      }
-
-      // Additional Notes
-      if (report.workPerformed) {
-        drawSectionHeader('ADDITIONAL NOTES');
-        drawTableRow('Notes', report.workPerformed);
-      }
-
-      // Equipment
-      if (report.equipment) {
-        drawSectionHeader('EQUIPMENT');
-        drawTableRow('On Site', report.equipment);
-      }
+      const pageWidth = doc.page.width - 60;
+      const startX = 30;
+      const checkSize = 6;
 
       // Helper function to load image from object storage or local filesystem
       const loadImageBuffer = async (imagePath: string): Promise<Buffer | null> => {
@@ -1367,28 +1113,289 @@ export async function registerRoutes(
         return null;
       };
 
-      // Photos Section
+      // Get company info
+      let company: any = null;
+      if (report.project?.companyId) {
+        company = await storage.getCompany(report.project.companyId);
+      }
+
+      // ===== HEADER =====
+      // Load and add company logo if exists
+      if (company?.logoPath) {
+        try {
+          const logoBuffer = await loadImageBuffer(company.logoPath);
+          if (logoBuffer) {
+            doc.image(logoBuffer, startX, 12, { width: 70, height: 35, fit: [70, 35] });
+          }
+        } catch (err) {
+          console.error('Error adding company logo:', err);
+        }
+      }
+
+      // Company info - right aligned
+      const companyName = company?.name || 'Field Daily Reports';
+      const companyContact = [company?.address, company?.phone, company?.email].filter(Boolean).join('  |  ');
+      doc.fontSize(9).font('Helvetica-Bold').text(companyName, 300, 14, { width: 260, align: 'right' });
+      if (companyContact) {
+        doc.fontSize(6).font('Helvetica').text(companyContact, 300, 25, { width: 260, align: 'right' });
+      }
+
+      // Form grid - right side
+      const gridTop = 38;
+      const reportDate = new Date(report.date);
+      const dateStr = reportDate.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: '2-digit' });
+      const timeStr = reportDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+      
+      doc.strokeColor('#000').lineWidth(0.5);
+
+      // Row 1: Project #, Report No., Job No.
+      doc.rect(380, gridTop, 80, 18).stroke();
+      doc.fontSize(5).font('Helvetica').text('Project #', 382, gridTop + 2);
+      doc.fontSize(7).font('Helvetica-Bold').text(report.project?.projectNumber || 'N/A', 382, gridTop + 8);
+
+      doc.rect(460, gridTop, 52, 18).stroke();
+      doc.fontSize(5).font('Helvetica').text('Report No.', 462, gridTop + 2);
+      doc.fontSize(7).font('Helvetica-Bold').text(req.params.id.slice(-4).toUpperCase(), 495, gridTop + 8);
+
+      doc.rect(512, gridTop, 50, 18).stroke();
+      doc.fontSize(5).font('Helvetica').text('Status', 514, gridTop + 2);
+      doc.fontSize(7).font('Helvetica-Bold').text((report.status || 'draft').toUpperCase(), 514, gridTop + 8);
+
+      // Row 2: Date, Time
+      doc.rect(380, gridTop + 18, 80, 18).stroke();
+      doc.fontSize(5).font('Helvetica').text('Date', 382, gridTop + 20);
+      doc.fontSize(7).font('Helvetica-Bold').text(dateStr, 382, gridTop + 26);
+
+      doc.rect(460, gridTop + 18, 52, 18).stroke();
+      doc.fontSize(5).font('Helvetica').text('Time', 462, gridTop + 20);
+      doc.fontSize(7).font('Helvetica-Bold').text(timeStr, 462, gridTop + 26);
+
+      doc.rect(512, gridTop + 18, 50, 18).stroke();
+      doc.fontSize(5).font('Helvetica').text('Weather', 514, gridTop + 20);
+      doc.fontSize(6).font('Helvetica-Bold').text((report.weatherType || 'N/A').slice(0, 8), 514, gridTop + 26);
+
+      // Title
+      doc.fontSize(11).font('Helvetica-Bold').text('DAILY FIELD INSPECTION REPORT', startX, gridTop + 8);
+
+      // Weather row
+      doc.y = gridTop + 40;
+      const weatherText = `${report.weatherType || 'Not specified'}${report.weatherNotes ? ` - ${report.weatherNotes}` : ''}`;
+      doc.fontSize(6).font('Helvetica-Bold').text('WEATHER:', startX, doc.y);
+      doc.font('Helvetica').text(weatherText.slice(0, 80), startX + 45, doc.y);
+
+      // ===== PROJECT INFO =====
+      doc.y += 14;
+      const projY = doc.y;
+      const col1 = pageWidth * 0.55;
+      const col2 = pageWidth * 0.45;
+
+      const projectName = report.project?.name || report.customProjectName || 'Unassigned Report';
+      const projectAddress = report.project?.address || 'N/A';
+      const inspectorName = report.inspectorName || 'Unknown';
+      const clientName = report.project?.client || 'N/A';
+
+      doc.rect(startX, projY, col1, 14).stroke();
+      doc.fontSize(5).font('Helvetica').text('Project Name', startX + 2, projY + 1);
+      doc.fontSize(7).font('Helvetica-Bold').text(projectName.slice(0, 50), startX + 55, projY + 4);
+
+      doc.rect(startX + col1, projY, col2, 14).stroke();
+      doc.fontSize(5).font('Helvetica').text('Inspector', startX + col1 + 2, projY + 1);
+      doc.fontSize(7).font('Helvetica-Bold').text(inspectorName, startX + col1 + 38, projY + 4);
+
+      doc.rect(startX, projY + 14, col1, 14).stroke();
+      doc.fontSize(5).font('Helvetica').text('Project Address', startX + 2, projY + 15);
+      doc.fontSize(7).font('Helvetica-Bold').text(projectAddress.slice(0, 55), startX + 55, projY + 18);
+
+      doc.rect(startX + col1, projY + 14, col2, 14).stroke();
+      doc.fontSize(5).font('Helvetica').text('Client', startX + col1 + 2, projY + 15);
+      doc.fontSize(7).font('Helvetica-Bold').text(clientName.slice(0, 30), startX + col1 + 38, projY + 18);
+
+      // ===== WORK ACTIVITIES TABLE =====
+      doc.y = projY + 34;
+      doc.fontSize(7).font('Helvetica-Bold').text('WORK ACTIVITIES', startX, doc.y);
+      doc.y += 10;
+
+      const waY = doc.y;
+      const waCols = [140, 50, pageWidth - 190];
+      doc.rect(startX, waY, waCols[0], 12).fillAndStroke('#e5e5e5', '#000');
+      doc.rect(startX + waCols[0], waY, waCols[1], 12).fillAndStroke('#e5e5e5', '#000');
+      doc.rect(startX + waCols[0] + waCols[1], waY, waCols[2], 12).fillAndStroke('#e5e5e5', '#000');
+      doc.fillColor('#000').fontSize(5).font('Helvetica-Bold');
+      doc.text('CONTRACTOR / TRADE', startX + 3, waY + 3);
+      doc.text('COUNT', startX + waCols[0] + 3, waY + 3);
+      doc.text('WORK DESCRIPTION', startX + waCols[0] + waCols[1] + 3, waY + 3);
+
+      const workActivities = (report.workActivities as WorkActivityRow[]) || [];
+      let currentWaY = waY + 12;
+      
+      if (workActivities.length > 0) {
+        for (const activity of workActivities) {
+          doc.rect(startX, currentWaY, waCols[0], 11).stroke();
+          doc.rect(startX + waCols[0], currentWaY, waCols[1], 11).stroke();
+          doc.rect(startX + waCols[0] + waCols[1], currentWaY, waCols[2], 11).stroke();
+          doc.fontSize(6).font('Helvetica');
+          doc.text((activity.contractor || '').slice(0, 25), startX + 3, currentWaY + 3);
+          doc.text(String(activity.headcount || 0), startX + waCols[0] + 18, currentWaY + 3);
+          doc.text((activity.workDescription || '').slice(0, 70), startX + waCols[0] + waCols[1] + 3, currentWaY + 3, { width: waCols[2] - 6 });
+          currentWaY += 11;
+        }
+      } else {
+        // Empty row
+        doc.rect(startX, currentWaY, waCols[0], 11).stroke();
+        doc.rect(startX + waCols[0], currentWaY, waCols[1], 11).stroke();
+        doc.rect(startX + waCols[0] + waCols[1], currentWaY, waCols[2], 11).stroke();
+        currentWaY += 11;
+      }
+
+      // ===== INSPECTION SUMMARY =====
+      doc.y = currentWaY + 6;
+      doc.fontSize(7).font('Helvetica-Bold').text('INSPECTION SUMMARY', startX, doc.y);
+      doc.y += 10;
+
+      const sumY = doc.y;
+      const sumH = 90;
+      doc.rect(startX, sumY, pageWidth, sumH).stroke();
+
+      // Build summary text from report fields
+      const summaryParts: string[] = [];
+      if (report.inspections) summaryParts.push(report.inspections);
+      if (report.workPerformed) summaryParts.push(report.workPerformed);
+      if (report.notes) summaryParts.push(report.notes);
+      const summaryText = summaryParts.join('\n\n') || 'No inspection details recorded.';
+      
+      doc.fontSize(7).font('Helvetica').text(summaryText.slice(0, 800), startX + 5, sumY + 4, { width: pageWidth - 10, lineGap: 0.5 });
+
+      // ===== ISSUES / SAFETY / VISITORS ROW =====
+      doc.y = sumY + sumH + 6;
+      const flagY = doc.y;
+
+      doc.fontSize(6).font('Helvetica-Bold').text('ISSUES/DELAYS:', startX, flagY);
+      if (report.issuesFlag) {
+        doc.rect(startX + 60, flagY - 1, checkSize, checkSize).fillAndStroke('#000', '#000');
+      } else {
+        doc.rect(startX + 60, flagY - 1, checkSize, checkSize).stroke();
+      }
+      doc.fontSize(5).font('Helvetica').text('Yes', startX + 68, flagY);
+      if (!report.issuesFlag) {
+        doc.rect(startX + 85, flagY - 1, checkSize, checkSize).fillAndStroke('#000', '#000');
+      } else {
+        doc.rect(startX + 85, flagY - 1, checkSize, checkSize).stroke();
+      }
+      doc.text('No', startX + 93, flagY);
+
+      doc.fontSize(6).font('Helvetica-Bold').text('SAFETY INCIDENTS:', startX + 130, flagY);
+      if (report.safetyFlag) {
+        doc.rect(startX + 200, flagY - 1, checkSize, checkSize).fillAndStroke('#000', '#000');
+      } else {
+        doc.rect(startX + 200, flagY - 1, checkSize, checkSize).stroke();
+      }
+      doc.fontSize(5).font('Helvetica').text('Yes', startX + 208, flagY);
+      if (!report.safetyFlag) {
+        doc.rect(startX + 225, flagY - 1, checkSize, checkSize).fillAndStroke('#000', '#000');
+      } else {
+        doc.rect(startX + 225, flagY - 1, checkSize, checkSize).stroke();
+      }
+      doc.text('No', startX + 233, flagY);
+
+      // Visitors
+      const visitors = (report.visitors as VisitorRow[]) || [];
+      const visitorsText = visitors.map(v => `${v.name}${v.company ? ` (${v.company})` : ''}`).join(', ') || 'None';
+      doc.fontSize(6).font('Helvetica-Bold').text('VISITORS:', startX + 280, flagY);
+      doc.fontSize(6).font('Helvetica').text(visitorsText.slice(0, 40), startX + 315, flagY);
+
+      // ===== MATERIALS / EQUIPMENT ROW =====
+      doc.y = flagY + 12;
+      if (report.materialsDelivered || report.equipment) {
+        const matY = doc.y;
+        if (report.materialsDelivered) {
+          doc.fontSize(6).font('Helvetica-Bold').text('MATERIALS:', startX, matY);
+          doc.font('Helvetica').text((report.materialsDelivered || '').slice(0, 50), startX + 50, matY);
+        }
+        if (report.equipment) {
+          doc.fontSize(6).font('Helvetica-Bold').text('EQUIPMENT:', startX + 280, matY);
+          doc.font('Helvetica').text((report.equipment || '').slice(0, 40), startX + 330, matY);
+        }
+        doc.y = matY + 12;
+      }
+
+      // ===== PHOTOS REFERENCE =====
       const photos = report.photos || [];
       if (photos.length > 0) {
-        // Check if we need a new page before photos
-        if (doc.y + 18 + 100 + 20 + 30 > doc.page.height - doc.page.margins.bottom - 30) {
-          doc.addPage();
+        doc.fontSize(6).font('Helvetica-Bold').text('PHOTOS ATTACHED:', startX, doc.y);
+        doc.font('Helvetica').text(`${photos.length} photo(s) - See attached`, startX + 80, doc.y);
+        doc.y += 14;
+      }
+
+      // ===== SIGNATURE & TIME TRACKING =====
+      const sigY = doc.y + 6;
+
+      // Signature area
+      doc.fontSize(5).font('Helvetica').text('SIGNATURE OF SPECIAL INSPECTOR', startX, sigY);
+      
+      // Add signature image if exists
+      if (report.signaturePath) {
+        const sigBuffer = await loadImageBuffer(report.signaturePath);
+        if (sigBuffer) {
+          try {
+            doc.image(sigBuffer, startX, sigY + 6, { width: 120, height: 25, fit: [120, 25] });
+          } catch (err) {
+            console.error('Error adding signature:', err);
+          }
         }
-        drawSectionHeader('PHOTOS');
+      }
+      
+      doc.moveTo(startX, sigY + 35).lineTo(startX + 160, sigY + 35).stroke();
+
+      doc.fontSize(5).text('Inspector', startX, sigY + 38);
+      doc.font('Helvetica-Bold').text(inspectorName, startX + 45, sigY + 38);
+
+      // Time boxes
+      const timeX = 300;
+      const signedTime = report.signedAt ? new Date(report.signedAt) : null;
+      const timeInStr = signedTime ? signedTime.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }) : 'N/A';
+      
+      doc.rect(timeX, sigY, 45, 22).stroke();
+      doc.fontSize(5).font('Helvetica').text('TIME IN', timeX + 2, sigY + 2);
+      doc.fontSize(7).font('Helvetica-Bold').text(timeInStr, timeX + 2, sigY + 10);
+
+      doc.rect(timeX + 45, sigY, 45, 22).stroke();
+      doc.fontSize(5).font('Helvetica').text('TIME OUT', timeX + 47, sigY + 2);
+      doc.fontSize(7).font('Helvetica-Bold').text('--', timeX + 47, sigY + 10);
+
+      doc.rect(timeX + 90, sigY, 35, 22).stroke();
+      doc.fontSize(5).font('Helvetica').text('REG HRS', timeX + 92, sigY + 2);
+      doc.fontSize(7).font('Helvetica-Bold').text('--', timeX + 102, sigY + 10);
+
+      doc.rect(timeX + 125, sigY, 35, 22).stroke();
+      doc.fontSize(5).font('Helvetica').text('OT HRS', timeX + 127, sigY + 2);
+      doc.fontSize(7).font('Helvetica-Bold').text('--', timeX + 138, sigY + 10);
+
+      doc.rect(timeX + 160, sigY, 40, 22).stroke();
+      doc.fontSize(5).font('Helvetica').text('PHOTOS', timeX + 162, sigY + 2);
+      doc.fontSize(7).font('Helvetica-Bold').text(String(photos.length), timeX + 178, sigY + 10);
+
+      // Approval lines
+      doc.fontSize(5).font('Helvetica').text('Approved By: _______________________________', timeX, sigY + 26);
+      doc.text('Project Inspector: ___________________________', timeX, sigY + 36);
+
+      // ===== PHOTOS ON ADDITIONAL PAGES =====
+      if (photos.length > 0) {
+        doc.addPage();
+        doc.fontSize(10).font('Helvetica-Bold').text('PHOTO DOCUMENTATION', startX, 30);
+        doc.fontSize(7).font('Helvetica').text(`${projectName} - ${dateStr}`, startX, 42);
         
         const photoGap = 15;
         const photoWidth = (pageWidth - photoGap) / 2;
-        const photoHeight = 100;
-        const captionHeight = 14;
+        const photoHeight = 150;
+        const captionHeight = 20;
         
-        let currentY = doc.y;
-        let currentX = startX;
+        let currentPhotoY = 60;
+        let currentPhotoX = startX;
         
         for (let i = 0; i < photos.length; i++) {
-          // Check if we need a new page (leaving room for photo + caption)
-          if (currentY > doc.page.height - photoHeight - captionHeight - 60) {
+          if (currentPhotoY + photoHeight + captionHeight > doc.page.height - 40) {
             doc.addPage();
-            currentY = doc.page.margins.top;
+            currentPhotoY = 40;
           }
           
           const photo = photos[i];
@@ -1396,12 +1403,10 @@ export async function registerRoutes(
           
           if (photoBuffer) {
             try {
-              // Draw border/placeholder
               doc.strokeColor('#d1d5db').lineWidth(1)
-                .rect(currentX, currentY, photoWidth, photoHeight).stroke();
+                .rect(currentPhotoX, currentPhotoY, photoWidth, photoHeight).stroke();
               
-              // Add photo
-              doc.image(photoBuffer, currentX + 2, currentY + 2, {
+              doc.image(photoBuffer, currentPhotoX + 2, currentPhotoY + 2, {
                 width: photoWidth - 4,
                 height: photoHeight - 4,
                 fit: [photoWidth - 4, photoHeight - 4],
@@ -1409,10 +1414,9 @@ export async function registerRoutes(
                 valign: 'center'
               });
               
-              // Add caption if exists
               if (photo.caption) {
-                doc.fontSize(8).font('Helvetica-Oblique').fillColor('#4b5563')
-                  .text(photo.caption, currentX, currentY + photoHeight + 2, {
+                doc.fontSize(7).font('Helvetica-Oblique').fillColor('#4b5563')
+                  .text(photo.caption.slice(0, 60), currentPhotoX, currentPhotoY + photoHeight + 3, {
                     width: photoWidth,
                     align: 'center'
                   });
@@ -1420,9 +1424,8 @@ export async function registerRoutes(
               }
             } catch (err) {
               console.error('Error adding photo to PDF:', err);
-              // Draw placeholder text on error
-              doc.fontSize(8).font('Helvetica').fillColor('#9ca3af')
-                .text('Image unavailable', currentX, currentY + photoHeight/2, {
+              doc.fontSize(7).font('Helvetica').fillColor('#9ca3af')
+                .text('Image unavailable', currentPhotoX, currentPhotoY + photoHeight/2, {
                   width: photoWidth,
                   align: 'center'
                 });
@@ -1430,89 +1433,16 @@ export async function registerRoutes(
             }
           }
           
-          // Move to next position
-          if (currentX === startX) {
-            currentX = startX + photoWidth + photoGap;
+          if (currentPhotoX === startX) {
+            currentPhotoX = startX + photoWidth + photoGap;
           } else {
-            currentX = startX;
-            currentY += photoHeight + captionHeight + 10;
-          }
-        }
-        
-        // Move doc.y past the photos
-        if (currentX !== startX) {
-          currentY += photoHeight + captionHeight + 10;
-        }
-        doc.y = currentY;
-      }
-
-      // Signature Section
-      if (report.signaturePath) {
-        // Check if we need a new page for signature
-        if (doc.y > doc.page.height - doc.page.margins.bottom - 200) {
-          doc.addPage();
-        }
-        
-        drawSectionHeader('SIGNATURE');
-        
-        const sigBuffer = await loadImageBuffer(report.signaturePath);
-        if (sigBuffer) {
-          const sigBoxY = doc.y;
-          const sigBoxHeight = 60;
-          
-          // Signature box
-          doc.lineWidth(0.5).strokeColor('#374151')
-            .rect(startX, sigBoxY, pageWidth, sigBoxHeight).stroke();
-          
-          // Add signature image
-          try {
-            doc.image(sigBuffer, startX + 10, sigBoxY + 5, {
-              width: 150,
-              height: sigBoxHeight - 10,
-              fit: [150, sigBoxHeight - 10]
-            });
-          } catch (err) {
-            console.error('Error adding signature to PDF:', err);
-          }
-          
-          // Signature line
-          const sigLineX = startX + 180;
-          const sigLineY = sigBoxY + sigBoxHeight - 20;
-          doc.strokeColor('#000').lineWidth(0.5)
-            .moveTo(sigLineX, sigLineY)
-            .lineTo(startX + pageWidth - 20, sigLineY)
-            .stroke();
-          
-          doc.fontSize(7).font('Helvetica').fillColor('#6b7280')
-            .text('Inspector Signature', sigLineX, sigLineY + 3, { width: pageWidth - 200 });
-          
-          doc.y = sigBoxY + sigBoxHeight + 5;
-        } else {
-          // No signature image, show text info
-          drawTableRow('Inspector', report.inspectorName || 'Unknown');
-          drawTableRow('Report Date', new Date(report.date).toLocaleDateString('en-US', { 
-            year: 'numeric', month: 'long', day: 'numeric' 
-          }));
-          if (report.signedAt) {
-            drawTableRow('Signed At', new Date(report.signedAt).toLocaleString('en-US'));
+            currentPhotoX = startX;
+            currentPhotoY += photoHeight + captionHeight + 10;
           }
         }
       }
 
-      // Professional Disclaimer - only add if there's space
-      const disclaimerHeight = 60;
-      if (doc.y + disclaimerHeight < doc.page.height - doc.page.margins.bottom - 40) {
-        doc.moveDown(0.8);
-        doc.fontSize(7).font('Helvetica-Oblique').fillColor('#6b7280')
-          .text(
-            'This daily field report documents the inspector\'s observations on the date indicated. Work activities, conditions, or items not specifically mentioned or observed by the inspector on this date should not be considered as having been approved or accepted. This document is confidential and intended only for authorized project stakeholders.',
-            startX, doc.y, 
-            { width: pageWidth, align: 'justify' }
-          );
-        doc.fillColor('#000');
-      }
-
-      // Add page numbers to all pages
+      // ===== FOOTER ON ALL PAGES =====
       const range = doc.bufferedPageRange();
       const totalPages = range.count;
       const generatedDate = new Date().toLocaleString('en-US', {
@@ -1522,23 +1452,13 @@ export async function registerRoutes(
       
       for (let i = 0; i < totalPages; i++) {
         doc.switchToPage(i);
-        
-        // Footer with page number and generation date
-        const footerY = doc.page.height - 30;
-        doc.fontSize(8).font('Helvetica').fillColor('#6b7280');
-        
-        // Left: Generated date
-        doc.text(`Generated: ${generatedDate}`, startX, footerY, { 
-          width: pageWidth / 2, 
-          align: 'left' 
-        });
-        
-        // Right: Page number
-        doc.text(`Page ${i + 1} of ${totalPages}`, startX + pageWidth / 2, footerY, { 
-          width: pageWidth / 2, 
-          align: 'right' 
-        });
-        
+        const footerY = doc.page.height - 26;
+        doc.fontSize(5).font('Helvetica').fillColor('#666');
+        doc.text('CC: Architect, Engineer, Project Inspector, Owner', startX, footerY);
+        if (company?.email) {
+          doc.text(company.email, 400, footerY, { width: 160, align: 'right' });
+        }
+        doc.text(`Page ${i + 1} of ${totalPages}`, startX, footerY, { width: pageWidth, align: 'center' });
         doc.fillColor('#000');
       }
       
