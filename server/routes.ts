@@ -2828,12 +2828,12 @@ export async function registerRoutes(
       const userId = req.user?.claims?.sub;
       const companyId = req.params.id;
       
-      // Check if user is a company admin OR global admin
-      const membership = await storage.getCompanyMember(companyId, userId);
+      // Check if user is a company admin OR system admin (respects inspector mode)
       const profile = await storage.getUserProfile(userId);
-      const isGlobalAdmin = profile?.role === "admin";
+      const hasSystemAdminAccess = isEffectiveSystemAdmin(profile);
+      const hasCompanyAdminAccess = await isEffectiveCompanyAdmin(userId, companyId, profile);
       
-      if (!isGlobalAdmin && (!membership || membership.role !== "admin")) {
+      if (!hasSystemAdminAccess && !hasCompanyAdminAccess) {
         return res.status(403).json({ message: "Access denied. Admin rights required." });
       }
       
@@ -2845,19 +2845,19 @@ export async function registerRoutes(
     }
   });
 
-  // Add company member (global admin or company admin)
+  // Add company member (system admin or company admin)
   app.post("/api/companies/:id/members", isAuthenticated, async (req: any, res) => {
     try {
       const currentUserId = req.user?.claims?.sub;
       const companyId = req.params.id;
       const { userId, role } = req.body;
       
-      // Check if user is a company admin OR global admin
-      const membership = await storage.getCompanyMember(companyId, currentUserId);
+      // Check if user is a company admin OR system admin (respects inspector mode)
       const profile = await storage.getUserProfile(currentUserId);
-      const isGlobalAdmin = profile?.role === "admin";
+      const hasSystemAdminAccess = isEffectiveSystemAdmin(profile);
+      const hasCompanyAdminAccess = await isEffectiveCompanyAdmin(currentUserId, companyId, profile);
       
-      if (!isGlobalAdmin && (!membership || membership.role !== "admin")) {
+      if (!hasSystemAdminAccess && !hasCompanyAdminAccess) {
         return res.status(403).json({ message: "Access denied. Admin rights required." });
       }
       
@@ -2879,7 +2879,7 @@ export async function registerRoutes(
     }
   });
 
-  // Update company member role (global admin or company admin)
+  // Update company member role (system admin or company admin)
   app.patch("/api/companies/:id/members/:userId/role", isAuthenticated, async (req: any, res) => {
     try {
       const currentUserId = req.user?.claims?.sub;
@@ -2887,12 +2887,12 @@ export async function registerRoutes(
       const targetUserId = req.params.userId;
       const { role } = req.body;
       
-      // Check if user is a company admin OR global admin
-      const membership = await storage.getCompanyMember(companyId, currentUserId);
+      // Check if user is a company admin OR system admin (respects inspector mode)
       const profile = await storage.getUserProfile(currentUserId);
-      const isGlobalAdmin = profile?.role === "admin";
+      const hasSystemAdminAccess = isEffectiveSystemAdmin(profile);
+      const hasCompanyAdminAccess = await isEffectiveCompanyAdmin(currentUserId, companyId, profile);
       
-      if (!isGlobalAdmin && (!membership || membership.role !== "admin")) {
+      if (!hasSystemAdminAccess && !hasCompanyAdminAccess) {
         return res.status(403).json({ message: "Access denied. Admin rights required." });
       }
       
@@ -2918,19 +2918,19 @@ export async function registerRoutes(
     }
   });
 
-  // Remove company member (global admin or company admin)
+  // Remove company member (system admin or company admin)
   app.delete("/api/companies/:id/members/:userId", isAuthenticated, async (req: any, res) => {
     try {
       const currentUserId = req.user?.claims?.sub;
       const companyId = req.params.id;
       const targetUserId = req.params.userId;
       
-      // Check if user is a company admin OR global admin
-      const membership = await storage.getCompanyMember(companyId, currentUserId);
+      // Check if user is a company admin OR system admin (respects inspector mode)
       const profile = await storage.getUserProfile(currentUserId);
-      const isGlobalAdmin = profile?.role === "admin";
+      const hasSystemAdminAccess = isEffectiveSystemAdmin(profile);
+      const hasCompanyAdminAccess = await isEffectiveCompanyAdmin(currentUserId, companyId, profile);
       
-      if (!isGlobalAdmin && (!membership || membership.role !== "admin")) {
+      if (!hasSystemAdminAccess && !hasCompanyAdminAccess) {
         return res.status(403).json({ message: "Access denied. Admin rights required." });
       }
       
@@ -2947,18 +2947,18 @@ export async function registerRoutes(
     }
   });
 
-  // Get company projects (global admin or company admin)
+  // Get company projects (system admin or company admin)
   app.get("/api/companies/:id/projects", isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user?.claims?.sub;
       const companyId = req.params.id;
       
-      // Check if user is a company admin OR global admin
-      const membership = await storage.getCompanyMember(companyId, userId);
+      // Check if user is a company admin OR system admin (respects inspector mode)
       const profile = await storage.getUserProfile(userId);
-      const isGlobalAdmin = profile?.role === "admin";
+      const hasSystemAdminAccess = isEffectiveSystemAdmin(profile);
+      const hasCompanyAdminAccess = await isEffectiveCompanyAdmin(userId, companyId, profile);
       
-      if (!isGlobalAdmin && (!membership || membership.role !== "admin")) {
+      if (!hasSystemAdminAccess && !hasCompanyAdminAccess) {
         return res.status(403).json({ message: "Access denied. Admin rights required." });
       }
       
