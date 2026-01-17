@@ -33,11 +33,16 @@ import {
   AlertCircle,
   Loader2,
   FolderOpen,
+  Building2,
+  Plus,
+  Trash2,
 } from "lucide-react";
 import type { User } from "@shared/models/auth";
-import type { UserProfile, Project } from "@shared/schema";
+import type { UserProfile, Project, Company, CompanyMember } from "@shared/schema";
 
 type UserWithProfile = User & { profile?: UserProfile };
+
+type CompanyMemberWithCompany = CompanyMember & { company: Company };
 
 export default function AdminUsersPage() {
   const { toast } = useToast();
@@ -45,6 +50,9 @@ export default function AdminUsersPage() {
   const [selectedUser, setSelectedUser] = useState<UserWithProfile | null>(null);
   const [selectedProjectIds, setSelectedProjectIds] = useState<string[]>([]);
   const [projectDialogOpen, setProjectDialogOpen] = useState(false);
+  const [companyDialogOpen, setCompanyDialogOpen] = useState(false);
+  const [newCompanyId, setNewCompanyId] = useState<string>("");
+  const [newCompanyRole, setNewCompanyRole] = useState<"inspector" | "admin">("inspector");
 
   const { data: users, isLoading, error } = useQuery<UserWithProfile[]>({
     queryKey: ["/api/admin/users"],
@@ -54,9 +62,18 @@ export default function AdminUsersPage() {
     queryKey: ["/api/projects"],
   });
 
+  const { data: allCompanies = [] } = useQuery<Company[]>({
+    queryKey: ["/api/companies"],
+  });
+
   const { data: userProjectIds, isLoading: isLoadingUserProjects } = useQuery<string[]>({
     queryKey: ["/api/admin/users", selectedUser?.id, "projects"],
     enabled: !!selectedUser && projectDialogOpen,
+  });
+
+  const { data: userCompanies = [], isLoading: isLoadingUserCompanies, refetch: refetchUserCompanies } = useQuery<CompanyMemberWithCompany[]>({
+    queryKey: ["/api/admin/users", selectedUser?.id, "companies"],
+    enabled: !!selectedUser && companyDialogOpen,
   });
 
   // Initialize selected projects when dialog opens and data loads
@@ -108,11 +125,114 @@ export default function AdminUsersPage() {
     },
   });
 
+  const addCompanyMutation = useMutation({
+    mutationFn: async ({ userId, companyId, role }: { userId: string; companyId: string; role: string }) => {
+      return apiRequest("POST", `/api/admin/users/${userId}/companies`, { companyId, role });
+    },
+    onSuccess: () => {
+      refetchUserCompanies();
+      setNewCompanyId("");
+      setNewCompanyRole("inspector");
+      toast({
+        title: "Company Added",
+        description: "The user has been assigned to the company",
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to add company",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const updateCompanyRoleMutation = useMutation({
+    mutationFn: async ({ userId, companyId, role }: { userId: string; companyId: string; role: string }) => {
+      return apiRequest("PUT", `/api/admin/users/${userId}/companies/${companyId}`, { role });
+    },
+    onSuccess: () => {
+      refetchUserCompanies();
+      toast({
+        title: "Role Updated",
+        description: "The user's company role has been updated",
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to update role",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const removeCompanyMutation = useMutation({
+    mutationFn: async ({ userId, companyId }: { userId: string; companyId: string }) => {
+      return apiRequest("DELETE", `/api/admin/users/${userId}/companies/${companyId}`);
+    },
+    onSuccess: () => {
+      refetchUserCompanies();
+      toast({
+        title: "Company Removed",
+        description: "The user has been removed from the company",
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to remove from company",
+        variant: "destructive",
+      });
+    },
+  });
+
   const handleOpenProjectDialog = (user: UserWithProfile) => {
     setSelectedUser(user);
     setSelectedProjectIds([]);
     setProjectDialogOpen(true);
   };
+
+  const handleOpenCompanyDialog = (user: UserWithProfile) => {
+    setSelectedUser(user);
+    setNewCompanyId("");
+    setNewCompanyRole("inspector");
+    setCompanyDialogOpen(true);
+  };
+
+  const handleAddCompany = () => {
+    if (selectedUser && newCompanyId) {
+      addCompanyMutation.mutate({
+        userId: selectedUser.id,
+        companyId: newCompanyId,
+        role: newCompanyRole,
+      });
+    }
+  };
+
+  const handleRemoveCompany = (companyId: string) => {
+    if (selectedUser) {
+      removeCompanyMutation.mutate({
+        userId: selectedUser.id,
+        companyId,
+      });
+    }
+  };
+
+  const handleUpdateCompanyRole = (companyId: string, role: "inspector" | "admin") => {
+    if (selectedUser) {
+      updateCompanyRoleMutation.mutate({
+        userId: selectedUser.id,
+        companyId,
+        role,
+      });
+    }
+  };
+
+  // Get companies that the user is not already a member of
+  const availableCompanies = allCompanies.filter(
+    (company) => !userCompanies.some((uc) => uc.companyId === company.id)
+  );
 
   const handleProjectToggle = (projectId: string, checked: boolean) => {
     if (checked) {
@@ -249,7 +369,16 @@ export default function AdminUsersPage() {
                       <p className="text-sm text-muted-foreground truncate">{user.email}</p>
                     </div>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleOpenCompanyDialog(user)}
+                        data-testid={`button-assign-companies-${user.id}`}
+                      >
+                        <Building2 className="w-4 h-4 mr-1" />
+                        Companies
+                      </Button>
                       <Button
                         variant="outline"
                         size="sm"
@@ -357,6 +486,135 @@ export default function AdminUsersPage() {
                 <Loader2 className="w-4 h-4 mr-2 animate-spin" />
               )}
               Save
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={companyDialogOpen} onOpenChange={setCompanyDialogOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>
+              Manage Companies for {selectedUser ? getDisplayName(selectedUser) : "User"}
+            </DialogTitle>
+            <DialogDescription>
+              Add or remove company memberships and set their role within each company.
+            </DialogDescription>
+          </DialogHeader>
+          
+          {isLoadingUserCompanies ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {userCompanies.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-sm font-medium text-muted-foreground">Current Companies</p>
+                  <div className="space-y-2 max-h-[200px] overflow-y-auto">
+                    {userCompanies.map((membership) => (
+                      <div
+                        key={membership.companyId}
+                        className="flex items-center gap-3 p-3 rounded-md border"
+                        data-testid={`company-membership-${membership.companyId}`}
+                      >
+                        <Building2 className="w-5 h-5 text-muted-foreground shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium truncate">{membership.company?.name || "Unknown Company"}</p>
+                        </div>
+                        <Select
+                          value={membership.role}
+                          onValueChange={(role: "inspector" | "admin") => 
+                            handleUpdateCompanyRole(membership.companyId, role)
+                          }
+                          disabled={updateCompanyRoleMutation.isPending}
+                        >
+                          <SelectTrigger className="w-28" data-testid={`select-company-role-${membership.companyId}`}>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="inspector">Inspector</SelectItem>
+                            <SelectItem value="admin">Admin</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleRemoveCompany(membership.companyId)}
+                          disabled={removeCompanyMutation.isPending}
+                          data-testid={`button-remove-company-${membership.companyId}`}
+                        >
+                          <Trash2 className="w-4 h-4 text-destructive" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {userCompanies.length === 0 && (
+                <div className="py-4 text-center text-muted-foreground">
+                  <Building2 className="w-10 h-10 mx-auto mb-2 opacity-50" />
+                  <p>User is not a member of any company</p>
+                </div>
+              )}
+
+              {availableCompanies.length > 0 && (
+                <div className="space-y-2 pt-4 border-t">
+                  <p className="text-sm font-medium text-muted-foreground">Add to Company</p>
+                  <div className="flex items-center gap-2">
+                    <Select value={newCompanyId} onValueChange={setNewCompanyId}>
+                      <SelectTrigger className="flex-1" data-testid="select-new-company">
+                        <SelectValue placeholder="Select a company..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {availableCompanies.map((company) => (
+                          <SelectItem key={company.id} value={company.id}>
+                            {company.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Select value={newCompanyRole} onValueChange={(v) => setNewCompanyRole(v as "inspector" | "admin")}>
+                      <SelectTrigger className="w-28" data-testid="select-new-company-role">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="inspector">Inspector</SelectItem>
+                        <SelectItem value="admin">Admin</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Button
+                      size="icon"
+                      onClick={handleAddCompany}
+                      disabled={!newCompanyId || addCompanyMutation.isPending}
+                      data-testid="button-add-company"
+                    >
+                      {addCompanyMutation.isPending ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Plus className="w-4 h-4" />
+                      )}
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {availableCompanies.length === 0 && userCompanies.length > 0 && (
+                <p className="text-sm text-muted-foreground text-center pt-4 border-t">
+                  User is a member of all available companies
+                </p>
+              )}
+            </div>
+          )}
+          
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setCompanyDialogOpen(false)}
+              data-testid="button-close-companies"
+            >
+              Close
             </Button>
           </DialogFooter>
         </DialogContent>
