@@ -1331,19 +1331,30 @@ export async function registerRoutes(
       const workActivities = (report.workActivities as WorkActivityRow[]) || [];
       let currentWaY = waY + 16;
       const maxWaRows = Math.max(workActivities.length, 2);
+      const minRowHeight = 16;
       
       for (let i = 0; i < maxWaRows; i++) {
         const activity = workActivities[i];
-        doc.rect(startX, currentWaY, waCols[0], 16).stroke();
-        doc.rect(startX + waCols[0], currentWaY, waCols[1], 16).stroke();
-        doc.rect(startX + waCols[0] + waCols[1], currentWaY, waCols[2], 16).stroke();
+        
+        // Calculate row height based on content
+        let rowHeight = minRowHeight;
+        if (activity) {
+          doc.fontSize(8).font('Helvetica');
+          const contractorHeight = doc.heightOfString(activity.contractor || '', { width: waCols[0] - 6 });
+          const descHeight = doc.heightOfString(activity.workDescription || '', { width: waCols[2] - 6 });
+          rowHeight = Math.max(minRowHeight, contractorHeight + 8, descHeight + 8);
+        }
+        
+        doc.rect(startX, currentWaY, waCols[0], rowHeight).stroke();
+        doc.rect(startX + waCols[0], currentWaY, waCols[1], rowHeight).stroke();
+        doc.rect(startX + waCols[0] + waCols[1], currentWaY, waCols[2], rowHeight).stroke();
         if (activity) {
           doc.fontSize(8).font('Helvetica');
           doc.text(activity.contractor || '', startX + 3, currentWaY + 4, { width: waCols[0] - 6 });
           doc.text(String(activity.headcount || ''), startX + waCols[0] + 18, currentWaY + 4);
           doc.text(activity.workDescription || '', startX + waCols[0] + waCols[1] + 3, currentWaY + 4, { width: waCols[2] - 6 });
         }
-        currentWaY += 16;
+        currentWaY += rowHeight;
       }
 
       // ===== DAILY SUMMARY =====
@@ -1352,16 +1363,19 @@ export async function registerRoutes(
       doc.y += 14;
 
       const sumY = doc.y;
-      const sumH = 90;
-      doc.rect(startX, sumY, pageWidth, sumH).stroke();
-
       const summaryParts: string[] = [];
       if (report.inspections) summaryParts.push(report.inspections);
       if (report.workPerformed) summaryParts.push(report.workPerformed);
       if (report.notes) summaryParts.push(report.notes);
       const summaryText = summaryParts.join('\n\n') || 'No inspection details recorded.';
       
-      doc.fontSize(9).font('Helvetica').text(summaryText, startX + 4, sumY + 4, { width: pageWidth - 8, height: sumH - 8 });
+      // Calculate dynamic height based on content
+      doc.fontSize(9).font('Helvetica');
+      const summaryTextHeight = doc.heightOfString(summaryText, { width: pageWidth - 8 });
+      const sumH = Math.max(50, summaryTextHeight + 12);
+      doc.rect(startX, sumY, pageWidth, sumH).stroke();
+      
+      doc.text(summaryText, startX + 4, sumY + 4, { width: pageWidth - 8 });
 
       // ===== FLAGS ROW: Issues / Safety / Visitors =====
       doc.y = sumY + sumH + 8;
