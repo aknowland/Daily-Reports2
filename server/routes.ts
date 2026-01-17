@@ -1330,11 +1330,12 @@ export async function registerRoutes(
 
       const workActivities = (report.workActivities as WorkActivityRow[]) || [];
       let currentWaY = waY + 16;
-      const maxWaRows = Math.max(workActivities.length, 2);
+      const maxDisplayRows = 6; // Maximum rows to display to prevent page overflow
+      const rowCount = Math.min(Math.max(workActivities.length, 2), maxDisplayRows);
       const minRowHeight = 16;
       const maxRowHeight = 32; // Limit row height to prevent overflow
       
-      for (let i = 0; i < maxWaRows; i++) {
+      for (let i = 0; i < rowCount; i++) {
         const activity = workActivities[i];
         
         // Calculate row height based on content, with maximum limit
