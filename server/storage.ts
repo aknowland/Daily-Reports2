@@ -19,6 +19,9 @@ import { users, type User } from "@shared/models/auth";
 import { db } from "./db";
 import { eq, desc, and, or, sql, inArray } from "drizzle-orm";
 
+// Re-export db for use in other modules
+export { db };
+
 export interface IStorage {
   // Projects
   getProjects(): Promise<Project[]>;
@@ -75,7 +78,7 @@ export interface IStorage {
   isUserMemberOfProject(projectId: string, userId: string): Promise<boolean>;
 
   // Invites
-  getInvites(): Promise<(Invite & { invitedByUser?: User; projects?: Project[] })[]>;
+  getInvites(): Promise<(Invite & { invitedByUser?: User; projects?: Project[]; company?: Company })[]>;
   getInviteByToken(token: string): Promise<Invite | undefined>;
   getInviteByEmail(email: string): Promise<Invite | undefined>;
   createInvite(data: InsertInvite): Promise<Invite>;
@@ -563,14 +566,15 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Invites
-  async getInvites(): Promise<(Invite & { invitedByUser?: User; projects?: Project[] })[]> {
+  async getInvites(): Promise<(Invite & { invitedByUser?: User; projects?: Project[]; company?: Company })[]> {
     const results = await db
       .select()
       .from(invites)
       .leftJoin(users, eq(invites.invitedBy, users.id))
+      .leftJoin(companies, eq(invites.companyId, companies.id))
       .orderBy(desc(invites.createdAt));
 
-    const invitesWithProjects = await Promise.all(results.map(async (row) => {
+    const invitesWithDetails = await Promise.all(results.map(async (row) => {
       const projectIds = (row.invites.projectIds as string[]) || [];
       let projectsList: Project[] = [];
       
@@ -585,10 +589,11 @@ export class DatabaseStorage implements IStorage {
         ...row.invites,
         invitedByUser: row.users || undefined,
         projects: projectsList,
+        company: row.companies || undefined,
       };
     }));
 
-    return invitesWithProjects;
+    return invitesWithDetails;
   }
 
   async getInviteByToken(token: string): Promise<Invite | undefined> {
