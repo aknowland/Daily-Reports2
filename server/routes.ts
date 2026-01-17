@@ -1625,9 +1625,6 @@ export async function registerRoutes(
         const footerY = doc.page.height - 22;
         doc.fontSize(7).font('Helvetica').fillColor('#555');
         doc.text('CC: Architect, Engineer, Project Inspector, Owner', startX, footerY, { lineBreak: false });
-        if (company?.email) {
-          doc.text(company.email, 420, footerY, { width: 150, align: 'right', lineBreak: false });
-        }
         doc.fillColor('#000');
       }
       
