@@ -233,7 +233,7 @@ export default function ReportDetailPage() {
           </Button>
           {report.pdfPath && (
             <Button variant="outline" asChild data-testid="button-download-pdf">
-              <a href={report.pdfPath} download>
+              <a href={`${report.pdfPath}?t=${new Date(report.updatedAt || Date.now()).getTime()}`} download>
                 <Download className="w-4 h-4 mr-2" />
                 Download
               </a>

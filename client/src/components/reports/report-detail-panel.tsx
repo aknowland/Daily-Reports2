@@ -234,7 +234,7 @@ export function ReportDetailPanel({
             )}
             {report.pdfPath ? (
               <Button variant="outline" size="sm" asChild data-testid="button-view-pdf">
-                <a href={report.pdfPath} target="_blank" rel="noopener noreferrer">
+                <a href={`${report.pdfPath}?t=${new Date(report.updatedAt || Date.now()).getTime()}`} target="_blank" rel="noopener noreferrer">
                   <FileText className="w-4 h-4 mr-2" />
                   View PDF
                 </a>
@@ -257,7 +257,7 @@ export function ReportDetailPanel({
             )}
             {report.pdfPath && (
               <Button variant="outline" size="sm" asChild data-testid="button-download-pdf">
-                <a href={report.pdfPath} download>
+                <a href={`${report.pdfPath}?t=${new Date(report.updatedAt || Date.now()).getTime()}`} download>
                   <Download className="w-4 h-4 mr-2" />
                   Download
                 </a>
@@ -523,7 +523,7 @@ export function ReportDetailPanel({
                 </h3>
                 <div className="border rounded-lg overflow-hidden bg-muted">
                   <iframe
-                    src={report.pdfPath}
+                    src={`${report.pdfPath}?t=${new Date(report.updatedAt || Date.now()).getTime()}`}
                     className="w-full h-[400px]"
                     title="Report PDF Preview"
                     data-testid="iframe-pdf-preview"
