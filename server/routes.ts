@@ -1150,7 +1150,7 @@ export async function registerRoutes(
 
       // Project Information Section
       drawSectionHeader('PROJECT INFORMATION');
-      drawTableRow('Project Name', report.project?.name || 'Unknown Project', { bold: true });
+      drawTableRow('Project Name', report.project?.name || report.customProjectName || 'Unassigned Report', { bold: true });
       drawTableRow('Project Number', report.project?.projectNumber || 'N/A');
       if (report.project?.client) {
         drawTableRow('Client', report.project.client);
@@ -1564,10 +1564,11 @@ export async function registerRoutes(
         // Send email using Resend integration
         const { sendEmail } = await import('./replit_integrations/email/client');
         
+        const projectDisplayName = project?.name || report.customProjectName || 'Unassigned Report';
         const emailHtml = `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
             <h2 style="color: #2563eb;">Daily Field Report</h2>
-            <p><strong>Project:</strong> ${project?.name || 'Unknown Project'}</p>
+            <p><strong>Project:</strong> ${projectDisplayName}</p>
             <p><strong>Date:</strong> ${reportDate}</p>
             <p><strong>Inspector:</strong> ${report.inspectorName || 'Unknown'}</p>
             ${message ? `<p><strong>Message:</strong></p><p>${message}</p>` : ''}
@@ -1577,11 +1578,11 @@ export async function registerRoutes(
           </div>
         `;
 
-        const pdfFilename = `Daily_Report_${project?.name?.replace(/[^a-zA-Z0-9]/g, '_') || 'Report'}_${report.date}.pdf`;
+        const pdfFilename = `Daily_Report_${projectDisplayName.replace(/[^a-zA-Z0-9]/g, '_')}_${report.date}.pdf`;
 
         const emailResult = await sendEmail({
           to: recipients,
-          subject: `Daily Field Report - ${project?.name || 'Project'} - ${reportDate}`,
+          subject: `Daily Field Report - ${projectDisplayName} - ${reportDate}`,
           html: emailHtml,
           attachments: [{
             filename: pdfFilename,

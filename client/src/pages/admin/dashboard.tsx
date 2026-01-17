@@ -196,7 +196,7 @@ export default function AdminDashboardPage() {
                           report.status === "submitted" ? "bg-green-500" : "bg-orange-500"
                         }`} />
                         <div>
-                          <p className="font-medium text-sm">{report.project?.name}</p>
+                          <p className="font-medium text-sm">{report.project?.name || report.customProjectName || "Unassigned Report"}</p>
                           <p className="text-xs text-muted-foreground">
                             {report.inspectorName} - {new Date(report.date).toLocaleDateString()}
                           </p>

@@ -23,7 +23,7 @@ export function ReportCard({ report, onClick }: ReportCardProps) {
           <div className="flex-1 min-w-0 space-y-2">
             <div className="flex items-center gap-2 flex-wrap">
               <h3 className="font-semibold text-foreground truncate">
-                {report.project?.name || (report.projectId ? "Unknown Project" : "Personal Report")}
+                {report.project?.name || report.customProjectName || "Unassigned Report"}
               </h3>
               <StatusBadge status={report.status || "draft"} />
             </div>
