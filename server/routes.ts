@@ -1010,80 +1010,89 @@ export async function registerRoutes(
       const filePath = path.join(REPORTS_DIR, filename);
       const pdfPath = `/storage/reports/${filename}`;
 
-      const doc = new PDFDocument({ margin: 50, bufferPages: true });
+      const doc = new PDFDocument({ margin: 36, bufferPages: true }); // Smaller margins
       const writeStream = fs.createWriteStream(filePath);
       doc.pipe(writeStream);
 
       const pageWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
-      const leftColWidth = 120;
+      const leftColWidth = 100; // Narrower labels
       const rightColWidth = pageWidth - leftColWidth;
       const startX = doc.page.margins.left;
       
-      // PDF color scheme - darker, more professional blue
+      // PDF color scheme
       const PRIMARY_BLUE = '#1e40af';
       const PRIMARY_BLUE_BORDER = '#1e3a8a';
       const DIVIDER_GRAY = '#d1d5db';
       
-      // Helper function to draw a table row with border (with automatic page breaks)
-      const drawTableRow = (label: string, value: string, options?: { bold?: boolean }) => {
-        const rowHeight = Math.max(16, doc.heightOfString(value || 'N/A', { width: rightColWidth - 10 }) + 4);
+      // Track pages for 2-page limit
+      let currentPage = 1;
+      const MAX_PAGES = 2;
+      
+      // Helper: check if we can add more content
+      const canAddContent = (heightNeeded: number): boolean => {
+        if (doc.y + heightNeeded <= doc.page.height - doc.page.margins.bottom - 20) return true;
+        return currentPage < MAX_PAGES;
+      };
+      
+      // Helper function to draw a compact table row
+      const drawTableRow = (label: string, value: string, options?: { bold?: boolean }): boolean => {
+        const textVal = value || 'N/A';
+        doc.fontSize(8);
+        const rowHeight = Math.max(13, doc.heightOfString(textVal, { width: rightColWidth - 8 }) + 3);
         
-        // Check if we need a new page
-        if (doc.y + rowHeight > doc.page.height - doc.page.margins.bottom - 30) {
+        if (doc.y + rowHeight > doc.page.height - doc.page.margins.bottom - 20) {
+          if (currentPage >= MAX_PAGES) return false;
           doc.addPage();
+          currentPage++;
         }
         
         const rowY = doc.y;
-        
-        // Draw cell borders
         doc.rect(startX, rowY, leftColWidth, rowHeight).stroke();
         doc.rect(startX + leftColWidth, rowY, rightColWidth, rowHeight).stroke();
         
-        // Draw label (left cell)
-        doc.fontSize(9).font('Helvetica-Bold').text(label, startX + 5, rowY + 3, { width: leftColWidth - 10 });
-        
-        // Draw value (right cell)
-        doc.fontSize(9).font(options?.bold ? 'Helvetica-Bold' : 'Helvetica')
-          .text(value || 'N/A', startX + leftColWidth + 5, rowY + 3, { width: rightColWidth - 10 });
+        doc.fontSize(8).font('Helvetica-Bold').text(label, startX + 4, rowY + 2, { width: leftColWidth - 8 });
+        doc.fontSize(8).font(options?.bold ? 'Helvetica-Bold' : 'Helvetica')
+          .text(textVal, startX + leftColWidth + 4, rowY + 2, { width: rightColWidth - 8 });
         
         doc.y = rowY + rowHeight;
+        return true;
       };
       
       // Helper function to draw a subtle section divider
       const drawSectionDivider = () => {
-        doc.moveDown(0.5);
+        doc.moveDown(0.3);
         const dividerY = doc.y;
         doc.strokeColor(DIVIDER_GRAY).lineWidth(0.5)
           .moveTo(startX, dividerY)
           .lineTo(startX + pageWidth, dividerY)
           .stroke();
         doc.strokeColor('#000').lineWidth(1);
-        doc.moveDown(0.3);
+        doc.moveDown(0.2);
       };
 
-      // Helper function to draw section header with extra spacing (with automatic page breaks)
-      const drawSectionHeader = (title: string) => {
-        // Check if we need a new page (need room for header + at least one row)
-        if (doc.y + 50 > doc.page.height - doc.page.margins.bottom - 30) {
+      // Helper function to draw compact section header
+      const drawSectionHeader = (title: string): boolean => {
+        if (doc.y + 30 > doc.page.height - doc.page.margins.bottom - 20) {
+          if (currentPage >= MAX_PAGES) return false;
           doc.addPage();
+          currentPage++;
         } else {
-          doc.moveDown(0.6);
+          doc.moveDown(0.4);
         }
         
         const headerY = doc.y;
-        // Darker blue background with white text for section headers - larger font
-        doc.rect(startX, headerY, pageWidth, 18).fillAndStroke(PRIMARY_BLUE, PRIMARY_BLUE_BORDER);
-        doc.fillColor('#ffffff').fontSize(10).font('Helvetica-Bold')
-          .text(title, startX + 6, headerY + 4, { width: pageWidth - 12 });
-        doc.y = headerY + 18;
-        // Reset fill color for subsequent content
+        doc.rect(startX, headerY, pageWidth, 14).fillAndStroke(PRIMARY_BLUE, PRIMARY_BLUE_BORDER);
+        doc.fillColor('#ffffff').fontSize(8).font('Helvetica-Bold')
+          .text(title, startX + 5, headerY + 3, { width: pageWidth - 10 });
+        doc.y = headerY + 14;
         doc.fillColor('#000');
+        return true;
       };
 
-      // Header with company logo in top left and contact info on right (same row)
-      const logoSize = 170;
+      // Compact header with logo and contact info
+      const logoSize = 80; // Much smaller logo
       let hasLogo = false;
-      const logoTopY = 10; // Position logo at top of page
+      const logoTopY = 8;
       let logoEndY = logoTopY;
       let company: any = null;
       
@@ -1091,7 +1100,6 @@ export async function registerRoutes(
       if (report.project?.companyId) {
         company = await storage.getCompany(report.project.companyId);
         
-        // Add company logo in top left if exists
         if (company?.logoPath) {
           const logoFilePath = path.join(process.cwd(), company.logoPath.replace(/^\//, ''));
           if (fs.existsSync(logoFilePath)) {
@@ -1099,9 +1107,7 @@ export async function registerRoutes(
               doc.image(logoFilePath, startX, logoTopY, {
                 width: logoSize,
                 height: logoSize,
-                fit: [logoSize, logoSize],
-                align: 'center',
-                valign: 'center'
+                fit: [logoSize, logoSize]
               });
               hasLogo = true;
               logoEndY = logoTopY + logoSize;
@@ -1111,42 +1117,39 @@ export async function registerRoutes(
           }
         }
         
-        // Add company contact info on the right side (vertically centered with logo)
-        const contactX = startX + pageWidth - 200;
-        const contactBlockHeight = 50; // Approximate height of contact block
-        let contactY = logoTopY + (logoSize - contactBlockHeight) / 2; // Center vertically with logo
-        doc.fontSize(10).font('Helvetica-Bold').fillColor('#000');
-        
+        // Compact contact info on the right
+        const contactX = startX + pageWidth - 180;
+        let contactY = logoTopY;
+        doc.fontSize(9).font('Helvetica-Bold').fillColor('#000');
         if (company?.name) {
-          doc.text(company.name, contactX, contactY, { width: 200, align: 'right' });
-          contactY += 14;
+          doc.text(company.name, contactX, contactY, { width: 180, align: 'right' });
+          contactY += 11;
         }
-        doc.font('Helvetica').fontSize(9);
+        doc.font('Helvetica').fontSize(8);
         if (company?.address) {
-          doc.text(company.address, contactX, contactY, { width: 200, align: 'right' });
-          contactY += 12;
+          doc.text(company.address, contactX, contactY, { width: 180, align: 'right' });
+          contactY += 10;
         }
         if (company?.phone) {
-          doc.text(company.phone, contactX, contactY, { width: 200, align: 'right' });
-          contactY += 12;
+          doc.text(company.phone, contactX, contactY, { width: 180, align: 'right' });
+          contactY += 10;
         }
         if (company?.email) {
-          doc.text(company.email, contactX, contactY, { width: 200, align: 'right' });
+          doc.text(company.email, contactX, contactY, { width: 180, align: 'right' });
         }
       }
       
-      // Title centered below logo with tighter spacing
-      const titleY = hasLogo ? logoEndY - 15 : doc.page.margins.top;
-      doc.fontSize(16).font('Helvetica-Bold').text('DAILY FIELD REPORT', startX, titleY, { 
-        width: pageWidth,
-        align: 'center' 
-      });
-      doc.fontSize(9).font('Helvetica').text(new Date(report.date).toLocaleDateString('en-US', { 
+      // Title - compact, positioned beside logo
+      const titleY = hasLogo ? logoTopY + 10 : doc.page.margins.top;
+      const titleX = hasLogo ? startX + logoSize + 15 : startX;
+      const titleWidth = hasLogo ? pageWidth - logoSize - 200 : pageWidth;
+      doc.fontSize(14).font('Helvetica-Bold').text('DAILY FIELD REPORT', titleX, titleY, { width: titleWidth });
+      doc.fontSize(8).font('Helvetica').text(new Date(report.date).toLocaleDateString('en-US', { 
         weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' 
-      }), startX, titleY + 18, { align: 'center', width: pageWidth });
+      }), titleX, titleY + 16, { width: titleWidth });
       
-      // Set consistent position after header block
-      doc.y = titleY + 32;
+      // Start content after header
+      doc.y = Math.max(logoEndY, titleY + 30) + 5;
 
       // Project Information Section
       drawSectionHeader('PROJECT INFORMATION');
@@ -1165,52 +1168,53 @@ export async function registerRoutes(
       drawTableRow('Weather', `${report.weatherType || 'Not specified'}${report.weatherNotes ? ` - ${report.weatherNotes}` : ''}`);
       drawTableRow('Status', (report.status || 'draft').toUpperCase());
 
-      // Work Activities Section - Columns: Contractor, Manpower, Work Activities
+      // Work Activities Section - compact 3-column table
       const workActivities = (report.workActivities as WorkActivityRow[]) || [];
-      if (workActivities.length > 0) {
-        drawSectionHeader('WORK ACTIVITIES');
-        
-        // Column widths: Contractor (150), Manpower (60), Work Activities (remaining)
-        const activityColWidths = [150, 60, pageWidth - 150 - 60];
-        
-        // Helper to draw the work activities table header
-        const drawActivityTableHeader = () => {
-          const hdrY = doc.y;
-          const headerBg = '#e5e7eb';
-          doc.rect(startX, hdrY, activityColWidths[0], 16).fillAndStroke(headerBg, '#000');
-          doc.rect(startX + activityColWidths[0], hdrY, activityColWidths[1], 16).fillAndStroke(headerBg, '#000');
-          doc.rect(startX + activityColWidths[0] + activityColWidths[1], hdrY, activityColWidths[2], 16).fillAndStroke(headerBg, '#000');
+      if (workActivities.length > 0 && canAddContent(40)) {
+        if (drawSectionHeader('WORK ACTIVITIES')) {
+          const activityColWidths = [130, 50, pageWidth - 130 - 50];
           
-          doc.fillColor('#000').fontSize(9).font('Helvetica-Bold');
-          doc.text('Contractor/Trade', startX + 4, hdrY + 4, { width: activityColWidths[0] - 8 });
-          doc.text('Manpower', startX + activityColWidths[0] + 4, hdrY + 4, { width: activityColWidths[1] - 8 });
-          doc.text('Work Activities', startX + activityColWidths[0] + activityColWidths[1] + 4, hdrY + 4, { width: activityColWidths[2] - 8 });
-          doc.y = hdrY + 16;
-        };
-        
-        drawActivityTableHeader();
-        
-        for (const activity of workActivities) {
-          const descHeight = doc.heightOfString(activity.workDescription || '', { width: activityColWidths[2] - 8 });
-          const rowHeight = Math.max(16, descHeight + 6);
+          const drawActivityTableHeader = () => {
+            const hdrY = doc.y;
+            const headerBg = '#e5e7eb';
+            doc.rect(startX, hdrY, activityColWidths[0], 12).fillAndStroke(headerBg, '#000');
+            doc.rect(startX + activityColWidths[0], hdrY, activityColWidths[1], 12).fillAndStroke(headerBg, '#000');
+            doc.rect(startX + activityColWidths[0] + activityColWidths[1], hdrY, activityColWidths[2], 12).fillAndStroke(headerBg, '#000');
+            
+            doc.fillColor('#000').fontSize(7).font('Helvetica-Bold');
+            doc.text('Contractor/Trade', startX + 3, hdrY + 3, { width: activityColWidths[0] - 6 });
+            doc.text('Crew', startX + activityColWidths[0] + 3, hdrY + 3, { width: activityColWidths[1] - 6 });
+            doc.text('Work Activities', startX + activityColWidths[0] + activityColWidths[1] + 3, hdrY + 3, { width: activityColWidths[2] - 6 });
+            doc.y = hdrY + 12;
+          };
           
-          // Check if we need a new page
-          if (doc.y + rowHeight > doc.page.height - doc.page.margins.bottom - 30) {
-            doc.addPage();
-            drawActivityTableHeader();
+          drawActivityTableHeader();
+          
+          for (const activity of workActivities) {
+            if (currentPage >= MAX_PAGES && doc.y > doc.page.height - doc.page.margins.bottom - 40) break;
+            
+            doc.fontSize(7);
+            const descHeight = doc.heightOfString(activity.workDescription || '', { width: activityColWidths[2] - 6 });
+            const rowHeight = Math.max(11, descHeight + 4);
+            
+            if (doc.y + rowHeight > doc.page.height - doc.page.margins.bottom - 20) {
+              if (currentPage >= MAX_PAGES) break;
+              doc.addPage();
+              currentPage++;
+              drawActivityTableHeader();
+            }
+            
+            const rowY = doc.y;
+            doc.rect(startX, rowY, activityColWidths[0], rowHeight).stroke();
+            doc.rect(startX + activityColWidths[0], rowY, activityColWidths[1], rowHeight).stroke();
+            doc.rect(startX + activityColWidths[0] + activityColWidths[1], rowY, activityColWidths[2], rowHeight).stroke();
+            
+            doc.fontSize(7).font('Helvetica');
+            doc.text(activity.contractor || '', startX + 3, rowY + 2, { width: activityColWidths[0] - 6 });
+            doc.text(String(activity.headcount || 0), startX + activityColWidths[0] + 3, rowY + 2, { width: activityColWidths[1] - 6 });
+            doc.text(activity.workDescription || '', startX + activityColWidths[0] + activityColWidths[1] + 3, rowY + 2, { width: activityColWidths[2] - 6 });
+            doc.y = rowY + rowHeight;
           }
-          
-          const rowY = doc.y;
-          
-          doc.rect(startX, rowY, activityColWidths[0], rowHeight).stroke();
-          doc.rect(startX + activityColWidths[0], rowY, activityColWidths[1], rowHeight).stroke();
-          doc.rect(startX + activityColWidths[0] + activityColWidths[1], rowY, activityColWidths[2], rowHeight).stroke();
-          
-          doc.fontSize(9).font('Helvetica');
-          doc.text(activity.contractor || '', startX + 4, rowY + 4, { width: activityColWidths[0] - 8 });
-          doc.text(String(activity.headcount || 0), startX + activityColWidths[0] + 4, rowY + 4, { width: activityColWidths[1] - 8 });
-          doc.text(activity.workDescription || '', startX + activityColWidths[0] + activityColWidths[1] + 4, rowY + 4, { width: activityColWidths[2] - 8 });
-          doc.y = rowY + rowHeight;
         }
       }
 
@@ -1258,140 +1262,99 @@ export async function registerRoutes(
         drawTableRow('On Site', report.equipment);
       }
 
-      // Photos - 2 columns layout with automatic page breaks
+      // Photos - 2 columns, smaller, max 4 photos for 2-page limit
       const photos = report.photos || [];
-      if (photos.length > 0) {
-        const photoHeight = 140;
-        const photoPadding = 6;
-        const photoGap = 16;
-        const captionHeight = 20;
+      const maxPhotos = Math.min(photos.length, 4);
+      if (maxPhotos > 0 && canAddContent(100)) {
+        const photoHeight = 90;
+        const photoPadding = 4;
+        const photoGap = 10;
+        const captionHeight = 12;
         
-        // Check if we need a new page for photos section
-        if (doc.y + 18 + photoHeight + captionHeight + 30 > doc.page.height - doc.page.margins.bottom - 30) {
-          doc.addPage();
-        }
-        drawSectionHeader('PHOTOS');
-        doc.moveDown(0.3);
-        
-        const photoWidth = (pageWidth - photoGap) / 2;
-        let currentY = doc.y;
-        
-        for (let i = 0; i < photos.length; i += 2) {
-          // Check if we need a new page
-          if (currentY > doc.page.height - photoHeight - captionHeight - 60) {
-            doc.addPage();
-            currentY = doc.page.margins.top;
-          }
+        if (drawSectionHeader(`PHOTOS${photos.length > 4 ? ` (${maxPhotos} of ${photos.length})` : ''}`)) {
+          const photoWidth = (pageWidth - photoGap) / 2;
+          let currentY = doc.y;
           
-          // Left photo
-          const leftPhoto = photos[i];
-          const leftPhotoPath = path.join(process.cwd(), leftPhoto.filePath.replace(/^\//, ''));
-          if (fs.existsSync(leftPhotoPath)) {
-            try {
-              doc.lineWidth(1.5).strokeColor('#374151')
-                .rect(startX, currentY, photoWidth, photoHeight).stroke();
-              doc.lineWidth(1).strokeColor('#000');
-              
-              doc.image(leftPhotoPath, startX + photoPadding, currentY + photoPadding, { 
-                width: photoWidth - (photoPadding * 2), 
-                height: photoHeight - (photoPadding * 2), 
-                fit: [photoWidth - (photoPadding * 2), photoHeight - (photoPadding * 2)],
-                align: 'center',
-                valign: 'center'
-              });
-              if (leftPhoto.caption) {
-                const caption = leftPhoto.caption.length > 50 ? leftPhoto.caption.substring(0, 50) + '...' : leftPhoto.caption;
-                doc.fontSize(8).font('Helvetica-Oblique').fillColor('#4b5563')
-                  .text(caption, startX, currentY + photoHeight + 4, { width: photoWidth, align: 'center' });
-                doc.fillColor('#000');
-              }
-            } catch (err) {
-              console.error('Error adding left photo:', err);
+          for (let i = 0; i < maxPhotos; i += 2) {
+            if (currentPage >= MAX_PAGES && currentY > doc.page.height - photoHeight - 40) break;
+            
+            if (currentY > doc.page.height - photoHeight - captionHeight - 40) {
+              if (currentPage >= MAX_PAGES) break;
+              doc.addPage();
+              currentPage++;
+              currentY = doc.page.margins.top;
             }
-          }
-          
-          // Right photo (if exists)
-          if (i + 1 < photos.length) {
-            const rightPhoto = photos[i + 1];
-            const rightPhotoPath = path.join(process.cwd(), rightPhoto.filePath.replace(/^\//, ''));
-            const rightX = startX + photoWidth + photoGap;
-            if (fs.existsSync(rightPhotoPath)) {
+            
+            // Left photo
+            const leftPhoto = photos[i];
+            const leftPhotoPath = path.join(process.cwd(), leftPhoto.filePath.replace(/^\//, ''));
+            if (fs.existsSync(leftPhotoPath)) {
               try {
-                doc.lineWidth(1.5).strokeColor('#374151')
-                  .rect(rightX, currentY, photoWidth, photoHeight).stroke();
+                doc.lineWidth(1).strokeColor('#374151').rect(startX, currentY, photoWidth, photoHeight).stroke();
                 doc.lineWidth(1).strokeColor('#000');
-                
-                doc.image(rightPhotoPath, rightX + photoPadding, currentY + photoPadding, { 
-                  width: photoWidth - (photoPadding * 2), 
-                  height: photoHeight - (photoPadding * 2), 
-                  fit: [photoWidth - (photoPadding * 2), photoHeight - (photoPadding * 2)],
-                  align: 'center',
-                  valign: 'center'
+                doc.image(leftPhotoPath, startX + photoPadding, currentY + photoPadding, { 
+                  width: photoWidth - (photoPadding * 2), height: photoHeight - (photoPadding * 2),
+                  fit: [photoWidth - (photoPadding * 2), photoHeight - (photoPadding * 2)], align: 'center', valign: 'center'
                 });
-                if (rightPhoto.caption) {
-                  const caption = rightPhoto.caption.length > 50 ? rightPhoto.caption.substring(0, 50) + '...' : rightPhoto.caption;
-                  doc.fontSize(8).font('Helvetica-Oblique').fillColor('#4b5563')
-                    .text(caption, rightX, currentY + photoHeight + 4, { width: photoWidth, align: 'center' });
+                if (leftPhoto.caption) {
+                  doc.fontSize(6).font('Helvetica-Oblique').fillColor('#4b5563')
+                    .text(leftPhoto.caption.substring(0, 40), startX, currentY + photoHeight + 2, { width: photoWidth, align: 'center' });
                   doc.fillColor('#000');
                 }
-              } catch (err) {
-                console.error('Error adding right photo:', err);
+              } catch (err) { console.error('Error adding photo:', err); }
+            }
+            
+            // Right photo
+            if (i + 1 < maxPhotos) {
+              const rightPhoto = photos[i + 1];
+              const rightPhotoPath = path.join(process.cwd(), rightPhoto.filePath.replace(/^\//, ''));
+              const rightX = startX + photoWidth + photoGap;
+              if (fs.existsSync(rightPhotoPath)) {
+                try {
+                  doc.lineWidth(1).strokeColor('#374151').rect(rightX, currentY, photoWidth, photoHeight).stroke();
+                  doc.lineWidth(1).strokeColor('#000');
+                  doc.image(rightPhotoPath, rightX + photoPadding, currentY + photoPadding, { 
+                    width: photoWidth - (photoPadding * 2), height: photoHeight - (photoPadding * 2),
+                    fit: [photoWidth - (photoPadding * 2), photoHeight - (photoPadding * 2)], align: 'center', valign: 'center'
+                  });
+                  if (rightPhoto.caption) {
+                    doc.fontSize(6).font('Helvetica-Oblique').fillColor('#4b5563')
+                      .text(rightPhoto.caption.substring(0, 40), rightX, currentY + photoHeight + 2, { width: photoWidth, align: 'center' });
+                    doc.fillColor('#000');
+                  }
+                } catch (err) { console.error('Error adding photo:', err); }
               }
             }
+            
+            currentY += photoHeight + captionHeight + 4;
+            doc.y = currentY;
           }
-          
-          currentY += photoHeight + captionHeight + 8;
-          doc.y = currentY;
         }
       }
 
-      // Signature Section with full details
-      if (report.signaturePath) {
-        // Check if we need a new page for signature (need 200px of space)
-        if (doc.y > doc.page.height - doc.page.margins.bottom - 200) {
-          doc.addPage();
-        }
-        
-        drawSectionHeader('SIGNATURE');
-        doc.moveDown(0.3);
-        
-        const sigPath = path.join(process.cwd(), report.signaturePath.replace(/^\//, ''));
-        if (fs.existsSync(sigPath)) {
-          // Draw signature in a bordered box with label
-          const sigBoxY = doc.y;
-          const sigBoxHeight = 80;
-          doc.lineWidth(1).strokeColor('#374151')
-            .rect(startX, sigBoxY, pageWidth, sigBoxHeight).stroke();
-          doc.strokeColor('#000');
-          
-          doc.image(sigPath, startX + 10, sigBoxY + 5, { 
-            width: 150,
-            height: sigBoxHeight - 10,
-            fit: [150, sigBoxHeight - 10]
-          });
-          
-          // Signature line and label on the right
-          const sigLineX = startX + 180;
-          const sigLineY = sigBoxY + sigBoxHeight - 20;
-          doc.strokeColor(DIVIDER_GRAY).lineWidth(0.5)
-            .moveTo(sigLineX, sigLineY)
-            .lineTo(startX + pageWidth - 20, sigLineY)
-            .stroke();
-          doc.strokeColor('#000').lineWidth(1);
-          doc.fontSize(7).font('Helvetica').fillColor('#6b7280')
-            .text('Inspector Signature', sigLineX, sigLineY + 3, { width: pageWidth - 200 });
-          doc.fillColor('#000');
-          
-          doc.y = sigBoxY + sigBoxHeight;
-        }
-        
-        // Add inspector name and report date below signature
-        drawTableRow('Inspector', report.inspectorName || 'Unknown');
-        drawTableRow('Report Date', new Date(report.date).toLocaleDateString('en-US', { 
-          weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' 
-        }));
-        if (report.signedAt) {
-          drawTableRow('Signed At', new Date(report.signedAt).toLocaleString('en-US'));
+      // Signature Section - compact, only if space available
+      if (report.signaturePath && canAddContent(60)) {
+        if (drawSectionHeader('SIGNATURE')) {
+          const sigPath = path.join(process.cwd(), report.signaturePath.replace(/^\//, ''));
+          if (fs.existsSync(sigPath)) {
+            const sigBoxY = doc.y;
+            const sigBoxHeight = 45;
+            doc.lineWidth(0.5).strokeColor('#374151').rect(startX, sigBoxY, 140, sigBoxHeight).stroke();
+            doc.strokeColor('#000');
+            
+            doc.image(sigPath, startX + 3, sigBoxY + 3, { width: 134, height: sigBoxHeight - 6, fit: [134, sigBoxHeight - 6] });
+            
+            // Name/date on the right, inline with signature
+            doc.fontSize(7).font('Helvetica').fillColor('#374151');
+            doc.text(`${report.inspectorName || 'Inspector'}`, startX + 150, sigBoxY + 8);
+            doc.text(`${new Date(report.date).toLocaleDateString('en-US')}`, startX + 150, sigBoxY + 20);
+            if (report.signedAt) {
+              doc.fontSize(6).text(`Signed: ${new Date(report.signedAt).toLocaleString('en-US')}`, startX + 150, sigBoxY + 32);
+            }
+            doc.fillColor('#000');
+            
+            doc.y = sigBoxY + sigBoxHeight;
+          }
         }
       }
 
