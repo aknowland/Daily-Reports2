@@ -85,8 +85,8 @@ export default function LandingPage() {
                       <ArrowRight className="ml-2 w-5 h-5" />
                     </a>
                   </Button>
-                  <Button variant="outline" size="lg" className="h-12" data-testid="button-hero-learn-more">
-                    Learn More
+                  <Button variant="outline" size="lg" asChild className="h-12" data-testid="button-hero-learn-more">
+                    <a href="/learn-more">Learn More</a>
                   </Button>
                 </div>
 
