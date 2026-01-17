@@ -186,6 +186,13 @@ Three role levels with different access permissions:
 - Sees only their own reports
 - Can create reports for assigned projects
 
+### Knowland Construction Services
+- Members of "Knowland Construction Services" company bypass all subscription limits
+- When accepting invites to Knowland, users automatically get the inspector role
+- When join requests to Knowland are approved, users get the inspector role
+- No report count limits apply - unlimited reports
+- Subscription status shows as "active" for Knowland members
+
 ### Inspector Mode Toggle
 - System and company admins can toggle "View as Inspector" mode via switch in header
 - When enabled (preferAdminMode=false), admin users see only their assigned projects and own reports

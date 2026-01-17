@@ -58,6 +58,21 @@ const isEffectiveSystemAdmin = (profile: any): boolean => {
   return profile?.role === "admin" && profile?.preferAdminMode !== false;
 };
 
+// Knowland Construction Services - members bypass all subscription limits
+const KNOWLAND_COMPANY_NAME = "Knowland Construction Services";
+
+// Helper to check if user is a member of Knowland Construction Services
+const isKnowlandMember = async (userId: string): Promise<boolean> => {
+  const companies = await storage.getCompaniesForUser(userId);
+  return companies.some(c => (c as any).company?.name === KNOWLAND_COMPANY_NAME);
+};
+
+// Helper to get Knowland company if exists
+const getKnowlandCompany = async (): Promise<{ id: string; name: string } | null> => {
+  const companies = await storage.getCompanies();
+  return companies.find(c => c.name === KNOWLAND_COMPANY_NAME) || null;
+};
+
 // Helper to check if user is effectively acting as company admin for a given company
 // Returns true if user is a company admin AND has admin mode enabled
 const isEffectiveCompanyAdmin = async (userId: string, companyId: string, profile: any): Promise<boolean> => {
@@ -1118,10 +1133,13 @@ export async function registerRoutes(
       );
       const hasActiveUserSubscription = profile?.subscriptionStatus === 'active';
       
+      // Knowland Construction Services members bypass all subscription limits
+      const isKnowland = await isKnowlandMember(userId);
+      
       // Track if we need to increment free tier count after creation
       let shouldIncrementCount = false;
       
-      if (!hasActiveCompanySubscription && !hasActiveUserSubscription) {
+      if (!isKnowland && !hasActiveCompanySubscription && !hasActiveUserSubscription) {
         // User is on free tier - check report count
         let currentCount = profile?.monthlyReportCount || 0;
         
@@ -2787,14 +2805,20 @@ export async function registerRoutes(
         return res.status(400).json({ message: "This invite has expired" });
       }
 
-      // Add user to company if companyId is set on invite
+      // Check if this is a Knowland Construction Services invite
+      let effectiveRole = invite.role as "inspector" | "admin";
       if (invite.companyId) {
-        await storage.addCompanyMember(invite.companyId, userId, invite.role as "inspector" | "admin");
+        const company = await storage.getCompany(invite.companyId);
+        // Knowland Construction Services members always get inspector role
+        if (company?.name === KNOWLAND_COMPANY_NAME) {
+          effectiveRole = "inspector";
+        }
+        await storage.addCompanyMember(invite.companyId, userId, effectiveRole);
       }
 
       await storage.createOrUpdateUserProfile({
         userId,
-        role: invite.role as "inspector" | "admin",
+        role: effectiveRole,
         activeCompanyId: invite.companyId || undefined,
         email: invite.email,
       });
@@ -2811,7 +2835,7 @@ export async function registerRoutes(
         message: "Invite accepted successfully",
         companyId: invite.companyId,
         projectsAssigned: projectIds.length,
-        role: invite.role,
+        role: effectiveRole,
       });
     } catch (error) {
       console.error("Error accepting invite:", error);
@@ -3972,6 +3996,9 @@ Transcript: "${transcript}"`;
       const profile = await storage.getUserProfile(userId);
       const companies = await storage.getCompaniesForUser(userId);
       
+      // Check if user is a Knowland Construction Services member (bypass all limits)
+      const isKnowland = await isKnowlandMember(userId);
+      
       // Check if user has any active company subscriptions
       const activeCompanySubscription = companies.find(c => 
         (c as any).company?.subscriptionStatus === 'active'
@@ -3983,7 +4010,12 @@ Transcript: "${transcript}"`;
       let status = profile?.subscriptionStatus || 'none';
       const FREE_TIER_LIMIT = 5;
       
-      if (activeCompanySubscription) {
+      // Knowland members bypass all subscription limits
+      if (isKnowland) {
+        subscriptionType = 'company';
+        hasActiveSubscription = true;
+        status = 'active';
+      } else if (activeCompanySubscription) {
         // User is part of a company with active subscription
         subscriptionType = 'company';
         hasActiveSubscription = true;
