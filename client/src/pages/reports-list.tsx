@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link, useSearch, useLocation } from "wouter";
+import { format } from "date-fns";
 import { PageLayout } from "@/components/layout/page-layout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -12,10 +13,27 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
+import { Label } from "@/components/ui/label";
 import { ReportCard } from "@/components/reports/report-card";
 import { ReportDetailPanel } from "@/components/reports/report-detail-panel";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/hooks/use-auth";
+import { useToast } from "@/hooks/use-toast";
+import { apiRequest } from "@/lib/queryClient";
 import { 
   Plus, 
   Search, 
@@ -23,12 +41,18 @@ import {
   AlertCircle,
   Filter,
   FolderOpen,
-  X
+  X,
+  CalendarIcon,
+  Download,
+  Mail,
+  Loader2
 } from "lucide-react";
 import type { DailyReportWithDetails, Project } from "@shared/schema";
+import type { DateRange } from "react-day-picker";
 
 export default function ReportsListPage() {
   const { user, isAdmin, isCompanyAdmin } = useAuth();
+  const { toast } = useToast();
   const [, setLocation] = useLocation();
   const searchString = useSearch();
   const urlParams = new URLSearchParams(searchString);
@@ -39,6 +63,32 @@ export default function ReportsListPage() {
   const [projectFilter, setProjectFilter] = useState<string>(projectIdFromUrl || "all");
   const [selectedReport, setSelectedReport] = useState<DailyReportWithDetails | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
+  
+  const [dateRange, setDateRange] = useState<DateRange | undefined>();
+  const [exportModalOpen, setExportModalOpen] = useState(false);
+  const [exportEmail, setExportEmail] = useState("");
+  
+  const exportMutation = useMutation({
+    mutationFn: async (data: { reportIds: string[]; email: string }) => {
+      return apiRequest("POST", "/api/reports/export", data);
+    },
+    onSuccess: () => {
+      toast({
+        title: "Reports sent",
+        description: `Reports have been emailed to ${exportEmail}`,
+      });
+      setExportModalOpen(false);
+      setExportEmail("");
+      setDateRange(undefined);
+    },
+    onError: () => {
+      toast({
+        title: "Export failed",
+        description: "Failed to send reports. Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
   
   useEffect(() => {
     if (projectIdFromUrl) {
@@ -84,9 +134,49 @@ export default function ReportsListPage() {
     
     const matchesStatus = statusFilter === "all" || report.status === statusFilter;
     const matchesProject = projectFilter === "all" || report.projectId === projectFilter;
+    
+    let matchesDateRange = true;
+    if (dateRange?.from) {
+      const reportDate = new Date(report.date);
+      if (dateRange.from) {
+        matchesDateRange = reportDate >= dateRange.from;
+      }
+      if (dateRange.to && matchesDateRange) {
+        matchesDateRange = reportDate <= dateRange.to;
+      }
+    }
 
-    return matchesSearch && matchesStatus && matchesProject;
+    return matchesSearch && matchesStatus && matchesProject && matchesDateRange;
   });
+  
+  const reportsToExport = filteredReports.filter(r => r.status === "submitted");
+  
+  const handleOpenExportModal = () => {
+    if (reportsToExport.length === 0) {
+      toast({
+        title: "No reports to export",
+        description: "Select a date range with submitted reports to export.",
+        variant: "destructive",
+      });
+      return;
+    }
+    setExportModalOpen(true);
+  };
+  
+  const handleExport = () => {
+    if (!exportEmail.trim()) {
+      toast({
+        title: "Email required",
+        description: "Please enter an email address.",
+        variant: "destructive",
+      });
+      return;
+    }
+    exportMutation.mutate({
+      reportIds: reportsToExport.map(r => r.id),
+      email: exportEmail.trim(),
+    });
+  };
   
   const clearProjectFilter = () => {
     setProjectFilter("all");
@@ -108,12 +198,23 @@ export default function ReportsListPage() {
               {filteredReports.length} {projectFilter !== "all" ? "reports for this project" : "total reports"}
             </p>
           </div>
-          <Button asChild data-testid="button-new-report">
-            <Link href="/reports/new">
-              <Plus className="w-4 h-4 mr-2" />
-              New Report
-            </Link>
-          </Button>
+          <div className="flex gap-2">
+            <Button 
+              variant="outline" 
+              onClick={handleOpenExportModal}
+              disabled={reportsToExport.length === 0}
+              data-testid="button-export-reports"
+            >
+              <Mail className="w-4 h-4 mr-2" />
+              Export ({reportsToExport.length})
+            </Button>
+            <Button asChild data-testid="button-new-report">
+              <Link href="/reports/new">
+                <Plus className="w-4 h-4 mr-2" />
+                New Report
+              </Link>
+            </Button>
+          </div>
         </div>
 
         {selectedProject && (
@@ -182,6 +283,50 @@ export default function ReportsListPage() {
               <SelectItem value="submitted">Submitted</SelectItem>
             </SelectContent>
           </Select>
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button
+                variant="outline"
+                className="w-full sm:w-auto justify-start text-left font-normal h-10"
+                data-testid="button-date-range"
+              >
+                <CalendarIcon className="mr-2 h-4 w-4" />
+                {dateRange?.from ? (
+                  dateRange.to ? (
+                    <>
+                      {format(dateRange.from, "MMM d")} - {format(dateRange.to, "MMM d")}
+                    </>
+                  ) : (
+                    format(dateRange.from, "MMM d, yyyy")
+                  )
+                ) : (
+                  <span>Date Range</span>
+                )}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0" align="end">
+              <Calendar
+                initialFocus
+                mode="range"
+                defaultMonth={dateRange?.from}
+                selected={dateRange}
+                onSelect={setDateRange}
+                numberOfMonths={2}
+              />
+              {dateRange && (
+                <div className="p-2 border-t">
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    className="w-full"
+                    onClick={() => setDateRange(undefined)}
+                  >
+                    Clear dates
+                  </Button>
+                </div>
+              )}
+            </PopoverContent>
+          </Popover>
         </div>
 
         {isLoading ? (
@@ -269,6 +414,77 @@ export default function ReportsListPage() {
         isAdmin={isAdmin}
         isCompanyAdmin={isCompanyAdmin}
       />
+
+      <Dialog open={exportModalOpen} onOpenChange={setExportModalOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Export Reports</DialogTitle>
+            <DialogDescription>
+              Send {reportsToExport.length} report{reportsToExport.length !== 1 ? 's' : ''} to an email address.
+              {dateRange?.from && (
+                <span className="block mt-1">
+                  Date range: {format(dateRange.from, "MMM d, yyyy")}
+                  {dateRange.to && ` - ${format(dateRange.to, "MMM d, yyyy")}`}
+                </span>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="export-email">Email Address</Label>
+              <Input
+                id="export-email"
+                type="email"
+                placeholder="recipient@example.com"
+                value={exportEmail}
+                onChange={(e) => setExportEmail(e.target.value)}
+                data-testid="input-export-email"
+              />
+            </div>
+            
+            <div className="text-sm text-muted-foreground">
+              <p className="font-medium mb-2">Reports to send:</p>
+              <ul className="max-h-32 overflow-y-auto space-y-1">
+                {reportsToExport.slice(0, 5).map((report) => (
+                  <li key={report.id} className="flex items-center gap-2">
+                    <FileText className="w-3 h-3" />
+                    {report.project?.name || report.customProjectName || "Unassigned"} - {format(new Date(report.date), "MMM d, yyyy")}
+                  </li>
+                ))}
+                {reportsToExport.length > 5 && (
+                  <li className="text-muted-foreground">
+                    ...and {reportsToExport.length - 5} more
+                  </li>
+                )}
+              </ul>
+            </div>
+          </div>
+          
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setExportModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleExport} 
+              disabled={exportMutation.isPending}
+              data-testid="button-send-export"
+            >
+              {exportMutation.isPending ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Sending...
+                </>
+              ) : (
+                <>
+                  <Mail className="w-4 h-4 mr-2" />
+                  Send Reports
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </PageLayout>
   );
 }
