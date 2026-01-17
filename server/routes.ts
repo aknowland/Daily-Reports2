@@ -3415,7 +3415,18 @@ export async function registerRoutes(
       }
       
       // Regular inspectors (or admins in inspector mode): only assigned projects
+      // Filter by active company if one is set
       const projectsList = await storage.getAllProjectsForUser(userId);
+      const activeCompanyId = profile?.activeCompanyId;
+      
+      if (activeCompanyId) {
+        // Show projects from active company + personal projects (no company)
+        const filtered = projectsList.filter(p => 
+          p.companyId === activeCompanyId || p.companyId === null
+        );
+        return res.json(filtered);
+      }
+      
       res.json(projectsList);
     } catch (error) {
       console.error("Error fetching user projects:", error);
