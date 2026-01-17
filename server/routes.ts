@@ -1127,7 +1127,7 @@ export async function registerRoutes(
         try {
           const logoBuffer = await loadImageBuffer(company.logoPath);
           if (logoBuffer) {
-            doc.image(logoBuffer, startX, 15, { width: 90, height: 30, fit: [90, 30] });
+            doc.image(logoBuffer, startX, 12, { width: 120, height: 40, fit: [120, 40] });
           }
         } catch (err) {
           console.error('Error adding company logo:', err);
@@ -1136,15 +1136,15 @@ export async function registerRoutes(
 
       // Company name and contact - upper right
       const companyName = (company?.name || 'FIELD DAILY REPORTS').toUpperCase();
-      doc.fontSize(9).font('Helvetica-Bold').text(companyName, 280, 15, { width: 290, align: 'right' });
+      doc.fontSize(9).font('Helvetica-Bold').text(companyName, 280, 12, { width: 290, align: 'right' });
       const contactLine = [company?.address, company?.phone, company?.email].filter(Boolean).join('  |  ');
       if (contactLine) {
-        doc.fontSize(5.5).font('Helvetica').text(contactLine, 280, 26, { width: 290, align: 'right' });
+        doc.fontSize(5.5).font('Helvetica').text(contactLine, 280, 24, { width: 290, align: 'right' });
       }
 
       // Form grid boxes - right side
       const gridX = 380;
-      const gridTop = 35;
+      const gridTop = 38;
       const reportDate = new Date(report.date);
       const dateStr = reportDate.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: '2-digit' });
       const timeStr = reportDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
@@ -1177,46 +1177,38 @@ export async function registerRoutes(
       doc.fontSize(5).font('Helvetica').text('Time', gridX + 112, gridTop + 18);
       doc.fontSize(7).font('Helvetica-Bold').text(timeStr, gridX + 112, gridTop + 24);
 
-      // Title
-      doc.fontSize(12).font('Helvetica-Bold').text('DAILY FIELD INSPECTION REPORT', startX, gridTop + 10);
+      // Title - positioned below the logo
+      doc.fontSize(12).font('Helvetica-Bold').text('DAILY FIELD INSPECTION REPORT', startX, gridTop + 22);
 
-      // Weather row with icon and color
-      doc.y = gridTop + 38;
+      // Weather row with icon
+      doc.y = gridTop + 42;
       const weatherType = (report.weatherType || 'clear').toLowerCase();
       const weatherText = `${report.weatherNotes || ''}`.trim();
       
-      // Weather icon and color mapping
-      const weatherConfig: Record<string, { icon: string; color: string; label: string }> = {
-        'clear': { icon: '☀', color: '#f59e0b', label: 'Clear' },
-        'sunny': { icon: '☀', color: '#f59e0b', label: 'Sunny' },
-        'partly-cloudy': { icon: '⛅', color: '#6b7280', label: 'Partly Cloudy' },
-        'cloudy': { icon: '☁', color: '#9ca3af', label: 'Cloudy' },
-        'overcast': { icon: '☁', color: '#6b7280', label: 'Overcast' },
-        'rainy': { icon: '🌧', color: '#3b82f6', label: 'Rainy' },
-        'rain': { icon: '🌧', color: '#3b82f6', label: 'Rain' },
-        'stormy': { icon: '⛈', color: '#4b5563', label: 'Stormy' },
-        'snowy': { icon: '❄', color: '#93c5fd', label: 'Snowy' },
-        'snow': { icon: '❄', color: '#93c5fd', label: 'Snow' },
-        'windy': { icon: '💨', color: '#6b7280', label: 'Windy' },
-        'foggy': { icon: '🌫', color: '#9ca3af', label: 'Foggy' },
-        'fog': { icon: '🌫', color: '#9ca3af', label: 'Fog' },
-        'hot': { icon: '🔥', color: '#ef4444', label: 'Hot' },
-        'cold': { icon: '❄', color: '#3b82f6', label: 'Cold' },
+      // Weather icon mapping (using simple text symbols that render in PDFs)
+      const weatherIcons: Record<string, string> = {
+        'clear': '☀',
+        'sunny': '☀',
+        'partly-cloudy': '⛅',
+        'cloudy': '☁',
+        'overcast': '☁',
+        'rainy': '☂',
+        'rain': '☂',
+        'stormy': '⚡',
+        'snowy': '❄',
+        'snow': '❄',
+        'windy': '≋',
+        'foggy': '≡',
+        'fog': '≡',
+        'hot': '♨',
+        'cold': '❄',
       };
-      const weather = weatherConfig[weatherType] || weatherConfig['clear'];
+      const weatherIcon = weatherIcons[weatherType] || '☀';
+      const weatherLabel = (report.weatherType || 'Clear').charAt(0).toUpperCase() + (report.weatherType || 'clear').slice(1);
       
       doc.fontSize(6).font('Helvetica-Bold').text('WEATHER:', startX, doc.y);
-      
-      // Draw colored weather indicator circle
-      doc.circle(startX + 52, doc.y + 3, 4).fill(weather.color);
-      doc.fillColor('#000');
-      
-      // Weather label and notes
-      doc.fontSize(6).font('Helvetica-Bold').fillColor(weather.color).text(weather.label, startX + 60, doc.y);
-      doc.fillColor('#000');
-      if (weatherText) {
-        doc.font('Helvetica').text(` - ${weatherText}`, startX + 60 + doc.widthOfString(weather.label) + 2, doc.y);
-      }
+      doc.fontSize(10).text(weatherIcon, startX + 45, doc.y - 2);
+      doc.fontSize(6).font('Helvetica').text(`${weatherLabel}${weatherText ? ' - ' + weatherText : ''}`, startX + 58, doc.y);
 
       // ===== TYPE OF WORK - Checkboxes =====
       doc.y += 12;
@@ -1325,45 +1317,21 @@ export async function registerRoutes(
       doc.y = sumY + sumH + 6;
       const flagY = doc.y;
 
-      // Issues/Delays with orange coloring when flagged
-      const issuesColor = report.issuesFlag ? '#f97316' : '#000';
-      doc.fontSize(6).font('Helvetica-Bold').fillColor(issuesColor).text('ISSUES/DELAYS:', startX, flagY);
-      doc.fillColor('#000');
-      
-      // Orange filled checkbox for Yes if issues flagged
-      if (report.issuesFlag) {
-        doc.rect(startX + 55, flagY - 1, checkSize, checkSize).fillAndStroke('#f97316', '#f97316');
-        doc.fillColor('#fff').fontSize(5).font('Helvetica-Bold').text('✓', startX + 56, flagY - 1);
-        doc.fillColor('#000');
-      } else {
-        doc.rect(startX + 55, flagY - 1, checkSize, checkSize).stroke();
-      }
-      doc.fontSize(5).font('Helvetica').fillColor(report.issuesFlag ? '#f97316' : '#000').text('Yes', startX + 64, flagY);
-      doc.fillColor('#000');
-      
+      doc.fontSize(6).font('Helvetica-Bold').text('ISSUES/DELAYS:', startX, flagY);
+      doc.rect(startX + 55, flagY - 1, checkSize, checkSize).stroke();
+      if (report.issuesFlag) doc.rect(startX + 56, flagY, 5, 5).fill('#000');
+      doc.fontSize(5).font('Helvetica').text('Yes', startX + 64, flagY);
       doc.rect(startX + 80, flagY - 1, checkSize, checkSize).stroke();
       if (!report.issuesFlag) doc.rect(startX + 81, flagY, 5, 5).fill('#000');
-      doc.fontSize(5).font('Helvetica').text('No', startX + 89, flagY);
+      doc.text('No', startX + 89, flagY);
 
-      // Safety Incidents with red coloring when flagged
-      const safetyColor = report.safetyFlag ? '#dc2626' : '#000';
-      doc.fontSize(6).font('Helvetica-Bold').fillColor(safetyColor).text('SAFETY INCIDENTS:', startX + 115, flagY);
-      doc.fillColor('#000');
-      
-      // Red filled checkbox for Yes if safety flagged
-      if (report.safetyFlag) {
-        doc.rect(startX + 188, flagY - 1, checkSize, checkSize).fillAndStroke('#dc2626', '#dc2626');
-        doc.fillColor('#fff').fontSize(5).font('Helvetica-Bold').text('✓', startX + 189, flagY - 1);
-        doc.fillColor('#000');
-      } else {
-        doc.rect(startX + 188, flagY - 1, checkSize, checkSize).stroke();
-      }
-      doc.fontSize(5).font('Helvetica').fillColor(report.safetyFlag ? '#dc2626' : '#000').text('Yes', startX + 197, flagY);
-      doc.fillColor('#000');
-      
-      doc.rect(startX + 213, flagY - 1, checkSize, checkSize).stroke();
-      if (!report.safetyFlag) doc.rect(startX + 214, flagY, 5, 5).fill('#000');
-      doc.fontSize(5).font('Helvetica').text('No', startX + 222, flagY);
+      doc.fontSize(6).font('Helvetica-Bold').text('SAFETY INCIDENTS:', startX + 115, flagY);
+      doc.rect(startX + 180, flagY - 1, checkSize, checkSize).stroke();
+      if (report.safetyFlag) doc.rect(startX + 181, flagY, 5, 5).fill('#000');
+      doc.fontSize(5).font('Helvetica').text('Yes', startX + 189, flagY);
+      doc.rect(startX + 205, flagY - 1, checkSize, checkSize).stroke();
+      if (!report.safetyFlag) doc.rect(startX + 206, flagY, 5, 5).fill('#000');
+      doc.text('No', startX + 214, flagY);
 
       const visitors = (report.visitors as VisitorRow[]) || [];
       const visitorsText = visitors.map(v => `${v.name}${v.company ? ` (${v.company})` : ''}`).join(', ') || 'None';
