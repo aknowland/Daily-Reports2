@@ -161,7 +161,84 @@ export async function registerRoutes(
   // Register object storage routes for persistent file storage
   registerObjectStorageRoutes(app);
 
-  // Serve static files from storage (authenticated access with ownership check)
+  // Serve object storage files (authenticated access with ownership check)
+  app.use("/objects", isAuthenticated, async (req: any, res, next) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      
+      // The full object path
+      const objectPath = `/objects${req.path}`;
+
+      // System admins can access all files (when in admin mode)
+      if (isEffectiveSystemAdmin(profile)) {
+        try {
+          const objectFile = await objectStorage.getObjectEntityFile(objectPath);
+          return await objectStorage.downloadObject(objectFile, res);
+        } catch (err) {
+          return next();
+        }
+      }
+
+      // Helper to check if user can access a report's files
+      const canAccessReportFile = async (report: any): Promise<boolean> => {
+        if (report.inspectorId === userId) return true;
+        if (report.projectId) {
+          const project = await storage.getProject(report.projectId);
+          if (project?.companyId && await isEffectiveCompanyAdmin(userId, project.companyId, profile)) {
+            return true;
+          }
+        }
+        return false;
+      };
+
+      // Parse the path to determine file type and permissions
+      const pathParts = req.path.split('/');
+      const folder = pathParts[1]; // photos, signatures, reports, logos
+      const filename = pathParts[2];
+
+      if (folder === 'photos') {
+        // Photo files - check if user owns the report or is company admin
+        const photo = await storage.getPhotoByPath(objectPath);
+        if (photo) {
+          const report = await storage.getReport(photo.reportId);
+          if (report && await canAccessReportFile(report)) {
+            const objectFile = await objectStorage.getObjectEntityFile(objectPath);
+            return await objectStorage.downloadObject(objectFile, res);
+          }
+        }
+      } else if (folder === 'signatures' || folder === 'reports') {
+        // Signature and PDF files are named with report ID
+        const reportId = filename?.replace(/\.(png|pdf)$/, '');
+        if (reportId) {
+          const report = await storage.getReport(reportId);
+          if (report && await canAccessReportFile(report)) {
+            const objectFile = await objectStorage.getObjectEntityFile(objectPath);
+            return await objectStorage.downloadObject(objectFile, res);
+          }
+        }
+      } else if (folder === 'logos') {
+        // Company logos - allow access for authenticated users who are members of the company
+        const companies = await storage.getCompanies();
+        const owningCompany = companies.find(c => c.logoPath === objectPath);
+        
+        if (owningCompany) {
+          const isMember = await storage.isUserMemberOfCompany(owningCompany.id, userId);
+          if (isMember) {
+            const objectFile = await objectStorage.getObjectEntityFile(objectPath);
+            return await objectStorage.downloadObject(objectFile, res);
+          }
+        }
+      }
+
+      return res.status(403).json({ message: "Access denied" });
+    } catch (error) {
+      console.error("Error serving object storage file:", error);
+      return res.status(500).json({ message: "Failed to serve file" });
+    }
+  });
+
+  // Serve static files from storage (authenticated access with ownership check - legacy support)
   app.use("/storage", isAuthenticated, async (req: any, res, next) => {
     try {
       const userId = req.user?.claims?.sub;
