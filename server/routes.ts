@@ -10,6 +10,7 @@ import fs from "fs";
 import { randomUUID } from "crypto";
 import { z } from "zod";
 import PDFDocument from "pdfkit";
+import { format } from "date-fns";
 import { speechToText, openai } from "./replit_integrations/audio/client";
 
 // Initialize object storage service for persistent file storage
@@ -732,6 +733,236 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error calculating invoice hours:", error);
       res.status(500).json({ message: "Failed to calculate invoice hours" });
+    }
+  });
+
+  // Invoice PDF generation
+  app.get("/api/projects/:id/invoice-pdf", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const projectId = req.params.id;
+      const { startDate, endDate } = req.query;
+      
+      if (!startDate || !endDate) {
+        return res.status(400).json({ message: "Start date and end date are required" });
+      }
+      
+      // Validate dates
+      const start = new Date(startDate as string);
+      const end = new Date(endDate as string);
+      if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+        return res.status(400).json({ message: "Invalid date format" });
+      }
+      if (start > end) {
+        return res.status(400).json({ message: "Start date must be before end date" });
+      }
+      
+      // Check access to project
+      const profile = await storage.getUserProfile(userId);
+      const project = await storage.getProject(projectId);
+      
+      if (!project) {
+        return res.status(404).json({ message: "Project not found" });
+      }
+      
+      // Allow access if user is system admin, company admin, or member of project
+      const isProjectMember = await storage.isUserMemberOfProject(projectId, userId);
+      const hasCompanyAccess = project.companyId && await isEffectiveCompanyAdmin(userId, project.companyId, profile);
+      
+      if (!isEffectiveSystemAdmin(profile) && !hasCompanyAccess && !isProjectMember) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      // Get company info if project has a company
+      let company = null;
+      if (project.companyId) {
+        company = await storage.getCompany(project.companyId);
+      }
+      
+      // Get app settings for logo
+      const logoSetting = await storage.getSetting("companyLogo");
+      let logoBuffer: Buffer | null = null;
+      if (logoSetting?.value) {
+        try {
+          logoBuffer = await objectStorage.downloadBuffer(logoSetting.value);
+        } catch (e) {
+          console.log("Could not load company logo for invoice PDF");
+        }
+      }
+      
+      // Get all reports for this project within date range
+      const reports = await storage.getReportsForInvoice(projectId, start, end);
+      
+      // Calculate totals and get inspector names
+      let totalRegularHours = 0;
+      let totalOTHours = 0;
+      const reportDetails: Array<{
+        date: Date;
+        inspectorName: string;
+        regularHours: number;
+        otHours: number;
+      }> = [];
+      
+      for (const report of reports) {
+        const regHrs = parseFloat(report.regularHours || "0") || 0;
+        const otHrs = parseFloat(report.otHours || "0") || 0;
+        totalRegularHours += regHrs;
+        totalOTHours += otHrs;
+        
+        const inspectorProfile = await storage.getUserProfile(report.inspectorId);
+        const inspectorUser = await storage.getUserById(report.inspectorId);
+        const inspectorName = inspectorProfile?.firstName && inspectorProfile?.lastName
+          ? `${inspectorProfile.firstName} ${inspectorProfile.lastName}`
+          : inspectorUser?.firstName && inspectorUser?.lastName
+          ? `${inspectorUser.firstName} ${inspectorUser.lastName}`
+          : inspectorUser?.email || 'Unknown';
+        
+        reportDetails.push({
+          date: report.date,
+          inspectorName,
+          regularHours: regHrs,
+          otHours: otHrs,
+        });
+      }
+      
+      // Generate PDF
+      const doc = new PDFDocument({ size: 'LETTER', margin: 50 });
+      const chunks: Buffer[] = [];
+      
+      doc.on('data', (chunk: Buffer) => chunks.push(chunk));
+      doc.on('end', () => {
+        const pdfBuffer = Buffer.concat(chunks);
+        const dateStr = format(start, "yyyy-MM-dd") + "_to_" + format(end, "yyyy-MM-dd");
+        const filename = `Invoice_${project.projectNumber || project.name}_${dateStr}.pdf`;
+        
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+        res.send(pdfBuffer);
+      });
+      
+      const pageWidth = doc.page.width - 100;
+      const startX = 50;
+      
+      // Header with logo
+      let headerY = 50;
+      if (logoBuffer) {
+        try {
+          doc.image(logoBuffer, startX, headerY, { height: 50 });
+          headerY += 60;
+        } catch (e) {
+          console.log("Could not render logo in invoice PDF");
+        }
+      }
+      
+      // Title
+      doc.fontSize(20).font('Helvetica-Bold').text('INVOICE', startX, headerY, { align: 'center', width: pageWidth });
+      doc.moveDown(0.5);
+      
+      // Date range
+      const dateRangeStr = `${format(start, "MMMM d, yyyy")} - ${format(end, "MMMM d, yyyy")}`;
+      doc.fontSize(12).font('Helvetica').text(dateRangeStr, { align: 'center', width: pageWidth });
+      doc.moveDown(1.5);
+      
+      // Company info section
+      if (company) {
+        doc.fontSize(10).font('Helvetica-Bold').text('FROM:', startX);
+        doc.fontSize(10).font('Helvetica').text(company.name, startX);
+        if (company.address) doc.text(company.address);
+        if (company.phone) doc.text(`Phone: ${company.phone}`);
+        if (company.email) doc.text(`Email: ${company.email}`);
+        doc.moveDown();
+      }
+      
+      // Project info section
+      doc.fontSize(10).font('Helvetica-Bold').text('PROJECT:', startX);
+      doc.fontSize(10).font('Helvetica').text(`${project.name} (${project.projectNumber || 'N/A'})`, startX);
+      if (project.client) doc.text(`Client: ${project.client}`);
+      if (project.address) doc.text(`Address: ${project.address}`);
+      doc.moveDown(1.5);
+      
+      // Summary section
+      doc.fontSize(12).font('Helvetica-Bold').text('HOURS SUMMARY', startX);
+      doc.moveDown(0.5);
+      
+      const summaryY = doc.y;
+      const colWidth = pageWidth / 4;
+      
+      // Summary boxes
+      doc.rect(startX, summaryY, colWidth - 5, 45).stroke();
+      doc.fontSize(9).font('Helvetica').text('Reports', startX + 5, summaryY + 5);
+      doc.fontSize(16).font('Helvetica-Bold').text(String(reports.length), startX + 5, summaryY + 22);
+      
+      doc.rect(startX + colWidth, summaryY, colWidth - 5, 45).stroke();
+      doc.fontSize(9).font('Helvetica').text('Regular Hours', startX + colWidth + 5, summaryY + 5);
+      doc.fontSize(16).font('Helvetica-Bold').text(totalRegularHours.toFixed(2), startX + colWidth + 5, summaryY + 22);
+      
+      doc.rect(startX + colWidth * 2, summaryY, colWidth - 5, 45).stroke();
+      doc.fontSize(9).font('Helvetica').text('OT Hours', startX + colWidth * 2 + 5, summaryY + 5);
+      doc.fontSize(16).font('Helvetica-Bold').text(totalOTHours.toFixed(2), startX + colWidth * 2 + 5, summaryY + 22);
+      
+      doc.rect(startX + colWidth * 3, summaryY, colWidth - 5, 45).stroke();
+      doc.fontSize(9).font('Helvetica').text('Total Hours', startX + colWidth * 3 + 5, summaryY + 5);
+      doc.fontSize(16).font('Helvetica-Bold').text((totalRegularHours + totalOTHours).toFixed(2), startX + colWidth * 3 + 5, summaryY + 22);
+      
+      doc.y = summaryY + 60;
+      
+      // Daily breakdown table
+      if (reportDetails.length > 0) {
+        doc.fontSize(12).font('Helvetica-Bold').text('DAILY BREAKDOWN', startX);
+        doc.moveDown(0.5);
+        
+        const tableTop = doc.y;
+        const dateColW = 100;
+        const inspColW = 200;
+        const regColW = 80;
+        const otColW = 80;
+        const rowHeight = 20;
+        
+        // Table header
+        doc.rect(startX, tableTop, pageWidth, rowHeight).fill('#f0f0f0').stroke('#ccc');
+        doc.fillColor('#000').fontSize(9).font('Helvetica-Bold');
+        doc.text('Date', startX + 5, tableTop + 5);
+        doc.text('Inspector', startX + dateColW + 5, tableTop + 5);
+        doc.text('Reg Hrs', startX + dateColW + inspColW + 5, tableTop + 5);
+        doc.text('OT Hrs', startX + dateColW + inspColW + regColW + 5, tableTop + 5);
+        
+        let currentY = tableTop + rowHeight;
+        
+        for (const report of reportDetails) {
+          // Check if we need a new page
+          if (currentY + rowHeight > doc.page.height - 80) {
+            doc.addPage();
+            currentY = 50;
+          }
+          
+          doc.rect(startX, currentY, pageWidth, rowHeight).stroke('#ddd');
+          doc.fontSize(9).font('Helvetica').fillColor('#000');
+          doc.text(format(new Date(report.date), 'MMM d, yyyy'), startX + 5, currentY + 5);
+          doc.text(report.inspectorName, startX + dateColW + 5, currentY + 5);
+          doc.text(report.regularHours.toFixed(2), startX + dateColW + inspColW + 5, currentY + 5);
+          doc.text(report.otHours.toFixed(2), startX + dateColW + inspColW + regColW + 5, currentY + 5);
+          
+          currentY += rowHeight;
+        }
+        
+        // Totals row
+        doc.rect(startX, currentY, pageWidth, rowHeight).fill('#f0f0f0').stroke('#ccc');
+        doc.fillColor('#000').fontSize(9).font('Helvetica-Bold');
+        doc.text('TOTAL', startX + 5, currentY + 5);
+        doc.text(totalRegularHours.toFixed(2), startX + dateColW + inspColW + 5, currentY + 5);
+        doc.text(totalOTHours.toFixed(2), startX + dateColW + inspColW + regColW + 5, currentY + 5);
+      } else {
+        doc.fontSize(10).font('Helvetica').text('No reports found for the selected date range.', startX);
+      }
+      
+      // Footer
+      doc.fontSize(8).font('Helvetica').fillColor('#666');
+      doc.text(`Generated on ${format(new Date(), 'MMMM d, yyyy')}`, startX, doc.page.height - 50, { align: 'center', width: pageWidth });
+      
+      doc.end();
+    } catch (error) {
+      console.error("Error generating invoice PDF:", error);
+      res.status(500).json({ message: "Failed to generate invoice PDF" });
     }
   });
 
