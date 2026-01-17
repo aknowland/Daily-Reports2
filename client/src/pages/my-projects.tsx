@@ -34,10 +34,44 @@ import {
   Hash,
   Plus,
   Link as LinkIcon,
+  FileText,
+  Loader2,
+  Calendar,
 } from "lucide-react";
 import { Link } from "wouter";
 import { useState } from "react";
+import { format, startOfMonth, endOfMonth, subMonths } from "date-fns";
 import type { Project, Company } from "@shared/schema";
+import { Calendar as CalendarComponent } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+
+interface InvoiceData {
+  project: {
+    id: string;
+    name: string;
+    projectNumber: string;
+    client: string | null;
+  };
+  dateRange: {
+    startDate: string;
+    endDate: string;
+  };
+  totals: {
+    regularHours: number;
+    otHours: number;
+    totalHours: number;
+    reportCount: number;
+  };
+  reports: Array<{
+    id: string;
+    date: string;
+    inspectorName: string;
+    timeIn: string | null;
+    timeOut: string | null;
+    regularHours: number;
+    otHours: number;
+  }>;
+}
 
 export default function MyProjectsPage() {
   const { toast } = useToast();
@@ -52,6 +86,14 @@ export default function MyProjectsPage() {
     client: "",
     address: "",
   });
+  
+  // Invoice dialog state
+  const [showInvoiceDialog, setShowInvoiceDialog] = useState(false);
+  const [invoiceProject, setInvoiceProject] = useState<Project | null>(null);
+  const [invoiceStartDate, setInvoiceStartDate] = useState<Date | undefined>(startOfMonth(subMonths(new Date(), 1)));
+  const [invoiceEndDate, setInvoiceEndDate] = useState<Date | undefined>(endOfMonth(subMonths(new Date(), 1)));
+  const [invoiceData, setInvoiceData] = useState<InvoiceData | null>(null);
+  const [isLoadingInvoice, setIsLoadingInvoice] = useState(false);
 
   const { data: projects = [], isLoading, error } = useQuery<Project[]>({
     queryKey: ["/api/my-projects"],
@@ -128,6 +170,44 @@ export default function MyProjectsPage() {
     setSelectedProject(project);
     setSelectedCompanyId("");
     setShowAssignDialog(true);
+  };
+
+  const handleOpenInvoice = (project: Project) => {
+    setInvoiceProject(project);
+    setInvoiceData(null);
+    // Default to previous month
+    setInvoiceStartDate(startOfMonth(subMonths(new Date(), 1)));
+    setInvoiceEndDate(endOfMonth(subMonths(new Date(), 1)));
+    setShowInvoiceDialog(true);
+  };
+
+  const fetchInvoiceData = async () => {
+    if (!invoiceProject || !invoiceStartDate || !invoiceEndDate) return;
+    
+    setIsLoadingInvoice(true);
+    try {
+      const startStr = format(invoiceStartDate, "yyyy-MM-dd");
+      const endStr = format(invoiceEndDate, "yyyy-MM-dd");
+      const response = await fetch(
+        `/api/projects/${invoiceProject.id}/invoice-hours?startDate=${startStr}&endDate=${endStr}`,
+        { credentials: "include" }
+      );
+      
+      if (!response.ok) {
+        throw new Error("Failed to fetch invoice data");
+      }
+      
+      const data = await response.json();
+      setInvoiceData(data);
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to calculate invoice hours",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoadingInvoice(false);
+    }
   };
 
   // Get companies where user is admin
@@ -314,6 +394,15 @@ export default function MyProjectsPage() {
                           Switch to this Project
                         </Button>
                       )}
+                      <Button
+                        variant="outline"
+                        className="w-full"
+                        onClick={() => handleOpenInvoice(project)}
+                        data-testid={`button-invoice-${project.id}`}
+                      >
+                        <FileText className="w-4 h-4 mr-2" />
+                        Generate Invoice
+                      </Button>
                     </div>
                   </CardContent>
                 </Card>
@@ -447,6 +536,184 @@ export default function MyProjectsPage() {
               data-testid="button-confirm-assign"
             >
               {assignMutation.isPending ? "Assigning..." : "Assign Project"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showInvoiceDialog} onOpenChange={(open) => {
+        setShowInvoiceDialog(open);
+        if (!open) {
+          setInvoiceProject(null);
+          setInvoiceData(null);
+        }
+      }}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Generate Invoice</DialogTitle>
+            <DialogDescription>
+              Calculate hours worked for {invoiceProject?.name}
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4 pt-4">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label>Start Date</Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className="w-full justify-start text-left font-normal"
+                      data-testid="button-invoice-start-date"
+                    >
+                      <Calendar className="mr-2 h-4 w-4" />
+                      {invoiceStartDate ? format(invoiceStartDate, "PPP") : "Pick a date"}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <CalendarComponent
+                      mode="single"
+                      selected={invoiceStartDate}
+                      onSelect={setInvoiceStartDate}
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
+              </div>
+              <div className="space-y-2">
+                <Label>End Date</Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className="w-full justify-start text-left font-normal"
+                      data-testid="button-invoice-end-date"
+                    >
+                      <Calendar className="mr-2 h-4 w-4" />
+                      {invoiceEndDate ? format(invoiceEndDate, "PPP") : "Pick a date"}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <CalendarComponent
+                      mode="single"
+                      selected={invoiceEndDate}
+                      onSelect={setInvoiceEndDate}
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
+              </div>
+            </div>
+            
+            <Button
+              onClick={fetchInvoiceData}
+              disabled={!invoiceStartDate || !invoiceEndDate || isLoadingInvoice}
+              className="w-full"
+              data-testid="button-calculate-hours"
+            >
+              {isLoadingInvoice ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Calculating...
+                </>
+              ) : (
+                "Calculate Hours"
+              )}
+            </Button>
+            
+            {invoiceData && (
+              <div className="space-y-4 border-t pt-4">
+                <div className="grid gap-4 grid-cols-2 sm:grid-cols-4">
+                  <Card>
+                    <CardContent className="pt-4 text-center">
+                      <div className="text-2xl font-bold" data-testid="text-total-reports">
+                        {invoiceData.totals.reportCount}
+                      </div>
+                      <div className="text-sm text-muted-foreground">Reports</div>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardContent className="pt-4 text-center">
+                      <div className="text-2xl font-bold" data-testid="text-regular-hours">
+                        {invoiceData.totals.regularHours.toFixed(2)}
+                      </div>
+                      <div className="text-sm text-muted-foreground">Regular Hours</div>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardContent className="pt-4 text-center">
+                      <div className="text-2xl font-bold" data-testid="text-ot-hours">
+                        {invoiceData.totals.otHours.toFixed(2)}
+                      </div>
+                      <div className="text-sm text-muted-foreground">OT Hours</div>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardContent className="pt-4 text-center">
+                      <div className="text-2xl font-bold text-primary" data-testid="text-total-hours">
+                        {invoiceData.totals.totalHours.toFixed(2)}
+                      </div>
+                      <div className="text-sm text-muted-foreground">Total Hours</div>
+                    </CardContent>
+                  </Card>
+                </div>
+                
+                {invoiceData.reports.length > 0 && (
+                  <div className="space-y-2">
+                    <h4 className="font-medium">Daily Breakdown</h4>
+                    <div className="border rounded-lg overflow-hidden">
+                      <table className="w-full text-sm">
+                        <thead className="bg-muted">
+                          <tr>
+                            <th className="text-left p-2">Date</th>
+                            <th className="text-left p-2 hidden sm:table-cell">Inspector</th>
+                            <th className="text-right p-2">Reg Hrs</th>
+                            <th className="text-right p-2">OT Hrs</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {invoiceData.reports.map((report) => (
+                            <tr key={report.id} className="border-t">
+                              <td className="p-2">{format(new Date(report.date), "MMM d, yyyy")}</td>
+                              <td className="p-2 hidden sm:table-cell">{report.inspectorName}</td>
+                              <td className="p-2 text-right">{report.regularHours.toFixed(2)}</td>
+                              <td className="p-2 text-right">{report.otHours.toFixed(2)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                        <tfoot className="bg-muted font-medium">
+                          <tr>
+                            <td className="p-2" colSpan={2}>Total</td>
+                            <td className="p-2 text-right">{invoiceData.totals.regularHours.toFixed(2)}</td>
+                            <td className="p-2 text-right">{invoiceData.totals.otHours.toFixed(2)}</td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+                  </div>
+                )}
+                
+                {invoiceData.reports.length === 0 && (
+                  <div className="text-center py-6 text-muted-foreground">
+                    No reports found for the selected date range.
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+          
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowInvoiceDialog(false);
+                setInvoiceProject(null);
+                setInvoiceData(null);
+              }}
+              data-testid="button-close-invoice"
+            >
+              Close
             </Button>
           </DialogFooter>
         </DialogContent>
