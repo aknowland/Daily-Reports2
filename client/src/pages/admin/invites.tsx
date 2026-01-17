@@ -252,6 +252,27 @@ export default function AdminInvitesPage() {
                     </p>
                   </div>
 
+                  {formData.companyId && !companies?.find(c => c.id === formData.companyId)?.name?.includes("Knowland Construction") && (
+                    <div className="rounded-md border bg-muted/50 p-3 space-y-2">
+                      <div className="flex items-center gap-2 text-sm font-medium">
+                        <AlertCircle className="w-4 h-4 text-primary" />
+                        Subscription Information
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        New users will need an active subscription to create unlimited reports. Here are the available options:
+                      </p>
+                      <div className="text-xs space-y-1 pl-2">
+                        <p><strong>Free:</strong> 5 reports/month (no payment required)</p>
+                        <p><strong>Independent Pro:</strong> $49/month (unlimited reports)</p>
+                        <p><strong>Company User:</strong> $79/month per user</p>
+                        <p><strong>Company Account:</strong> $499/month (unlimited users)</p>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        The invited user can start with the Free option and upgrade later from their Billing page.
+                      </p>
+                    </div>
+                  )}
+
                   <div className="space-y-2">
                     <Label htmlFor="role">Role</Label>
                     <Select
