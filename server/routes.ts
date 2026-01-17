@@ -1180,35 +1180,84 @@ export async function registerRoutes(
       // Title - positioned below the logo
       doc.fontSize(12).font('Helvetica-Bold').text('DAILY FIELD INSPECTION REPORT', startX, gridTop + 22);
 
-      // Weather row with icon
+      // Weather row with drawn icon
       doc.y = gridTop + 42;
       const weatherType = (report.weatherType || 'clear').toLowerCase();
       const weatherText = `${report.weatherNotes || ''}`.trim();
-      
-      // Weather icon mapping (using simple text symbols that render in PDFs)
-      const weatherIcons: Record<string, string> = {
-        'clear': '☀',
-        'sunny': '☀',
-        'partly-cloudy': '⛅',
-        'cloudy': '☁',
-        'overcast': '☁',
-        'rainy': '☂',
-        'rain': '☂',
-        'stormy': '⚡',
-        'snowy': '❄',
-        'snow': '❄',
-        'windy': '≋',
-        'foggy': '≡',
-        'fog': '≡',
-        'hot': '♨',
-        'cold': '❄',
-      };
-      const weatherIcon = weatherIcons[weatherType] || '☀';
       const weatherLabel = (report.weatherType || 'Clear').charAt(0).toUpperCase() + (report.weatherType || 'clear').slice(1);
       
       doc.fontSize(6).font('Helvetica-Bold').text('WEATHER:', startX, doc.y);
-      doc.fontSize(10).text(weatherIcon, startX + 45, doc.y - 2);
-      doc.fontSize(6).font('Helvetica').text(`${weatherLabel}${weatherText ? ' - ' + weatherText : ''}`, startX + 58, doc.y);
+      
+      // Draw weather icon based on type
+      const iconX = startX + 48;
+      const iconY = doc.y + 2;
+      const iconSize = 5;
+      
+      if (weatherType === 'clear' || weatherType === 'sunny' || weatherType === 'hot') {
+        // Sun icon - circle with rays
+        doc.circle(iconX, iconY, iconSize - 1).fill('#f59e0b');
+        doc.lineWidth(0.5).strokeColor('#f59e0b');
+        for (let i = 0; i < 8; i++) {
+          const angle = (i * Math.PI) / 4;
+          const x1 = iconX + Math.cos(angle) * (iconSize + 1);
+          const y1 = iconY + Math.sin(angle) * (iconSize + 1);
+          const x2 = iconX + Math.cos(angle) * (iconSize + 3);
+          const y2 = iconY + Math.sin(angle) * (iconSize + 3);
+          doc.moveTo(x1, y1).lineTo(x2, y2).stroke();
+        }
+        doc.strokeColor('#000');
+      } else if (weatherType === 'cloudy' || weatherType === 'overcast') {
+        // Cloud icon - overlapping circles
+        doc.circle(iconX - 2, iconY, 3).fill('#9ca3af');
+        doc.circle(iconX + 2, iconY - 1, 3.5).fill('#9ca3af');
+        doc.circle(iconX + 5, iconY, 2.5).fill('#9ca3af');
+      } else if (weatherType === 'partly-cloudy') {
+        // Sun behind cloud
+        doc.circle(iconX - 3, iconY - 2, 3).fill('#f59e0b');
+        doc.circle(iconX, iconY + 1, 2.5).fill('#9ca3af');
+        doc.circle(iconX + 3, iconY, 3).fill('#9ca3af');
+      } else if (weatherType === 'rainy' || weatherType === 'rain') {
+        // Cloud with rain drops
+        doc.circle(iconX - 2, iconY - 2, 2.5).fill('#6b7280');
+        doc.circle(iconX + 2, iconY - 2, 3).fill('#6b7280');
+        doc.lineWidth(0.8).strokeColor('#3b82f6');
+        doc.moveTo(iconX - 2, iconY + 2).lineTo(iconX - 3, iconY + 5).stroke();
+        doc.moveTo(iconX + 2, iconY + 2).lineTo(iconX + 1, iconY + 5).stroke();
+        doc.strokeColor('#000');
+      } else if (weatherType === 'stormy') {
+        // Cloud with lightning
+        doc.circle(iconX - 2, iconY - 2, 2.5).fill('#4b5563');
+        doc.circle(iconX + 2, iconY - 2, 3).fill('#4b5563');
+        doc.moveTo(iconX, iconY + 1).lineTo(iconX - 2, iconY + 4).lineTo(iconX + 1, iconY + 4).lineTo(iconX - 1, iconY + 7).fill('#fbbf24');
+      } else if (weatherType === 'snowy' || weatherType === 'snow' || weatherType === 'cold') {
+        // Snowflake - star pattern
+        doc.lineWidth(0.8).strokeColor('#3b82f6');
+        for (let i = 0; i < 6; i++) {
+          const angle = (i * Math.PI) / 3;
+          doc.moveTo(iconX, iconY).lineTo(iconX + Math.cos(angle) * 5, iconY + Math.sin(angle) * 5).stroke();
+        }
+        doc.strokeColor('#000');
+      } else if (weatherType === 'windy') {
+        // Wind lines
+        doc.lineWidth(0.8).strokeColor('#6b7280');
+        doc.moveTo(iconX - 4, iconY - 2).quadraticCurveTo(iconX, iconY - 3, iconX + 5, iconY - 2).stroke();
+        doc.moveTo(iconX - 4, iconY + 1).quadraticCurveTo(iconX + 2, iconY, iconX + 6, iconY + 1).stroke();
+        doc.moveTo(iconX - 3, iconY + 4).quadraticCurveTo(iconX, iconY + 3, iconX + 4, iconY + 4).stroke();
+        doc.strokeColor('#000');
+      } else if (weatherType === 'foggy' || weatherType === 'fog') {
+        // Fog lines
+        doc.lineWidth(1).strokeColor('#9ca3af');
+        doc.moveTo(iconX - 5, iconY - 2).lineTo(iconX + 5, iconY - 2).stroke();
+        doc.moveTo(iconX - 4, iconY + 1).lineTo(iconX + 6, iconY + 1).stroke();
+        doc.moveTo(iconX - 5, iconY + 4).lineTo(iconX + 5, iconY + 4).stroke();
+        doc.strokeColor('#000');
+      } else {
+        // Default: simple sun
+        doc.circle(iconX, iconY, iconSize - 1).fill('#f59e0b');
+      }
+      
+      doc.lineWidth(1);
+      doc.fontSize(6).font('Helvetica').text(`${weatherLabel}${weatherText ? ' - ' + weatherText : ''}`, startX + 62, doc.y);
 
       // ===== TYPE OF WORK - Checkboxes =====
       doc.y += 12;
@@ -1256,7 +1305,7 @@ export async function registerRoutes(
       doc.fontSize(7).font('Helvetica-Bold').text(projectAddress, startX + 68, projY + 18, { width: col1W - 75 });
 
       doc.rect(startX + col1W, projY + 14, 50, 14).fillAndStroke('#000', '#000');
-      doc.fillColor('#fff').fontSize(6).font('Helvetica-Bold').text('Architect/Engineer', startX + col1W + 2, projY + 18);
+      doc.fillColor('#fff').fontSize(6).font('Helvetica-Bold').text('Client', startX + col1W + 3, projY + 18);
       doc.fillColor('#000');
       doc.rect(startX + col1W + 50, projY + 14, col2W - 50, 14).stroke();
       doc.fontSize(7).font('Helvetica-Bold').text(clientName, startX + col1W + 53, projY + 18, { width: col2W - 60 });
