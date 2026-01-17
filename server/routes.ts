@@ -2663,17 +2663,50 @@ export async function registerRoutes(
     expiresAt: z.string().or(z.date()).transform(val => new Date(val)).optional(),
   });
 
-  app.get("/api/admin/invites", isAuthenticated, isAdmin, async (_req, res) => {
+  // Helper to check if user is admin of a specific company
+  const isCompanyAdmin = async (userId: string, companyId: string): Promise<boolean> => {
+    const member = await storage.getCompanyMember(companyId, userId);
+    return member?.role === "admin";
+  };
+
+  // Helper to get all companies where user is admin
+  const getAdminCompanyIds = async (userId: string): Promise<string[]> => {
+    const memberships = await storage.getCompaniesForUser(userId);
+    return memberships
+      .filter(m => m.role === "admin")
+      .map(m => m.companyId);
+  };
+
+  app.get("/api/admin/invites", isAuthenticated, async (req: any, res) => {
     try {
-      const invites = await storage.getInvites();
-      res.json(invites);
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      
+      const allInvites = await storage.getInvites();
+      
+      // System admins see all invites
+      if (isEffectiveSystemAdmin(profile)) {
+        return res.json(allInvites);
+      }
+      
+      // Company admins see invites for their companies
+      const adminCompanyIds = await getAdminCompanyIds(userId);
+      if (adminCompanyIds.length === 0) {
+        return res.status(403).json({ message: "Forbidden: Admin access required" });
+      }
+      
+      const filteredInvites = allInvites.filter(invite => 
+        invite.companyId && adminCompanyIds.includes(invite.companyId)
+      );
+      
+      res.json(filteredInvites);
     } catch (error) {
       console.error("Error fetching invites:", error);
       res.status(500).json({ message: "Failed to fetch invites" });
     }
   });
 
-  app.post("/api/admin/invites", isAuthenticated, isAdmin, async (req: any, res) => {
+  app.post("/api/admin/invites", isAuthenticated, async (req: any, res) => {
     try {
       const result = createInviteSchema.safeParse(req.body);
       if (!result.success) {
@@ -2685,6 +2718,19 @@ export async function registerRoutes(
 
       const { email, role, companyId, projectIds, expiresAt } = result.data;
       const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      
+      // Check authorization: system admin can invite anyone, company admin can only invite to their companies
+      if (!isEffectiveSystemAdmin(profile)) {
+        if (!companyId) {
+          return res.status(400).json({ message: "Company admins must select an organization for the invite" });
+        }
+        
+        const isAdminOfCompany = await isCompanyAdmin(userId, companyId);
+        if (!isAdminOfCompany) {
+          return res.status(403).json({ message: "Forbidden: You can only invite users to companies you administer" });
+        }
+      }
 
       const existingInvite = await storage.getInviteByEmail(email);
       if (existingInvite) {
@@ -2751,9 +2797,33 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/admin/invites/:id", isAuthenticated, isAdmin, async (req, res) => {
+  app.delete("/api/admin/invites/:id", isAuthenticated, async (req: any, res) => {
     try {
-      await storage.deleteInvite(req.params.id);
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      const inviteId = req.params.id;
+      
+      // Get the invite to check authorization
+      const allInvites = await storage.getInvites();
+      const invite = allInvites.find(i => i.id === inviteId);
+      
+      if (!invite) {
+        return res.status(404).json({ message: "Invite not found" });
+      }
+      
+      // Check authorization: system admin can delete any, company admin can only delete their company's invites
+      if (!isEffectiveSystemAdmin(profile)) {
+        if (!invite.companyId) {
+          return res.status(403).json({ message: "Forbidden: Only system admins can delete invites without a company" });
+        }
+        
+        const isAdminOfCompany = await isCompanyAdmin(userId, invite.companyId);
+        if (!isAdminOfCompany) {
+          return res.status(403).json({ message: "Forbidden: You can only delete invites for companies you administer" });
+        }
+      }
+      
+      await storage.deleteInvite(inviteId);
       res.json({ success: true });
     } catch (error) {
       console.error("Error deleting invite:", error);
