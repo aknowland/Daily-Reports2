@@ -42,10 +42,11 @@ import {
   Copy,
   FolderOpen,
 } from "lucide-react";
-import type { Project, Invite, Company } from "@shared/schema";
+import type { Project, Invite, Company, CompanyMember } from "@shared/schema";
 import type { User } from "@shared/models/auth";
 import { format } from "date-fns";
 import { Building2 } from "lucide-react";
+import { useAuth } from "@/hooks/use-auth";
 
 type InviteWithDetails = Invite & { 
   invitedByUser?: User; 
@@ -53,8 +54,11 @@ type InviteWithDetails = Invite & {
   company?: Company;
 };
 
+type CompanyMemberWithCompany = CompanyMember & { company?: Company };
+
 export default function AdminInvitesPage() {
   const { toast } = useToast();
+  const { profile } = useAuth();
   const [searchTerm, setSearchTerm] = useState("");
   const [showDialog, setShowDialog] = useState(false);
   const [formData, setFormData] = useState({
@@ -64,13 +68,30 @@ export default function AdminInvitesPage() {
     projectIds: [] as string[],
   });
 
+  const isSystemAdmin = profile?.role === "admin" && profile?.preferAdminMode !== false;
+
   const { data: invites, isLoading, error } = useQuery<InviteWithDetails[]>({
     queryKey: ["/api/admin/invites"],
   });
 
-  const { data: companies } = useQuery<Company[]>({
+  // For system admins, fetch all companies; for company admins, fetch their memberships
+  const { data: allCompanies } = useQuery<Company[]>({
     queryKey: ["/api/companies"],
+    enabled: isSystemAdmin,
   });
+
+  const { data: myCompanyMemberships } = useQuery<CompanyMemberWithCompany[]>({
+    queryKey: ["/api/my-companies"],
+    enabled: !isSystemAdmin,
+  });
+
+  // Companies user can invite to (system admin sees all, company admin sees their admin companies)
+  const companies = isSystemAdmin 
+    ? allCompanies 
+    : myCompanyMemberships
+        ?.filter(m => m.role === "admin")
+        ?.map(m => m.company)
+        ?.filter((c): c is Company => !!c);
 
   const { data: projects } = useQuery<Project[]>({
     queryKey: ["/api/projects"],
