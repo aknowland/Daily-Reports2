@@ -1177,20 +1177,21 @@ export async function registerRoutes(
       doc.fontSize(7).font('Helvetica').text('Time', gridX + 112, gridTop + 20);
       doc.fontSize(9).font('Helvetica-Bold').text(timeStr, gridX + 112, gridTop + 27);
 
-      // Title - positioned below the logo
-      doc.fontSize(14).font('Helvetica-Bold').text('DAILY FIELD REPORT', startX, gridTop + 30);
+      // Title - aligned with the 2x3 grid cells
+      doc.fontSize(14).font('Helvetica-Bold').text('DAILY FIELD REPORT', startX, gridTop + 10);
 
       // Weather row with drawn icon
-      doc.y = gridTop + 46;
+      doc.y = gridTop + 44;
       const weatherType = (report.weatherType || 'clear').toLowerCase();
       const weatherText = `${report.weatherNotes || ''}`.trim();
       const weatherLabel = (report.weatherType || 'Clear').charAt(0).toUpperCase() + (report.weatherType || 'clear').slice(1);
       
-      doc.fontSize(8).font('Helvetica-Bold').text('WEATHER:', startX, doc.y);
+      const weatherY = doc.y;
+      doc.fontSize(8).font('Helvetica-Bold').text('WEATHER:', startX, weatherY);
       
-      // Draw weather icon based on type
+      // Draw weather icon based on type - aligned with text baseline
       const iconX = startX + 55;
-      const iconY = doc.y + 3;
+      const iconY = weatherY + 4;
       const iconSize = 6;
       
       if (weatherType === 'clear' || weatherType === 'sunny' || weatherType === 'hot') {
@@ -1258,7 +1259,7 @@ export async function registerRoutes(
       
       // Reset all colors and line width back to defaults
       doc.fillColor('#000').strokeColor('#000').lineWidth(1);
-      doc.fontSize(8).font('Helvetica').text(`${weatherLabel}${weatherText ? ' - ' + weatherText : ''}`, startX + 70, doc.y);
+      doc.fontSize(8).font('Helvetica').text(`${weatherLabel}${weatherText ? ' - ' + weatherText : ''}`, startX + 70, weatherY);
 
       // ===== TYPE OF WORK - Checkboxes =====
       doc.y += 16;
