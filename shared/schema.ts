@@ -157,6 +157,7 @@ export const dailyReports = pgTable("daily_reports", {
   signaturePath: varchar("signature_path"),
   signedAt: timestamp("signed_at"),
   status: reportStatusEnum("status").default("draft"),
+  reportNumber: integer("report_number"), // Sequential number assigned when report is submitted
   pdfPath: varchar("pdf_path"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
