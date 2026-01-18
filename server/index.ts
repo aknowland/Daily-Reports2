@@ -5,6 +5,7 @@ import { createServer } from "http";
 import { runMigrations } from 'stripe-replit-sync';
 import { getStripeSync } from './stripeClient';
 import { WebhookHandlers } from './webhookHandlers';
+import { initDatabaseSequences } from './storage';
 
 const app = express();
 const httpServer = createServer(app);
@@ -139,6 +140,9 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  // Initialize database sequences for report numbering
+  await initDatabaseSequences();
+  
   await registerRoutes(httpServer, app);
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {

@@ -1265,7 +1265,13 @@ export async function registerRoutes(
         }
       }
       
-      const report = await storage.updateReport(req.params.id, validated);
+      // Assign sequential report number when submitting (status changing from draft to submitted)
+      const updateData: any = { ...validated };
+      if (validated.status === 'submitted' && existing.status === 'draft' && !existing.reportNumber) {
+        updateData.reportNumber = await storage.getNextReportNumber();
+      }
+      
+      const report = await storage.updateReport(req.params.id, updateData);
       res.json(report);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -1614,7 +1620,10 @@ export async function registerRoutes(
       const gridTop = 72;
       const reportDate = new Date(report.date);
       const dateStr = reportDate.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: '2-digit' });
-      const timeStr = reportDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+      // Time cell shows when report was submitted (signedAt); if not signed, show "--"
+      const timeStr = report.signedAt 
+        ? new Date(report.signedAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
+        : '--';
       
       doc.strokeColor('#000').lineWidth(0.5);
 
@@ -1625,7 +1634,7 @@ export async function registerRoutes(
 
       doc.rect(gridX + 60, gridTop, 50, 18).stroke();
       doc.fontSize(7).font('Helvetica').text('Report No.', gridX + 62, gridTop + 2);
-      doc.fontSize(9).font('Helvetica-Bold').text('1', gridX + 90, gridTop + 9);
+      doc.fontSize(9).font('Helvetica-Bold').text(report.reportNumber ? String(report.reportNumber) : '--', gridX + 62, gridTop + 9);
 
       doc.rect(gridX + 110, gridTop, 55, 18).stroke();
       doc.fontSize(7).font('Helvetica').text('Status', gridX + 112, gridTop + 2);
