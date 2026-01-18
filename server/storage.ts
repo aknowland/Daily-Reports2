@@ -107,6 +107,7 @@ export interface IStorage {
   // Invites
   getInvites(): Promise<(Invite & { invitedByUser?: User; projects?: Project[]; company?: Company })[]>;
   getInviteByToken(token: string): Promise<Invite | undefined>;
+  getInviteByCode(code: string): Promise<Invite | undefined>;
   getInviteByEmail(email: string): Promise<Invite | undefined>;
   createInvite(data: InsertInvite): Promise<Invite>;
   updateInviteStatus(id: string, status: "pending" | "accepted" | "expired"): Promise<Invite | undefined>;
@@ -646,6 +647,14 @@ export class DatabaseStorage implements IStorage {
       .select()
       .from(invites)
       .where(eq(invites.token, token));
+    return invite;
+  }
+
+  async getInviteByCode(code: string): Promise<Invite | undefined> {
+    const [invite] = await db
+      .select()
+      .from(invites)
+      .where(eq(invites.inviteCode, code.toUpperCase()));
     return invite;
   }
 

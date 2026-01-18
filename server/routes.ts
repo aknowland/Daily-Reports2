@@ -2787,6 +2787,8 @@ export async function registerRoutes(
       }
 
       const token = randomUUID();
+      // Generate a short 8-character alphanumeric invite code (uppercase for readability)
+      const inviteCode = randomUUID().replace(/-/g, '').substring(0, 8).toUpperCase();
       const defaultExpiry = new Date();
       defaultExpiry.setDate(defaultExpiry.getDate() + 7);
 
@@ -2796,6 +2798,7 @@ export async function registerRoutes(
         companyId,
         projectIds,
         token,
+        inviteCode,
         invitedBy: userId,
         expiresAt: expiresAt || defaultExpiry,
         status: "pending",
@@ -2820,6 +2823,10 @@ export async function registerRoutes(
             <p>Click the button below to accept your invitation and create your account:</p>
             <div style="text-align: center; margin: 30px 0;">
               <a href="${inviteLink}" style="background-color: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold;">Accept Invitation</a>
+            </div>
+            <div style="background-color: #f3f4f6; border-radius: 8px; padding: 20px; margin: 20px 0; text-align: center;">
+              <p style="margin: 0 0 8px 0; color: #6b7280; font-size: 14px;">Or enter this invite code at <strong>${baseUrl}/join</strong>:</p>
+              <p style="margin: 0; font-size: 28px; font-weight: bold; letter-spacing: 4px; color: #1f2937; font-family: monospace;">${inviteCode}</p>
             </div>
             <p style="color: #6b7280; font-size: 12px;">This invitation will expire in 7 days. If you didn't expect this invitation, you can safely ignore this email.</p>
             <hr style="border: 1px solid #e5e7eb; margin: 20px 0;" />
@@ -2903,6 +2910,40 @@ export async function registerRoutes(
       });
     } catch (error) {
       console.error("Error fetching invite:", error);
+      res.status(500).json({ message: "Failed to fetch invite" });
+    }
+  });
+
+  // Lookup invite by short code (for manual entry)
+  app.get("/api/invites/code/:code", async (req, res) => {
+    try {
+      const code = req.params.code.toUpperCase().trim();
+      if (!code || code.length !== 8) {
+        return res.status(400).json({ message: "Invalid invite code format" });
+      }
+
+      const invite = await storage.getInviteByCode(code);
+      if (!invite) {
+        return res.status(404).json({ message: "Invite not found" });
+      }
+
+      if (invite.status !== "pending") {
+        return res.status(400).json({ message: "This invite has already been used or expired" });
+      }
+
+      if (new Date(invite.expiresAt) < new Date()) {
+        await storage.updateInviteStatus(invite.id, "expired");
+        return res.status(400).json({ message: "This invite has expired" });
+      }
+
+      // Return the token so frontend can redirect to accept-invite page
+      res.json({
+        token: invite.token,
+        email: invite.email,
+        role: invite.role,
+      });
+    } catch (error) {
+      console.error("Error fetching invite by code:", error);
       res.status(500).json({ message: "Failed to fetch invite" });
     }
   });
