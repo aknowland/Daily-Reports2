@@ -135,6 +135,7 @@ DELETE /api/admin/invites/:id        - Delete invite
 
 Invites:
 GET    /api/invites/:token        - Get invite by token (public)
+GET    /api/invites/code/:code    - Get invite by short code (public)
 POST   /api/invites/:token/accept - Accept invite (requires auth)
 
 Voice/Transcription:
@@ -162,7 +163,7 @@ The application runs on port 5000 with:
 - **photos**: Report photo attachments
 - **distribution_logs**: Email/folder distribution history
 - **app_settings**: Company branding and config
-- **invites**: Pending user invitations with role, company, and project assignments
+- **invites**: Pending user invitations with role, company, project assignments, and short invite codes
 
 ## Multi-Company Support
 
