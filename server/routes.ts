@@ -8,7 +8,7 @@ import { ObjectStorageService, registerObjectStorageRoutes } from "./replit_inte
 import multer from "multer";
 import path from "path";
 import fs from "fs";
-import { randomUUID } from "crypto";
+import { randomUUID, randomBytes } from "crypto";
 import { z } from "zod";
 import PDFDocument from "pdfkit";
 import { format } from "date-fns";
@@ -2787,8 +2787,34 @@ export async function registerRoutes(
       }
 
       const token = randomUUID();
-      // Generate a short 8-character alphanumeric invite code (uppercase for readability)
-      const inviteCode = randomUUID().replace(/-/g, '').substring(0, 8).toUpperCase();
+      // Generate a short 8-character alphanumeric invite code using crypto.randomBytes
+      // Uses alphanumeric charset (0-9, A-Z) excluding confusing chars (0/O, 1/I/L)
+      const INVITE_CODE_CHARS = '23456789ABCDEFGHJKMNPQRSTUVWXYZ'; // 30 chars, avoids 0/O, 1/I/L
+      const generateInviteCode = (): string => {
+        const bytes = randomBytes(8); // 64 bits of entropy
+        let code = '';
+        for (let i = 0; i < 8; i++) {
+          code += INVITE_CODE_CHARS[bytes[i] % INVITE_CODE_CHARS.length];
+        }
+        return code;
+      };
+      
+      // Try to generate a unique invite code with retry on collision
+      let inviteCode = generateInviteCode();
+      let retries = 0;
+      const maxRetries = 5;
+      
+      while (retries < maxRetries) {
+        const existingInvite = await storage.getInviteByCode(inviteCode);
+        if (!existingInvite) break;
+        inviteCode = generateInviteCode();
+        retries++;
+      }
+      
+      if (retries >= maxRetries) {
+        return res.status(500).json({ message: "Failed to generate unique invite code" });
+      }
+      
       const defaultExpiry = new Date();
       defaultExpiry.setDate(defaultExpiry.getDate() + 7);
 
@@ -2936,11 +2962,10 @@ export async function registerRoutes(
         return res.status(400).json({ message: "This invite has expired" });
       }
 
-      // Return the token so frontend can redirect to accept-invite page
+      // Return only the token so frontend can redirect to accept-invite page
+      // Don't expose email/role publicly to prevent PII leakage
       res.json({
         token: invite.token,
-        email: invite.email,
-        role: invite.role,
       });
     } catch (error) {
       console.error("Error fetching invite by code:", error);
