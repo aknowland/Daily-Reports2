@@ -200,6 +200,7 @@ export const invites = pgTable("invites", {
   invitedBy: varchar("invited_by").references(() => users.id).notNull(),
   status: inviteStatusEnum("status").default("pending").notNull(),
   token: varchar("token").notNull().unique(),
+  inviteCode: varchar("invite_code", { length: 8 }).unique(), // Short alphanumeric code for manual entry
   expiresAt: timestamp("expires_at").notNull(),
   createdAt: timestamp("created_at").defaultNow(),
   acceptedAt: timestamp("accepted_at"),
