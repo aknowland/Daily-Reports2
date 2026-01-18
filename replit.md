@@ -59,6 +59,14 @@ Field Daily Reports helps construction inspection teams document their daily wor
 - Notes and observations
 - Photo uploads with captions
 - Digital signature
+- Sequential report numbers (assigned when submitted)
+
+### Previous Report Defaults
+- When creating a new report for a project, the form automatically fetches the latest report for that project
+- All fields are pre-filled with previous report values except:
+  - Date (uses today's date)
+  - Photos (not copied)
+- Time tracking fields default to: 7:00am, 11:00am, 12:00pm, 4:00pm (if no previous report)
 
 ### Unassigned Reports
 - Reports can be created without assigning to a formal project

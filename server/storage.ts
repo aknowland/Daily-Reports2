@@ -60,6 +60,7 @@ export interface IStorage {
   // Daily Reports
   getReports(options?: { inspectorId?: string; companyId?: string; companyIds?: string[] }): Promise<DailyReportWithDetails[]>;
   getReport(id: string): Promise<DailyReportWithDetails | undefined>;
+  getLatestReportForProject(projectId: string): Promise<DailyReport | undefined>;
   createReport(data: InsertDailyReport): Promise<DailyReport>;
   updateReport(id: string, data: Partial<InsertDailyReport>): Promise<DailyReport | undefined>;
   deleteReport(id: string): Promise<boolean>;
@@ -299,6 +300,17 @@ export class DatabaseStorage implements IStorage {
       photos: reportPhotos,
       inspectorName: fullName || result.users?.email || undefined,
     };
+  }
+
+  async getLatestReportForProject(projectId: string): Promise<DailyReport | undefined> {
+    const [result] = await db
+      .select()
+      .from(dailyReports)
+      .where(eq(dailyReports.projectId, projectId))
+      .orderBy(desc(dailyReports.date), desc(dailyReports.createdAt))
+      .limit(1);
+    
+    return result;
   }
 
   async createReport(data: InsertDailyReport): Promise<DailyReport> {

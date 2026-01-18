@@ -142,6 +142,7 @@ export default function ReportFormPage() {
   const [showUpgradeDialog, setShowUpgradeDialog] = useState(false);
   const [reportLimitInfo, setReportLimitInfo] = useState<{ currentCount: number; limit: number } | null>(null);
   const [hasShownNoProjectsDialog, setHasShownNoProjectsDialog] = useState(false);
+  const [lastFetchedProjectId, setLastFetchedProjectId] = useState<string | null>(null);
 
   const { data: projects, isLoading: loadingProjects } = useQuery<Project[]>({
     queryKey: ["/api/projects"],
@@ -166,6 +167,67 @@ export default function ReportFormPage() {
       setFormData(prev => ({ ...prev, projectId: profile.activeProjectId! }));
     }
   }, [isEditing, profile?.activeProjectId]);
+
+  // Fetch previous report values when project is selected (for new reports only)
+  useEffect(() => {
+    const fetchPreviousReportDefaults = async () => {
+      if (isEditing || !formData.projectId || formData.projectId === lastFetchedProjectId) {
+        return;
+      }
+      
+      setLastFetchedProjectId(formData.projectId);
+      
+      try {
+        const response = await fetch(`/api/projects/${formData.projectId}/latest-report`, {
+          credentials: 'include'
+        });
+        
+        if (!response.ok) {
+          // No previous report found, which is fine
+          return;
+        }
+        
+        const previousReport = await response.json();
+        
+        // Apply previous report values (except date and photos)
+        setFormData(prev => ({
+          ...prev,
+          // Keep current date and projectId
+          projectId: prev.projectId,
+          date: prev.date,
+          // Pull from previous report
+          weatherType: (previousReport.weatherType || "clear") as typeof formData.weatherType,
+          weatherNotes: previousReport.weatherNotes || "",
+          workPerformed: previousReport.workPerformed || "",
+          workActivities: (previousReport.workActivities as WorkActivityRow[]) || [],
+          visitors: (previousReport.visitors as VisitorRow[]) || [],
+          equipment: previousReport.equipment || "",
+          inspections: previousReport.inspections || "",
+          materialsDelivered: previousReport.materialsDelivered || "",
+          issuesFlag: previousReport.issuesFlag || false,
+          issuesDetails: previousReport.issuesDetails || "",
+          safetyFlag: previousReport.safetyFlag || false,
+          safetyDetails: previousReport.safetyDetails || "",
+          timeIn: previousReport.timeIn || "07:00",
+          lunchStart: previousReport.lunchStart || "11:00",
+          lunchEnd: previousReport.lunchEnd || "12:00",
+          timeOut: previousReport.timeOut || "16:00",
+          regularHours: previousReport.regularHours || "",
+          otHours: previousReport.otHours || "",
+        }));
+        
+        toast({
+          title: "Previous report loaded",
+          description: "Form pre-filled with values from the last report for this project",
+        });
+      } catch (error) {
+        // Silent fail - not critical if we can't load previous report
+        console.error("Error fetching previous report defaults:", error);
+      }
+    };
+    
+    fetchPreviousReportDefaults();
+  }, [isEditing, formData.projectId, lastFetchedProjectId, toast]);
 
   useEffect(() => {
     if (existingReport) {

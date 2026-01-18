@@ -1085,6 +1085,46 @@ export async function registerRoutes(
     }
   });
 
+  // Get the latest report for a project (for pre-filling new report form)
+  app.get("/api/projects/:projectId/latest-report", isAuthenticated, async (req: any, res) => {
+    try {
+      const projectId = req.params.projectId;
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      
+      // Check authorization: user must have access to this project
+      const project = await storage.getProject(projectId);
+      if (!project) {
+        return res.status(404).json({ message: "Project not found" });
+      }
+      
+      // System admins can access any project
+      const isSystemAdmin = isEffectiveSystemAdmin(profile);
+      
+      // Company admins can access projects in their company
+      const isCompanyAdmin = project.companyId && await isEffectiveCompanyAdmin(userId, project.companyId, profile);
+      
+      // Project members can access their projects
+      const projectMembers = await storage.getProjectMembers(projectId);
+      const isMember = projectMembers.some(m => m.userId === userId);
+      
+      if (!isSystemAdmin && !isCompanyAdmin && !isMember) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      const report = await storage.getLatestReportForProject(projectId);
+      
+      if (!report) {
+        return res.status(404).json({ message: "No previous reports found" });
+      }
+      
+      res.json(report);
+    } catch (error) {
+      console.error("Error fetching latest report:", error);
+      res.status(500).json({ message: "Failed to fetch latest report" });
+    }
+  });
+
   app.get("/api/reports/:id", isAuthenticated, async (req: any, res) => {
     try {
       const report = await storage.getReport(req.params.id);
