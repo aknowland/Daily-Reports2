@@ -78,11 +78,11 @@ export default function ReportFormPage() {
     issuesDetails: "",
     safetyFlag: false,
     safetyDetails: "",
-    // Time tracking
-    timeIn: "",
-    lunchStart: "",
-    lunchEnd: "",
-    timeOut: "",
+    // Time tracking - defaults for new reports
+    timeIn: "07:00",
+    lunchStart: "11:00",
+    lunchEnd: "12:00",
+    timeOut: "16:00",
     regularHours: "",
     otHours: "",
   });
