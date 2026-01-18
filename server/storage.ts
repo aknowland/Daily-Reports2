@@ -22,6 +22,31 @@ import { eq, desc, and, or, sql, inArray } from "drizzle-orm";
 // Re-export db for use in other modules
 export { db };
 
+// Initialize database sequences (ensures they exist on fresh deployments)
+export async function initDatabaseSequences() {
+  try {
+    // Create report number sequence if it doesn't exist and always sync to max(report_number)
+    await db.execute(sql`
+      DO $$
+      DECLARE
+        max_num INTEGER;
+      BEGIN
+        -- Create sequence if it doesn't exist
+        IF NOT EXISTS (SELECT 1 FROM pg_sequences WHERE schemaname = 'public' AND sequencename = 'report_number_seq') THEN
+          CREATE SEQUENCE report_number_seq START WITH 1 INCREMENT BY 1;
+        END IF;
+        
+        -- Always sync sequence to max existing report_number to prevent drift/duplicates
+        SELECT COALESCE(MAX(report_number), 0) INTO max_num FROM daily_reports;
+        PERFORM setval('report_number_seq', GREATEST(max_num, 1), max_num > 0);
+      END $$;
+    `);
+    console.log("Database sequences initialized successfully");
+  } catch (error) {
+    console.error("Error initializing database sequences:", error);
+  }
+}
+
 export interface IStorage {
   // Projects
   getProjects(): Promise<Project[]>;
@@ -39,6 +64,7 @@ export interface IStorage {
   updateReport(id: string, data: Partial<InsertDailyReport>): Promise<DailyReport | undefined>;
   deleteReport(id: string): Promise<boolean>;
   getReportStats(options?: { inspectorId?: string; companyId?: string; companyIds?: string[] }): Promise<{ total: number; drafts: number; submitted: number }>;
+  getNextReportNumber(): Promise<number>;
 
   // Photos
   getPhotosByReport(reportId: string): Promise<Photo[]>;
@@ -337,6 +363,13 @@ export class DatabaseStorage implements IStorage {
     const [stats] = await query.where(conditions.length > 0 ? and(...conditions) : undefined);
 
     return stats || { total: 0, drafts: 0, submitted: 0 };
+  }
+
+  async getNextReportNumber(): Promise<number> {
+    // Use PostgreSQL sequence for atomic, thread-safe sequential numbering
+    const result = await db.execute(sql`SELECT nextval('report_number_seq') as next_number`);
+    const row = result.rows?.[0] as { next_number?: string | number } | undefined;
+    return Number(row?.next_number) || 1;
   }
 
   // Photos
