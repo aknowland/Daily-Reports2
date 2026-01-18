@@ -22,6 +22,7 @@ import AdminUsersPage from "@/pages/admin/users";
 import AdminSettingsPage from "@/pages/admin/settings";
 import AdminInvitesPage from "@/pages/admin/invites";
 import InviteAcceptPage from "@/pages/invite-accept";
+import JoinPage from "@/pages/join";
 import ProfilePage from "@/pages/profile";
 import MyCompaniesPage from "@/pages/my-companies";
 import MyProjectsPage from "@/pages/my-projects";
@@ -96,6 +97,8 @@ function AppContent() {
   return (
     <Switch>
       <Route path="/invite/:token" component={InviteAcceptPage} />
+      <Route path="/accept-invite/:token" component={InviteAcceptPage} />
+      <Route path="/join" component={JoinPage} />
       <Route path="/learn-more" component={LearnMorePage} />
       <Route path="/pricing" component={PricingPage} />
       {!isAuthenticated ? (
