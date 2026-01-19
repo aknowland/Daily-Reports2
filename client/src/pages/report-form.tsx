@@ -332,34 +332,87 @@ export default function ReportFormPage() {
 
       return reportId;
     },
-    onSuccess: (reportId, status) => {
+    onSuccess: async (reportId, status) => {
       queryClient.invalidateQueries({ queryKey: ["/api/reports"] });
       
       if (status === "submitted" && reportId) {
-        // Store the report ID and show email dialog
-        setSubmittedReportId(reportId);
-        setShowEmailDialog(true);
-        toast({
-          title: "Report Submitted",
-          description: "Your report has been submitted. Would you like to email it?",
-        });
-      } else if (reportId) {
-        toast({
-          title: "Report Saved",
-          description: "Your report has been saved as a draft",
-        });
-        navigate(`/reports/${reportId}`);
+        // Get project's default distribution emails
+        const project = projects?.find(p => p.id === formData.projectId);
+        const defaultEmails = project?.distributionEmails || [];
+        
+        try {
+          toast({
+            title: "Report Submitted",
+            description: "Generating PDF and sending...",
+          });
+          
+          // Generate PDF
+          await apiRequest("POST", `/api/reports/${reportId}/pdf`);
+          
+          // Auto-distribute if project has default emails
+          if (defaultEmails.length > 0) {
+            try {
+              await apiRequest("POST", `/api/reports/${reportId}/distribute`, {
+                recipients: defaultEmails,
+                message: "",
+              });
+              
+              setIsSaving(false);
+              toast({
+                title: "Report Sent",
+                description: `PDF generated and emailed to ${defaultEmails.length} recipient(s).`,
+              });
+              navigate(`/reports/${reportId}`);
+            } catch (distError) {
+              console.error("Failed to distribute:", distError);
+              setIsSaving(false);
+              // Still show email dialog if distribution failed
+              setSubmittedReportId(reportId);
+              setShowEmailDialog(true);
+              toast({
+                title: "Distribution Failed",
+                description: "PDF generated but email failed. Please try again.",
+                variant: "destructive",
+              });
+            }
+          } else {
+            // No default emails - show dialog for user to enter recipients
+            setIsSaving(false);
+            setSubmittedReportId(reportId);
+            setShowEmailDialog(true);
+            toast({
+              title: "PDF Generated",
+              description: "Enter email addresses to distribute the report.",
+            });
+          }
+        } catch (pdfError) {
+          console.error("Failed to generate PDF:", pdfError);
+          setIsSaving(false);
+          toast({
+            title: "Report Submitted",
+            description: "Report submitted but PDF generation failed. You can generate it later.",
+            variant: "destructive",
+          });
+          navigate(`/reports/${reportId}`);
+        }
+      } else {
+        setIsSaving(false);
+        if (reportId) {
+          toast({
+            title: "Report Saved",
+            description: "Your report has been saved as a draft",
+          });
+          navigate(`/reports/${reportId}`);
+        }
       }
     },
     onError: (error) => {
+      setIsSaving(false);
       toast({
         title: "Error",
         description: error instanceof Error ? error.message : "Failed to save report",
         variant: "destructive",
       });
-    },
-    onSettled: () => {
-      setIsSaving(false);
     },
   });
 
