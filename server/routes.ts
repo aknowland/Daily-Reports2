@@ -141,6 +141,7 @@ const createReportSchema = z.object({
   date: z.string().or(z.date()).transform(val => new Date(val)),
   weatherType: z.enum(["clear", "cloudy", "rain", "wind", "heat", "cold"]).optional(),
   weatherNotes: z.string().optional(),
+  typeOfWork: z.array(z.string()).optional().default([]),
   workPerformed: z.string().optional(),
   trades: z.array(z.object({ trade: z.string(), headcount: z.number() })).optional().default([]),
   manpower: z.array(z.object({ description: z.string(), count: z.number() })).optional().default([]),
@@ -1782,11 +1783,28 @@ export async function registerRoutes(
       const typeY = doc.y;
       doc.fontSize(8).font('Helvetica-Bold').text('TYPE OF WORK', startX, typeY);
       
-      const inspectionTypes = ['Reinf. Concrete', 'Structural Steel', 'Reinf. Masonry', 'Fire Proofing', 'Shotcrete', 'Anchors', 'Other'];
+      // Mapping from form values to PDF labels
+      const inspectionTypeMapping: { value: string; label: string }[] = [
+        { value: 'reinf_concrete', label: 'Reinf. Concrete' },
+        { value: 'structural_steel', label: 'Structural Steel' },
+        { value: 'reinf_masonry', label: 'Reinf. Masonry' },
+        { value: 'fire_proofing', label: 'Fire Proofing' },
+        { value: 'shotcrete', label: 'Shotcrete' },
+        { value: 'anchors', label: 'Anchors' },
+        { value: 'other', label: 'Other' },
+      ];
+      const selectedTypes = (report.typeOfWork as string[]) || [];
       let typeX = startX + 95;
-      inspectionTypes.forEach((type) => {
+      inspectionTypeMapping.forEach((typeItem) => {
+        const isChecked = selectedTypes.includes(typeItem.value);
         doc.rect(typeX, typeY - 1, checkSize, checkSize).stroke();
-        doc.fontSize(7).font('Helvetica').text(type, typeX + 9, typeY);
+        if (isChecked) {
+          // Draw checkmark inside the checkbox
+          doc.lineWidth(1.2);
+          doc.moveTo(typeX + 2, typeY + 2).lineTo(typeX + 4, typeY + 5).lineTo(typeX + 7, typeY - 1).stroke();
+          doc.lineWidth(1);
+        }
+        doc.fontSize(7).font('Helvetica').text(typeItem.label, typeX + 9, typeY);
         typeX += 68;
       });
 
