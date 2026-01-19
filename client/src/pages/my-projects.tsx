@@ -52,7 +52,7 @@ import {
 } from "lucide-react";
 import { Link } from "wouter";
 import { useState } from "react";
-import { format, startOfMonth, endOfMonth, subMonths } from "date-fns";
+import { format, startOfMonth, endOfMonth } from "date-fns";
 import type { Project, Company } from "@shared/schema";
 import { Calendar as CalendarComponent } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -106,8 +106,8 @@ export default function MyProjectsPage() {
   // Invoice dialog state
   const [showInvoiceDialog, setShowInvoiceDialog] = useState(false);
   const [invoiceProject, setInvoiceProject] = useState<Project | null>(null);
-  const [invoiceStartDate, setInvoiceStartDate] = useState<Date | undefined>(startOfMonth(subMonths(new Date(), 1)));
-  const [invoiceEndDate, setInvoiceEndDate] = useState<Date | undefined>(endOfMonth(subMonths(new Date(), 1)));
+  const [invoiceStartDate, setInvoiceStartDate] = useState<Date | undefined>(startOfMonth(new Date()));
+  const [invoiceEndDate, setInvoiceEndDate] = useState<Date | undefined>(endOfMonth(new Date()));
   const [invoiceData, setInvoiceData] = useState<InvoiceData | null>(null);
   const [isLoadingInvoice, setIsLoadingInvoice] = useState(false);
   const [isExportingPdf, setIsExportingPdf] = useState(false);
@@ -222,9 +222,9 @@ export default function MyProjectsPage() {
   const handleOpenInvoice = (project: Project) => {
     setInvoiceProject(project);
     setInvoiceData(null);
-    // Default to previous month
-    setInvoiceStartDate(startOfMonth(subMonths(new Date(), 1)));
-    setInvoiceEndDate(endOfMonth(subMonths(new Date(), 1)));
+    // Default to current month
+    setInvoiceStartDate(startOfMonth(new Date()));
+    setInvoiceEndDate(endOfMonth(new Date()));
     setShowInvoiceDialog(true);
   };
 
