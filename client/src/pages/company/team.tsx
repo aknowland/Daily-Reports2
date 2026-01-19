@@ -66,7 +66,7 @@ type JoinRequestWithUser = JoinRequest & { user?: User };
 
 export default function CompanyTeamPage() {
   const { toast } = useToast();
-  const { activeCompany, isCompanyAdmin, isEffectiveCompanyAdmin, profile } = useAuth();
+  const { activeCompany, isCompanyAdmin, isEffectiveCompanyAdmin, isCompaniesLoading, profile } = useAuth();
   const [memberToRemove, setMemberToRemove] = useState<MemberWithUser | null>(null);
   const [showInviteDialog, setShowInviteDialog] = useState(false);
   const [inviteForm, setInviteForm] = useState({
@@ -242,6 +242,33 @@ export default function CompanyTeamPage() {
       });
     },
   });
+
+  // Wait for companies data to load before checking permissions
+  if (isCompaniesLoading) {
+    return (
+      <PageLayout title="Team Members">
+        <div className="container px-4 py-6 mx-auto max-w-screen-lg space-y-6">
+          <div className="flex items-center gap-2 mb-2">
+            <Button variant="ghost" size="sm" asChild data-testid="button-back">
+              <Link href="/">
+                <ArrowLeft className="w-4 h-4 mr-1" />
+                Back to Dashboard
+              </Link>
+            </Button>
+          </div>
+          <div className="space-y-4">
+            {[1, 2, 3].map((i) => (
+              <Card key={i}>
+                <CardContent className="p-4">
+                  <Skeleton className="h-12 w-full" />
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
+      </PageLayout>
+    );
+  }
 
   if (!isEffectiveCompanyAdmin || !activeCompany) {
     const isInspectorModeOn = isCompanyAdmin && profile?.preferAdminMode === false;
