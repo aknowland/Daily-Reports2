@@ -1,4 +1,4 @@
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueries } from "@tanstack/react-query";
 import { PageLayout } from "@/components/layout/page-layout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -64,11 +64,14 @@ type InviteWithDetails = Invite & { projects?: Project[] };
 
 type JoinRequestWithUser = JoinRequest & { user?: User };
 
+type ProjectMember = { projectId: string; userId: string; assignedAt: string };
+
 export default function CompanyTeamPage() {
   const { toast } = useToast();
   const { activeCompany, isCompanyAdmin, isEffectiveCompanyAdmin, isCompaniesLoading, profile } = useAuth();
   const [memberToRemove, setMemberToRemove] = useState<MemberWithUser | null>(null);
   const [showInviteDialog, setShowInviteDialog] = useState(false);
+  const [memberToAssignProjects, setMemberToAssignProjects] = useState<MemberWithUser | null>(null);
   const [inviteForm, setInviteForm] = useState({
     email: "",
     role: "inspector" as "inspector" | "admin",
@@ -238,6 +241,54 @@ export default function CompanyTeamPage() {
       toast({
         title: "Error",
         description: "Failed to remove member.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const addToProjectMutation = useMutation({
+    mutationFn: async ({ projectId, userId }: { projectId: string; userId: string }) => {
+      return apiRequest("POST", `/api/projects/${projectId}/members`, { userId });
+    },
+    onSuccess: () => {
+      // Invalidate all project member queries for this company's projects
+      projects.forEach(p => {
+        queryClient.invalidateQueries({ queryKey: ["/api/projects", p.id, "members"] });
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/my-projects"] });
+      toast({
+        title: "Project Assigned",
+        description: "Member has been assigned to the project.",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to assign member to project.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const removeFromProjectMutation = useMutation({
+    mutationFn: async ({ projectId, userId }: { projectId: string; userId: string }) => {
+      return apiRequest("DELETE", `/api/projects/${projectId}/members/${userId}`);
+    },
+    onSuccess: () => {
+      // Invalidate all project member queries for this company's projects
+      projects.forEach(p => {
+        queryClient.invalidateQueries({ queryKey: ["/api/projects", p.id, "members"] });
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/my-projects"] });
+      toast({
+        title: "Project Unassigned",
+        description: "Member has been removed from the project.",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to remove member from project.",
         variant: "destructive",
       });
     },
@@ -544,6 +595,15 @@ export default function CompanyTeamPage() {
                             )}
                           </div>
                           <div className="flex items-center gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setMemberToAssignProjects(member)}
+                              data-testid={`button-manage-projects-${member.id}`}
+                            >
+                              <FolderOpen className="w-4 h-4 mr-1" />
+                              Projects
+                            </Button>
                             <Select
                               value={member.role}
                               onValueChange={(value) => updateRoleMutation.mutate({ userId: member.userId, role: value })}
@@ -721,6 +781,149 @@ export default function CompanyTeamPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Project Assignment Dialog */}
+      {memberToAssignProjects && (
+        <ProjectAssignmentDialog
+          member={memberToAssignProjects}
+          projects={projects}
+          onClose={() => setMemberToAssignProjects(null)}
+          onAddToProject={(projectId) => addToProjectMutation.mutate({ projectId, userId: memberToAssignProjects.userId })}
+          onRemoveFromProject={(projectId) => removeFromProjectMutation.mutate({ projectId, userId: memberToAssignProjects.userId })}
+          isLoading={addToProjectMutation.isPending || removeFromProjectMutation.isPending}
+        />
+      )}
     </PageLayout>
+  );
+}
+
+// Project Assignment Dialog Component
+function ProjectAssignmentDialog({
+  member,
+  projects,
+  onClose,
+  onAddToProject,
+  onRemoveFromProject,
+  isLoading,
+}: {
+  member: MemberWithUser;
+  projects: Project[];
+  onClose: () => void;
+  onAddToProject: (projectId: string) => void;
+  onRemoveFromProject: (projectId: string) => void;
+  isLoading: boolean;
+}) {
+  const displayName = member.user?.firstName && member.user?.lastName
+    ? `${member.user.firstName} ${member.user.lastName}`
+    : member.user?.email || "Unknown User";
+
+  // Use useQueries to fetch all project members in a hook-safe way
+  const projectMemberResults = useQueries({
+    queries: projects.map(project => ({
+      queryKey: ["/api/projects", project.id, "members"],
+      staleTime: 30000,
+    })),
+  });
+
+  // Build a map of project ID to assignment status
+  const projectAssignments = new Map<string, { isAssigned: boolean; isLoading: boolean }>();
+  projects.forEach((project, index) => {
+    const result = projectMemberResults[index];
+    const members = (result.data as ProjectMember[] | undefined) || [];
+    projectAssignments.set(project.id, {
+      isAssigned: members.some(m => m.userId === member.userId),
+      isLoading: result.isLoading,
+    });
+  });
+
+  const isAssignedToProject = (projectId: string): boolean => {
+    return projectAssignments.get(projectId)?.isAssigned || false;
+  };
+
+  const isProjectLoading = (projectId: string): boolean => {
+    return projectAssignments.get(projectId)?.isLoading || false;
+  };
+
+  const toggleProjectAssignment = (projectId: string) => {
+    if (isAssignedToProject(projectId)) {
+      onRemoveFromProject(projectId);
+    } else {
+      onAddToProject(projectId);
+    }
+  };
+
+  const assignedCount = Array.from(projectAssignments.values()).filter(v => v.isAssigned).length;
+  const anyLoading = projectMemberResults.some(r => r.isLoading);
+
+  return (
+    <Dialog open={true} onOpenChange={() => onClose()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <FolderOpen className="w-5 h-5" />
+            Manage Project Assignments
+          </DialogTitle>
+          <DialogDescription>
+            Assign {displayName} to company projects. They will only see reports for assigned projects.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="py-4">
+          {projects.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              <FolderOpen className="w-8 h-8 mx-auto mb-2 opacity-50" />
+              <p>No projects available</p>
+              <p className="text-sm">Create projects first to assign team members</p>
+            </div>
+          ) : anyLoading ? (
+            <div className="space-y-2">
+              {[1, 2, 3].map((i) => (
+                <Skeleton key={i} className="h-14 w-full" />
+              ))}
+            </div>
+          ) : (
+            <div className="space-y-2 max-h-64 overflow-y-auto">
+              {projects.map((project) => {
+                const isAssigned = isAssignedToProject(project.id);
+                const queryLoading = isProjectLoading(project.id);
+
+                return (
+                  <label
+                    key={project.id}
+                    className="flex items-center gap-3 p-3 rounded-md border hover-elevate cursor-pointer"
+                    data-testid={`project-assignment-${project.id}`}
+                  >
+                    <Checkbox
+                      checked={isAssigned}
+                      onCheckedChange={() => toggleProjectAssignment(project.id)}
+                      disabled={isLoading || queryLoading}
+                      data-testid={`checkbox-project-${project.id}`}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium truncate">{project.name}</p>
+                      {project.projectNumber && (
+                        <p className="text-sm text-muted-foreground">{project.projectNumber}</p>
+                      )}
+                    </div>
+                    {queryLoading && (
+                      <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+                    )}
+                  </label>
+                );
+              })}
+            </div>
+          )}
+          <div className="mt-4 pt-4 border-t text-sm text-muted-foreground">
+            <Badge variant="secondary" className="no-default-hover-elevate no-default-active-elevate">
+              {assignedCount} of {projects.length} projects assigned
+            </Badge>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button onClick={onClose} data-testid="button-close-project-dialog">
+            Done
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
