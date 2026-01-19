@@ -41,7 +41,9 @@ import {
   XCircle,
   Copy,
   FolderOpen,
+  ArrowLeft,
 } from "lucide-react";
+import { Link } from "wouter";
 import type { Project, Invite, Company, CompanyMember } from "@shared/schema";
 import type { User } from "@shared/models/auth";
 import { format } from "date-fns";
@@ -250,6 +252,14 @@ export default function AdminInvitesPage() {
   return (
     <PageLayout title="Invites" isAdmin>
       <div className="container px-4 py-6 mx-auto max-w-screen-xl space-y-6">
+        <div className="flex items-center gap-2">
+          <Button variant="ghost" size="sm" asChild data-testid="button-back">
+            <Link href="/">
+              <ArrowLeft className="w-4 h-4 mr-1" />
+              Back to Dashboard
+            </Link>
+          </Button>
+        </div>
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold">Invitations</h1>

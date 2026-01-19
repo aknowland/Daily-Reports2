@@ -17,7 +17,9 @@ import {
   Check,
   X,
   Lock,
+  ArrowLeft,
 } from "lucide-react";
+import { Link } from "wouter";
 import type { Company } from "@shared/schema";
 
 interface ActiveCompany extends Company {
@@ -158,6 +160,14 @@ export default function AdminSettingsPage() {
   return (
     <PageLayout title="Settings" isAdmin={isAdmin}>
       <div className="container px-4 py-6 mx-auto max-w-2xl space-y-6">
+        <div className="flex items-center gap-2">
+          <Button variant="ghost" size="sm" asChild data-testid="button-back">
+            <Link href="/">
+              <ArrowLeft className="w-4 h-4 mr-1" />
+              Back to Dashboard
+            </Link>
+          </Button>
+        </div>
         <div>
           <h1 className="text-2xl font-bold">Settings</h1>
           <p className="text-muted-foreground">

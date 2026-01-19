@@ -40,6 +40,7 @@ import {
   Users,
   UserPlus,
   X,
+  ArrowLeft,
 } from "lucide-react";
 import { Link } from "wouter";
 import type { Project, ProjectMember, User } from "@shared/schema";
@@ -278,6 +279,14 @@ export default function AdminProjectsPage() {
   return (
     <PageLayout title="Projects" isAdmin>
       <div className="container px-4 py-6 mx-auto max-w-screen-xl space-y-6">
+        <div className="flex items-center gap-2">
+          <Button variant="ghost" size="sm" asChild data-testid="button-back">
+            <Link href="/">
+              <ArrowLeft className="w-4 h-4 mr-1" />
+              Back to Dashboard
+            </Link>
+          </Button>
+        </div>
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold">Projects</h1>
