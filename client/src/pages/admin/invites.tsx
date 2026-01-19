@@ -67,6 +67,15 @@ export default function AdminInvitesPage() {
     companyId: "" as string,
     projectIds: [] as string[],
   });
+  
+  // Inline project creation state
+  const [showCreateProject, setShowCreateProject] = useState(false);
+  const [newProjectData, setNewProjectData] = useState({
+    name: "",
+    projectNumber: "",
+    client: "",
+    address: "",
+  });
 
   const isSystemAdmin = profile?.role === "admin" && profile?.preferAdminMode !== false;
 
@@ -139,6 +148,36 @@ export default function AdminInvitesPage() {
     },
   });
 
+  // Inline project creation mutation
+  const createProjectMutation = useMutation({
+    mutationFn: async (data: typeof newProjectData & { companyId: string }) => {
+      const response = await apiRequest("POST", "/api/projects", data);
+      return response.json();
+    },
+    onSuccess: (newProject: Project) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+      // Auto-select the newly created project
+      setFormData(prev => ({
+        ...prev,
+        projectIds: [...prev.projectIds, newProject.id],
+      }));
+      // Reset and hide the project form
+      setNewProjectData({ name: "", projectNumber: "", client: "", address: "" });
+      setShowCreateProject(false);
+      toast({
+        title: "Project Created",
+        description: `${newProject.name} has been created and selected`,
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to create project",
+        variant: "destructive",
+      });
+    },
+  });
+
   const resetForm = () => {
     setFormData({
       email: "",
@@ -146,6 +185,8 @@ export default function AdminInvitesPage() {
       companyId: "",
       projectIds: [],
     });
+    setShowCreateProject(false);
+    setNewProjectData({ name: "", projectNumber: "", client: "", address: "" });
   };
   
   // Filter projects based on selected company
@@ -323,7 +364,93 @@ export default function AdminInvitesPage() {
                   </div>
 
                   <div className="space-y-2">
-                    <Label>Assign to Projects</Label>
+                    <div className="flex items-center justify-between">
+                      <Label>Assign to Projects</Label>
+                      {formData.companyId && !showCreateProject && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setShowCreateProject(true)}
+                          data-testid="button-create-project-inline"
+                        >
+                          <Plus className="w-3 h-3 mr-1" />
+                          New Project
+                        </Button>
+                      )}
+                    </div>
+                    
+                    {showCreateProject && formData.companyId && (
+                      <div className="border rounded-md p-3 space-y-3 bg-muted/30">
+                        <div className="flex items-center justify-between">
+                          <p className="text-sm font-medium">Create New Project</p>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              setShowCreateProject(false);
+                              setNewProjectData({ name: "", projectNumber: "", client: "", address: "" });
+                            }}
+                            data-testid="button-cancel-create-project"
+                          >
+                            Cancel
+                          </Button>
+                        </div>
+                        <div className="grid gap-2">
+                          <Input
+                            placeholder="Project Name *"
+                            value={newProjectData.name}
+                            onChange={(e) => setNewProjectData(prev => ({ ...prev, name: e.target.value }))}
+                            data-testid="input-new-project-name"
+                          />
+                          <Input
+                            placeholder="Project Number *"
+                            value={newProjectData.projectNumber}
+                            onChange={(e) => setNewProjectData(prev => ({ ...prev, projectNumber: e.target.value }))}
+                            data-testid="input-new-project-number"
+                          />
+                          <Input
+                            placeholder="Client (optional)"
+                            value={newProjectData.client}
+                            onChange={(e) => setNewProjectData(prev => ({ ...prev, client: e.target.value }))}
+                            data-testid="input-new-project-client"
+                          />
+                          <Input
+                            placeholder="Address (optional)"
+                            value={newProjectData.address}
+                            onChange={(e) => setNewProjectData(prev => ({ ...prev, address: e.target.value }))}
+                            data-testid="input-new-project-address"
+                          />
+                        </div>
+                        <Button
+                          type="button"
+                          size="sm"
+                          className="w-full"
+                          disabled={!newProjectData.name || !newProjectData.projectNumber || createProjectMutation.isPending}
+                          onClick={() => {
+                            createProjectMutation.mutate({
+                              ...newProjectData,
+                              companyId: formData.companyId,
+                            });
+                          }}
+                          data-testid="button-save-new-project"
+                        >
+                          {createProjectMutation.isPending ? (
+                            <>
+                              <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                              Creating...
+                            </>
+                          ) : (
+                            <>
+                              <FolderOpen className="w-3 h-3 mr-1" />
+                              Create & Select Project
+                            </>
+                          )}
+                        </Button>
+                      </div>
+                    )}
+                    
                     <div className="border rounded-md max-h-48 overflow-y-auto p-2 space-y-2">
                       {!formData.companyId ? (
                         <p className="text-sm text-muted-foreground p-2">
@@ -331,7 +458,7 @@ export default function AdminInvitesPage() {
                         </p>
                       ) : filteredProjects?.length === 0 ? (
                         <p className="text-sm text-muted-foreground p-2">
-                          No projects available for this organization
+                          No projects yet. Click "New Project" above to create one.
                         </p>
                       ) : (
                         filteredProjects?.map((project) => (
