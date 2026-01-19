@@ -18,6 +18,16 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -38,6 +48,7 @@ import {
   Loader2,
   Calendar,
   Download,
+  Trash2,
 } from "lucide-react";
 import { Link } from "wouter";
 import { useState } from "react";
@@ -88,6 +99,9 @@ export default function MyProjectsPage() {
     address: "",
     companyId: "",
   });
+  
+  // Delete state
+  const [projectToDelete, setProjectToDelete] = useState<Project | null>(null);
   
   // Invoice dialog state
   const [showInvoiceDialog, setShowInvoiceDialog] = useState(false);
@@ -172,6 +186,28 @@ export default function MyProjectsPage() {
       toast({
         title: "Error",
         description: error.message || "Failed to assign project.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      return apiRequest("DELETE", `/api/projects/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/my-projects"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+      setProjectToDelete(null);
+      toast({
+        title: "Project Deleted",
+        description: "Project has been deleted.",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to delete project. Projects with reports cannot be deleted.",
         variant: "destructive",
       });
     },
@@ -455,6 +491,17 @@ export default function MyProjectsPage() {
                         <FileText className="w-4 h-4 mr-2" />
                         Generate Invoice
                       </Button>
+                      {(isPersonal || adminCompanies.some(c => c.companyId === project.companyId)) && (
+                        <Button
+                          variant="outline"
+                          className="w-full text-destructive"
+                          onClick={() => setProjectToDelete(project)}
+                          data-testid={`button-delete-${project.id}`}
+                        >
+                          <Trash2 className="w-4 h-4 mr-2" />
+                          Delete Project
+                        </Button>
+                      )}
                     </div>
                   </CardContent>
                 </Card>
@@ -816,6 +863,27 @@ export default function MyProjectsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={!!projectToDelete} onOpenChange={() => setProjectToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Project?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete "{projectToDelete?.name}"? Projects with existing reports cannot be deleted. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-cancel-delete">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => projectToDelete && deleteMutation.mutate(projectToDelete.id)}
+              className="bg-destructive text-destructive-foreground"
+              data-testid="button-confirm-delete"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </PageLayout>
   );
 }
