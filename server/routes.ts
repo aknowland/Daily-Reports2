@@ -1070,10 +1070,17 @@ export async function registerRoutes(
         .filter(m => m.role === "admin")
         .map(m => m.companyId);
       
+      // Get all user IDs that are members of admin's companies (for personal report visibility)
+      const companyMemberUserIds = adminCompanyIds.length > 0 
+        ? await storage.getMemberUserIdsForCompanies(adminCompanyIds)
+        : [];
+      
       // Use optimized query with combined inspector/company filter
+      // Also include personal reports from company members
       const options = {
         inspectorId: userId,
         companyIds: adminCompanyIds.length > 0 ? adminCompanyIds : undefined,
+        personalReportUserIds: companyMemberUserIds.length > 0 ? companyMemberUserIds : undefined,
       };
       
       const reports = await storage.getReports(options);

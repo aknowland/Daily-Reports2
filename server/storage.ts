@@ -17,7 +17,7 @@ import {
 } from "@shared/schema";
 import { users, type User } from "@shared/models/auth";
 import { db } from "./db";
-import { eq, desc, and, or, sql, inArray } from "drizzle-orm";
+import { eq, desc, and, or, sql, inArray, isNull } from "drizzle-orm";
 
 // Re-export db for use in other modules
 export { db };
@@ -64,7 +64,7 @@ export interface IStorage {
   createReport(data: InsertDailyReport): Promise<DailyReport>;
   updateReport(id: string, data: Partial<InsertDailyReport>): Promise<DailyReport | undefined>;
   deleteReport(id: string): Promise<boolean>;
-  getReportStats(options?: { inspectorId?: string; companyId?: string; companyIds?: string[] }): Promise<{ total: number; drafts: number; submitted: number }>;
+  getReportStats(options?: { inspectorId?: string; companyId?: string; companyIds?: string[]; personalReportUserIds?: string[] }): Promise<{ total: number; drafts: number; submitted: number }>;
   getNextReportNumber(): Promise<number>;
 
   // Photos
@@ -133,6 +133,7 @@ export interface IStorage {
   getCompanyMembers(companyId: string): Promise<(CompanyMember & { user?: User })[]>;
   getCompanyMember(companyId: string, userId: string): Promise<CompanyMember | undefined>;
   getCompaniesForUser(userId: string): Promise<(CompanyMember & { company?: Company })[]>;
+  getMemberUserIdsForCompanies(companyIds: string[]): Promise<string[]>;
   addCompanyMember(companyId: string, userId: string, role: "inspector" | "admin"): Promise<CompanyMember>;
   updateCompanyMemberRole(companyId: string, userId: string, role: "inspector" | "admin"): Promise<CompanyMember | undefined>;
   removeCompanyMember(companyId: string, userId: string): Promise<boolean>;
@@ -219,19 +220,28 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Daily Reports
-  async getReports(options?: { inspectorId?: string; companyId?: string; companyIds?: string[] }): Promise<DailyReportWithDetails[]> {
-    const { inspectorId, companyId, companyIds } = options || {};
+  async getReports(options?: { inspectorId?: string; companyId?: string; companyIds?: string[]; personalReportUserIds?: string[] }): Promise<DailyReportWithDetails[]> {
+    const { inspectorId, companyId, companyIds, personalReportUserIds } = options || {};
     
     // Build conditions array
     const conditions = [];
     if (inspectorId && companyIds && companyIds.length > 0) {
       // Special case: inspector OR company admin (used for combined access)
-      conditions.push(
-        or(
-          eq(dailyReports.inspectorId, inspectorId),
-          inArray(projects.companyId, companyIds)
-        )
-      );
+      // Include: user's own reports OR reports from company projects OR personal reports from company members
+      const orConditions = [
+        eq(dailyReports.inspectorId, inspectorId),
+        inArray(projects.companyId, companyIds)
+      ];
+      
+      // Also include personal reports (no projectId) from company members
+      if (personalReportUserIds && personalReportUserIds.length > 0) {
+        // Personal reports are those with no projectId, from users in the company
+        orConditions.push(
+          sql`${dailyReports.projectId} IS NULL AND ${dailyReports.inspectorId} IN (${sql.join(personalReportUserIds.map(id => sql`${id}`), sql`, `)})`
+        );
+      }
+      
+      conditions.push(or(...orConditions));
     } else {
       if (inspectorId) {
         conditions.push(eq(dailyReports.inspectorId, inspectorId));
@@ -333,8 +343,8 @@ export class DatabaseStorage implements IStorage {
     return true;
   }
 
-  async getReportStats(options?: { inspectorId?: string; companyId?: string; companyIds?: string[] }): Promise<{ total: number; drafts: number; submitted: number }> {
-    const { inspectorId, companyId, companyIds } = options || {};
+  async getReportStats(options?: { inspectorId?: string; companyId?: string; companyIds?: string[]; personalReportUserIds?: string[] }): Promise<{ total: number; drafts: number; submitted: number }> {
+    const { inspectorId, companyId, companyIds, personalReportUserIds } = options || {};
     
     // Build conditions array
     const conditions = [];
@@ -342,12 +352,20 @@ export class DatabaseStorage implements IStorage {
     
     if (inspectorId && companyIds && companyIds.length > 0) {
       // Special case: inspector OR company admin (used for combined access)
-      conditions.push(
-        or(
-          eq(dailyReports.inspectorId, inspectorId),
-          inArray(projects.companyId, companyIds)
-        )
-      );
+      // Include: user's own reports OR reports from company projects OR personal reports from company members
+      const orConditions = [
+        eq(dailyReports.inspectorId, inspectorId),
+        inArray(projects.companyId, companyIds)
+      ];
+      
+      // Also include personal reports (no projectId) from company members
+      if (personalReportUserIds && personalReportUserIds.length > 0) {
+        orConditions.push(
+          sql`${dailyReports.projectId} IS NULL AND ${dailyReports.inspectorId} IN (${sql.join(personalReportUserIds.map(id => sql`${id}`), sql`, `)})`
+        );
+      }
+      
+      conditions.push(or(...orConditions));
     } else {
       if (inspectorId) {
         conditions.push(eq(dailyReports.inspectorId, inspectorId));
@@ -834,6 +852,17 @@ export class DatabaseStorage implements IStorage {
       ...row.company_members,
       company: row.companies || undefined,
     }));
+  }
+
+  async getMemberUserIdsForCompanies(companyIds: string[]): Promise<string[]> {
+    if (companyIds.length === 0) return [];
+    
+    const results = await db
+      .selectDistinct({ userId: companyMembers.userId })
+      .from(companyMembers)
+      .where(inArray(companyMembers.companyId, companyIds));
+    
+    return results.map(row => row.userId);
   }
 
   async addCompanyMember(companyId: string, userId: string, role: "inspector" | "admin"): Promise<CompanyMember> {
