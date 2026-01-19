@@ -51,6 +51,9 @@ import {
   ClipboardList,
   Check,
   X,
+  ChevronDown,
+  ChevronRight,
+  FileText,
 } from "lucide-react";
 import { Link } from "wouter";
 import { useState } from "react";
@@ -72,6 +75,7 @@ export default function CompanyTeamPage() {
   const [memberToRemove, setMemberToRemove] = useState<MemberWithUser | null>(null);
   const [showInviteDialog, setShowInviteDialog] = useState(false);
   const [memberToAssignProjects, setMemberToAssignProjects] = useState<MemberWithUser | null>(null);
+  const [expandedMembers, setExpandedMembers] = useState<Set<string>>(new Set());
   const [inviteForm, setInviteForm] = useState({
     email: "",
     role: "inspector" as "inspector" | "admin",
@@ -202,6 +206,18 @@ export default function CompanyTeamPage() {
         ? prev.projectIds.filter(id => id !== projectId)
         : [...prev.projectIds, projectId],
     }));
+  };
+
+  const toggleMemberExpanded = (memberId: string) => {
+    setExpandedMembers(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(memberId)) {
+        newSet.delete(memberId);
+      } else {
+        newSet.add(memberId);
+      }
+      return newSet;
+    });
   };
 
   const updateRoleMutation = useMutation({
@@ -573,26 +589,42 @@ export default function CompanyTeamPage() {
                   const displayName = member.user?.firstName && member.user?.lastName
                     ? `${member.user.firstName} ${member.user.lastName}`
                     : member.user?.email || "Unknown User";
+                  const isExpanded = expandedMembers.has(member.id);
 
                   return (
                     <Card key={member.id} data-testid={`card-member-${member.id}`}>
                       <CardContent className="p-4">
                         <div className="flex items-center justify-between gap-4">
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2">
-                              <p className="font-medium truncate" data-testid={`text-member-name-${member.id}`}>
-                                {displayName}
-                              </p>
-                              {isCurrentUser && (
-                                <Badge variant="secondary" className="text-xs">You</Badge>
+                          <div className="flex items-center gap-2 flex-1 min-w-0">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="shrink-0"
+                              onClick={() => toggleMemberExpanded(member.id)}
+                              data-testid={`button-expand-${member.id}`}
+                            >
+                              {isExpanded ? (
+                                <ChevronDown className="w-4 h-4" />
+                              ) : (
+                                <ChevronRight className="w-4 h-4" />
+                              )}
+                            </Button>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2">
+                                <p className="font-medium truncate" data-testid={`text-member-name-${member.id}`}>
+                                  {displayName}
+                                </p>
+                                {isCurrentUser && (
+                                  <Badge variant="secondary" className="text-xs">You</Badge>
+                                )}
+                              </div>
+                              {member.user?.email && (
+                                <div className="flex items-center gap-1 text-sm text-muted-foreground mt-1">
+                                  <Mail className="w-3 h-3" />
+                                  <span className="truncate">{member.user.email}</span>
+                                </div>
                               )}
                             </div>
-                            {member.user?.email && (
-                              <div className="flex items-center gap-1 text-sm text-muted-foreground mt-1">
-                                <Mail className="w-3 h-3" />
-                                <span className="truncate">{member.user.email}</span>
-                              </div>
-                            )}
                           </div>
                           <div className="flex items-center gap-2">
                             <Button
@@ -602,7 +634,7 @@ export default function CompanyTeamPage() {
                               data-testid={`button-manage-projects-${member.id}`}
                             >
                               <FolderOpen className="w-4 h-4 mr-1" />
-                              Projects
+                              Manage
                             </Button>
                             <Select
                               value={member.role}
@@ -631,6 +663,12 @@ export default function CompanyTeamPage() {
                             )}
                           </div>
                         </div>
+                        {isExpanded && (
+                          <MemberProjectsList 
+                            member={member} 
+                            projects={projects} 
+                          />
+                        )}
                       </CardContent>
                     </Card>
                   );
@@ -794,6 +832,84 @@ export default function CompanyTeamPage() {
         />
       )}
     </PageLayout>
+  );
+}
+
+// Member Projects List Component - Shows assigned projects with links to reports
+function MemberProjectsList({
+  member,
+  projects,
+}: {
+  member: MemberWithUser;
+  projects: Project[];
+}) {
+  // Use useQueries to fetch all project members
+  const projectMemberResults = useQueries({
+    queries: projects.map(project => ({
+      queryKey: ["/api/projects", project.id, "members"],
+      staleTime: 30000,
+    })),
+  });
+
+  // Find projects the member is assigned to
+  const assignedProjects = projects.filter((project, index) => {
+    const result = projectMemberResults[index];
+    const members = (result.data as ProjectMember[] | undefined) || [];
+    return members.some(m => m.userId === member.userId);
+  });
+
+  const anyLoading = projectMemberResults.some(r => r.isLoading);
+
+  if (anyLoading) {
+    return (
+      <div className="mt-4 pt-4 border-t">
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Loader2 className="w-4 h-4 animate-spin" />
+          Loading projects...
+        </div>
+      </div>
+    );
+  }
+
+  if (assignedProjects.length === 0) {
+    return (
+      <div className="mt-4 pt-4 border-t">
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <FolderOpen className="w-4 h-4" />
+          No projects assigned
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-4 pt-4 border-t">
+      <div className="flex items-center gap-2 mb-3">
+        <FolderOpen className="w-4 h-4 text-muted-foreground" />
+        <span className="text-sm font-medium">Assigned Projects ({assignedProjects.length})</span>
+      </div>
+      <div className="space-y-2">
+        {assignedProjects.map((project) => (
+          <Link
+            key={project.id}
+            href={`/reports?project=${project.id}`}
+            className="flex items-center justify-between gap-3 p-3 rounded-md border hover-elevate cursor-pointer"
+            data-testid={`link-project-reports-${project.id}`}
+          >
+            <div className="flex-1 min-w-0">
+              <p className="font-medium truncate">{project.name}</p>
+              {project.projectNumber && (
+                <p className="text-sm text-muted-foreground">{project.projectNumber}</p>
+              )}
+            </div>
+            <div className="flex items-center gap-1 text-sm text-muted-foreground">
+              <FileText className="w-4 h-4" />
+              <span>View Reports</span>
+            </div>
+          </Link>
+        ))}
+      </div>
+    </div>
   );
 }
 
