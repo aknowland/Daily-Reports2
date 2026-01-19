@@ -2852,10 +2852,13 @@ export async function registerRoutes(
       const defaultExpiry = new Date();
       defaultExpiry.setDate(defaultExpiry.getDate() + 7);
 
+      // Convert empty string companyId to null for database compatibility
+      const normalizedCompanyId = companyId && companyId.trim() !== "" ? companyId : null;
+      
       const invite = await storage.createInvite({
         email,
         role,
-        companyId,
+        companyId: normalizedCompanyId,
         projectIds,
         token,
         inviteCode,
@@ -2874,7 +2877,7 @@ export async function registerRoutes(
             : 'http://localhost:5000';
         
         const inviteLink = `${baseUrl}/accept-invite/${token}`;
-        const company = companyId ? await storage.getCompany(companyId) : null;
+        const company = normalizedCompanyId ? await storage.getCompany(normalizedCompanyId) : null;
         
         const emailHtml = `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
