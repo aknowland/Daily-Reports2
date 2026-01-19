@@ -23,6 +23,13 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -53,7 +60,12 @@ import {
   Hash,
   Trash2,
   FolderPlus,
+  Mail,
+  RefreshCw,
+  ChevronDown,
+  Eye,
 } from "lucide-react";
+import { EmailDistributionDialog } from "@/components/reports/email-distribution-dialog";
 import type { DailyReport, Project, Photo, VisitorRow, WorkActivityRow } from "@shared/schema";
 
 type ReportWithDetails = DailyReport & {
@@ -82,6 +94,7 @@ export function ReportDetailPanel({
   const { toast } = useToast();
   const [showAssignProject, setShowAssignProject] = useState(false);
   const [selectedProjectId, setSelectedProjectId] = useState<string>("");
+  const [showEmailDialog, setShowEmailDialog] = useState(false);
 
   // Fetch projects for assignment dropdown
   const { data: projects } = useQuery<Project[]>({
@@ -233,17 +246,93 @@ export function ReportDetailPanel({
               </Button>
             )}
             {report.pdfPath ? (
-              <Button variant="outline" size="sm" asChild data-testid="button-view-pdf">
-                <a href={`${report.pdfPath}?t=${new Date(report.updatedAt || Date.now()).getTime()}`} target="_blank" rel="noopener noreferrer">
-                  <FileText className="w-4 h-4 mr-2" />
-                  View PDF
-                </a>
-              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm" data-testid="button-pdf-actions">
+                    <FileText className="w-4 h-4 mr-2" />
+                    PDF
+                    <ChevronDown className="w-3 h-3 ml-1" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start">
+                  <DropdownMenuItem asChild>
+                    <a 
+                      href={`${report.pdfPath}?t=${new Date(report.updatedAt || Date.now()).getTime()}`} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="flex items-center cursor-pointer"
+                      data-testid="menu-view-pdf"
+                    >
+                      <Eye className="w-4 h-4 mr-2" />
+                      View PDF
+                    </a>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <a 
+                      href={`${report.pdfPath}?t=${new Date(report.updatedAt || Date.now()).getTime()}`} 
+                      download
+                      className="flex items-center cursor-pointer"
+                      data-testid="menu-download-pdf"
+                    >
+                      <Download className="w-4 h-4 mr-2" />
+                      Download
+                    </a>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem 
+                    onClick={() => setShowEmailDialog(true)}
+                    className="cursor-pointer"
+                    data-testid="menu-email-pdf"
+                  >
+                    <Mail className="w-4 h-4 mr-2" />
+                    Email Report
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem 
+                    onSelect={(e) => {
+                      if (generatePdfMutation.isPending || !report?.id) {
+                        e.preventDefault();
+                        return;
+                      }
+                      generatePdfMutation.mutate();
+                    }}
+                    className="cursor-pointer"
+                    data-testid="menu-regenerate-pdf"
+                  >
+                    {generatePdfMutation.isPending ? (
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    ) : (
+                      <RefreshCw className="w-4 h-4 mr-2" />
+                    )}
+                    Regenerate PDF
+                  </DropdownMenuItem>
+                  <DropdownMenuItem 
+                    onSelect={(e) => {
+                      if (deletePdfMutation.isPending || !report?.id) {
+                        e.preventDefault();
+                        return;
+                      }
+                      deletePdfMutation.mutate();
+                    }}
+                    className="text-destructive cursor-pointer"
+                    data-testid="menu-delete-pdf"
+                  >
+                    {deletePdfMutation.isPending ? (
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    ) : (
+                      <Trash2 className="w-4 h-4 mr-2" />
+                    )}
+                    Delete PDF
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             ) : (
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => generatePdfMutation.mutate()}
+                onClick={() => {
+                  if (!report?.id || generatePdfMutation.isPending) return;
+                  generatePdfMutation.mutate();
+                }}
                 disabled={generatePdfMutation.isPending}
                 data-testid="button-generate-pdf"
               >
@@ -253,31 +342,6 @@ export function ReportDetailPanel({
                   <FileText className="w-4 h-4 mr-2" />
                 )}
                 Generate PDF
-              </Button>
-            )}
-            {report.pdfPath && (
-              <Button variant="outline" size="sm" asChild data-testid="button-download-pdf">
-                <a href={`${report.pdfPath}?t=${new Date(report.updatedAt || Date.now()).getTime()}`} download>
-                  <Download className="w-4 h-4 mr-2" />
-                  Download
-                </a>
-              </Button>
-            )}
-            {report.pdfPath && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => deletePdfMutation.mutate()}
-                disabled={deletePdfMutation.isPending}
-                className="text-destructive"
-                data-testid="button-delete-pdf"
-              >
-                {deletePdfMutation.isPending ? (
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                ) : (
-                  <Trash2 className="w-4 h-4 mr-2" />
-                )}
-                Delete PDF
               </Button>
             )}
             {canDelete && (
@@ -515,25 +579,54 @@ export function ReportDetailPanel({
               </section>
             )}
 
-            {report.pdfPath && (
-              <section className="space-y-3" data-testid="section-pdf-preview">
-                <h3 className="font-semibold flex items-center gap-2">
-                  <FileText className="w-4 h-4" />
-                  PDF Preview
-                </h3>
-                <div className="border rounded-lg overflow-hidden bg-muted">
-                  <iframe
-                    src={`${report.pdfPath}?t=${new Date(report.updatedAt || Date.now()).getTime()}`}
-                    className="w-full h-[400px]"
-                    title="Report PDF Preview"
-                    data-testid="iframe-pdf-preview"
-                  />
+            <section className="space-y-3" data-testid="section-pdf-preview">
+              <h3 className="font-semibold flex items-center gap-2">
+                <FileText className="w-4 h-4" />
+                PDF Document
+              </h3>
+              {report.pdfPath ? (
+                <>
+                  <div className="border rounded-lg overflow-hidden bg-muted">
+                    <iframe
+                      src={`${report.pdfPath}?t=${new Date(report.updatedAt || Date.now()).getTime()}`}
+                      className="w-full h-[400px]"
+                      title="Report PDF Preview"
+                      data-testid="iframe-pdf-preview"
+                    />
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    If the preview doesn't load, use the PDF button above to view or download.
+                  </p>
+                </>
+              ) : (
+                <div className="border rounded-lg p-6 bg-muted/50 text-center space-y-4" data-testid="section-no-pdf">
+                  <div className="mx-auto w-12 h-12 rounded-full bg-muted flex items-center justify-center">
+                    <FileText className="w-6 h-6 text-muted-foreground" />
+                  </div>
+                  <div className="space-y-2">
+                    <p className="font-medium">No PDF Generated</p>
+                    <p className="text-sm text-muted-foreground">
+                      Generate a PDF to view, download, or email this report.
+                    </p>
+                  </div>
+                  <Button
+                    onClick={() => {
+                      if (!report?.id || generatePdfMutation.isPending) return;
+                      generatePdfMutation.mutate();
+                    }}
+                    disabled={generatePdfMutation.isPending}
+                    data-testid="button-generate-pdf-prompt"
+                  >
+                    {generatePdfMutation.isPending ? (
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    ) : (
+                      <FileText className="w-4 h-4 mr-2" />
+                    )}
+                    Generate PDF
+                  </Button>
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  If the preview doesn't load, use the buttons above to view or download the PDF.
-                </p>
-              </section>
-            )}
+              )}
+            </section>
           </div>
         </ScrollArea>
       </SheetContent>
@@ -579,6 +672,16 @@ export function ReportDetailPanel({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {report && (
+        <EmailDistributionDialog
+          open={showEmailDialog}
+          onOpenChange={setShowEmailDialog}
+          reportId={report.id}
+          projectName={report.project?.name || report.customProjectName || undefined}
+          defaultEmails={report.project?.distributionEmails as string[] || []}
+        />
+      )}
     </Sheet>
   );
 }
