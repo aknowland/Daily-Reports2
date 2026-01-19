@@ -460,7 +460,8 @@ export default function MyProjectsPage() {
                       )}
                     </Link>
                     <div className="flex flex-col gap-2 mt-2">
-                      {isPersonal && adminCompanies.length > 0 && (
+                      {/* Show assign button if user has any admin companies and can edit this project */}
+                      {adminCompanies.length > 0 && (isPersonal || adminCompanies.some(c => c.companyId === project.companyId)) && (
                         <Button
                           variant="outline"
                           className="w-full"
@@ -468,7 +469,7 @@ export default function MyProjectsPage() {
                           data-testid={`button-assign-${project.id}`}
                         >
                           <LinkIcon className="w-4 h-4 mr-2" />
-                          Assign to Company
+                          {isPersonal ? "Assign to Company" : "Change Company Assignment"}
                         </Button>
                       )}
                       {!isActive && (
@@ -619,27 +620,55 @@ export default function MyProjectsPage() {
       }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Assign to Company</DialogTitle>
+            <DialogTitle>{selectedProject?.companyId ? "Change Company Assignment" : "Assign to Company"}</DialogTitle>
             <DialogDescription>
-              Assign "{selectedProject?.name}" to a company you manage.
+              {selectedProject?.companyId 
+                ? `Reassign "${selectedProject?.name}" to a different company.`
+                : `Assign "${selectedProject?.name}" to a company you manage.`}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 pt-4">
-            <div className="space-y-2">
-              <Label htmlFor="company">Select Company</Label>
-              <Select value={selectedCompanyId} onValueChange={setSelectedCompanyId}>
-                <SelectTrigger data-testid="select-company">
-                  <SelectValue placeholder="Choose a company" />
-                </SelectTrigger>
-                <SelectContent>
-                  {adminCompanies.map((membership) => (
-                    <SelectItem key={membership.companyId} value={membership.companyId}>
-                      {membership.company?.name || "Unknown Company"}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            {/* Show current assignment status */}
+            {selectedProject?.companyId && (
+              <div className="flex items-center gap-2 p-3 rounded-md bg-muted border">
+                <Building2 className="w-4 h-4 text-muted-foreground" />
+                <span className="text-sm">
+                  Currently assigned to: <strong>{adminCompanies.find(c => c.companyId === selectedProject.companyId)?.company?.name || "Another Company"}</strong>
+                </span>
+              </div>
+            )}
+            
+            {/* Check if there are alternative companies available */}
+            {adminCompanies.filter(m => m.companyId !== selectedProject?.companyId).length === 0 ? (
+              <div className="p-4 text-center text-muted-foreground border rounded-md bg-muted/50">
+                <p className="text-sm">
+                  {selectedProject?.companyId 
+                    ? "No other companies available to reassign to. You need to be an admin of another company to transfer this project."
+                    : "No companies available. You need to be an admin of a company to assign projects."}
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <Label htmlFor="company">Select Company</Label>
+                <Select value={selectedCompanyId} onValueChange={setSelectedCompanyId}>
+                  <SelectTrigger data-testid="select-company">
+                    <SelectValue placeholder="Choose a company" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {adminCompanies
+                      .filter(membership => membership.companyId !== selectedProject?.companyId)
+                      .map((membership) => (
+                        <SelectItem key={membership.companyId} value={membership.companyId}>
+                          {membership.company?.name || "Unknown Company"}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Only companies where you are an admin are shown.
+                </p>
+              </div>
+            )}
           </div>
           <DialogFooter className="gap-2">
             <Button
@@ -651,18 +680,20 @@ export default function MyProjectsPage() {
               }}
               data-testid="button-cancel-assign"
             >
-              Cancel
+              {adminCompanies.filter(m => m.companyId !== selectedProject?.companyId).length === 0 ? "Close" : "Cancel"}
             </Button>
-            <Button
-              onClick={() => selectedProject && assignMutation.mutate({ 
-                projectId: selectedProject.id, 
-                companyId: selectedCompanyId 
-              })}
-              disabled={!selectedCompanyId || assignMutation.isPending}
-              data-testid="button-confirm-assign"
-            >
-              {assignMutation.isPending ? "Assigning..." : "Assign Project"}
-            </Button>
+            {adminCompanies.filter(m => m.companyId !== selectedProject?.companyId).length > 0 && (
+              <Button
+                onClick={() => selectedProject && assignMutation.mutate({ 
+                  projectId: selectedProject.id, 
+                  companyId: selectedCompanyId 
+                })}
+                disabled={!selectedCompanyId || assignMutation.isPending}
+                data-testid="button-confirm-assign"
+              >
+                {assignMutation.isPending ? "Assigning..." : "Assign Project"}
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
