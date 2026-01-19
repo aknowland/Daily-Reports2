@@ -53,6 +53,7 @@ export default function CompanyProjectsPage() {
     projectNumber: "",
     client: "",
     address: "",
+    distributionEmails: "",
   });
 
   const { data: projects = [], isLoading, error } = useQuery<Project[]>({
@@ -65,13 +66,16 @@ export default function CompanyProjectsPage() {
       return apiRequest("POST", "/api/projects", {
         ...data,
         companyId: activeCompany?.id,
+        distributionEmails: data.distributionEmails
+          ? data.distributionEmails.split(",").map((e) => e.trim()).filter(Boolean)
+          : [],
       });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/companies", activeCompany?.id, "projects"] });
       queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
       setShowCreateDialog(false);
-      setFormData({ name: "", projectNumber: "", client: "", address: "" });
+      setFormData({ name: "", projectNumber: "", client: "", address: "", distributionEmails: "" });
       toast({
         title: "Project Created",
         description: "New project has been created.",
@@ -88,13 +92,18 @@ export default function CompanyProjectsPage() {
 
   const updateMutation = useMutation({
     mutationFn: async (data: typeof formData & { id: string }) => {
-      return apiRequest("PATCH", `/api/projects/${data.id}`, data);
+      return apiRequest("PATCH", `/api/projects/${data.id}`, {
+        ...data,
+        distributionEmails: data.distributionEmails
+          ? data.distributionEmails.split(",").map((e) => e.trim()).filter(Boolean)
+          : [],
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/companies", activeCompany?.id, "projects"] });
       queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
       setEditingProject(null);
-      setFormData({ name: "", projectNumber: "", client: "", address: "" });
+      setFormData({ name: "", projectNumber: "", client: "", address: "", distributionEmails: "" });
       toast({
         title: "Project Updated",
         description: "Project has been updated.",
@@ -137,6 +146,7 @@ export default function CompanyProjectsPage() {
       projectNumber: project.projectNumber,
       client: project.client || "",
       address: project.address || "",
+      distributionEmails: (project.distributionEmails as string[])?.join(", ") || "",
     });
     setEditingProject(project);
   };
@@ -355,7 +365,7 @@ export default function CompanyProjectsPage() {
         if (!open) {
           setShowCreateDialog(false);
           setEditingProject(null);
-          setFormData({ name: "", projectNumber: "", client: "", address: "" });
+          setFormData({ name: "", projectNumber: "", client: "", address: "", distributionEmails: "" });
         }
       }}>
         <DialogContent>
@@ -406,6 +416,19 @@ export default function CompanyProjectsPage() {
                 data-testid="input-project-address"
               />
             </div>
+            <div className="space-y-2">
+              <Label htmlFor="distributionEmails">Distribution Emails</Label>
+              <Input
+                id="distributionEmails"
+                value={formData.distributionEmails}
+                onChange={(e) => setFormData({ ...formData, distributionEmails: e.target.value })}
+                placeholder="email1@example.com, email2@example.com"
+                data-testid="input-distribution-emails"
+              />
+              <p className="text-xs text-muted-foreground">
+                Comma-separated list of emails to receive daily reports
+              </p>
+            </div>
           </div>
           <DialogFooter className="gap-2">
             <Button
@@ -413,7 +436,7 @@ export default function CompanyProjectsPage() {
               onClick={() => {
                 setShowCreateDialog(false);
                 setEditingProject(null);
-                setFormData({ name: "", projectNumber: "", client: "", address: "" });
+                setFormData({ name: "", projectNumber: "", client: "", address: "", distributionEmails: "" });
               }}
               data-testid="button-cancel"
             >
