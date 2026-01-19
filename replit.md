@@ -187,6 +187,7 @@ Three role levels with different access permissions:
 ### Company Admin (company member with role="admin")
 - Sees all projects in companies where they are admin
 - Sees all reports for those company's projects (not just their own reports)
+- Sees personal reports from inspectors who are members of their companies
 - Can manage company settings, invites, and project assignments
 - Access spans ALL companies where they have admin role (not just activeCompanyId)
 
@@ -194,6 +195,8 @@ Three role levels with different access permissions:
 - Sees only projects they are assigned to
 - Sees only their own reports
 - Can create reports for assigned projects
+- Can delete their own DRAFT reports (submitted reports require admin access)
+- Cannot edit projects (admin-only)
 
 ### Knowland Construction Services
 - Members of "Knowland Construction Services" company bypass all subscription limits
@@ -214,5 +217,7 @@ Three role levels with different access permissions:
 - `isEffectiveCompanyAdmin(userId, companyId, profile)` - returns true only if company admin AND preferAdminMode !== false
 - `isAdmin` middleware uses effective admin check to block admin endpoints in inspector mode
 - `getCompaniesForUser(userId)` retrieves all company memberships to determine admin access
-- Storage functions (`getReports`, `getReportStats`) support `companyIds` array for efficient OR filtering
+- `getMemberUserIdsForCompanies(companyIds)` - returns user IDs for all members of specified companies (used for personal reports visibility)
+- Storage functions (`getReports`, `getReportStats`) support `companyIds` array and `personalReportUserIds` for efficient OR filtering
 - Database queries avoid N+1 patterns by filtering at the SQL level using `inArray` and `or` conditions
+- AdminRoute component checks actual role (isAdmin || isCompanyAdmin), not admin mode toggle - the toggle only affects data visibility, not page access
