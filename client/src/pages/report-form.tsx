@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
   SelectContent,
@@ -55,6 +56,16 @@ const WEATHER_OPTIONS = [
   { value: "cold", label: "Cold" },
 ];
 
+const TYPE_OF_WORK_OPTIONS = [
+  { value: "reinf_concrete", label: "Reinf. Concrete" },
+  { value: "structural_steel", label: "Structural Steel" },
+  { value: "reinf_masonry", label: "Reinf. Masonry" },
+  { value: "fire_proofing", label: "Fire Proofing" },
+  { value: "shotcrete", label: "Shotcrete" },
+  { value: "anchors", label: "Anchors" },
+  { value: "other", label: "Other" },
+];
+
 export default function ReportFormPage() {
   const { id } = useParams<{ id?: string }>();
   const [, navigate] = useLocation();
@@ -68,6 +79,7 @@ export default function ReportFormPage() {
     date: format(new Date(), "yyyy-MM-dd"),
     weatherType: "clear" as const,
     weatherNotes: "",
+    typeOfWork: [] as string[],
     workPerformed: "",
     workActivities: [] as WorkActivityRow[],
     visitors: [] as VisitorRow[],
@@ -198,6 +210,7 @@ export default function ReportFormPage() {
           // Pull from previous report
           weatherType: (previousReport.weatherType || "clear") as typeof formData.weatherType,
           weatherNotes: previousReport.weatherNotes || "",
+          typeOfWork: (previousReport.typeOfWork as string[]) || [],
           workPerformed: previousReport.workPerformed || "",
           workActivities: (previousReport.workActivities as WorkActivityRow[]) || [],
           visitors: (previousReport.visitors as VisitorRow[]) || [],
@@ -237,6 +250,7 @@ export default function ReportFormPage() {
         date: format(new Date(existingReport.date), "yyyy-MM-dd"),
         weatherType: (existingReport.weatherType || "clear") as typeof formData.weatherType,
         weatherNotes: existingReport.weatherNotes || "",
+        typeOfWork: (existingReport.typeOfWork as string[]) || [],
         workPerformed: existingReport.workPerformed || "",
         workActivities: (existingReport.workActivities as WorkActivityRow[]) || [],
         visitors: (existingReport.visitors as VisitorRow[]) || [],
@@ -547,6 +561,35 @@ export default function ReportFormPage() {
                   className="h-12"
                   data-testid="input-weather-notes"
                 />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Type of Work</Label>
+              <div className="flex flex-wrap gap-4" data-testid="section-type-of-work">
+                {TYPE_OF_WORK_OPTIONS.map((option) => (
+                  <div key={option.value} className="flex items-center space-x-2">
+                    <Checkbox
+                      id={`work-type-${option.value}`}
+                      checked={formData.typeOfWork.includes(option.value)}
+                      onCheckedChange={(checked) => {
+                        setFormData(prev => ({
+                          ...prev,
+                          typeOfWork: checked
+                            ? [...prev.typeOfWork, option.value]
+                            : prev.typeOfWork.filter(v => v !== option.value)
+                        }));
+                      }}
+                      data-testid={`checkbox-work-type-${option.value}`}
+                    />
+                    <Label 
+                      htmlFor={`work-type-${option.value}`}
+                      className="text-sm font-normal cursor-pointer"
+                    >
+                      {option.label}
+                    </Label>
+                  </div>
+                ))}
               </div>
             </div>
 

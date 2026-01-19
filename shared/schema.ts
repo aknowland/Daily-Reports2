@@ -134,6 +134,7 @@ export const dailyReports = pgTable("daily_reports", {
   date: timestamp("date").notNull(),
   weatherType: weatherTypeEnum("weather_type").default("clear"),
   weatherNotes: text("weather_notes"),
+  typeOfWork: json("type_of_work").$type<string[]>().default([]),
   workPerformed: text("work_performed"),
   trades: json("trades").$type<z.infer<typeof tradeRowSchema>[]>().default([]),
   manpower: json("manpower").$type<z.infer<typeof manpowerRowSchema>[]>().default([]),
