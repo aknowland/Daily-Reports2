@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { useAuth } from "@/hooks/use-auth";
 import { PageLayout } from "@/components/layout/page-layout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -48,6 +49,7 @@ type CompanyMemberWithCompany = CompanyMember & { company: Company };
 
 export default function AdminUsersPage() {
   const { toast } = useToast();
+  const { isOwner: currentUserIsOwner } = useAuth();
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedUser, setSelectedUser] = useState<UserWithProfile | null>(null);
   const [selectedProjectIds, setSelectedProjectIds] = useState<string[]>([]);
@@ -404,10 +406,16 @@ export default function AdminUsersPage() {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
                         <p className="font-medium truncate">{getDisplayName(user)}</p>
+                        {user.profile?.role === "owner" && (
+                          <Badge variant="secondary" className="bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300 no-default-hover-elevate no-default-active-elevate">
+                            <Shield className="w-3 h-3 mr-1" />
+                            Owner
+                          </Badge>
+                        )}
                         {user.profile?.role === "admin" && (
                           <Badge variant="secondary" className="bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300 no-default-hover-elevate no-default-active-elevate">
                             <Shield className="w-3 h-3 mr-1" />
-                            Admin
+                            Sys Admin
                           </Badge>
                         )}
                       </div>
@@ -439,7 +447,7 @@ export default function AdminUsersPage() {
                         onValueChange={(role: "inspector" | "admin") => 
                           updateRoleMutation.mutate({ userId: user.id, role })
                         }
-                        disabled={updateRoleMutation.isPending}
+                        disabled={updateRoleMutation.isPending || user.profile?.role === "owner"}
                       >
                         <SelectTrigger 
                           className="w-32"
@@ -448,18 +456,28 @@ export default function AdminUsersPage() {
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
+                          {user.profile?.role === "owner" && (
+                            <SelectItem value="owner">
+                              <div className="flex items-center gap-2">
+                                <Shield className="w-4 h-4" />
+                                Owner
+                              </div>
+                            </SelectItem>
+                          )}
                           <SelectItem value="inspector">
                             <div className="flex items-center gap-2">
                               <HardHat className="w-4 h-4" />
                               Inspector
                             </div>
                           </SelectItem>
-                          <SelectItem value="admin">
-                            <div className="flex items-center gap-2">
-                              <Shield className="w-4 h-4" />
-                              Admin
-                            </div>
-                          </SelectItem>
+                          {currentUserIsOwner && (
+                            <SelectItem value="admin">
+                              <div className="flex items-center gap-2">
+                                <Shield className="w-4 h-4" />
+                                Sys Admin
+                              </div>
+                            </SelectItem>
+                          )}
                         </SelectContent>
                       </Select>
                       <Button

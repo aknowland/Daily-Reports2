@@ -53,10 +53,16 @@ const isAdmin: RequestHandler = async (req: any, res, next) => {
   }
 };
 
-// Helper to check if user is effectively acting as system admin
-// Returns true only if user has admin role AND has admin mode enabled (not in inspector mode)
+// Helper to check if user is System Owner (highest level)
+// System Owner can manage System Admins
+const isSystemOwner = (profile: any): boolean => {
+  return profile?.role === "owner";
+};
+
+// Helper to check if user is effectively acting as system admin (or owner)
+// Returns true only if user has admin/owner role AND has admin mode enabled (not in inspector mode)
 const isEffectiveSystemAdmin = (profile: any): boolean => {
-  return profile?.role === "admin" && profile?.preferAdminMode !== false;
+  return (profile?.role === "admin" || profile?.role === "owner") && profile?.preferAdminMode !== false;
 };
 
 // Knowland Construction Services - members bypass all subscription limits
@@ -2738,13 +2744,29 @@ export async function registerRoutes(
   });
 
   // ========== INVITE ROUTES ==========
+  // Role types for invites:
+  // - "inspector": Regular inspector role
+  // - "admin": System Administrator (can only be invited by System Owner)
+  // - "company_admin": Company Administrator (admin within a specific company) - stored as "inspector" profile role + admin company membership
   const createInviteSchema = z.object({
     email: z.string().email("Valid email is required"),
-    role: z.enum(["inspector", "admin"]).default("inspector"),
+    role: z.enum(["inspector", "admin", "company_admin"]).default("inspector"),
     companyId: z.string().optional(),
     projectIds: z.array(z.string()).optional().default([]),
     expiresAt: z.string().or(z.date()).transform(val => new Date(val)).optional(),
   });
+  
+  // Convert invite role to database role (company_admin is stored as inspector in profiles)
+  const getProfileRoleFromInviteRole = (inviteRole: string): "inspector" | "admin" => {
+    if (inviteRole === "admin") return "admin";
+    return "inspector"; // Both "inspector" and "company_admin" become "inspector" in profiles
+  };
+  
+  // Get company member role from invite role
+  const getCompanyRoleFromInviteRole = (inviteRole: string): "inspector" | "admin" => {
+    if (inviteRole === "company_admin") return "admin";
+    return "inspector";
+  };
 
   // Helper to check if user is admin of a specific company
   const isCompanyAdmin = async (userId: string, companyId: string): Promise<boolean> => {
@@ -2803,7 +2825,17 @@ export async function registerRoutes(
       const userId = req.user?.claims?.sub;
       const profile = await storage.getUserProfile(userId);
       
-      // Check authorization: system admin can invite anyone, company admin can only invite to their companies
+      // System Admin invites can only be created by System Owner
+      if (role === "admin" && !isSystemOwner(profile)) {
+        return res.status(403).json({ message: "Forbidden: Only the System Owner can invite System Administrators" });
+      }
+      
+      // Company Admin invites require a company to be selected
+      if (role === "company_admin" && !companyId) {
+        return res.status(400).json({ message: "Company Administrator invites require an organization to be selected" });
+      }
+      
+      // Check authorization: system admin/owner can invite anyone, company admin can only invite to their companies
       if (!isEffectiveSystemAdmin(profile)) {
         if (!companyId) {
           return res.status(400).json({ message: "Company admins must select an organization for the invite" });
@@ -2812,6 +2844,11 @@ export async function registerRoutes(
         const isAdminOfCompany = await isCompanyAdmin(userId, companyId);
         if (!isAdminOfCompany) {
           return res.status(403).json({ message: "Forbidden: You can only invite users to companies you administer" });
+        }
+        
+        // Company admins cannot create System Admin invites (already checked above, but be safe)
+        if (role === "admin") {
+          return res.status(403).json({ message: "Forbidden: Only the System Owner can invite System Administrators" });
         }
       }
 
@@ -2855,9 +2892,17 @@ export async function registerRoutes(
       // Convert empty string companyId to null for database compatibility
       const normalizedCompanyId = companyId && companyId.trim() !== "" ? companyId : null;
       
+      // For database storage:
+      // - "admin" role = System Administrator (profile.role = "admin")
+      // - "company_admin" role = Company Administrator (profile.role = "inspector", company_members.role = "admin")
+      // - "inspector" role = Inspector (profile.role = "inspector", company_members.role = "inspector")
+      const dbRole = getProfileRoleFromInviteRole(role);
+      const isCompanyAdminInvite = role === "company_admin";
+      
       const invite = await storage.createInvite({
         email,
-        role,
+        role: dbRole,
+        isCompanyAdmin: isCompanyAdminInvite,
         companyId: normalizedCompanyId,
         projectIds,
         token,
@@ -2866,6 +2911,11 @@ export async function registerRoutes(
         expiresAt: expiresAt || defaultExpiry,
         status: "pending",
       });
+      
+      // Get display role for email
+      const displayRole = role === "admin" ? "System Administrator" 
+        : role === "company_admin" ? "Company Administrator" 
+        : "Inspector";
 
       // Send invitation email via Resend
       try {
@@ -2882,7 +2932,7 @@ export async function registerRoutes(
         const emailHtml = `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
             <h2 style="color: #2563eb;">You've Been Invited to Field Daily Reports</h2>
-            <p>You have been invited to join${company ? ` <strong>${company.name}</strong> on` : ''} Field Daily Reports as a${role === 'admin' ? 'n' : ''} <strong>${role}</strong>.</p>
+            <p>You have been invited to join${company ? ` <strong>${company.name}</strong> on` : ''} Field Daily Reports as a <strong>${displayRole}</strong>.</p>
             <p>Click the button below to accept your invitation and create your account:</p>
             <div style="text-align: center; margin: 30px 0;">
               <a href="${inviteLink}" style="background-color: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold;">Accept Invitation</a>
@@ -3028,20 +3078,26 @@ export async function registerRoutes(
         return res.status(400).json({ message: "This invite has expired" });
       }
 
-      // Check if this is a Knowland Construction Services invite
-      let effectiveRole = invite.role as "inspector" | "admin";
+      // Determine profile role (admin for System Admin invites, inspector for all others)
+      let profileRole: "inspector" | "admin" = invite.role as "inspector" | "admin";
+      
+      // Determine company member role
+      // - isCompanyAdmin = true → company member role is "admin"
+      // - isCompanyAdmin = false → company member role is "inspector"
+      let companyMemberRole: "inspector" | "admin" = invite.isCompanyAdmin ? "admin" : "inspector";
+      
       if (invite.companyId) {
         const company = await storage.getCompany(invite.companyId);
-        // Knowland Construction Services members always get inspector role
-        if (company?.name === KNOWLAND_COMPANY_NAME) {
-          effectiveRole = "inspector";
+        // Knowland Construction Services members: profile role always inspector, but keep company admin status
+        if (company?.name === KNOWLAND_COMPANY_NAME && profileRole === "admin") {
+          profileRole = "inspector";
         }
-        await storage.addCompanyMember(invite.companyId, userId, effectiveRole);
+        await storage.addCompanyMember(invite.companyId, userId, companyMemberRole);
       }
 
       await storage.createOrUpdateUserProfile({
         userId,
-        role: effectiveRole,
+        role: profileRole,
         activeCompanyId: invite.companyId || undefined,
         email: invite.email,
       });
@@ -3053,12 +3109,17 @@ export async function registerRoutes(
 
       await storage.updateInviteStatus(invite.id, "accepted");
 
+      // Determine display role for response
+      const displayRole = profileRole === "admin" ? "System Administrator" 
+        : invite.isCompanyAdmin ? "Company Administrator" 
+        : "Inspector";
+
       res.json({ 
         success: true, 
         message: "Invite accepted successfully",
         companyId: invite.companyId,
         projectsAssigned: projectIds.length,
-        role: effectiveRole,
+        role: displayRole,
       });
     } catch (error) {
       console.error("Error accepting invite:", error);

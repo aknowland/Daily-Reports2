@@ -8,7 +8,7 @@ export * from "./models/auth";
 import { users } from "./models/auth";
 
 // Enums
-export const userRoleEnum = pgEnum("user_role", ["inspector", "admin"]);
+export const userRoleEnum = pgEnum("user_role", ["inspector", "admin", "owner"]);
 export const weatherTypeEnum = pgEnum("weather_type", ["clear", "cloudy", "rain", "wind", "heat", "cold"]);
 export const reportStatusEnum = pgEnum("report_status", ["draft", "submitted"]);
 export const distributionStatusEnum = pgEnum("distribution_status", ["pending", "sent", "failed"]);
@@ -196,6 +196,7 @@ export const invites = pgTable("invites", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   email: varchar("email").notNull(),
   role: userRoleEnum("role").default("inspector").notNull(),
+  isCompanyAdmin: boolean("is_company_admin").default(false), // True if inviting as company admin (not system admin)
   companyId: varchar("company_id").references(() => companies.id, { onDelete: "cascade" }),
   projectIds: json("project_ids").$type<string[]>().default([]),
   invitedBy: varchar("invited_by").references(() => users.id).notNull(),
