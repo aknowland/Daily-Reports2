@@ -3841,34 +3841,6 @@ export async function registerRoutes(
     }
   });
 
-  // Get projects for a specific company
-  app.get("/api/companies/:id/projects", isAuthenticated, async (req: any, res) => {
-    try {
-      const userId = req.user?.claims?.sub;
-      const profile = await storage.getUserProfile(userId);
-      
-      // Check membership or admin (unless in inspector mode)
-      const isMember = await storage.isUserMemberOfCompany(req.params.id, userId);
-      if (!isMember && (profile?.role !== "admin" || profile?.preferAdminMode === false)) {
-        return res.status(403).json({ message: "Access denied" });
-      }
-
-      const projectsList = await storage.getProjectsByCompany(req.params.id);
-      
-      // For non-admin OR when in inspector mode, filter to only assigned projects
-      if (profile?.role !== "admin" || profile?.preferAdminMode === false) {
-        const assignedProjectIds = await storage.getProjectsForUser(userId);
-        const filtered = projectsList.filter(p => assignedProjectIds.includes(p.id));
-        return res.json(filtered);
-      }
-      
-      res.json(projectsList);
-    } catch (error) {
-      console.error("Error fetching company projects:", error);
-      res.status(500).json({ message: "Failed to fetch company projects" });
-    }
-  });
-
   // ========== USER PROFILE (auto-create on first access) ==========
   // Helper to check if email should have admin access
   const getAdminEmails = (): string[] => {
