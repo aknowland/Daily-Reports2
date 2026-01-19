@@ -476,18 +476,18 @@ export async function registerRoutes(
         return res.status(404).json({ message: "Project not found" });
       }
       
-      // Check authorization (respects inspector mode): effective system admin, effective company admin, or project member
-      const isProjectMember = await storage.isUserMemberOfProject(projectId, userId);
+      // Check authorization (respects inspector mode): only effective system admin or effective company admin can edit projects
+      // Inspectors/project members can view projects but cannot modify them
       const effectiveSysAdmin = isEffectiveSystemAdmin(profile);
       let effectiveCompAdmin = false;
       if (existingProject.companyId) {
         effectiveCompAdmin = await isEffectiveCompanyAdmin(userId, existingProject.companyId, profile);
       }
       
-      const canEdit = effectiveSysAdmin || effectiveCompAdmin || isProjectMember;
+      const canEdit = effectiveSysAdmin || effectiveCompAdmin;
       
       if (!canEdit) {
-        return res.status(403).json({ message: "Access denied" });
+        return res.status(403).json({ message: "Access denied. Only admins can edit projects." });
       }
       
       // Handle companyId assignment separately with extra authorization (respects inspector mode)
@@ -1336,7 +1336,10 @@ export async function registerRoutes(
       // Permission check (respects inspector mode):
       // - System admins can delete any report (when in admin mode)
       // - Company admins can delete any report in their company (when in admin mode)
-      // - Inspectors cannot delete reports
+      // - Inspectors can delete their own DRAFT reports only
+      const isOwner = existing.inspectorId === userId;
+      const isDraft = existing.status === "draft";
+      
       let hasAdminAccess = isEffectiveSystemAdmin(profile);
       if (!hasAdminAccess && existing.projectId) {
         const project = await storage.getProject(existing.projectId);
@@ -1345,8 +1348,14 @@ export async function registerRoutes(
         }
       }
       
-      if (!hasAdminAccess) {
-        return res.status(403).json({ message: "Access denied. Only admins can delete reports." });
+      // Allow deletion if: admin access OR (owner AND draft)
+      const canDelete = hasAdminAccess || (isOwner && isDraft);
+      
+      if (!canDelete) {
+        if (isOwner && !isDraft) {
+          return res.status(403).json({ message: "You can only delete your own draft reports. Submitted reports can only be deleted by admins." });
+        }
+        return res.status(403).json({ message: "Access denied. You can only delete your own draft reports." });
       }
       
       await storage.deleteReport(req.params.id);
