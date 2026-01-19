@@ -44,7 +44,7 @@ import type { Project } from "@shared/schema";
 
 export default function CompanyProjectsPage() {
   const { toast } = useToast();
-  const { activeCompany, isCompanyAdmin } = useAuth();
+  const { activeCompany, isCompanyAdmin, isCompaniesLoading } = useAuth();
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [projectToDelete, setProjectToDelete] = useState<Project | null>(null);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
@@ -140,6 +140,37 @@ export default function CompanyProjectsPage() {
     });
     setEditingProject(project);
   };
+
+  // Wait for companies data to load before checking permissions
+  if (isCompaniesLoading) {
+    return (
+      <PageLayout title="Company Projects">
+        <div className="container px-4 py-6 mx-auto max-w-screen-lg space-y-6">
+          <div className="flex items-center gap-2 mb-2">
+            <Button variant="ghost" size="sm" asChild data-testid="button-back">
+              <Link href="/">
+                <ArrowLeft className="w-4 h-4 mr-1" />
+                Back to Dashboard
+              </Link>
+            </Button>
+          </div>
+          <div className="grid gap-4 md:grid-cols-2">
+            {[1, 2, 3].map((i) => (
+              <Card key={i}>
+                <CardHeader>
+                  <Skeleton className="h-6 w-40" />
+                  <Skeleton className="h-4 w-24" />
+                </CardHeader>
+                <CardContent>
+                  <Skeleton className="h-4 w-full" />
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
+      </PageLayout>
+    );
+  }
 
   if (!isCompanyAdmin || !activeCompany) {
     return (
