@@ -65,7 +65,7 @@ export default function AdminInvitesPage() {
   const [showDialog, setShowDialog] = useState(false);
   const [formData, setFormData] = useState({
     email: "",
-    role: "inspector" as "inspector" | "admin",
+    role: "inspector" as "inspector" | "admin" | "company_admin",
     companyId: "" as string,
     projectIds: [] as string[],
   });
@@ -79,7 +79,7 @@ export default function AdminInvitesPage() {
     address: "",
   });
 
-  const isSystemAdmin = profile?.role === "admin" && profile?.preferAdminMode !== false;
+  const isSystemAdmin = (profile?.role === "admin" || profile?.role === "owner") && profile?.preferAdminMode !== false;
 
   const { data: invites, isLoading, error } = useQuery<InviteWithDetails[]>({
     queryKey: ["/api/admin/invites"],
@@ -180,6 +180,9 @@ export default function AdminInvitesPage() {
     },
   });
 
+  // Check if current user is System Owner (can invite System Admins)
+  const isOwner = profile?.role === "owner";
+  
   const resetForm = () => {
     setFormData({
       email: "",
@@ -198,6 +201,17 @@ export default function AdminInvitesPage() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Validate company_admin requires a company
+    if (formData.role === "company_admin" && !formData.companyId) {
+      toast({
+        title: "Organization Required",
+        description: "Company Administrator invites require an organization to be selected.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
     createMutation.mutate(formData);
   };
 
@@ -349,8 +363,8 @@ export default function AdminInvitesPage() {
                     <Label htmlFor="role">Role</Label>
                     <Select
                       value={formData.role}
-                      onValueChange={(role: "inspector" | "admin") => 
-                        setFormData({ ...formData, role, projectIds: role === "admin" ? [] : formData.projectIds })
+                      onValueChange={(role: "inspector" | "admin" | "company_admin") => 
+                        setFormData({ ...formData, role, projectIds: (role === "admin" || role === "company_admin") ? [] : formData.projectIds })
                       }
                     >
                       <SelectTrigger data-testid="select-invite-role">
@@ -363,12 +377,20 @@ export default function AdminInvitesPage() {
                             Inspector
                           </div>
                         </SelectItem>
-                        <SelectItem value="admin">
+                        <SelectItem value="company_admin">
                           <div className="flex items-center gap-2">
-                            <Shield className="w-4 h-4" />
-                            System Administrator
+                            <Building2 className="w-4 h-4" />
+                            Company Administrator
                           </div>
                         </SelectItem>
+                        {isOwner && (
+                          <SelectItem value="admin">
+                            <div className="flex items-center gap-2">
+                              <Shield className="w-4 h-4" />
+                              System Administrator
+                            </div>
+                          </SelectItem>
+                        )}
                       </SelectContent>
                     </Select>
                     {formData.role === "admin" && (
@@ -388,9 +410,28 @@ export default function AdminInvitesPage() {
                         </p>
                       </div>
                     )}
+                    {formData.role === "company_admin" && (
+                      <div className="rounded-md border bg-purple-50 dark:bg-purple-900/20 p-3 space-y-2">
+                        <div className="flex items-center gap-2 text-sm font-medium text-purple-800 dark:text-purple-300">
+                          <Building2 className="w-4 h-4" />
+                          Company Administrator Privileges
+                        </div>
+                        <ul className="text-xs text-purple-700 dark:text-purple-400 space-y-1 pl-2">
+                          <li>Access to all projects within their organization</li>
+                          <li>Can view and manage reports for their organization's projects</li>
+                          <li>Can invite inspectors to their organization</li>
+                          <li>Has an Inspector/Admin toggle to switch between viewing modes</li>
+                        </ul>
+                        {!formData.companyId && (
+                          <p className="text-xs text-destructive font-medium">
+                            An organization must be selected for Company Administrator invites.
+                          </p>
+                        )}
+                      </div>
+                    )}
                   </div>
 
-                  {formData.role !== "admin" && (
+                  {formData.role === "inspector" && (
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
                       <Label>Assign to Projects</Label>
@@ -521,7 +562,7 @@ export default function AdminInvitesPage() {
                   </Button>
                   <Button
                     type="submit"
-                    disabled={createMutation.isPending}
+                    disabled={createMutation.isPending || (formData.role === "company_admin" && !formData.companyId)}
                     data-testid="button-submit-invite"
                   >
                     {createMutation.isPending && (
@@ -612,6 +653,8 @@ export default function AdminInvitesPage() {
                           <Badge variant="outline" className="no-default-hover-elevate no-default-active-elevate">
                             {invite.role === "admin" ? (
                               <><Shield className="w-3 h-3 mr-1" />Sys Admin</>
+                            ) : invite.isCompanyAdmin ? (
+                              <><Building2 className="w-3 h-3 mr-1" />Company Admin</>
                             ) : (
                               <><HardHat className="w-3 h-3 mr-1" />Inspector</>
                             )}

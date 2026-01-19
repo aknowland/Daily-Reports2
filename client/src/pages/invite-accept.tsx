@@ -6,11 +6,12 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Loader2, CheckCircle, XCircle, Shield, HardHat, FolderOpen, LogIn } from "lucide-react";
+import { Loader2, CheckCircle, XCircle, Shield, HardHat, FolderOpen, LogIn, Building2 } from "lucide-react";
 
 interface InviteInfo {
   email: string;
   role: "inspector" | "admin";
+  isCompanyAdmin?: boolean;
   projectIds: string[];
 }
 
@@ -113,12 +114,14 @@ export default function InviteAcceptPage() {
                 <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
                   {invite?.role === "admin" ? (
                     <Shield className="w-5 h-5 text-primary" />
+                  ) : invite?.isCompanyAdmin ? (
+                    <Building2 className="w-5 h-5 text-primary" />
                   ) : (
                     <HardHat className="w-5 h-5 text-primary" />
                   )}
                 </div>
                 <div>
-                  <p className="font-medium">Role: {invite?.role === "admin" ? "Administrator" : "Inspector"}</p>
+                  <p className="font-medium">Role: {invite?.role === "admin" ? "System Administrator" : invite?.isCompanyAdmin ? "Company Administrator" : "Inspector"}</p>
                   <p className="text-sm text-muted-foreground">{invite?.email}</p>
                 </div>
               </div>
