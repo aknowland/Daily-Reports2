@@ -350,7 +350,7 @@ export default function AdminInvitesPage() {
                     <Select
                       value={formData.role}
                       onValueChange={(role: "inspector" | "admin") => 
-                        setFormData({ ...formData, role })
+                        setFormData({ ...formData, role, projectIds: role === "admin" ? [] : formData.projectIds })
                       }
                     >
                       <SelectTrigger data-testid="select-invite-role">
@@ -366,13 +366,31 @@ export default function AdminInvitesPage() {
                         <SelectItem value="admin">
                           <div className="flex items-center gap-2">
                             <Shield className="w-4 h-4" />
-                            Admin
+                            System Administrator
                           </div>
                         </SelectItem>
                       </SelectContent>
                     </Select>
+                    {formData.role === "admin" && (
+                      <div className="rounded-md border bg-blue-50 dark:bg-blue-900/20 p-3 space-y-2">
+                        <div className="flex items-center gap-2 text-sm font-medium text-blue-800 dark:text-blue-300">
+                          <Shield className="w-4 h-4" />
+                          System Administrator Privileges
+                        </div>
+                        <ul className="text-xs text-blue-700 dark:text-blue-400 space-y-1 pl-2">
+                          <li>Access to all projects across all organizations</li>
+                          <li>Can view and manage all reports from all inspectors</li>
+                          <li>Can manage users, settings, and invites</li>
+                          <li>Has an Inspector/Admin toggle to switch between viewing modes</li>
+                        </ul>
+                        <p className="text-xs text-muted-foreground">
+                          No project assignment needed - System Administrators have full access.
+                        </p>
+                      </div>
+                    )}
                   </div>
 
+                  {formData.role !== "admin" && (
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
                       <Label>Assign to Projects</Label>
@@ -491,6 +509,7 @@ export default function AdminInvitesPage() {
                       )}
                     </div>
                   </div>
+                  )}
                 </div>
                 <DialogFooter>
                   <Button
@@ -592,7 +611,7 @@ export default function AdminInvitesPage() {
                           {getStatusBadge(invite)}
                           <Badge variant="outline" className="no-default-hover-elevate no-default-active-elevate">
                             {invite.role === "admin" ? (
-                              <><Shield className="w-3 h-3 mr-1" />Admin</>
+                              <><Shield className="w-3 h-3 mr-1" />Sys Admin</>
                             ) : (
                               <><HardHat className="w-3 h-3 mr-1" />Inspector</>
                             )}
