@@ -1,22 +1,32 @@
 import { useEffect } from "react";
 import { useLocation } from "wouter";
-import { useAdminMode } from "@/hooks/use-admin-mode";
+import { useAuth } from "@/hooks/use-auth";
 
 interface AdminRouteProps {
   children: React.ReactNode;
 }
 
 export function AdminRoute({ children }: AdminRouteProps) {
-  const { isAdminMode } = useAdminMode();
+  const { isAdmin, isCompanyAdmin, isLoading } = useAuth();
   const [, setLocation] = useLocation();
 
+  // User must be either a system admin or company admin to access admin routes
+  // Note: We check actual role, not admin mode toggle - the mode toggle only affects
+  // what data they see, not whether they can access admin pages. This prevents
+  // admins from getting locked out when they toggle to inspector mode.
+  const canAccessAdminRoutes = isAdmin || isCompanyAdmin;
+
   useEffect(() => {
-    if (!isAdminMode) {
+    if (!isLoading && !canAccessAdminRoutes) {
       setLocation("/");
     }
-  }, [isAdminMode, setLocation]);
+  }, [isLoading, canAccessAdminRoutes, setLocation]);
 
-  if (!isAdminMode) {
+  if (isLoading) {
+    return null;
+  }
+
+  if (!canAccessAdminRoutes) {
     return null;
   }
 
