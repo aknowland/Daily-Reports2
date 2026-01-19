@@ -122,10 +122,10 @@ export default function CompanyProjectsPage() {
         description: "Project has been deleted.",
       });
     },
-    onError: () => {
+    onError: (error: any) => {
       toast({
         title: "Error",
-        description: "Failed to delete project.",
+        description: error.message || "Failed to delete project.",
         variant: "destructive",
       });
     },
