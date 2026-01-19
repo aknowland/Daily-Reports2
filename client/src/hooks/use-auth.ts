@@ -50,7 +50,7 @@ export function useAuth() {
   });
 
   // Fetch user's company memberships to determine company admin status
-  const { data: companies = [] } = useQuery<CompanyMemberWithCompany[]>({
+  const { data: companies = [], isLoading: isCompaniesLoading } = useQuery<CompanyMemberWithCompany[]>({
     queryKey: ["/api/my-companies"],
     enabled: !!user,
     staleTime: 1000 * 60 * 5, // 5 minutes
@@ -78,6 +78,7 @@ export function useAuth() {
     user,
     profile: user?.profile,
     isLoading,
+    isCompaniesLoading,
     isAuthenticated: !!user,
     isAdmin: user?.profile?.role === "admin",
     isCompanyAdmin,
