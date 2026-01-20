@@ -1960,9 +1960,11 @@ export async function registerRoutes(
       
       // Header
       doc.fontSize(10).font('Helvetica').text('DSA INSPECTORS', startX, 30, { width: pageWidth, align: 'right' });
-      doc.fontSize(11).font('Helvetica-Bold').text('PROJECT INSPECTOR AGENCY AGREEMENT AND CONTRACT DUTIES:', startX, 50, { width: pageWidth, align: 'center' });
+      // Half inch (36 points) space after DSA INSPECTORS
+      doc.fontSize(11).font('Helvetica-Bold').text('PROJECT INSPECTOR AGENCY AGREEMENT AND CONTRACT DUTIES:', startX, 76, { width: pageWidth, align: 'center' });
       
-      currentY = 75;
+      // Half inch (36 points) space after title before terms
+      currentY = 126;
       
       // Parse and render terms - compact formatting to fit on one page
       // Replace placeholder district name with actual client name
