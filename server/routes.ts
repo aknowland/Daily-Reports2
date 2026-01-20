@@ -1554,6 +1554,487 @@ export async function registerRoutes(
     }
   });
 
+  // ========== PROPOSALS ==========
+  
+  // Get proposals for active company
+  app.get("/api/proposals", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      
+      if (!profile?.activeCompanyId) {
+        return res.json([]);
+      }
+      
+      const isMember = await storage.isUserMemberOfCompany(profile.activeCompanyId, userId);
+      if (!isMember) {
+        return res.json([]);
+      }
+      
+      const proposalList = await storage.getProposals(profile.activeCompanyId);
+      res.json(proposalList);
+    } catch (error) {
+      console.error("Error fetching proposals:", error);
+      res.status(500).json({ message: "Failed to fetch proposals" });
+    }
+  });
+
+  // Get single proposal
+  app.get("/api/proposals/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const proposal = await storage.getProposal(req.params.id);
+      
+      if (!proposal) {
+        return res.status(404).json({ message: "Proposal not found" });
+      }
+      
+      const isMember = await storage.isUserMemberOfCompany(proposal.companyId, userId);
+      if (!isMember) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      res.json(proposal);
+    } catch (error) {
+      console.error("Error fetching proposal:", error);
+      res.status(500).json({ message: "Failed to fetch proposal" });
+    }
+  });
+
+  // Create proposal with options and inspectors
+  app.post("/api/proposals", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      
+      if (!profile?.activeCompanyId) {
+        return res.status(400).json({ message: "No active company selected" });
+      }
+      
+      const isCompAdmin = await isEffectiveCompanyAdmin(userId, profile.activeCompanyId, profile);
+      const isSysAdmin = isEffectiveSystemAdmin(profile);
+      
+      if (!isCompAdmin && !isSysAdmin) {
+        return res.status(403).json({ message: "Only admins can create proposals" });
+      }
+      
+      const { options, ...proposalData } = req.body;
+      
+      // Generate proposal number
+      const proposalNumber = await storage.getNextProposalNumber(profile.activeCompanyId);
+      
+      // Convert date strings to Date objects and handle nullable fields
+      const processedData = {
+        ...proposalData,
+        companyId: profile.activeCompanyId,
+        proposalNumber,
+        createdById: userId,
+        startDate: proposalData.startDate ? new Date(proposalData.startDate) : null,
+        endDate: proposalData.endDate ? new Date(proposalData.endDate) : null,
+        clientId: proposalData.clientId || null, // Convert empty string to null
+      };
+      
+      const proposal = await storage.createProposal(processedData);
+      
+      // Create options and their inspectors
+      if (options && Array.isArray(options)) {
+        for (let i = 0; i < options.length; i++) {
+          const optionData = options[i];
+          const option = await storage.createProposalOption({
+            proposalId: proposal.id,
+            optionNumber: i + 1,
+            name: optionData.name,
+          });
+          
+          if (optionData.inspectors && Array.isArray(optionData.inspectors)) {
+            for (const inspector of optionData.inspectors) {
+              await storage.createProposalOptionInspector({
+                optionId: option.id,
+                title: inspector.title,
+                inspectorName: inspector.inspectorName,
+                rate: inspector.rate,
+                hours: inspector.hours,
+              });
+            }
+          }
+        }
+      }
+      
+      const fullProposal = await storage.getProposal(proposal.id);
+      res.status(201).json(fullProposal);
+    } catch (error) {
+      console.error("Error creating proposal:", error);
+      res.status(500).json({ message: "Failed to create proposal" });
+    }
+  });
+
+  // Update proposal
+  app.patch("/api/proposals/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const proposal = await storage.getProposal(req.params.id);
+      
+      if (!proposal) {
+        return res.status(404).json({ message: "Proposal not found" });
+      }
+      
+      const profile = await storage.getUserProfile(userId);
+      const isCompAdmin = await isEffectiveCompanyAdmin(userId, proposal.companyId, profile);
+      const isSysAdmin = isEffectiveSystemAdmin(profile);
+      
+      if (!isCompAdmin && !isSysAdmin) {
+        return res.status(403).json({ message: "Only admins can update proposals" });
+      }
+      
+      const { options, ...proposalData } = req.body;
+      
+      // Convert date strings to Date objects and handle nullable fields
+      const processedData = {
+        ...proposalData,
+        startDate: proposalData.startDate ? new Date(proposalData.startDate) : null,
+        endDate: proposalData.endDate ? new Date(proposalData.endDate) : null,
+        clientId: proposalData.clientId || null, // Convert empty string to null
+      };
+      
+      const updated = await storage.updateProposal(req.params.id, processedData);
+      
+      // If options are provided, recreate them
+      if (options && Array.isArray(options)) {
+        await storage.deleteProposalOptions(req.params.id);
+        
+        for (let i = 0; i < options.length; i++) {
+          const optionData = options[i];
+          const option = await storage.createProposalOption({
+            proposalId: req.params.id,
+            optionNumber: i + 1,
+            name: optionData.name,
+          });
+          
+          if (optionData.inspectors && Array.isArray(optionData.inspectors)) {
+            for (const inspector of optionData.inspectors) {
+              await storage.createProposalOptionInspector({
+                optionId: option.id,
+                title: inspector.title,
+                inspectorName: inspector.inspectorName,
+                rate: inspector.rate,
+                hours: inspector.hours,
+              });
+            }
+          }
+        }
+      }
+      
+      const fullProposal = await storage.getProposal(req.params.id);
+      res.json(fullProposal);
+    } catch (error) {
+      console.error("Error updating proposal:", error);
+      res.status(500).json({ message: "Failed to update proposal" });
+    }
+  });
+
+  // Delete proposal
+  app.delete("/api/proposals/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const proposal = await storage.getProposal(req.params.id);
+      
+      if (!proposal) {
+        return res.status(404).json({ message: "Proposal not found" });
+      }
+      
+      const profile = await storage.getUserProfile(userId);
+      const isCompAdmin = await isEffectiveCompanyAdmin(userId, proposal.companyId, profile);
+      const isSysAdmin = isEffectiveSystemAdmin(profile);
+      
+      if (!isCompAdmin && !isSysAdmin) {
+        return res.status(403).json({ message: "Only admins can delete proposals" });
+      }
+      
+      await storage.deleteProposal(req.params.id);
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting proposal:", error);
+      res.status(500).json({ message: "Failed to delete proposal" });
+    }
+  });
+
+  // Generate proposal PDF
+  app.post("/api/proposals/:id/pdf", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const proposal = await storage.getProposal(req.params.id);
+      
+      if (!proposal) {
+        return res.status(404).json({ message: "Proposal not found" });
+      }
+      
+      const profile = await storage.getUserProfile(userId);
+      const isCompAdmin = await isEffectiveCompanyAdmin(userId, proposal.companyId, profile);
+      const isSysAdmin = isEffectiveSystemAdmin(profile);
+      
+      if (!isCompAdmin && !isSysAdmin) {
+        return res.status(403).json({ message: "Only admins can generate proposal PDFs" });
+      }
+      
+      const company = await storage.getCompany(proposal.companyId);
+      
+      const doc = new PDFDocument({ size: 'LETTER', margin: 50 });
+      const pdfChunks: Buffer[] = [];
+      doc.on('data', (chunk: Buffer) => pdfChunks.push(chunk));
+      
+      const pdfComplete = new Promise<Buffer>((resolve, reject) => {
+        doc.on('end', () => resolve(Buffer.concat(pdfChunks)));
+        doc.on('error', reject);
+      });
+
+      const pageWidth = doc.page.width - 100;
+      const startX = 50;
+      const centerX = doc.page.width / 2;
+
+      // Helper to load images
+      const loadImageBuffer = async (imagePath: string): Promise<Buffer | null> => {
+        try {
+          if (imagePath.startsWith('/objects/')) {
+            return await objectStorage.downloadBuffer(imagePath);
+          } else {
+            const localPath = path.join(process.cwd(), imagePath.replace(/^\//, ''));
+            if (fs.existsSync(localPath)) {
+              return fs.readFileSync(localPath);
+            }
+          }
+        } catch (err) {
+          console.error('Error loading image:', imagePath, err);
+        }
+        return null;
+      };
+
+      // ===== PAGE 1: PROPOSAL COVER =====
+      
+      // Header: "DSA INSPECTORS" right-aligned
+      doc.fontSize(10).font('Helvetica').text('DSA INSPECTORS', startX, 40, { width: pageWidth, align: 'right' });
+      
+      // Title
+      doc.fontSize(14).font('Helvetica-Bold').text('PROPOSAL FOR PROJECT INSPECTOR SERVICES', startX, 70, { width: pageWidth, align: 'center' });
+      
+      doc.y = 110;
+      
+      // Proposal details table
+      const labelX = startX + 50;
+      const valueX = labelX + 150;
+      const rowHeight = 24;
+      let currentY = doc.y;
+      
+      const addRow = (label: string, value: string, multiLine = false) => {
+        doc.fontSize(10).font('Helvetica-Bold').text(label + ':', labelX, currentY);
+        doc.font('Helvetica').text(value || 'N/A', valueX, currentY, { width: pageWidth - (valueX - startX), lineGap: 2 });
+        currentY += multiLine ? doc.heightOfString(value || 'N/A', { width: pageWidth - (valueX - startX) }) + 8 : rowHeight;
+      };
+      
+      addRow('SCHOOL DISTRICT', proposal.clientName);
+      addRow('INSPECTORS', proposal.options?.map(opt => 
+        opt.inspectors?.map(ins => ins.inspectorName).filter(Boolean).join(' / ')
+      ).filter(Boolean).join(' / ') || 'TBD');
+      addRow('PROJECT MANAGER', proposal.projectManager || '');
+      addRow('PROJECT', proposal.projectName);
+      
+      // Duration
+      const startDateStr = proposal.startDate ? new Date(proposal.startDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : 'TBD';
+      const endDateStr = proposal.endDate ? new Date(proposal.endDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : 'TBD';
+      const durationStr = `${startDateStr} – ${endDateStr}${proposal.totalHours ? `\nFull Time, ${proposal.totalHours} hours` : ''}`;
+      addRow('DURATION', durationStr, true);
+      
+      currentY += 10;
+      
+      // RATE label
+      doc.fontSize(10).font('Helvetica-Bold').text('RATE:', labelX, currentY);
+      currentY += 20;
+      
+      // Rate options table
+      const tableStartX = startX + 20;
+      const colWidths = [60, 100, 100, 60, 60, 90, 90];
+      const headers = ['Option', 'Title', 'Inspector Name', 'Rate', 'Hours', 'Total', 'Grand Total'];
+      
+      // Table header
+      doc.fontSize(8).font('Helvetica-Bold');
+      let colX = tableStartX;
+      headers.forEach((header, i) => {
+        doc.text(header, colX, currentY, { width: colWidths[i], align: 'center' });
+        colX += colWidths[i];
+      });
+      currentY += 15;
+      doc.moveTo(tableStartX, currentY).lineTo(tableStartX + colWidths.reduce((a, b) => a + b, 0), currentY).stroke();
+      currentY += 5;
+      
+      // Table rows
+      doc.font('Helvetica').fontSize(9);
+      proposal.options?.forEach((option, optIndex) => {
+        const optionTotal = option.inspectors?.reduce((sum, ins) => {
+          const rate = parseFloat(ins.rate) || 0;
+          const hours = parseFloat(ins.hours) || 0;
+          return sum + (rate * hours);
+        }, 0) || 0;
+        
+        option.inspectors?.forEach((inspector, insIndex) => {
+          colX = tableStartX;
+          const rate = parseFloat(inspector.rate) || 0;
+          const hours = parseFloat(inspector.hours) || 0;
+          const total = rate * hours;
+          
+          // Option number (only on first inspector of each option)
+          if (insIndex === 0) {
+            doc.font('Helvetica-Bold').text(`Option #${optIndex + 1}`, colX, currentY, { width: colWidths[0], align: 'center' });
+          }
+          colX += colWidths[0];
+          
+          doc.font('Helvetica');
+          doc.text(inspector.title || '', colX, currentY, { width: colWidths[1], align: 'center' });
+          colX += colWidths[1];
+          
+          doc.text(inspector.inspectorName || '', colX, currentY, { width: colWidths[2], align: 'center' });
+          colX += colWidths[2];
+          
+          doc.text(`$ ${rate.toFixed(2)}`, colX, currentY, { width: colWidths[3], align: 'right' });
+          colX += colWidths[3];
+          
+          doc.text(hours.toLocaleString(), colX, currentY, { width: colWidths[4], align: 'right' });
+          colX += colWidths[4];
+          
+          doc.text(`$ ${total.toLocaleString('en-US', { minimumFractionDigits: 2 })}`, colX, currentY, { width: colWidths[5], align: 'right' });
+          colX += colWidths[5];
+          
+          // Grand total (only on first inspector of each option)
+          if (insIndex === 0) {
+            doc.font('Helvetica-Bold').text(`$ ${optionTotal.toLocaleString('en-US', { minimumFractionDigits: 2 })}`, colX, currentY, { width: colWidths[6], align: 'right' });
+          }
+          
+          currentY += 18;
+        });
+        
+        currentY += 5;
+      });
+      
+      currentY += 15;
+      
+      // Grand Total summary
+      doc.fontSize(10).font('Helvetica-Bold').text('Grand Total:', startX + 50, currentY);
+      doc.font('Helvetica').text('(Not to Exceed)', startX + 50, currentY + 12);
+      
+      let summaryY = currentY;
+      proposal.options?.forEach((option, optIndex) => {
+        const optionTotal = option.inspectors?.reduce((sum, ins) => {
+          const rate = parseFloat(ins.rate) || 0;
+          const hours = parseFloat(ins.hours) || 0;
+          return sum + (rate * hours);
+        }, 0) || 0;
+        
+        doc.fontSize(10).font('Helvetica').text(
+          `Option ${optIndex + 1}: $ ${optionTotal.toLocaleString('en-US', { minimumFractionDigits: 2 })}`,
+          startX + 150, summaryY
+        );
+        summaryY += 14;
+      });
+      
+      currentY = Math.max(currentY + 30, summaryY + 15);
+      
+      // Rate escalation note
+      if (proposal.rateEscalationNote) {
+        doc.fontSize(9).font('Helvetica-Oblique').text(proposal.rateEscalationNote, startX, currentY, { width: pageWidth, align: 'center' });
+      }
+      
+      // Footer with company info
+      const footerY = doc.page.height - 80;
+      doc.fontSize(10).font('Helvetica-Bold').text(company?.name || 'Knowland Construction Services', startX, footerY, { width: pageWidth, align: 'center' });
+      doc.fontSize(9).font('Helvetica').text(company?.address || '', startX, footerY + 14, { width: pageWidth, align: 'center' });
+      const contactInfo = [company?.phone, company?.email].filter(Boolean).join(' / Email: ');
+      doc.text(`Phone: ${contactInfo}`, startX, footerY + 26, { width: pageWidth, align: 'center' });
+      
+      // ===== PAGE 2: TERMS & CONDITIONS =====
+      doc.addPage();
+      
+      doc.fontSize(10).font('Helvetica').text('DSA INSPECTORS', startX, 40, { width: pageWidth, align: 'right' });
+      doc.fontSize(12).font('Helvetica-Bold').text('PROJECT INSPECTOR AGENCY AGREEMENT AND CONTRACT DUTIES:', startX, 70, { width: pageWidth, align: 'center' });
+      
+      currentY = 110;
+      
+      // Parse and render terms
+      const terms = proposal.terms || '';
+      const termsParagraphs = terms.split(/\n\n+/).filter(p => p.trim());
+      
+      doc.fontSize(9).font('Helvetica');
+      termsParagraphs.forEach((para, index) => {
+        const trimmed = para.trim();
+        // Check if it starts with a number
+        const numMatch = trimmed.match(/^(\d+)\.\s*/);
+        if (numMatch) {
+          const num = numMatch[1];
+          const text = trimmed.replace(/^\d+\.\s*/, '');
+          doc.font('Helvetica-Bold').text(`${num}.`, startX, currentY);
+          doc.font('Helvetica').text(text, startX + 25, currentY, { width: pageWidth - 25, lineGap: 2 });
+        } else {
+          doc.text(trimmed, startX, currentY, { width: pageWidth, lineGap: 2 });
+        }
+        currentY = doc.y + 12;
+        
+        // Add new page if needed
+        if (currentY > doc.page.height - 150) {
+          doc.addPage();
+          doc.fontSize(10).font('Helvetica').text('DSA INSPECTORS', startX, 40, { width: pageWidth, align: 'right' });
+          currentY = 70;
+          doc.fontSize(9).font('Helvetica');
+        }
+      });
+      
+      // Signature section
+      currentY = Math.max(currentY + 30, doc.page.height - 180);
+      
+      const today = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+      
+      doc.fontSize(10).font('Helvetica');
+      doc.text(`Dated: ${today}`, startX, currentY);
+      doc.text(`Dated: ${today}`, centerX + 20, currentY);
+      
+      currentY += 40;
+      
+      // Signature lines
+      doc.moveTo(startX, currentY).lineTo(startX + 180, currentY).stroke();
+      doc.moveTo(centerX + 20, currentY).lineTo(centerX + 200, currentY).stroke();
+      
+      currentY += 5;
+      doc.fontSize(9);
+      doc.text(`${profile?.firstName || ''} ${profile?.lastName || ''} – ${company?.name || 'KCS'}`, startX, currentY);
+      doc.text(`Agent – ${proposal.clientName}`, centerX + 20, currentY);
+      
+      // Footer
+      const page2FooterY = doc.page.height - 80;
+      doc.fontSize(10).font('Helvetica-Bold').text(company?.name || 'Knowland Construction Services', startX, page2FooterY, { width: pageWidth, align: 'center' });
+      doc.fontSize(9).font('Helvetica').text(company?.address || '', startX, page2FooterY + 14, { width: pageWidth, align: 'center' });
+      doc.text(`Phone: ${contactInfo}`, startX, page2FooterY + 26, { width: pageWidth, align: 'center' });
+      
+      doc.end();
+      
+      const pdfBuffer = await pdfComplete;
+      
+      // Save to object storage
+      const pdfPath = await objectStorage.uploadBuffer({
+        buffer: pdfBuffer,
+        filename: `${proposal.id}.pdf`,
+        contentType: 'application/pdf',
+        folder: 'proposals',
+      });
+      
+      // Update proposal with PDF path
+      await storage.updateProposal(proposal.id, { pdfPath });
+      
+      // Return PDF as download
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="Proposal-${proposal.proposalNumber}.pdf"`);
+      res.send(pdfBuffer);
+    } catch (error) {
+      console.error("Error generating proposal PDF:", error);
+      res.status(500).json({ message: "Failed to generate proposal PDF" });
+    }
+  });
+
   // ========== REPORTS ==========
   app.get("/api/reports", isAuthenticated, async (req: any, res) => {
     try {

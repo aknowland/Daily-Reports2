@@ -53,7 +53,8 @@ import {
   Download,
 } from "lucide-react";
 import { useState, useRef } from "react";
-import type { ContractWithProjects, Project, Client, ContractAttachment } from "@shared/schema";
+import type { ContractWithProjects, Project, Client, ContractAttachment, ProposalWithDetails } from "@shared/schema";
+import { ProposalDialog } from "@/components/proposal-dialog";
 import { format } from "date-fns";
 
 const CONTRACT_STATUS_OPTIONS = [
@@ -129,6 +130,8 @@ export default function ContractsPage() {
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [showProposalDialog, setShowProposalDialog] = useState(false);
+  const [editingProposal, setEditingProposal] = useState<ProposalWithDetails | null>(null);
 
   const { data: contracts = [], isLoading } = useQuery<ContractWithProjects[]>({
     queryKey: ["/api/contracts"],
@@ -142,6 +145,11 @@ export default function ContractsPage() {
 
   const { data: clientsList = [] } = useQuery<Client[]>({
     queryKey: ["/api/clients"],
+    enabled: !!activeCompany?.id,
+  });
+
+  const { data: proposals = [], isLoading: proposalsLoading } = useQuery<ProposalWithDetails[]>({
+    queryKey: ["/api/proposals"],
     enabled: !!activeCompany?.id,
   });
 
@@ -445,7 +453,18 @@ export default function ContractsPage() {
       description={`Manage contracts for ${activeCompany?.name || "your company"}`}
     >
       {isCompanyAdmin && (
-        <div className="flex justify-end mb-4">
+        <div className="flex justify-end gap-2 mb-4">
+          <Button 
+            variant="outline"
+            onClick={() => {
+              setEditingProposal(null);
+              setShowProposalDialog(true);
+            }}
+            data-testid="button-create-proposal"
+          >
+            <FileText className="w-4 h-4 mr-2" />
+            Create Quick Proposal
+          </Button>
           <Button 
             onClick={() => {
               setFormData(emptyFormData);
@@ -462,11 +481,15 @@ export default function ContractsPage() {
         <TabsList className="mb-4">
           <TabsTrigger value="list" className="gap-2" data-testid="tab-list">
             <List className="w-4 h-4" />
-            List View
+            Contracts
+          </TabsTrigger>
+          <TabsTrigger value="proposals" className="gap-2" data-testid="tab-proposals">
+            <FileText className="w-4 h-4" />
+            Proposals
           </TabsTrigger>
           <TabsTrigger value="calendar" className="gap-2" data-testid="tab-calendar">
             <CalendarDays className="w-4 h-4" />
-            Calendar View
+            Calendar
           </TabsTrigger>
         </TabsList>
 
@@ -588,6 +611,149 @@ export default function ContractsPage() {
                   </CardContent>
                 </Card>
               ))}
+            </div>
+          )}
+        </TabsContent>
+
+        <TabsContent value="proposals">
+          {proposalsLoading ? (
+            <div className="space-y-3">
+              {[1, 2, 3].map(i => (
+                <Skeleton key={i} className="h-24 w-full" />
+              ))}
+            </div>
+          ) : proposals.length === 0 ? (
+            <Card>
+              <CardContent className="p-6 text-center text-muted-foreground">
+                <FileText className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                <p>No proposals found.</p>
+                {isCompanyAdmin && (
+                  <Button 
+                    variant="outline" 
+                    className="mt-4"
+                    onClick={() => {
+                      setEditingProposal(null);
+                      setShowProposalDialog(true);
+                    }}
+                  >
+                    <Plus className="w-4 h-4 mr-2" />
+                    Create Your First Proposal
+                  </Button>
+                )}
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="space-y-3">
+              {proposals.map(proposal => {
+                const grandTotal = proposal.options?.reduce((sum, opt) => {
+                  const optTotal = opt.inspectors?.reduce((s, ins) => {
+                    return s + (parseFloat(ins.rate) || 0) * (parseFloat(ins.hours) || 0);
+                  }, 0) || 0;
+                  return sum + optTotal;
+                }, 0) || 0;
+
+                return (
+                  <Card key={proposal.id} className="hover-elevate" data-testid={`proposal-${proposal.id}`}>
+                    <CardContent className="p-4">
+                      <div className="flex items-start justify-between gap-4 flex-wrap">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1 flex-wrap">
+                            <h3 className="font-semibold truncate">{proposal.projectName}</h3>
+                            <Badge variant={
+                              proposal.status === 'accepted' ? 'default' :
+                              proposal.status === 'sent' ? 'secondary' :
+                              proposal.status === 'declined' ? 'destructive' : 'outline'
+                            }>
+                              {proposal.status.charAt(0).toUpperCase() + proposal.status.slice(1)}
+                            </Badge>
+                          </div>
+                          <p className="text-sm text-muted-foreground">{proposal.clientName}</p>
+                          <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground flex-wrap">
+                            <span>#{proposal.proposalNumber}</span>
+                            {proposal.startDate && (
+                              <span>{format(new Date(proposal.startDate), "MMM d, yyyy")} - {proposal.endDate ? format(new Date(proposal.endDate), "MMM d, yyyy") : 'TBD'}</span>
+                            )}
+                            <span className="font-medium text-foreground">
+                              ${grandTotal.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                            </span>
+                          </div>
+                          {proposal.options && proposal.options.length > 0 && (
+                            <div className="mt-2 flex gap-2 flex-wrap">
+                              {proposal.options.map((opt, idx) => (
+                                <Badge key={opt.id} variant="outline" className="text-xs">
+                                  Option {idx + 1}: ${opt.inspectors?.reduce((s, i) => s + (parseFloat(i.rate) || 0) * (parseFloat(i.hours) || 0), 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                                </Badge>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={async () => {
+                              try {
+                                const response = await fetch(`/api/proposals/${proposal.id}/pdf`, {
+                                  method: 'POST',
+                                  credentials: 'include',
+                                });
+                                if (!response.ok) throw new Error('Failed to generate PDF');
+                                const blob = await response.blob();
+                                const url = window.URL.createObjectURL(blob);
+                                const a = document.createElement('a');
+                                a.href = url;
+                                a.download = `Proposal-${proposal.proposalNumber}.pdf`;
+                                a.click();
+                                window.URL.revokeObjectURL(url);
+                                toast({ title: "PDF downloaded successfully" });
+                              } catch (error) {
+                                toast({ title: "Failed to generate PDF", variant: "destructive" });
+                              }
+                            }}
+                            data-testid={`button-download-proposal-${proposal.id}`}
+                          >
+                            <Download className="w-4 h-4 mr-1" />
+                            PDF
+                          </Button>
+                          {isCompanyAdmin && (
+                            <>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => {
+                                  setEditingProposal(proposal);
+                                  setShowProposalDialog(true);
+                                }}
+                                data-testid={`button-edit-proposal-${proposal.id}`}
+                              >
+                                <Edit className="w-4 h-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={async () => {
+                                  if (confirm(`Delete proposal "${proposal.projectName}"?`)) {
+                                    try {
+                                      await apiRequest("DELETE", `/api/proposals/${proposal.id}`);
+                                      queryClient.invalidateQueries({ queryKey: ["/api/proposals"] });
+                                      toast({ title: "Proposal deleted" });
+                                    } catch (error) {
+                                      toast({ title: "Failed to delete proposal", variant: "destructive" });
+                                    }
+                                  }
+                                }}
+                                data-testid={`button-delete-proposal-${proposal.id}`}
+                              >
+                                <Trash2 className="w-4 h-4 text-destructive" />
+                              </Button>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
             </div>
           )}
         </TabsContent>
@@ -998,6 +1164,12 @@ export default function ContractsPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <ProposalDialog
+        open={showProposalDialog}
+        onOpenChange={setShowProposalDialog}
+        editingProposal={editingProposal}
+      />
     </PageLayout>
   );
 }

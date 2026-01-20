@@ -571,6 +571,108 @@ export type DailyReportWithDetails = DailyReport & {
   inspectorName?: string;
 };
 
+// Proposal status enum
+export const proposalStatusEnum = pgEnum("proposal_status", ["draft", "sent", "accepted", "declined", "expired"]);
+
+// Proposals table - for quick proposal generation
+export const proposals = pgTable("proposals", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").references(() => companies.id, { onDelete: "cascade" }).notNull(),
+  clientId: varchar("client_id").references(() => clients.id, { onDelete: "set null" }),
+  contractId: varchar("contract_id").references(() => contracts.id, { onDelete: "set null" }),
+  proposalNumber: varchar("proposal_number").notNull(),
+  clientName: text("client_name").notNull(),
+  projectName: text("project_name").notNull(),
+  projectManager: text("project_manager"),
+  startDate: timestamp("start_date"),
+  endDate: timestamp("end_date"),
+  totalHours: varchar("total_hours"),
+  rateEscalationNote: text("rate_escalation_note"),
+  terms: text("terms"),
+  status: proposalStatusEnum("status").default("draft").notNull(),
+  sentDate: timestamp("sent_date"),
+  acceptedDate: timestamp("accepted_date"),
+  pdfPath: varchar("pdf_path"),
+  createdById: varchar("created_by_id").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Proposal options - each proposal can have multiple pricing options
+export const proposalOptions = pgTable("proposal_options", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  proposalId: varchar("proposal_id").references(() => proposals.id, { onDelete: "cascade" }).notNull(),
+  optionNumber: integer("option_number").notNull(),
+  name: text("name"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Proposal option inspectors - each option can have multiple inspectors with rates/hours
+export const proposalOptionInspectors = pgTable("proposal_option_inspectors", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  optionId: varchar("option_id").references(() => proposalOptions.id, { onDelete: "cascade" }).notNull(),
+  title: text("title").notNull(),
+  inspectorName: text("inspector_name"),
+  rate: varchar("rate").notNull(),
+  hours: varchar("hours").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Proposal relations
+export const proposalsRelations = relations(proposals, ({ one, many }) => ({
+  company: one(companies, {
+    fields: [proposals.companyId],
+    references: [companies.id],
+  }),
+  client: one(clients, {
+    fields: [proposals.clientId],
+    references: [clients.id],
+  }),
+  contract: one(contracts, {
+    fields: [proposals.contractId],
+    references: [contracts.id],
+  }),
+  options: many(proposalOptions),
+}));
+
+export const proposalOptionsRelations = relations(proposalOptions, ({ one, many }) => ({
+  proposal: one(proposals, {
+    fields: [proposalOptions.proposalId],
+    references: [proposals.id],
+  }),
+  inspectors: many(proposalOptionInspectors),
+}));
+
+export const proposalOptionInspectorsRelations = relations(proposalOptionInspectors, ({ one }) => ({
+  option: one(proposalOptions, {
+    fields: [proposalOptionInspectors.optionId],
+    references: [proposalOptions.id],
+  }),
+}));
+
+// Proposal insert schemas
+export const insertProposalSchema = createInsertSchema(proposals).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertProposalOptionSchema = createInsertSchema(proposalOptions).omit({ id: true, createdAt: true });
+export const insertProposalOptionInspectorSchema = createInsertSchema(proposalOptionInspectors).omit({ id: true, createdAt: true });
+
+// Proposal types
+export type Proposal = typeof proposals.$inferSelect;
+export type InsertProposal = z.infer<typeof insertProposalSchema>;
+export type ProposalOption = typeof proposalOptions.$inferSelect;
+export type InsertProposalOption = z.infer<typeof insertProposalOptionSchema>;
+export type ProposalOptionInspector = typeof proposalOptionInspectors.$inferSelect;
+export type InsertProposalOptionInspector = z.infer<typeof insertProposalOptionInspectorSchema>;
+
+// Extended proposal type with nested options and inspectors
+export type ProposalOptionWithInspectors = ProposalOption & {
+  inspectors: ProposalOptionInspector[];
+};
+
+export type ProposalWithDetails = Proposal & {
+  options: ProposalOptionWithInspectors[];
+  client?: Client;
+};
+
 // Chat tables for AI integrations
 export const conversations = pgTable("conversations", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),

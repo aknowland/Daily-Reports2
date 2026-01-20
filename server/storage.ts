@@ -1,6 +1,7 @@
 import { 
   projects, dailyReports, photos, distributionLogs, appSettings, userProfiles, projectMembers, invites,
   companies, companyMembers, joinRequests, invoices, contracts, clients, contractAttachments, timesheets, monthlyReportBundles,
+  proposals, proposalOptions, proposalOptionInspectors,
   type Project, type InsertProject,
   type DailyReport, type InsertDailyReport,
   type Photo, type InsertPhoto,
@@ -19,6 +20,9 @@ import {
   type ContractAttachment, type InsertContractAttachment,
   type Timesheet, type InsertTimesheet,
   type MonthlyReportBundle, type InsertMonthlyReportBundle,
+  type Proposal, type InsertProposal, type ProposalWithDetails,
+  type ProposalOption, type InsertProposalOption,
+  type ProposalOptionInspector, type InsertProposalOptionInspector,
 } from "@shared/schema";
 import { users, type User } from "@shared/models/auth";
 import { db } from "./db";
@@ -210,6 +214,21 @@ export interface IStorage {
   getContractAttachment(id: string): Promise<ContractAttachment | undefined>;
   createContractAttachment(data: InsertContractAttachment): Promise<ContractAttachment>;
   deleteContractAttachment(id: string): Promise<boolean>;
+
+  // Proposals
+  getProposals(companyId: string): Promise<ProposalWithDetails[]>;
+  getProposal(id: string): Promise<ProposalWithDetails | undefined>;
+  createProposal(data: InsertProposal): Promise<Proposal>;
+  updateProposal(id: string, data: Partial<InsertProposal>): Promise<Proposal | undefined>;
+  deleteProposal(id: string): Promise<boolean>;
+  getNextProposalNumber(companyId: string): Promise<string>;
+  
+  // Proposal Options
+  createProposalOption(data: InsertProposalOption): Promise<ProposalOption>;
+  deleteProposalOptions(proposalId: string): Promise<boolean>;
+  
+  // Proposal Option Inspectors
+  createProposalOptionInspector(data: InsertProposalOptionInspector): Promise<ProposalOptionInspector>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1254,6 +1273,123 @@ export class DatabaseStorage implements IStorage {
   async deleteContractAttachment(id: string): Promise<boolean> {
     const result = await db.delete(contractAttachments).where(eq(contractAttachments.id, id));
     return (result.rowCount ?? 0) > 0;
+  }
+
+  // Proposals
+  async getProposals(companyId: string): Promise<ProposalWithDetails[]> {
+    const proposalList = await db
+      .select()
+      .from(proposals)
+      .where(eq(proposals.companyId, companyId))
+      .orderBy(desc(proposals.createdAt));
+    
+    const proposalsWithDetails: ProposalWithDetails[] = [];
+    for (const proposal of proposalList) {
+      let client: Client | undefined;
+      if (proposal.clientId) {
+        const [c] = await db.select().from(clients).where(eq(clients.id, proposal.clientId));
+        client = c;
+      }
+      
+      // Get options with inspectors
+      const optionsList = await db
+        .select()
+        .from(proposalOptions)
+        .where(eq(proposalOptions.proposalId, proposal.id))
+        .orderBy(proposalOptions.optionNumber);
+      
+      const optionsWithInspectors = [];
+      for (const option of optionsList) {
+        const inspectors = await db
+          .select()
+          .from(proposalOptionInspectors)
+          .where(eq(proposalOptionInspectors.optionId, option.id));
+        optionsWithInspectors.push({ ...option, inspectors });
+      }
+      
+      proposalsWithDetails.push({ ...proposal, options: optionsWithInspectors, client });
+    }
+    return proposalsWithDetails;
+  }
+
+  async getProposal(id: string): Promise<ProposalWithDetails | undefined> {
+    const [proposal] = await db.select().from(proposals).where(eq(proposals.id, id));
+    if (!proposal) return undefined;
+    
+    let client: Client | undefined;
+    if (proposal.clientId) {
+      const [c] = await db.select().from(clients).where(eq(clients.id, proposal.clientId));
+      client = c;
+    }
+    
+    // Get options with inspectors
+    const optionsList = await db
+      .select()
+      .from(proposalOptions)
+      .where(eq(proposalOptions.proposalId, proposal.id))
+      .orderBy(proposalOptions.optionNumber);
+    
+    const optionsWithInspectors = [];
+    for (const option of optionsList) {
+      const inspectors = await db
+        .select()
+        .from(proposalOptionInspectors)
+        .where(eq(proposalOptionInspectors.optionId, option.id));
+      optionsWithInspectors.push({ ...option, inspectors });
+    }
+    
+    return { ...proposal, options: optionsWithInspectors, client };
+  }
+
+  async createProposal(data: InsertProposal): Promise<Proposal> {
+    const [proposal] = await db.insert(proposals).values(data).returning();
+    return proposal;
+  }
+
+  async updateProposal(id: string, data: Partial<InsertProposal>): Promise<Proposal | undefined> {
+    const [proposal] = await db
+      .update(proposals)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(proposals.id, id))
+      .returning();
+    return proposal;
+  }
+
+  async deleteProposal(id: string): Promise<boolean> {
+    const result = await db.delete(proposals).where(eq(proposals.id, id));
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  async getNextProposalNumber(companyId: string): Promise<string> {
+    const year = new Date().getFullYear();
+    const [result] = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(proposals)
+      .where(
+        and(
+          eq(proposals.companyId, companyId),
+          sql`EXTRACT(YEAR FROM ${proposals.createdAt}) = ${year}`
+        )
+      );
+    const count = (result?.count || 0) + 1;
+    return `PROP-${year}-${String(count).padStart(4, '0')}`;
+  }
+
+  // Proposal Options
+  async createProposalOption(data: InsertProposalOption): Promise<ProposalOption> {
+    const [option] = await db.insert(proposalOptions).values(data).returning();
+    return option;
+  }
+
+  async deleteProposalOptions(proposalId: string): Promise<boolean> {
+    const result = await db.delete(proposalOptions).where(eq(proposalOptions.proposalId, proposalId));
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  // Proposal Option Inspectors
+  async createProposalOptionInspector(data: InsertProposalOptionInspector): Promise<ProposalOptionInspector> {
+    const [inspector] = await db.insert(proposalOptionInspectors).values(data).returning();
+    return inspector;
   }
 }
 
