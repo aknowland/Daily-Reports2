@@ -33,6 +33,24 @@ The application is built with a modern web stack, utilizing **React, TypeScript,
 - **Inspector Profile**: Users can manage their names for report generation.
 - **Admin Capabilities**: Management of projects, users, company settings, and invitations.
 - **Billing Features**: Generation of timesheet PDFs, client invoices, combined reports, and inspector invoices.
+- **Clients Management**: Full CRUD for managing company clients with reusable ClientSelect dropdown for inline client creation in contracts/proposals forms. Clicking a client card navigates to filtered projects view.
+
+## Technical Notes
+
+### Query Key Pattern for Clients API
+The clients API uses the server-side `profile.activeCompanyId` to filter results, not a URL path parameter. Therefore, all clients queries must use a custom `queryFn` that fetches from `/api/clients` directly while including the companyId in the queryKey for cache segmentation:
+```javascript
+const { data: clients } = useQuery<Client[]>({
+  queryKey: ["/api/clients", activeCompany?.id],
+  queryFn: async () => {
+    const response = await fetch("/api/clients", { credentials: "include" });
+    if (!response.ok) throw new Error("Failed to fetch clients");
+    return response.json();
+  },
+  enabled: !!activeCompany?.id,
+});
+```
+This is necessary because the default queryFn joins queryKey parts with "/" to form the URL.
 
 ## External Dependencies
 

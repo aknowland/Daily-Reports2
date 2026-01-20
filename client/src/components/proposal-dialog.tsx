@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,16 +14,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Plus, Trash2, Users, FileText } from "lucide-react";
-import type { Client, ProposalWithDetails } from "@shared/schema";
+import { ClientSelect } from "@/components/client-select";
+import { useAuth } from "@/hooks/use-auth";
+import type { ProposalWithDetails } from "@shared/schema";
 
 type InspectorEntry = {
   title: string;
@@ -97,13 +92,10 @@ interface ProposalDialogProps {
 
 export function ProposalDialog({ open, onOpenChange, editingProposal }: ProposalDialogProps) {
   const { toast } = useToast();
+  const { activeCompany } = useAuth();
   const [formData, setFormData] = useState<ProposalFormData>(emptyFormData);
   const [options, setOptions] = useState<OptionEntry[]>([{ ...emptyOption, inspectors: [{ ...emptyInspector }] }]);
   const [isSubmitting, setIsSubmitting] = useState(false);
-
-  const { data: clients = [] } = useQuery<Client[]>({
-    queryKey: ["/api/clients"],
-  });
 
   useEffect(() => {
     if (editingProposal) {
@@ -136,12 +128,11 @@ export function ProposalDialog({ open, onOpenChange, editingProposal }: Proposal
     }
   }, [editingProposal, open]);
 
-  const handleClientChange = (clientId: string) => {
-    const selectedClient = clients.find(c => c.id === clientId);
+  const handleClientChange = (clientId: string, clientName?: string) => {
     setFormData(prev => ({
       ...prev,
       clientId,
-      clientName: selectedClient?.name || prev.clientName,
+      clientName: clientName || prev.clientName,
     }));
   };
 
@@ -262,34 +253,28 @@ export function ProposalDialog({ open, onOpenChange, editingProposal }: Proposal
         <div className="grid gap-6 py-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label>Client</Label>
-              <Select value={formData.clientId} onValueChange={handleClientChange}>
-                <SelectTrigger data-testid="select-proposal-client">
-                  <SelectValue placeholder="Select existing client or enter below" />
-                </SelectTrigger>
-                <SelectContent>
-                  {clients.map((client) => (
-                    <SelectItem key={client.id} value={client.id}>
-                      {client.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Label>Client *</Label>
+              {activeCompany?.id ? (
+                <ClientSelect
+                  value={formData.clientId}
+                  onValueChange={handleClientChange}
+                  companyId={activeCompany.id}
+                  placeholder="Select or create a client"
+                  data-testid="select-proposal-client"
+                />
+              ) : (
+                <Input
+                  value={formData.clientName}
+                  onChange={(e) => setFormData(prev => ({ ...prev, clientName: e.target.value }))}
+                  placeholder="Enter client name"
+                  data-testid="input-proposal-client-name"
+                />
+              )}
+              {formData.clientName && (
+                <p className="text-sm text-muted-foreground">Selected: {formData.clientName}</p>
+              )}
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="clientName">Client Name *</Label>
-              <Input
-                id="clientName"
-                data-testid="input-proposal-client-name"
-                value={formData.clientName}
-                onChange={(e) => setFormData(prev => ({ ...prev, clientName: e.target.value }))}
-                placeholder="e.g., Long Beach Unified School District"
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="projectName">Project Name *</Label>
               <Input

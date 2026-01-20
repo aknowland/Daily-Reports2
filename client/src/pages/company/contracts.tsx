@@ -56,6 +56,7 @@ import {
 import { useState, useRef } from "react";
 import type { ContractWithProjects, Project, Client, ContractAttachment, ProposalWithDetails } from "@shared/schema";
 import { ProposalDialog } from "@/components/proposal-dialog";
+import { ClientSelect } from "@/components/client-select";
 import { format } from "date-fns";
 import { Checkbox } from "@/components/ui/checkbox";
 
@@ -151,7 +152,12 @@ export default function ContractsPage() {
   });
 
   const { data: clientsList = [] } = useQuery<Client[]>({
-    queryKey: ["/api/clients"],
+    queryKey: ["/api/clients", activeCompany?.id],
+    queryFn: async () => {
+      const response = await fetch("/api/clients", { credentials: "include" });
+      if (!response.ok) throw new Error("Failed to fetch clients");
+      return response.json();
+    },
     enabled: !!activeCompany?.id,
   });
 
@@ -946,23 +952,21 @@ export default function ContractsPage() {
               />
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="clientId">Client Name</Label>
-              <Select value={formData.clientId || "none"} onValueChange={(value) => setFormData({ ...formData, clientId: value === "none" ? "" : value })}>
-                <SelectTrigger data-testid="select-client">
-                  <SelectValue placeholder="Select a client" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">No Client</SelectItem>
-                  {clientsList.map(client => (
-                    <SelectItem key={client.id} value={client.id}>{client.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-muted-foreground">
-                Link projects to this contract from the project settings.
-              </p>
-            </div>
+            {activeCompany?.id && (
+              <div className="space-y-2">
+                <Label htmlFor="clientId">Client</Label>
+                <ClientSelect
+                  value={formData.clientId}
+                  onValueChange={(value) => setFormData({ ...formData, clientId: value })}
+                  companyId={activeCompany.id}
+                  placeholder="Select or create a client"
+                  data-testid="select-client"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Link projects to this contract from the project settings.
+                </p>
+              </div>
+            )}
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">

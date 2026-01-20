@@ -46,13 +46,17 @@ import {
   Building2,
   FileText,
 } from "lucide-react";
-import { Link } from "wouter";
-import { useState } from "react";
-import type { Project, Contract } from "@shared/schema";
+import { Link, useSearch } from "wouter";
+import { useState, useMemo } from "react";
+import type { Project, Contract, Client } from "@shared/schema";
 
 export default function CompanyProjectsPage() {
   const { toast } = useToast();
   const { activeCompany, isCompanyAdmin, isCompaniesLoading } = useAuth();
+  const searchString = useSearch();
+  const searchParams = new URLSearchParams(searchString);
+  const clientIdFilter = searchParams.get("clientId");
+  
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [projectToDelete, setProjectToDelete] = useState<Project | null>(null);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
@@ -74,6 +78,28 @@ export default function CompanyProjectsPage() {
     queryKey: ["/api/contracts"],
     enabled: !!activeCompany?.id && isCompanyAdmin,
   });
+
+  const { data: clients = [] } = useQuery<Client[]>({
+    queryKey: ["/api/clients", activeCompany?.id],
+    queryFn: async () => {
+      const response = await fetch("/api/clients", { credentials: "include" });
+      if (!response.ok) throw new Error("Failed to fetch clients");
+      return response.json();
+    },
+    enabled: !!activeCompany?.id && isCompanyAdmin,
+  });
+
+  const selectedClient = useMemo(() => {
+    if (!clientIdFilter) return null;
+    return clients.find((c) => c.id === clientIdFilter) || null;
+  }, [clientIdFilter, clients]);
+
+  const filteredProjects = useMemo(() => {
+    if (!selectedClient) return projects;
+    return projects.filter((p) => 
+      p.client?.toLowerCase() === selectedClient.name.toLowerCase()
+    );
+  }, [projects, selectedClient]);
 
   const createMutation = useMutation({
     mutationFn: async (data: typeof formData) => {
@@ -285,9 +311,20 @@ export default function CompanyProjectsPage() {
 
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold" data-testid="title-projects">Company Projects</h1>
+            <h1 className="text-2xl font-bold" data-testid="title-projects">
+              {selectedClient ? `Projects for ${selectedClient.name}` : "Company Projects"}
+            </h1>
             <p className="text-muted-foreground">
-              Manage projects for {activeCompany.name}
+              {selectedClient ? (
+                <span className="flex items-center gap-2">
+                  Showing {filteredProjects.length} project{filteredProjects.length !== 1 ? "s" : ""} for this client
+                  <Link href="/company/projects" className="text-primary hover:underline">
+                    View all
+                  </Link>
+                </span>
+              ) : (
+                `Manage projects for ${activeCompany.name}`
+              )}
             </p>
           </div>
           <Button onClick={() => setShowCreateDialog(true)} data-testid="button-create-project">
@@ -296,7 +333,7 @@ export default function CompanyProjectsPage() {
           </Button>
         </div>
 
-        {projects.length === 0 ? (
+        {filteredProjects.length === 0 ? (
           <Card>
             <CardContent className="flex flex-col items-center justify-center py-12">
               <FolderOpen className="w-12 h-12 text-muted-foreground mb-4" />
@@ -312,7 +349,7 @@ export default function CompanyProjectsPage() {
           </Card>
         ) : (
           <div className="grid gap-4 md:grid-cols-2">
-            {projects.map((project) => (
+            {filteredProjects.map((project) => (
               <Card key={project.id} className="hover-elevate" data-testid={`card-project-${project.id}`}>
                 <CardHeader>
                   <div className="flex items-start justify-between gap-2">
