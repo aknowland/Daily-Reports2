@@ -51,6 +51,7 @@ import {
   Trash2,
   Clock,
   FileStack,
+  Receipt,
 } from "lucide-react";
 import { Link } from "wouter";
 import { useState } from "react";
@@ -115,6 +116,7 @@ export default function MyProjectsPage() {
   const [isExportingPdf, setIsExportingPdf] = useState(false);
   const [isGeneratingTimesheet, setIsGeneratingTimesheet] = useState(false);
   const [isGeneratingCombined, setIsGeneratingCombined] = useState(false);
+  const [isGeneratingInspectorInvoice, setIsGeneratingInspectorInvoice] = useState(false);
 
   const { data: projects = [], isLoading, error } = useQuery<Project[]>({
     queryKey: ["/api/my-projects"],
@@ -397,6 +399,55 @@ export default function MyProjectsPage() {
       });
     } finally {
       setIsGeneratingCombined(false);
+    }
+  };
+
+  const generateInspectorInvoice = async () => {
+    if (!invoiceProject || !invoiceStartDate) return;
+    
+    setIsGeneratingInspectorInvoice(true);
+    try {
+      const month = invoiceStartDate.getMonth() + 1;
+      const year = invoiceStartDate.getFullYear();
+      
+      const response = await fetch("/api/billing/inspector-invoice", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          projectId: invoiceProject.id,
+          month,
+          year,
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || "Failed to generate inspector invoice");
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `Inspector_Invoice_${invoiceProject.projectNumber || invoiceProject.name}_${format(invoiceStartDate, "MMMM-yyyy")}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+
+      toast({
+        title: "Inspector Invoice Generated",
+        description: "Your invoice PDF has been downloaded.",
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to generate inspector invoice",
+        variant: "destructive",
+      });
+    } finally {
+      setIsGeneratingInspectorInvoice(false);
     }
   };
 
@@ -1026,6 +1077,24 @@ export default function MyProjectsPage() {
                 <>
                   <FileStack className="w-4 h-4 mr-2" />
                   Combined Reports
+                </>
+              )}
+            </Button>
+            <Button
+              variant="outline"
+              onClick={generateInspectorInvoice}
+              disabled={isGeneratingInspectorInvoice || !invoiceStartDate}
+              data-testid="button-generate-inspector-invoice"
+            >
+              {isGeneratingInspectorInvoice ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Generating...
+                </>
+              ) : (
+                <>
+                  <Receipt className="w-4 h-4 mr-2" />
+                  My Invoice
                 </>
               )}
             </Button>
