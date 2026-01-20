@@ -65,23 +65,23 @@ const emptyFormData: ProposalFormData = {
   endDate: "",
   totalHours: "",
   rateEscalationNote: "*Hourly Rate increase of $3 at the start of every January of the construction/contract period.",
-  terms: `1. Knowland Construction Services agrees to provide for continuous inspection of work for compliance with approved contract documents. Project Inspector duties as outlined in Title 24, Part 1, Chapter 4, Sections 4-333 thru 4-342 California Code of Regulations, including DSA Interpretive Regulations A-6, A-7, A-8.
+  terms: `1. Knowland Construction Services agrees to provide for continuous inspection of work for compliance with approved contract documents. Project Inspector duties as outlined in Title 24, Part 1, Chapter 4, Sections 4-333 thru 4-342 California Code of Regulations, including DSA Interpretive Regulations A-6, A-7, A-8, and as incorporated in the following paragraphs.
 
 2. Represent the District under the guidance of the designee of the District Superintendent.
 
 3. Attend all planning, pre-construction conference, project meetings, or meetings as required by the District.
 
-4. Monitor and observe all Special Inspections performed by the Districts contracted Testing Lab as required by the Testing and Inspections Sheet and as outlined in the Project Specifications.
+4. Monitor and observe all Special Inspections performed by the Districts contracted Testing Lab as required by the Testing and Inspections Sheet and as outlined in the Project Specifications. Maintain and update a log specifying hours spent on the project by Special Inspectors. Perform or monitor testing for Torque, Epoxy, Pull Tests, and other tests as approved by the DSA Field Engineer. Knowland Construction Services shall assist in minimizing unnecessary costs for testing where possible.
 
-5. The District & the Inspector shall each defend and hold harmless each other against any losses, liabilities, damages, injuries, claims, costs, or expenses arising out of or connected with the provisions of this agreement.
+5. The District & the Inspector, Knowland Construction Services, shall each defend and hold harmless each other against any losses, liabilities, damages, injuries, claims, costs, or expenses arising out of or connected with the provisions of this agreement and the contract documents.
 
-6. The Agreement shall begin upon written notice by a representative of the District and remain in effect continuously until project closeout, unless terminated in writing.
+6. The Agreement shall begin upon written notice by a representative of the District and remain in effect continuously until project closeout, unless terminated in writing. Contract is intended to be an agency agreement and may be terminated in 15 days by either party with or without cause. This Agency Agreement shall be assignable to other schools within the District, and shall apply to other Inspectors as requested and approved by the District. The District shall not employ, contract, or engage in business or mutually beneficial relationships with Inspectors introduced to the District through Knowland Construction Services for a period of two (2) years after the dissolution of any contracts through Knowland Construction Services unless permission is granted prior to such relationships.
 
-7. Knowland Construction Services shall maintain in effect a $1 million General Liability insurance policy, Workman's Compensation as required, and Full Liability Auto Insurance as required.
+7. Knowland Construction Services shall maintain in effect a $1 million General Liability insurance policy, Workman's Compensation as required, and Full Liability Auto Insurance as required. District requests for additional insurances shall be paid additionally by the District at current market rates.
 
-8. Client agrees to pay Knowland Construction Services the cost of project services billed at the rate as outlined in the fee schedule within 30 working days of receipt of invoice.
+8. Long Beach Unified School District agrees to pay Knowland Construction Services the cost of project services billed at the rate as outlined in the fee schedule within 30 working days of receipt of invoice. KCS shall bill in (4) or (8) hour increments (to include drive time) for each site visit. If Fixed Fee option is selected, KCS shall bill half of the fixed fee amount at 50% project completion and the remaining amount at substantial completion of each project. Overtime shall be billed at 1 1/2 times standard pay or per the local operator's union. Fee schedule shall escalate $3/hr. each January after the contract is approved. KCS will allocate (4) hours per month for KCS administrative fees/ Project Management oversight. Knowland Construction Services (Project Inspectors /Project Managers/ Engineers) shall provide all necessary cell phones, laptop computers, digital cameras, and equipment necessary to maintain proper documentation and administrative functions throughout the duration of the project. The District shall provide all utility lines, office space and furniture on an off-site location. KCS at its own discretion may utilize project managers or project engineers to perform administrative, report writing, DSA Box, and other duties where it is in the interest of the project.
 
-9. When an IOR is on vacation or unable to be at the project for reasons beyond his reasonable control, a Project Manager / Project Engineer will be assigned to oversee the project.`,
+9. When an IOR is on vacation or unable to be at the project for reasons beyond his reasonable control, a Project Manager / Project Engineer will be assigned to oversee the project, and shall be responsible for the accurate reporting of all activities to the Inspector of Record. Hours billed for inspection services shall include only hours worked in support of the project. Other billing arrangements may be as agreed in writing by the District.`,
 };
 
 interface ProposalDialogProps {
