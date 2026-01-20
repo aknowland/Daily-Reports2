@@ -1,6 +1,6 @@
 import { 
   projects, dailyReports, photos, distributionLogs, appSettings, userProfiles, projectMembers, invites,
-  companies, companyMembers, joinRequests, invoices, contracts, clients, contractAttachments,
+  companies, companyMembers, joinRequests, invoices, contracts, clients, contractAttachments, timesheets, monthlyReportBundles,
   type Project, type InsertProject,
   type DailyReport, type InsertDailyReport,
   type Photo, type InsertPhoto,
@@ -17,6 +17,8 @@ import {
   type Contract, type InsertContract, type ContractWithProject,
   type Client, type InsertClient,
   type ContractAttachment, type InsertContractAttachment,
+  type Timesheet, type InsertTimesheet,
+  type MonthlyReportBundle, type InsertMonthlyReportBundle,
 } from "@shared/schema";
 import { users, type User } from "@shared/models/auth";
 import { db } from "./db";
@@ -163,18 +165,29 @@ export interface IStorage {
   deleteUser(userId: string): Promise<boolean>;
 
   // Invoices
-  getNextInvoiceNumber(): Promise<number>;
+  getNextInvoiceNumber(): Promise<string>;
   createInvoice(data: {
-    invoiceNumber: number;
+    companyId: string;
     projectId: string;
-    generatedById: string;
-    startDate: Date;
-    endDate: Date;
+    contractId?: string;
+    clientId?: string;
+    invoiceNumber: string;
+    month: number;
+    year: number;
     regularHours: string;
-    otHours: string;
-    totalHours: string;
-    reportCount: number;
-  }): Promise<{ id: string; invoiceNumber: number }>;
+    overtimeHours: string;
+    premiumHours: string;
+    regularRate?: string;
+    overtimeRate?: string;
+    premiumRate?: string;
+    regularAmount: string;
+    overtimeAmount: string;
+    premiumAmount: string;
+    subtotal: string;
+    totalAmount: string;
+    dueDate?: Date;
+    notes?: string;
+  }): Promise<{ id: string; invoiceNumber: string }>;
 
   // Contracts
   getContracts(companyId: string): Promise<ContractWithProject[]>;
@@ -1040,35 +1053,59 @@ export class DatabaseStorage implements IStorage {
     return (result.rowCount ?? 0) > 0;
   }
 
-  async getNextInvoiceNumber(): Promise<number> {
-    // Use database sequence for atomic, race-condition-free invoice number generation
-    const result = await db.execute(sql`SELECT nextval('invoice_number_seq') as next_num`);
-    return Number((result.rows[0] as any)?.next_num || 1);
+  async getNextInvoiceNumber(): Promise<string> {
+    // Generate invoice number based on max existing + 1
+    const result = await db.execute(sql`SELECT COALESCE(MAX(CAST(invoice_number AS INTEGER)), 0) + 1 as next_num FROM invoices WHERE invoice_number ~ '^[0-9]+$'`);
+    const nextNum = Number((result.rows[0] as any)?.next_num || 1);
+    return String(nextNum).padStart(5, '0');
   }
 
   async createInvoice(data: {
-    invoiceNumber: number;
+    companyId: string;
     projectId: string;
-    generatedById: string;
-    startDate: Date;
-    endDate: Date;
+    contractId?: string;
+    clientId?: string;
+    invoiceNumber: string;
+    month: number;
+    year: number;
     regularHours: string;
-    otHours: string;
-    totalHours: string;
-    reportCount: number;
-  }): Promise<{ id: string; invoiceNumber: number }> {
+    overtimeHours: string;
+    premiumHours: string;
+    regularRate?: string;
+    overtimeRate?: string;
+    premiumRate?: string;
+    regularAmount: string;
+    overtimeAmount: string;
+    premiumAmount: string;
+    subtotal: string;
+    totalAmount: string;
+    dueDate?: Date;
+    notes?: string;
+  }): Promise<{ id: string; invoiceNumber: string }> {
     const [invoice] = await db
       .insert(invoices)
       .values({
-        invoiceNumber: data.invoiceNumber,
+        companyId: data.companyId,
         projectId: data.projectId,
-        generatedById: data.generatedById,
-        startDate: data.startDate,
-        endDate: data.endDate,
+        contractId: data.contractId || null,
+        clientId: data.clientId || null,
+        invoiceNumber: data.invoiceNumber,
+        month: data.month,
+        year: data.year,
         regularHours: data.regularHours,
-        otHours: data.otHours,
-        totalHours: data.totalHours,
-        reportCount: data.reportCount,
+        overtimeHours: data.overtimeHours,
+        premiumHours: data.premiumHours,
+        regularRate: data.regularRate || null,
+        overtimeRate: data.overtimeRate || null,
+        premiumRate: data.premiumRate || null,
+        regularAmount: data.regularAmount,
+        overtimeAmount: data.overtimeAmount,
+        premiumAmount: data.premiumAmount,
+        subtotal: data.subtotal,
+        totalAmount: data.totalAmount,
+        dueDate: data.dueDate || null,
+        notes: data.notes || null,
+        status: 'draft',
       })
       .returning();
     return { id: invoice.id, invoiceNumber: invoice.invoiceNumber };
