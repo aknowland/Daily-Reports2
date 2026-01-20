@@ -25,6 +25,8 @@ import { ProjectSwitcher } from "./project-switcher";
 import { ModeToggle } from "./mode-toggle";
 import { useAdminMode } from "@/hooks/use-admin-mode";
 import { Separator } from "@/components/ui/separator";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { ChevronDown } from "lucide-react";
 
 interface HeaderProps {
   title?: string;
@@ -35,6 +37,7 @@ export function Header({ title = "Field Daily Reports" }: HeaderProps) {
   const { user, isLoading, isAdmin, isCompanyAdmin, activeCompany, logout, profile } = useAuth();
   const [location] = useLocation();
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [sysAdminOpen, setSysAdminOpen] = useState(false);
   const { isAdminMode } = useAdminMode();
   
   const showAdminFeatures = isAdmin && isAdminMode;
@@ -144,31 +147,43 @@ export function Header({ title = "Field Daily Reports" }: HeaderProps) {
                   {showAdminFeatures && (
                     <>
                       <Separator className="my-4" />
-                      <div className="flex items-center gap-2 px-3 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                        <Shield className="w-3 h-3" />
-                        System Admin
-                      </div>
-                      {systemAdminNavItems.map((item) => {
-                        const isActive = location === item.href || 
-                          (item.href !== "/admin" && location.startsWith(item.href));
-                        const Icon = item.icon;
-                        return (
-                          <Link key={item.href} href={item.href} onClick={() => setSheetOpen(false)}>
-                            <div
-                              className={cn(
-                                "flex items-center gap-3 px-3 py-2 rounded-md transition-colors",
-                                isActive 
-                                  ? "bg-primary text-primary-foreground" 
-                                  : "hover-elevate"
-                              )}
-                              data-testid={`nav-admin-${item.label.toLowerCase().replace(/\s+/g, '-')}`}
-                            >
-                              <Icon className="w-5 h-5" />
-                              <span className="font-medium">{item.label}</span>
+                      <Collapsible open={sysAdminOpen} onOpenChange={setSysAdminOpen}>
+                        <CollapsibleTrigger className="w-full">
+                          <div className="flex items-center justify-between px-3 py-2 rounded-md hover-elevate">
+                            <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                              <Shield className="w-3 h-3" />
+                              System Admin
                             </div>
-                          </Link>
-                        );
-                      })}
+                            <ChevronDown className={cn(
+                              "w-4 h-4 text-muted-foreground transition-transform duration-200",
+                              sysAdminOpen && "rotate-180"
+                            )} />
+                          </div>
+                        </CollapsibleTrigger>
+                        <CollapsibleContent className="space-y-1 mt-1">
+                          {systemAdminNavItems.map((item) => {
+                            const isActive = location === item.href || 
+                              (item.href !== "/admin" && location.startsWith(item.href));
+                            const Icon = item.icon;
+                            return (
+                              <Link key={item.href} href={item.href} onClick={() => setSheetOpen(false)}>
+                                <div
+                                  className={cn(
+                                    "flex items-center gap-3 px-3 py-2 rounded-md transition-colors",
+                                    isActive 
+                                      ? "bg-primary text-primary-foreground" 
+                                      : "hover-elevate"
+                                  )}
+                                  data-testid={`nav-admin-${item.label.toLowerCase().replace(/\s+/g, '-')}`}
+                                >
+                                  <Icon className="w-5 h-5" />
+                                  <span className="font-medium">{item.label}</span>
+                                </div>
+                              </Link>
+                            );
+                          })}
+                        </CollapsibleContent>
+                      </Collapsible>
                     </>
                   )}
                 </nav>
