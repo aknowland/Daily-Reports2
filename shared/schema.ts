@@ -284,6 +284,17 @@ export const contracts = pgTable("contracts", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+// Contract attachments table - for storing files attached to contracts
+export const contractAttachments = pgTable("contract_attachments", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  contractId: varchar("contract_id").references(() => contracts.id, { onDelete: "cascade" }).notNull(),
+  filePath: text("file_path").notNull(),
+  fileName: text("file_name").notNull(),
+  fileType: text("file_type"),
+  fileSize: integer("file_size"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 // Relations
 export const companiesRelations = relations(companies, ({ many }) => ({
   projects: many(projects),
@@ -300,7 +311,7 @@ export const clientsRelations = relations(clients, ({ one, many }) => ({
   contracts: many(contracts),
 }));
 
-export const contractsRelations = relations(contracts, ({ one }) => ({
+export const contractsRelations = relations(contracts, ({ one, many }) => ({
   company: one(companies, {
     fields: [contracts.companyId],
     references: [companies.id],
@@ -312,6 +323,14 @@ export const contractsRelations = relations(contracts, ({ one }) => ({
   client: one(clients, {
     fields: [contracts.clientId],
     references: [clients.id],
+  }),
+  attachments: many(contractAttachments),
+}));
+
+export const contractAttachmentsRelations = relations(contractAttachments, ({ one }) => ({
+  contract: one(contracts, {
+    fields: [contractAttachments.contractId],
+    references: [contracts.id],
   }),
 }));
 
@@ -393,6 +412,7 @@ export const insertInviteSchema = createInsertSchema(invites).omit({ id: true, c
 export const insertJoinRequestSchema = createInsertSchema(joinRequests).omit({ id: true, createdAt: true, reviewedAt: true });
 export const insertClientSchema = createInsertSchema(clients).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertContractSchema = createInsertSchema(contracts).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertContractAttachmentSchema = createInsertSchema(contractAttachments).omit({ id: true, createdAt: true });
 
 // Types
 export type Company = typeof companies.$inferSelect;
@@ -421,11 +441,14 @@ export type Client = typeof clients.$inferSelect;
 export type InsertClient = z.infer<typeof insertClientSchema>;
 export type Contract = typeof contracts.$inferSelect;
 export type InsertContract = z.infer<typeof insertContractSchema>;
+export type ContractAttachment = typeof contractAttachments.$inferSelect;
+export type InsertContractAttachment = z.infer<typeof insertContractAttachmentSchema>;
 
-// Contract with related project and client
+// Contract with related project, client, and attachments
 export type ContractWithProject = Contract & {
   project?: Project;
   client?: Client;
+  attachments?: ContractAttachment[];
 };
 
 // Extended types for frontend
