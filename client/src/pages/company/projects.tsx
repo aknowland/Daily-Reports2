@@ -28,6 +28,13 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   FolderOpen,
   ArrowLeft,
   AlertCircle,
@@ -37,10 +44,11 @@ import {
   Edit,
   Hash,
   Building2,
+  FileText,
 } from "lucide-react";
 import { Link } from "wouter";
 import { useState } from "react";
-import type { Project } from "@shared/schema";
+import type { Project, Contract } from "@shared/schema";
 
 export default function CompanyProjectsPage() {
   const { toast } = useToast();
@@ -54,10 +62,16 @@ export default function CompanyProjectsPage() {
     client: "",
     address: "",
     distributionEmails: "",
+    contractId: "",
   });
 
   const { data: projects = [], isLoading, error } = useQuery<Project[]>({
     queryKey: ["/api/companies", activeCompany?.id, "projects"],
+    enabled: !!activeCompany?.id && isCompanyAdmin,
+  });
+
+  const { data: contracts = [] } = useQuery<Contract[]>({
+    queryKey: ["/api/contracts"],
     enabled: !!activeCompany?.id && isCompanyAdmin,
   });
 
@@ -66,6 +80,7 @@ export default function CompanyProjectsPage() {
       return apiRequest("POST", "/api/projects", {
         ...data,
         companyId: activeCompany?.id,
+        contractId: data.contractId || null,
         distributionEmails: data.distributionEmails
           ? data.distributionEmails.split(",").map((e) => e.trim()).filter(Boolean)
           : [],
@@ -74,8 +89,9 @@ export default function CompanyProjectsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/companies", activeCompany?.id, "projects"] });
       queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/contracts"] });
       setShowCreateDialog(false);
-      setFormData({ name: "", projectNumber: "", client: "", address: "", distributionEmails: "" });
+      setFormData({ name: "", projectNumber: "", client: "", address: "", distributionEmails: "", contractId: "" });
       toast({
         title: "Project Created",
         description: "New project has been created.",
@@ -94,6 +110,7 @@ export default function CompanyProjectsPage() {
     mutationFn: async (data: typeof formData & { id: string }) => {
       return apiRequest("PATCH", `/api/projects/${data.id}`, {
         ...data,
+        contractId: data.contractId || null,
         distributionEmails: data.distributionEmails
           ? data.distributionEmails.split(",").map((e) => e.trim()).filter(Boolean)
           : [],
@@ -102,8 +119,9 @@ export default function CompanyProjectsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/companies", activeCompany?.id, "projects"] });
       queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/contracts"] });
       setEditingProject(null);
-      setFormData({ name: "", projectNumber: "", client: "", address: "", distributionEmails: "" });
+      setFormData({ name: "", projectNumber: "", client: "", address: "", distributionEmails: "", contractId: "" });
       toast({
         title: "Project Updated",
         description: "Project has been updated.",
@@ -147,6 +165,7 @@ export default function CompanyProjectsPage() {
       client: project.client || "",
       address: project.address || "",
       distributionEmails: (project.distributionEmails as string[])?.join(", ") || "",
+      contractId: project.contractId || "",
     });
     setEditingProject(project);
   };
@@ -353,6 +372,14 @@ export default function CompanyProjectsPage() {
                         <span>{project.address}</span>
                       </div>
                     )}
+                    {project.contractId && (
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <FileText className="w-4 h-4" />
+                        <span>
+                          {contracts.find(c => c.id === project.contractId)?.contractNumber || "Linked Contract"}
+                        </span>
+                      </div>
+                    )}
                   </CardContent>
                 </Link>
               </Card>
@@ -365,7 +392,7 @@ export default function CompanyProjectsPage() {
         if (!open) {
           setShowCreateDialog(false);
           setEditingProject(null);
-          setFormData({ name: "", projectNumber: "", client: "", address: "", distributionEmails: "" });
+          setFormData({ name: "", projectNumber: "", client: "", address: "", distributionEmails: "", contractId: "" });
         }
       }}>
         <DialogContent>
@@ -429,6 +456,31 @@ export default function CompanyProjectsPage() {
                 Comma-separated list of emails to receive daily reports
               </p>
             </div>
+            <div className="space-y-2">
+              <Label htmlFor="contractId">Link to Contract</Label>
+              <Select 
+                value={formData.contractId || "none"} 
+                onValueChange={(value) => setFormData({ ...formData, contractId: value === "none" ? "" : value })}
+              >
+                <SelectTrigger data-testid="select-contract">
+                  <SelectValue placeholder="Select a contract (optional)" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">No Contract</SelectItem>
+                  {contracts.map(contract => (
+                    <SelectItem key={contract.id} value={contract.id}>
+                      <div className="flex items-center gap-2">
+                        <FileText className="w-3 h-3" />
+                        {contract.contractNumber} - {contract.name}
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Link this project to a contract for billing rates
+              </p>
+            </div>
           </div>
           <DialogFooter className="gap-2">
             <Button
@@ -436,7 +488,7 @@ export default function CompanyProjectsPage() {
               onClick={() => {
                 setShowCreateDialog(false);
                 setEditingProject(null);
-                setFormData({ name: "", projectNumber: "", client: "", address: "", distributionEmails: "" });
+                setFormData({ name: "", projectNumber: "", client: "", address: "", distributionEmails: "", contractId: "" });
               }}
               data-testid="button-cancel"
             >

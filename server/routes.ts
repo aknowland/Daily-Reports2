@@ -141,6 +141,7 @@ const createProjectSchema = z.object({
   name: z.string().min(1, "Name is required"),
   projectNumber: z.string().min(1, "Project number is required"),
   companyId: z.string().nullable().optional(),
+  contractId: z.string().nullable().optional(),
   client: z.string().optional(),
   address: z.string().optional(),
   distributionEmails: z.array(z.string().email()).optional().default([]),
@@ -505,6 +506,12 @@ export async function registerRoutes(
       
       // Handle companyId assignment separately with extra authorization (respects inspector mode)
       let updateData = { ...otherUpdates };
+      
+      // Convert empty contractId to null
+      if (updateData.contractId === '' || updateData.contractId === 'none') {
+        updateData.contractId = null;
+      }
+      
       if (newCompanyId !== undefined) {
         // If assigning to a new company, user must be effective admin of that company
         if (newCompanyId) {
@@ -1152,11 +1159,6 @@ export async function registerRoutes(
           processed[field] = new Date(processed[field]);
         }
       }
-    }
-    
-    // Convert empty projectId to null
-    if (processed.projectId === '' || processed.projectId === 'none') {
-      processed.projectId = null;
     }
     
     // Convert empty clientId to null

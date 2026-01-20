@@ -99,6 +99,7 @@ export const userProfiles = pgTable("user_profiles", {
 export const projects = pgTable("projects", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   companyId: varchar("company_id").references(() => companies.id, { onDelete: "cascade" }),
+  contractId: varchar("contract_id"), // References contracts - added separately to avoid circular reference
   name: text("name").notNull(),
   projectNumber: varchar("project_number").notNull().unique(),
   client: text("client"),
@@ -264,10 +265,10 @@ export const clients = pgTable("clients", {
 });
 
 // Contracts table - for tracking construction contracts from bid to closeout
+// NOTE: Projects now reference contracts (many projects can be under one contract)
 export const contracts = pgTable("contracts", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   companyId: varchar("company_id").references(() => companies.id, { onDelete: "cascade" }).notNull(),
-  projectId: varchar("project_id").references(() => projects.id, { onDelete: "set null" }),
   clientId: varchar("client_id").references(() => clients.id, { onDelete: "set null" }),
   contractNumber: varchar("contract_number").notNull(),
   name: text("name").notNull(),
@@ -403,14 +404,11 @@ export const contractsRelations = relations(contracts, ({ one, many }) => ({
     fields: [contracts.companyId],
     references: [companies.id],
   }),
-  project: one(projects, {
-    fields: [contracts.projectId],
-    references: [projects.id],
-  }),
   client: one(clients, {
     fields: [contracts.clientId],
     references: [clients.id],
   }),
+  projects: many(projects),
   attachments: many(contractAttachments),
 }));
 
@@ -432,6 +430,10 @@ export const projectsRelations = relations(projects, ({ one, many }) => ({
   company: one(companies, {
     fields: [projects.companyId],
     references: [companies.id],
+  }),
+  contract: one(contracts, {
+    fields: [projects.contractId],
+    references: [contracts.id],
   }),
   dailyReports: many(dailyReports),
   members: many(projectMembers),
@@ -540,11 +542,21 @@ export type InsertInvoice = z.infer<typeof insertInvoiceSchema>;
 export type MonthlyReportBundle = typeof monthlyReportBundles.$inferSelect;
 export type InsertMonthlyReportBundle = z.infer<typeof insertMonthlyReportBundleSchema>;
 
-// Contract with related project, client, and attachments
-export type ContractWithProject = Contract & {
-  project?: Project;
+// Contract with related projects, client, and attachments
+// Note: contracts can have multiple projects
+export type ContractWithProjects = Contract & {
+  projects?: Project[];
   client?: Client;
   attachments?: ContractAttachment[];
+};
+
+// Legacy type for backwards compatibility
+export type ContractWithProject = ContractWithProjects;
+
+// Project with related contract
+export type ProjectWithContract = Project & {
+  contract?: Contract;
+  company?: Company;
 };
 
 // Extended types for frontend

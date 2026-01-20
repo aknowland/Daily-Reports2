@@ -189,13 +189,23 @@ The application runs on port 5000 with:
 - **user_profiles**: Extended user data with roles and active company
 - **companies**: Construction companies
 - **company_members**: User-to-company assignments (many-to-many)
-- **projects**: Construction projects (linked to companies)
-- **project_members**: User-to-project assignments
+- **projects**: Construction projects (linked to companies, optionally linked to contracts via contractId)
+- **contracts**: Contract management with client info, dates, billing rates (multiple projects can link to one contract)
+- **project_members**: User-to-project assignments (includes inspector billing rates)
 - **daily_reports**: Field inspection reports
 - **photos**: Report photo attachments
 - **distribution_logs**: Email/folder distribution history
 - **app_settings**: Company branding and config
 - **invites**: Pending user invitations with role, company, project assignments, and short invite codes
+
+### Contract-Project Relationship
+- **Many-to-one**: Multiple projects can link to the same contract via `projects.contractId`
+- Projects optionally reference a contract for billing rates
+- Contracts no longer have a projectId field - the relationship is owned by projects
+- API returns `ContractWithProjects` type containing `projects[]` array
+- When generating invoices, the project's linked contract determines billing rates
+- Project edit dialog includes contract selector dropdown
+- Contract detail view shows list of linked projects as badges
 
 ## Multi-Company Support
 

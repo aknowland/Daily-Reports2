@@ -23,7 +23,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { useState } from "react";
-import type { Project, ContractWithProject } from "@shared/schema";
+import type { Project, ContractWithProjects } from "@shared/schema";
 import { format } from "date-fns";
 
 const MONTH_OPTIONS = [
@@ -50,7 +50,6 @@ export default function BillingManagementPage() {
   const { toast } = useToast();
   const { activeCompany, isCompanyAdmin, isAdmin } = useAuth();
   const [selectedProject, setSelectedProject] = useState<string>("");
-  const [selectedContract, setSelectedContract] = useState<string>("");
   const [selectedMonth, setSelectedMonth] = useState<string>(
     (new Date().getMonth() + 1).toString()
   );
@@ -65,7 +64,7 @@ export default function BillingManagementPage() {
     queryKey: ["/api/projects"],
   });
 
-  const { data: contracts, isLoading: contractsLoading } = useQuery<ContractWithProject[]>({
+  const { data: contracts, isLoading: contractsLoading } = useQuery<ContractWithProjects[]>({
     queryKey: ["/api/contracts"],
     enabled: !!activeCompany?.id,
   });
@@ -74,9 +73,11 @@ export default function BillingManagementPage() {
     (p) => p.companyId === activeCompany?.id
   );
 
-  const projectContracts = contracts?.filter(
-    (c) => c.projectId === selectedProject
-  );
+  // Find contracts linked to the selected project (via project.contractId)
+  const selectedProjectData = filteredProjects?.find(p => p.id === selectedProject);
+  const projectContract = selectedProjectData?.contractId 
+    ? contracts?.find(c => c.id === selectedProjectData.contractId)
+    : undefined;
 
   const generateTimesheet = async () => {
     if (!selectedProject) {
@@ -153,7 +154,7 @@ export default function BillingManagementPage() {
           projectId: selectedProject,
           month: parseInt(selectedMonth),
           year: parseInt(selectedYear),
-          contractId: selectedContract || undefined,
+          contractId: selectedProjectData?.contractId || undefined,
         }),
       });
 
@@ -293,10 +294,7 @@ export default function BillingManagementPage() {
                 ) : (
                   <Select
                     value={selectedProject}
-                    onValueChange={(val) => {
-                      setSelectedProject(val);
-                      setSelectedContract("");
-                    }}
+                    onValueChange={setSelectedProject}
                   >
                     <SelectTrigger data-testid="select-project">
                       <SelectValue placeholder="Select a project" />
@@ -344,26 +342,17 @@ export default function BillingManagementPage() {
                 </Select>
               </div>
 
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Contract (for rates)</label>
-                <Select
-                  value={selectedContract}
-                  onValueChange={(val) => setSelectedContract(val === "none" ? "" : val)}
-                  disabled={!selectedProject}
-                >
-                  <SelectTrigger data-testid="select-contract">
-                    <SelectValue placeholder="Optional" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">None</SelectItem>
-                    {projectContracts?.map((contract) => (
-                      <SelectItem key={contract.id} value={contract.id}>
-                        {contract.name || contract.contractNumber}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+              {projectContract && (
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Linked Contract</label>
+                  <div className="flex items-center gap-2 p-2 bg-muted/50 rounded-md border">
+                    <FileText className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-sm">
+                      {projectContract.contractNumber} - {projectContract.name}
+                    </span>
+                  </div>
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -440,21 +429,21 @@ export default function BillingManagementPage() {
                   pulled from submitted daily reports. If a contract is selected, hourly rates
                   will be applied from the contract settings.
                 </p>
-                {selectedContract && projectContracts?.find(c => c.id === selectedContract) && (
+                {projectContract && (
                   <div className="rounded-md border p-4 bg-muted/50">
-                    <h4 className="font-medium mb-2">Contract Rates</h4>
+                    <h4 className="font-medium mb-2">Contract Rates ({projectContract.contractNumber})</h4>
                     <div className="grid grid-cols-3 gap-4 text-sm">
                       <div>
                         <span className="text-muted-foreground">Regular:</span>{" "}
-                        ${projectContracts.find(c => c.id === selectedContract)?.regularRate || "0"}/hr
+                        ${projectContract.regularRate || "0"}/hr
                       </div>
                       <div>
                         <span className="text-muted-foreground">Overtime:</span>{" "}
-                        ${projectContracts.find(c => c.id === selectedContract)?.overtimeRate || "0"}/hr
+                        ${projectContract.overtimeRate || "0"}/hr
                       </div>
                       <div>
                         <span className="text-muted-foreground">Premium:</span>{" "}
-                        ${projectContracts.find(c => c.id === selectedContract)?.premiumRate || "0"}/hr
+                        ${projectContract.premiumRate || "0"}/hr
                       </div>
                     </div>
                   </div>
