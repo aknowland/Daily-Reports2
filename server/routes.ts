@@ -14,7 +14,7 @@ import PDFDocument from "pdfkit";
 import { PDFDocument as PDFLibDocument } from "pdf-lib";
 import { format } from "date-fns";
 import { speechToText, openai } from "./replit_integrations/audio/client";
-import { generateTimesheetPdf, aggregateReportsToTimesheetData, generateInvoicePdf, InvoiceData } from "./billing-pdf";
+import { generateTimesheetPdf, aggregateReportsToTimesheetData, generateInvoicePdf, InvoiceData, generateInspectorInvoicePdf, InspectorInvoiceData } from "./billing-pdf";
 
 // Initialize object storage service for persistent file storage
 const objectStorage = new ObjectStorageService();
@@ -3054,6 +3054,109 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error generating combined reports PDF:", error);
       res.status(500).json({ message: "Failed to generate combined reports PDF" });
+    }
+  });
+
+  // Generate inspector invoice PDF - for inspectors to bill their company
+  app.post("/api/billing/inspector-invoice", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      const { projectId, month, year } = req.body;
+
+      if (!projectId || !month || !year) {
+        return res.status(400).json({ message: "Project ID, month, and year are required" });
+      }
+
+      const project = await storage.getProject(projectId);
+      if (!project) {
+        return res.status(404).json({ message: "Project not found" });
+      }
+
+      // Inspectors can only generate their own invoices - must be a project member
+      const isProjectMember = await storage.isUserMemberOfProject(projectId, userId);
+      if (!isProjectMember) {
+        return res.status(403).json({ message: "You must be assigned to this project to generate an invoice" });
+      }
+
+      // Get the project member record for rates
+      const projectMember = await storage.getProjectMember(projectId, userId);
+      if (!projectMember) {
+        return res.status(404).json({ message: "Project membership not found" });
+      }
+
+      // Get company info
+      let company = null;
+      if (project.companyId) {
+        company = await storage.getCompany(project.companyId);
+      }
+
+      // Get inspector's profile for contact info
+      const inspectorProfile = await storage.getUserProfile(userId);
+      const inspectorUser = await storage.getUser(userId);
+      const inspectorName = inspectorProfile?.firstName && inspectorProfile?.lastName 
+        ? `${inspectorProfile.firstName} ${inspectorProfile.lastName}`
+        : inspectorUser?.firstName && inspectorUser?.lastName
+          ? `${inspectorUser.firstName} ${inspectorUser.lastName}`
+          : inspectorUser?.email || 'Inspector';
+
+      // Get reports for the specified month - only this inspector's reports
+      const startDate = new Date(year, month - 1, 1);
+      const endDate = new Date(year, month, 0);
+      const allReports = await storage.getReportsForInvoice(projectId, startDate, endDate);
+      const reports = allReports.filter(r => r.inspectorId === userId);
+
+      // Calculate hours
+      let regularHours = 0;
+      let overtimeHours = 0;
+      
+      for (const report of reports) {
+        regularHours += parseFloat(report.regularHours || '0') || 0;
+        overtimeHours += parseFloat(report.otHours || '0') || 0;
+      }
+
+      // Get rates from project member record
+      const regularRate = parseFloat(projectMember.regularRate || '0') || 0;
+      const overtimeRate = parseFloat(projectMember.overtimeRate || '0') || 0;
+      const premiumRate = parseFloat(projectMember.premiumRate || '0') || 0;
+
+      // Generate invoice number (INS-USERID-PROJECTID-MMYYYY)
+      const invoiceNumber = `INS-${userId.slice(-4)}-${projectId.slice(-4)}-${String(month).padStart(2, '0')}${year}`;
+
+      // Generate inspector invoice PDF
+      const invoiceData: InspectorInvoiceData = {
+        inspectorName,
+        inspectorAddress: inspectorProfile?.contractorAddress || undefined,
+        inspectorPhone: inspectorProfile?.contractorPhone || inspectorProfile?.phone || undefined,
+        inspectorEmail: inspectorProfile?.contractorEmail || inspectorProfile?.email || inspectorUser?.email || undefined,
+        companyName: company?.name || 'Company',
+        companyAddress: company?.address || undefined,
+        projectName: project.name,
+        projectNumber: project.projectNumber || undefined,
+        invoiceNumber,
+        invoiceDate: new Date(),
+        month,
+        year,
+        regularHours,
+        overtimeHours,
+        premiumHours: 0,
+        regularRate,
+        overtimeRate,
+        premiumRate,
+      };
+
+      const pdfBuffer = await generateInspectorInvoicePdf(invoiceData);
+      
+      const monthName = format(startDate, 'MMMM-yyyy');
+      const filename = `Inspector_Invoice_${inspectorName.replace(/\s+/g, '_')}_${project.name || project.projectNumber}_${monthName}.pdf`;
+      
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.send(pdfBuffer);
+
+    } catch (error) {
+      console.error("Error generating inspector invoice:", error);
+      res.status(500).json({ message: "Failed to generate inspector invoice" });
     }
   });
 
