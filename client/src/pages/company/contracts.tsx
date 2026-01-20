@@ -49,7 +49,7 @@ import {
   CalendarDays,
 } from "lucide-react";
 import { useState } from "react";
-import type { ContractWithProject, Project } from "@shared/schema";
+import type { ContractWithProject, Project, Client } from "@shared/schema";
 import { format } from "date-fns";
 
 const CONTRACT_STATUS_OPTIONS = [
@@ -75,7 +75,7 @@ type ContractFormData = {
   contractNumber: string;
   name: string;
   description: string;
-  contractorName: string;
+  clientId: string;
   contractType: string;
   status: string;
   originalValue: string;
@@ -94,7 +94,7 @@ const emptyFormData: ContractFormData = {
   contractNumber: "",
   name: "",
   description: "",
-  contractorName: "",
+  clientId: "",
   contractType: "lump_sum",
   status: "bid_release",
   originalValue: "",
@@ -129,11 +129,17 @@ export default function ContractsPage() {
     enabled: !!activeCompany?.id,
   });
 
+  const { data: clientsList = [] } = useQuery<Client[]>({
+    queryKey: ["/api/clients"],
+    enabled: !!activeCompany?.id,
+  });
+
   const createMutation = useMutation({
     mutationFn: async (data: ContractFormData) => {
       const payload = {
         ...data,
         projectId: data.projectId || null,
+        clientId: data.clientId || null,
         bidReleaseDate: data.bidReleaseDate ? new Date(data.bidReleaseDate) : null,
         bidDueDate: data.bidDueDate ? new Date(data.bidDueDate) : null,
         awardDate: data.awardDate ? new Date(data.awardDate) : null,
@@ -166,6 +172,7 @@ export default function ContractsPage() {
       const payload = {
         ...data,
         projectId: data.projectId || null,
+        clientId: data.clientId || null,
         bidReleaseDate: data.bidReleaseDate ? new Date(data.bidReleaseDate) : null,
         bidDueDate: data.bidDueDate ? new Date(data.bidDueDate) : null,
         awardDate: data.awardDate ? new Date(data.awardDate) : null,
@@ -228,7 +235,7 @@ export default function ContractsPage() {
       contractNumber: contract.contractNumber,
       name: contract.name,
       description: contract.description || "",
-      contractorName: contract.contractorName || "",
+      clientId: contract.clientId || "",
       contractType: contract.contractType || "lump_sum",
       status: contract.status,
       originalValue: contract.originalValue || "",
@@ -375,10 +382,10 @@ export default function ContractsPage() {
                               <FileText className="w-3 h-3" />
                               {contract.contractNumber}
                             </span>
-                            {contract.contractorName && (
+                            {contract.client && (
                               <span className="flex items-center gap-1">
                                 <Building2 className="w-3 h-3" />
-                                {contract.contractorName}
+                                {contract.client.name}
                               </span>
                             )}
                             {contract.contractType && (
@@ -528,13 +535,18 @@ export default function ContractsPage() {
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="contractorName">Contractor Name</Label>
-                <Input
-                  id="contractorName"
-                  value={formData.contractorName}
-                  onChange={(e) => setFormData({ ...formData, contractorName: e.target.value })}
-                  data-testid="input-contractor-name"
-                />
+                <Label htmlFor="clientId">Client Name</Label>
+                <Select value={formData.clientId || "none"} onValueChange={(value) => setFormData({ ...formData, clientId: value === "none" ? "" : value })}>
+                  <SelectTrigger data-testid="select-client">
+                    <SelectValue placeholder="Select a client" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">No Client</SelectItem>
+                    {clientsList.map(client => (
+                      <SelectItem key={client.id} value={client.id}>{client.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="projectId">Link to Project</Label>
