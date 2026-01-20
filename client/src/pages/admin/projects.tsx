@@ -41,6 +41,8 @@ import {
   UserPlus,
   X,
   ArrowLeft,
+  DollarSign,
+  Save,
 } from "lucide-react";
 import { Link } from "wouter";
 import type { Project, ProjectMember, User } from "@shared/schema";
@@ -56,6 +58,9 @@ export default function AdminProjectsPage() {
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [selectedUserId, setSelectedUserId] = useState("");
+  const [editingMemberRates, setEditingMemberRates] = useState<{
+    [userId: string]: { regularRate: string; overtimeRate: string; premiumRate: string }
+  }>({});
   const [formData, setFormData] = useState({
     name: "",
     projectNumber: "",
@@ -193,6 +198,30 @@ export default function AdminProjectsPage() {
       toast({
         title: "Error",
         description: error instanceof Error ? error.message : "Failed to remove member",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const updateRatesMutation = useMutation({
+    mutationFn: async ({ projectId, userId, rates }: { 
+      projectId: string; 
+      userId: string; 
+      rates: { regularRate?: string; overtimeRate?: string; premiumRate?: string } 
+    }) => {
+      return apiRequest("PATCH", `/api/projects/${projectId}/members/${userId}/rates`, rates);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/projects", selectedProject?.id, "members"] });
+      toast({
+        title: "Rates Updated",
+        description: "The inspector's billing rates have been updated",
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to update rates",
         variant: "destructive",
       });
     },
@@ -591,9 +620,9 @@ export default function AdminProjectsPage() {
 
               <div className="border rounded-lg">
                 <div className="px-4 py-2 border-b bg-muted/50">
-                  <h4 className="text-sm font-medium">Team Members</h4>
+                  <h4 className="text-sm font-medium">Team Members & Billing Rates</h4>
                 </div>
-                <div className="divide-y max-h-64 overflow-y-auto">
+                <div className="divide-y max-h-96 overflow-y-auto">
                   {loadingMembers ? (
                     <div className="p-4 space-y-3">
                       {[1, 2, 3].map((i) => (
@@ -608,42 +637,134 @@ export default function AdminProjectsPage() {
                       No team members assigned yet
                     </div>
                   ) : (
-                    projectMembers?.map((member) => (
-                      <div 
-                        key={member.id}
-                        className="flex items-center justify-between px-4 py-3"
-                        data-testid={`member-${member.userId}`}
-                      >
-                        <div className="flex items-center gap-3">
-                          <Avatar className="w-8 h-8">
-                            <AvatarImage src={member.user?.profileImageUrl || undefined} />
-                            <AvatarFallback className="text-xs">
-                              {getInitials(member.user)}
-                            </AvatarFallback>
-                          </Avatar>
-                          <div className="min-w-0">
-                            <p className="text-sm font-medium truncate">
-                              {getUserDisplayName(member.user)}
-                            </p>
-                            {member.user?.email && (
-                              <p className="text-xs text-muted-foreground truncate">
-                                {member.user.email}
-                              </p>
+                    projectMembers?.map((member) => {
+                      const currentRates = editingMemberRates[member.userId] || {
+                        regularRate: member.regularRate || '',
+                        overtimeRate: member.overtimeRate || '',
+                        premiumRate: member.premiumRate || '',
+                      };
+                      const hasChanges = 
+                        currentRates.regularRate !== (member.regularRate || '') ||
+                        currentRates.overtimeRate !== (member.overtimeRate || '') ||
+                        currentRates.premiumRate !== (member.premiumRate || '');
+                      
+                      return (
+                        <div 
+                          key={member.id}
+                          className="px-4 py-3 space-y-3"
+                          data-testid={`member-${member.userId}`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                              <Avatar className="w-8 h-8">
+                                <AvatarImage src={member.user?.profileImageUrl || undefined} />
+                                <AvatarFallback className="text-xs">
+                                  {getInitials(member.user)}
+                                </AvatarFallback>
+                              </Avatar>
+                              <div className="min-w-0">
+                                <p className="text-sm font-medium truncate">
+                                  {getUserDisplayName(member.user)}
+                                </p>
+                                {member.user?.email && (
+                                  <p className="text-xs text-muted-foreground truncate">
+                                    {member.user.email}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="text-destructive hover:text-destructive"
+                              onClick={() => handleRemoveMember(member.userId)}
+                              disabled={removeMemberMutation.isPending}
+                              data-testid={`button-remove-member-${member.userId}`}
+                            >
+                              <X className="w-4 h-4" />
+                            </Button>
+                          </div>
+                          
+                          <div className="flex items-center gap-2 pl-11">
+                            <div className="flex items-center gap-1">
+                              <DollarSign className="w-3 h-3 text-muted-foreground" />
+                              <Input
+                                type="number"
+                                step="0.01"
+                                placeholder="Reg"
+                                className="w-20 h-8 text-xs"
+                                value={currentRates.regularRate}
+                                onChange={(e) => setEditingMemberRates(prev => ({
+                                  ...prev,
+                                  [member.userId]: {
+                                    ...currentRates,
+                                    regularRate: e.target.value,
+                                  }
+                                }))}
+                                data-testid={`input-regular-rate-${member.userId}`}
+                              />
+                            </div>
+                            <Input
+                              type="number"
+                              step="0.01"
+                              placeholder="OT"
+                              className="w-20 h-8 text-xs"
+                              value={currentRates.overtimeRate}
+                              onChange={(e) => setEditingMemberRates(prev => ({
+                                ...prev,
+                                [member.userId]: {
+                                  ...currentRates,
+                                  overtimeRate: e.target.value,
+                                }
+                              }))}
+                              data-testid={`input-overtime-rate-${member.userId}`}
+                            />
+                            <Input
+                              type="number"
+                              step="0.01"
+                              placeholder="Prem"
+                              className="w-20 h-8 text-xs"
+                              value={currentRates.premiumRate}
+                              onChange={(e) => setEditingMemberRates(prev => ({
+                                ...prev,
+                                [member.userId]: {
+                                  ...currentRates,
+                                  premiumRate: e.target.value,
+                                }
+                              }))}
+                              data-testid={`input-premium-rate-${member.userId}`}
+                            />
+                            {hasChanges && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-8"
+                                disabled={updateRatesMutation.isPending}
+                                onClick={() => {
+                                  if (selectedProject) {
+                                    updateRatesMutation.mutate({
+                                      projectId: selectedProject.id,
+                                      userId: member.userId,
+                                      rates: currentRates,
+                                    });
+                                  }
+                                }}
+                                data-testid={`button-save-rates-${member.userId}`}
+                              >
+                                {updateRatesMutation.isPending ? (
+                                  <Loader2 className="w-3 h-3 animate-spin" />
+                                ) : (
+                                  <Save className="w-3 h-3" />
+                                )}
+                              </Button>
                             )}
                           </div>
+                          <div className="pl-11 text-xs text-muted-foreground">
+                            Hourly rates: Regular / Overtime / Premium
+                          </div>
                         </div>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="text-destructive hover:text-destructive"
-                          onClick={() => handleRemoveMember(member.userId)}
-                          disabled={removeMemberMutation.isPending}
-                          data-testid={`button-remove-member-${member.userId}`}
-                        >
-                          <X className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    ))
+                      );
+                    })
                   )}
                 </div>
               </div>
