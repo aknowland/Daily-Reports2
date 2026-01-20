@@ -47,9 +47,13 @@ import {
   Clock,
   List,
   CalendarDays,
+  Paperclip,
+  Upload,
+  X,
+  Download,
 } from "lucide-react";
-import { useState } from "react";
-import type { ContractWithProject, Project, Client } from "@shared/schema";
+import { useState, useRef } from "react";
+import type { ContractWithProject, Project, Client, ContractAttachment } from "@shared/schema";
 import { format } from "date-fns";
 
 const CONTRACT_STATUS_OPTIONS = [
@@ -118,6 +122,9 @@ export default function ContractsPage() {
   const [formData, setFormData] = useState<ContractFormData>(emptyFormData);
   const [activeTab, setActiveTab] = useState("list");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  const [isUploading, setIsUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { data: contracts = [], isLoading } = useQuery<ContractWithProject[]>({
     queryKey: ["/api/contracts"],
@@ -221,12 +228,145 @@ export default function ContractsPage() {
     },
   });
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const deleteAttachmentMutation = useMutation({
+    mutationFn: async (attachmentId: string) => {
+      return apiRequest("DELETE", `/api/contract-attachments/${attachmentId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/contracts"] });
+      toast({
+        title: "Attachment Deleted",
+        description: "File has been removed.",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to delete attachment.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const uploadAttachments = async (contractId: string, files: File[]) => {
+    if (files.length === 0) return;
+    
+    setIsUploading(true);
+    try {
+      const formDataUpload = new FormData();
+      files.forEach(file => {
+        formDataUpload.append("attachments", file);
+      });
+      
+      const response = await fetch(`/api/contracts/${contractId}/attachments`, {
+        method: "POST",
+        body: formDataUpload,
+        credentials: "include",
+      });
+      
+      if (!response.ok) {
+        throw new Error("Failed to upload attachments");
+      }
+      
+      queryClient.invalidateQueries({ queryKey: ["/api/contracts"] });
+      toast({
+        title: "Files Uploaded",
+        description: `${files.length} file(s) attached successfully.`,
+      });
+    } catch (error: any) {
+      toast({
+        title: "Upload Error",
+        description: error.message || "Failed to upload files.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsUploading(false);
+      setPendingFiles([]);
+    }
+  };
+
+  const downloadAttachment = async (attachment: ContractAttachment) => {
+    try {
+      const response = await fetch(`/api/contract-attachments/${attachment.id}/download`, {
+        credentials: "include",
+      });
+      if (!response.ok) throw new Error("Failed to get download URL");
+      
+      const { url, fileName } = await response.json();
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = fileName;
+      link.target = "_blank";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (error: any) {
+      toast({
+        title: "Download Error",
+        description: error.message || "Failed to download file.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    setPendingFiles(prev => [...prev, ...files]);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
+
+  const removePendingFile = (index: number) => {
+    setPendingFiles(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (editingContract) {
-      updateMutation.mutate({ ...formData, id: editingContract.id });
+      updateMutation.mutate({ ...formData, id: editingContract.id }, {
+        onSuccess: async () => {
+          if (pendingFiles.length > 0) {
+            await uploadAttachments(editingContract.id, pendingFiles);
+          }
+        }
+      });
     } else {
-      createMutation.mutate(formData);
+      // For new contracts, we need to create the contract first, then upload files
+      try {
+        const payload = {
+          ...formData,
+          projectId: formData.projectId || null,
+          clientId: formData.clientId || null,
+          bidReleaseDate: formData.bidReleaseDate ? new Date(formData.bidReleaseDate) : null,
+          bidDueDate: formData.bidDueDate ? new Date(formData.bidDueDate) : null,
+          awardDate: formData.awardDate ? new Date(formData.awardDate) : null,
+          startDate: formData.startDate ? new Date(formData.startDate) : null,
+          substantialCompletionDate: formData.substantialCompletionDate ? new Date(formData.substantialCompletionDate) : null,
+          finalCloseoutDate: formData.finalCloseoutDate ? new Date(formData.finalCloseoutDate) : null,
+        };
+        const response = await apiRequest("POST", "/api/contracts", payload);
+        const newContract = await response.json();
+        
+        if (pendingFiles.length > 0 && newContract.id) {
+          await uploadAttachments(newContract.id, pendingFiles);
+        }
+        
+        queryClient.invalidateQueries({ queryKey: ["/api/contracts"] });
+        setShowCreateDialog(false);
+        setFormData(emptyFormData);
+        setPendingFiles([]);
+        toast({
+          title: "Contract Created",
+          description: "New contract has been created.",
+        });
+      } catch (error: any) {
+        toast({
+          title: "Error",
+          description: error.message || "Failed to create contract.",
+          variant: "destructive",
+        });
+      }
     }
   };
 
@@ -695,11 +835,101 @@ export default function ContractsPage() {
               />
             </div>
 
+            <div className="border-t pt-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <Label>Attachments</Label>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => fileInputRef.current?.click()}
+                  data-testid="button-add-attachment"
+                >
+                  <Upload className="w-4 h-4 mr-2" />
+                  Add Files
+                </Button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  multiple
+                  className="hidden"
+                  onChange={handleFileSelect}
+                  data-testid="input-file-upload"
+                />
+              </div>
+
+              {editingContract?.attachments && editingContract.attachments.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-sm text-muted-foreground">Existing files:</p>
+                  {editingContract.attachments.map(attachment => (
+                    <div key={attachment.id} className="flex items-center justify-between p-2 bg-muted/50 rounded-md">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <Paperclip className="w-4 h-4 flex-shrink-0 text-muted-foreground" />
+                        <span className="text-sm truncate">{attachment.fileName}</span>
+                        {attachment.fileSize && (
+                          <span className="text-xs text-muted-foreground flex-shrink-0">
+                            ({(attachment.fileSize / 1024).toFixed(1)} KB)
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => downloadAttachment(attachment)}
+                          data-testid={`button-download-${attachment.id}`}
+                        >
+                          <Download className="w-4 h-4" />
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => deleteAttachmentMutation.mutate(attachment.id)}
+                          data-testid={`button-delete-attachment-${attachment.id}`}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {pendingFiles.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-sm text-muted-foreground">Files to upload:</p>
+                  {pendingFiles.map((file, index) => (
+                    <div key={index} className="flex items-center justify-between p-2 bg-blue-50 dark:bg-blue-950 rounded-md">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <Paperclip className="w-4 h-4 flex-shrink-0 text-blue-600 dark:text-blue-400" />
+                        <span className="text-sm truncate">{file.name}</span>
+                        <span className="text-xs text-muted-foreground flex-shrink-0">
+                          ({(file.size / 1024).toFixed(1)} KB)
+                        </span>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => removePendingFile(index)}
+                        data-testid={`button-remove-pending-${index}`}
+                      >
+                        <X className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => {
                 setShowCreateDialog(false);
                 setEditingContract(null);
                 setFormData(emptyFormData);
+                setPendingFiles([]);
               }}>
                 Cancel
               </Button>

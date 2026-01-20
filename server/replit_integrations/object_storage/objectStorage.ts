@@ -285,6 +285,29 @@ export class ObjectStorageService {
       throw error;
     }
   }
+
+  // Gets a signed URL for downloading an object
+  async getSignedDownloadUrl(objectPath: string, ttlSec: number = 300): Promise<string> {
+    const objectFile = await this.getObjectEntityFile(objectPath);
+    const [url] = await objectFile.getSignedUrl({
+      action: 'read',
+      expires: Date.now() + ttlSec * 1000,
+    });
+    return url;
+  }
+
+  // Deletes an object from storage
+  async deleteObject(objectPath: string): Promise<void> {
+    try {
+      const objectFile = await this.getObjectEntityFile(objectPath);
+      await objectFile.delete();
+    } catch (error) {
+      if (error instanceof ObjectNotFoundError) {
+        return; // Already deleted
+      }
+      throw error;
+    }
+  }
 }
 
 function parseObjectPath(path: string): {
