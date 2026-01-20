@@ -5,7 +5,7 @@ import { z } from "zod";
 
 // Re-export auth models
 export * from "./models/auth";
-import { users } from "./models/auth";
+import { users, type User } from "./models/auth";
 
 // Enums
 export const userRoleEnum = pgEnum("user_role", ["inspector", "admin", "owner"]);
@@ -696,4 +696,45 @@ export type Conversation = typeof conversations.$inferSelect;
 export type InsertConversation = z.infer<typeof insertConversationSchema>;
 export type Message = typeof messages.$inferSelect;
 export type InsertMessage = z.infer<typeof insertMessageSchema>;
+
+// IOR (Inspector of Record) Agreements - sets terms for inspector pay
+export const iorAgreements = pgTable("ior_agreements", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").references(() => companies.id, { onDelete: "cascade" }).notNull(),
+  projectId: varchar("project_id").references(() => projects.id, { onDelete: "cascade" }).notNull(),
+  inspectorId: varchar("inspector_id").references(() => users.id).notNull(),
+  agreementNumber: varchar("agreement_number"),
+  agreementDate: varchar("agreement_date"),
+  clientName: text("client_name"),
+  consultantName: text("consultant_name"),
+  agentName: text("agent_name"),
+  projectLocation: text("project_location"),
+  dsaAppNumber: varchar("dsa_app_number"),
+  rate: varchar("rate"),
+  terms: text("terms"),
+  pdfPath: varchar("pdf_path"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const iorAgreementsRelations = relations(iorAgreements, ({ one }) => ({
+  company: one(companies, {
+    fields: [iorAgreements.companyId],
+    references: [companies.id],
+  }),
+  project: one(projects, {
+    fields: [iorAgreements.projectId],
+    references: [projects.id],
+  }),
+}));
+
+export const insertIorAgreementSchema = createInsertSchema(iorAgreements).omit({ id: true, createdAt: true, updatedAt: true });
+
+export type IorAgreement = typeof iorAgreements.$inferSelect;
+export type InsertIorAgreement = z.infer<typeof insertIorAgreementSchema>;
+
+export type IorAgreementWithDetails = IorAgreement & {
+  project?: Project;
+  inspector?: User;
+};
 

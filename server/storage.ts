@@ -1,7 +1,7 @@
 import { 
   projects, dailyReports, photos, distributionLogs, appSettings, userProfiles, projectMembers, invites,
   companies, companyMembers, joinRequests, invoices, contracts, clients, contractAttachments, timesheets, monthlyReportBundles,
-  proposals, proposalOptions, proposalOptionInspectors,
+  proposals, proposalOptions, proposalOptionInspectors, iorAgreements,
   type Project, type InsertProject,
   type DailyReport, type InsertDailyReport,
   type Photo, type InsertPhoto,
@@ -23,6 +23,7 @@ import {
   type Proposal, type InsertProposal, type ProposalWithDetails,
   type ProposalOption, type InsertProposalOption,
   type ProposalOptionInspector, type InsertProposalOptionInspector,
+  type IorAgreement, type InsertIorAgreement, type IorAgreementWithDetails,
 } from "@shared/schema";
 import { users, type User } from "@shared/models/auth";
 import { db } from "./db";
@@ -229,6 +230,15 @@ export interface IStorage {
   
   // Proposal Option Inspectors
   createProposalOptionInspector(data: InsertProposalOptionInspector): Promise<ProposalOptionInspector>;
+
+  // IOR Agreements
+  getIorAgreements(companyId: string): Promise<IorAgreementWithDetails[]>;
+  getIorAgreement(id: string): Promise<IorAgreementWithDetails | undefined>;
+  getIorAgreementByProjectAndInspector(projectId: string, inspectorId: string): Promise<IorAgreement | undefined>;
+  createIorAgreement(data: InsertIorAgreement): Promise<IorAgreement>;
+  updateIorAgreement(id: string, data: Partial<InsertIorAgreement>): Promise<IorAgreement | undefined>;
+  deleteIorAgreement(id: string): Promise<boolean>;
+  getNextIorAgreementNumber(companyId: string): Promise<string>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1390,6 +1400,97 @@ export class DatabaseStorage implements IStorage {
   async createProposalOptionInspector(data: InsertProposalOptionInspector): Promise<ProposalOptionInspector> {
     const [inspector] = await db.insert(proposalOptionInspectors).values(data).returning();
     return inspector;
+  }
+
+  // IOR Agreements
+  async getIorAgreements(companyId: string): Promise<IorAgreementWithDetails[]> {
+    const agreements = await db
+      .select()
+      .from(iorAgreements)
+      .where(eq(iorAgreements.companyId, companyId))
+      .orderBy(desc(iorAgreements.createdAt));
+    
+    const agreementsWithDetails: IorAgreementWithDetails[] = [];
+    for (const agreement of agreements) {
+      let project: Project | undefined;
+      let inspector: User | undefined;
+      
+      if (agreement.projectId) {
+        const [p] = await db.select().from(projects).where(eq(projects.id, agreement.projectId));
+        project = p;
+      }
+      
+      if (agreement.inspectorId) {
+        const [u] = await db.select().from(users).where(eq(users.id, agreement.inspectorId));
+        inspector = u;
+      }
+      
+      agreementsWithDetails.push({ ...agreement, project, inspector });
+    }
+    
+    return agreementsWithDetails;
+  }
+
+  async getIorAgreement(id: string): Promise<IorAgreementWithDetails | undefined> {
+    const [agreement] = await db.select().from(iorAgreements).where(eq(iorAgreements.id, id));
+    if (!agreement) return undefined;
+    
+    let project: Project | undefined;
+    let inspector: User | undefined;
+    
+    if (agreement.projectId) {
+      const [p] = await db.select().from(projects).where(eq(projects.id, agreement.projectId));
+      project = p;
+    }
+    
+    if (agreement.inspectorId) {
+      const [u] = await db.select().from(users).where(eq(users.id, agreement.inspectorId));
+      inspector = u;
+    }
+    
+    return { ...agreement, project, inspector };
+  }
+
+  async getIorAgreementByProjectAndInspector(projectId: string, inspectorId: string): Promise<IorAgreement | undefined> {
+    const [agreement] = await db
+      .select()
+      .from(iorAgreements)
+      .where(and(eq(iorAgreements.projectId, projectId), eq(iorAgreements.inspectorId, inspectorId)));
+    return agreement;
+  }
+
+  async createIorAgreement(data: InsertIorAgreement): Promise<IorAgreement> {
+    const [agreement] = await db.insert(iorAgreements).values(data).returning();
+    return agreement;
+  }
+
+  async updateIorAgreement(id: string, data: Partial<InsertIorAgreement>): Promise<IorAgreement | undefined> {
+    const [agreement] = await db
+      .update(iorAgreements)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(iorAgreements.id, id))
+      .returning();
+    return agreement;
+  }
+
+  async deleteIorAgreement(id: string): Promise<boolean> {
+    const result = await db.delete(iorAgreements).where(eq(iorAgreements.id, id));
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  async getNextIorAgreementNumber(companyId: string): Promise<string> {
+    const year = new Date().getFullYear();
+    const [result] = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(iorAgreements)
+      .where(
+        and(
+          eq(iorAgreements.companyId, companyId),
+          sql`EXTRACT(YEAR FROM ${iorAgreements.createdAt}) = ${year}`
+        )
+      );
+    const count = (result?.count || 0) + 1;
+    return `IOR-${year}-${String(count).padStart(4, '0')}`;
   }
 }
 

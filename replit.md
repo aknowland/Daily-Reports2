@@ -34,8 +34,18 @@ The application is built with a modern web stack, utilizing **React, TypeScript,
 - **Admin Capabilities**: Management of projects, users, company settings, and invitations.
 - **Billing Features**: Generation of timesheet PDFs, client invoices, combined reports, and inspector invoices.
 - **Clients Management**: Full CRUD for managing company clients with reusable ClientSelect dropdown for inline client creation in contracts/proposals forms. Clicking a client card navigates to filtered projects view.
+- **IOR Agreements**: Inspector of Record agreements for setting inspector pay terms on specific projects. Company admins can create, edit, delete agreements and generate professional PDF documents. Access restricted to company admins only.
 
 ## Technical Notes
+
+### IOR Agreement Authorization
+All IOR Agreement API routes require company admin authorization. The routes use `isEffectiveCompanyAdmin()` to verify:
+- GET /api/ior-agreements - Lists agreements for active company (admin only)
+- GET /api/ior-agreements/:id - Get single agreement (admin only, company scoped)
+- POST /api/ior-agreements - Create agreement (admin only)
+- PATCH /api/ior-agreements/:id - Update agreement (admin only)
+- DELETE /api/ior-agreements/:id - Delete agreement (admin only)
+- POST /api/ior-agreements/:id/pdf - Generate PDF (admin only)
 
 ### Query Key Pattern for Clients API
 The clients API uses the server-side `profile.activeCompanyId` to filter results, not a URL path parameter. Therefore, all clients queries must use a custom `queryFn` that fetches from `/api/clients` directly while including the companyId in the queryKey for cache segmentation:
