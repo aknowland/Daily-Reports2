@@ -49,6 +49,8 @@ import {
   Calendar,
   Download,
   Trash2,
+  Clock,
+  FileStack,
 } from "lucide-react";
 import { Link } from "wouter";
 import { useState } from "react";
@@ -111,6 +113,8 @@ export default function MyProjectsPage() {
   const [invoiceData, setInvoiceData] = useState<InvoiceData | null>(null);
   const [isLoadingInvoice, setIsLoadingInvoice] = useState(false);
   const [isExportingPdf, setIsExportingPdf] = useState(false);
+  const [isGeneratingTimesheet, setIsGeneratingTimesheet] = useState(false);
+  const [isGeneratingCombined, setIsGeneratingCombined] = useState(false);
 
   const { data: projects = [], isLoading, error } = useQuery<Project[]>({
     queryKey: ["/api/my-projects"],
@@ -295,6 +299,104 @@ export default function MyProjectsPage() {
       });
     } finally {
       setIsExportingPdf(false);
+    }
+  };
+
+  const generateTimesheet = async () => {
+    if (!invoiceProject || !invoiceStartDate) return;
+    
+    setIsGeneratingTimesheet(true);
+    try {
+      const month = invoiceStartDate.getMonth() + 1;
+      const year = invoiceStartDate.getFullYear();
+      
+      const response = await fetch("/api/billing/timesheet", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          projectId: invoiceProject.id,
+          month,
+          year,
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || "Failed to generate timesheet");
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `Timesheet_${invoiceProject.projectNumber || invoiceProject.name}_${format(invoiceStartDate, "MMMM-yyyy")}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+
+      toast({
+        title: "Timesheet Generated",
+        description: "Timesheet PDF has been downloaded.",
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to generate timesheet",
+        variant: "destructive",
+      });
+    } finally {
+      setIsGeneratingTimesheet(false);
+    }
+  };
+
+  const generateCombinedReports = async () => {
+    if (!invoiceProject || !invoiceStartDate) return;
+    
+    setIsGeneratingCombined(true);
+    try {
+      const month = invoiceStartDate.getMonth() + 1;
+      const year = invoiceStartDate.getFullYear();
+      
+      const response = await fetch("/api/billing/combined-reports", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          projectId: invoiceProject.id,
+          month,
+          year,
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || "Failed to generate combined reports");
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `Combined_Reports_${invoiceProject.projectNumber || invoiceProject.name}_${format(invoiceStartDate, "MMMM-yyyy")}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+
+      toast({
+        title: "Combined Reports Generated",
+        description: "Combined reports PDF has been downloaded.",
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to generate combined reports",
+        variant: "destructive",
+      });
+    } finally {
+      setIsGeneratingCombined(false);
     }
   };
 
@@ -891,6 +993,42 @@ export default function MyProjectsPage() {
                 )}
               </Button>
             )}
+            <Button
+              variant="outline"
+              onClick={generateTimesheet}
+              disabled={isGeneratingTimesheet || !invoiceStartDate}
+              data-testid="button-generate-timesheet"
+            >
+              {isGeneratingTimesheet ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Generating...
+                </>
+              ) : (
+                <>
+                  <Clock className="w-4 h-4 mr-2" />
+                  Timesheet
+                </>
+              )}
+            </Button>
+            <Button
+              variant="outline"
+              onClick={generateCombinedReports}
+              disabled={isGeneratingCombined || !invoiceStartDate}
+              data-testid="button-generate-combined"
+            >
+              {isGeneratingCombined ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Generating...
+                </>
+              ) : (
+                <>
+                  <FileStack className="w-4 h-4 mr-2" />
+                  Combined Reports
+                </>
+              )}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
