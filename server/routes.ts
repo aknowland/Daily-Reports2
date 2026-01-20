@@ -2035,6 +2035,37 @@ export async function registerRoutes(
     }
   });
 
+  // Delete proposal PDF
+  app.delete("/api/proposals/:id/pdf", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const proposal = await storage.getProposal(req.params.id);
+      
+      if (!proposal) {
+        return res.status(404).json({ message: "Proposal not found" });
+      }
+      
+      const profile = await storage.getUserProfile(userId);
+      const isCompAdmin = await isEffectiveCompanyAdmin(userId, proposal.companyId, profile);
+      
+      if (!isCompAdmin) {
+        return res.status(403).json({ message: "Not authorized" });
+      }
+      
+      if (!proposal.pdfPath) {
+        return res.status(400).json({ message: "No PDF to delete" });
+      }
+      
+      // Clear the pdfPath
+      await storage.updateProposal(proposal.id, { pdfPath: null });
+      
+      res.json({ message: "PDF deleted successfully" });
+    } catch (error) {
+      console.error("Error deleting proposal PDF:", error);
+      res.status(500).json({ message: "Failed to delete proposal PDF" });
+    }
+  });
+
   // ========== REPORTS ==========
   app.get("/api/reports", isAuthenticated, async (req: any, res) => {
     try {
