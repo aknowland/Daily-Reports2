@@ -51,11 +51,13 @@ import {
   Upload,
   X,
   Download,
+  ArrowRightCircle,
 } from "lucide-react";
 import { useState, useRef } from "react";
 import type { ContractWithProjects, Project, Client, ContractAttachment, ProposalWithDetails } from "@shared/schema";
 import { ProposalDialog } from "@/components/proposal-dialog";
 import { format } from "date-fns";
+import { Checkbox } from "@/components/ui/checkbox";
 
 const CONTRACT_STATUS_OPTIONS = [
   { value: "bid_release", label: "Bid Release", color: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300" },
@@ -132,6 +134,11 @@ export default function ContractsPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [showProposalDialog, setShowProposalDialog] = useState(false);
   const [editingProposal, setEditingProposal] = useState<ProposalWithDetails | null>(null);
+  const [convertingProposal, setConvertingProposal] = useState<ProposalWithDetails | null>(null);
+  const [showConvertDialog, setShowConvertDialog] = useState(false);
+  const [selectedOptionIndex, setSelectedOptionIndex] = useState(0);
+  const [createProjectAfterContract, setCreateProjectAfterContract] = useState(true);
+  const [isConverting, setIsConverting] = useState(false);
 
   const { data: contracts = [], isLoading } = useQuery<ContractWithProjects[]>({
     queryKey: ["/api/contracts"],
@@ -435,6 +442,88 @@ export default function ContractsPage() {
     return events;
   }).sort((a, b) => a.date.getTime() - b.date.getTime());
 
+  const handleConvertProposal = async () => {
+    if (!convertingProposal) return;
+    
+    setIsConverting(true);
+    try {
+      const selectedOption = convertingProposal.options?.[selectedOptionIndex];
+      
+      // Get the first inspector's rate as the regular rate (or calculate an average)
+      const firstInspector = selectedOption?.inspectors?.[0];
+      const regularRate = firstInspector?.rate || "";
+      
+      // Calculate total value from all inspectors in the selected option
+      const totalValue = selectedOption?.inspectors?.reduce((sum, ins) => {
+        return sum + (parseFloat(ins.rate) || 0) * (parseFloat(ins.hours) || 0);
+      }, 0) || 0;
+      
+      // Create the contract
+      const contractPayload = {
+        contractNumber: `C-${convertingProposal.proposalNumber?.replace('PROP-', '') || Date.now()}`,
+        name: convertingProposal.projectName,
+        description: `Contract created from proposal ${convertingProposal.proposalNumber}`,
+        clientId: convertingProposal.clientId || null,
+        contractType: "time_and_materials",
+        status: "awarded",
+        originalValue: totalValue.toFixed(2),
+        currentValue: totalValue.toFixed(2),
+        startDate: convertingProposal.startDate ? new Date(convertingProposal.startDate) : null,
+        substantialCompletionDate: convertingProposal.endDate ? new Date(convertingProposal.endDate) : null,
+        regularRate: regularRate,
+        overtimeRate: "",
+        premiumRate: "",
+        notes: `Converted from proposal: ${convertingProposal.proposalNumber}\nClient: ${convertingProposal.clientName}`,
+      };
+      
+      const contractResponse = await apiRequest("POST", "/api/contracts", contractPayload);
+      const newContract = await contractResponse.json();
+      
+      // Update proposal status to accepted
+      await apiRequest("PATCH", `/api/proposals/${convertingProposal.id}`, { status: "accepted" });
+      
+      let projectCreated = false;
+      
+      // Create project if checkbox is checked
+      if (createProjectAfterContract && newContract?.id) {
+        const projectPayload = {
+          name: convertingProposal.projectName,
+          projectNumber: `PRJ-${convertingProposal.proposalNumber?.replace('PROP-', '') || Date.now()}`,
+          client: convertingProposal.clientName,
+          contractId: newContract.id,
+          companyId: activeCompany?.id,
+        };
+        
+        await apiRequest("POST", "/api/projects", projectPayload);
+        projectCreated = true;
+      }
+      
+      queryClient.invalidateQueries({ queryKey: ["/api/contracts"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/proposals"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+      
+      setShowConvertDialog(false);
+      setConvertingProposal(null);
+      setActiveTab("list");
+      
+      toast({
+        title: "Conversion Successful",
+        description: projectCreated 
+          ? "Contract and project created from proposal." 
+          : "Contract created from proposal.",
+      });
+    } catch (error: any) {
+      console.error("Conversion error:", error);
+      toast({
+        title: "Conversion Failed",
+        description: error.message || "Failed to convert proposal to contract.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsConverting(false);
+    }
+  };
+
   if (!activeCompany) {
     return (
       <PageLayout title="Contracts">
@@ -717,6 +806,19 @@ export default function ContractsPage() {
                           </Button>
                           {isCompanyAdmin && (
                             <>
+                              <Button
+                                variant="default"
+                                size="sm"
+                                onClick={() => {
+                                  setConvertingProposal(proposal);
+                                  setSelectedOptionIndex(0);
+                                  setShowConvertDialog(true);
+                                }}
+                                data-testid={`button-convert-proposal-${proposal.id}`}
+                              >
+                                <ArrowRightCircle className="w-4 h-4 mr-1" />
+                                Convert
+                              </Button>
                               <Button
                                 variant="ghost"
                                 size="icon"
@@ -1170,6 +1272,109 @@ export default function ContractsPage() {
         onOpenChange={setShowProposalDialog}
         editingProposal={editingProposal}
       />
+
+      <Dialog open={showConvertDialog} onOpenChange={(open) => {
+        if (!open) {
+          setShowConvertDialog(false);
+          setConvertingProposal(null);
+        }
+      }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Convert Proposal to Contract</DialogTitle>
+            <DialogDescription>
+              Create a contract and optionally a project from this proposal.
+            </DialogDescription>
+          </DialogHeader>
+          
+          {convertingProposal && (
+            <div className="space-y-4">
+              <div className="p-4 bg-muted rounded-lg">
+                <h4 className="font-semibold">{convertingProposal.projectName}</h4>
+                <p className="text-sm text-muted-foreground">{convertingProposal.clientName}</p>
+                <p className="text-xs text-muted-foreground mt-1">#{convertingProposal.proposalNumber}</p>
+              </div>
+              
+              {convertingProposal.options && convertingProposal.options.length > 1 && (
+                <div className="space-y-2">
+                  <Label>Select Pricing Option</Label>
+                  <Select 
+                    value={selectedOptionIndex.toString()} 
+                    onValueChange={(v) => setSelectedOptionIndex(parseInt(v))}
+                  >
+                    <SelectTrigger data-testid="select-pricing-option">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {convertingProposal.options.map((opt, idx) => {
+                        const optTotal = opt.inspectors?.reduce((s, i) => s + (parseFloat(i.rate) || 0) * (parseFloat(i.hours) || 0), 0) || 0;
+                        return (
+                          <SelectItem key={opt.id} value={idx.toString()}>
+                            Option {idx + 1}{opt.name ? `: ${opt.name}` : ''} - ${optTotal.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                          </SelectItem>
+                        );
+                      })}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+              
+              {convertingProposal.options?.[selectedOptionIndex] && (
+                <div className="p-3 border rounded-lg space-y-2">
+                  <p className="text-sm font-medium">Selected Option Details:</p>
+                  {convertingProposal.options[selectedOptionIndex].inspectors?.map((ins, idx) => (
+                    <div key={idx} className="flex justify-between text-sm">
+                      <span>{ins.title}: {ins.inspectorName}</span>
+                      <span>${(parseFloat(ins.rate) || 0).toFixed(2)}/hr × {ins.hours}hrs = ${((parseFloat(ins.rate) || 0) * (parseFloat(ins.hours) || 0)).toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+                    </div>
+                  ))}
+                  <div className="pt-2 border-t flex justify-between font-semibold">
+                    <span>Total:</span>
+                    <span>
+                      ${convertingProposal.options[selectedOptionIndex].inspectors?.reduce((s, i) => s + (parseFloat(i.rate) || 0) * (parseFloat(i.hours) || 0), 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                </div>
+              )}
+              
+              <div className="flex items-center space-x-2">
+                <Checkbox 
+                  id="create-project" 
+                  checked={createProjectAfterContract}
+                  onCheckedChange={(checked) => setCreateProjectAfterContract(checked === true)}
+                  data-testid="checkbox-create-project"
+                />
+                <label 
+                  htmlFor="create-project" 
+                  className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                >
+                  Also create a project linked to this contract
+                </label>
+              </div>
+            </div>
+          )}
+          
+          <DialogFooter>
+            <Button 
+              type="button" 
+              variant="outline" 
+              onClick={() => {
+                setShowConvertDialog(false);
+                setConvertingProposal(null);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleConvertProposal}
+              disabled={isConverting}
+              data-testid="button-confirm-convert"
+            >
+              {isConverting ? "Converting..." : "Convert to Contract"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </PageLayout>
   );
 }
