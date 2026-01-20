@@ -2825,9 +2825,9 @@ export async function registerRoutes(
       const userId = req.user?.claims?.sub;
       const profile = await storage.getUserProfile(userId);
       
-      // System Admin invites can only be created by System Owner
-      if (role === "admin" && !isSystemOwner(profile)) {
-        return res.status(403).json({ message: "Forbidden: Only the System Owner can invite System Administrators" });
+      // System Admin invites can only be created by System Owner or System Admin
+      if (role === "admin" && !isEffectiveSystemAdmin(profile)) {
+        return res.status(403).json({ message: "Forbidden: Only System Owners and System Administrators can invite System Administrators" });
       }
       
       // Company Admin invites require a company to be selected
@@ -2848,7 +2848,7 @@ export async function registerRoutes(
         
         // Company admins cannot create System Admin invites (already checked above, but be safe)
         if (role === "admin") {
-          return res.status(403).json({ message: "Forbidden: Only the System Owner can invite System Administrators" });
+          return res.status(403).json({ message: "Forbidden: Only System Owners and System Administrators can invite System Administrators" });
         }
       }
 

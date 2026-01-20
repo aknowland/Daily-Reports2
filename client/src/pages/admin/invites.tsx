@@ -180,8 +180,8 @@ export default function AdminInvitesPage() {
     },
   });
 
-  // Check if current user is System Owner (can invite System Admins)
-  const isOwner = profile?.role === "owner";
+  // Check if current user can invite System Admins (System Owner or System Admin)
+  const canInviteSystemAdmin = (profile?.role === "owner" || profile?.role === "admin") && profile?.preferAdminMode !== false;
   
   const resetForm = () => {
     setFormData({
@@ -383,7 +383,7 @@ export default function AdminInvitesPage() {
                             Company Administrator
                           </div>
                         </SelectItem>
-                        {isOwner && (
+                        {canInviteSystemAdmin && (
                           <SelectItem value="admin">
                             <div className="flex items-center gap-2">
                               <Shield className="w-4 h-4" />
