@@ -2920,10 +2920,11 @@ export async function registerRoutes(
       // Send invitation email via Resend
       try {
         const { sendEmail } = await import('./replit_integrations/email/client');
-        const baseUrl = process.env.REPLIT_DEV_DOMAIN 
-          ? `https://${process.env.REPLIT_DEV_DOMAIN}`
-          : process.env.REPLIT_DOMAINS
-            ? `https://${process.env.REPLIT_DOMAINS.split(',')[0]}`
+        // Always prefer REPLIT_DOMAINS (production) for invite emails since they go to external users
+        const baseUrl = process.env.REPLIT_DOMAINS
+          ? `https://${process.env.REPLIT_DOMAINS.split(',')[0]}`
+          : process.env.REPLIT_DEV_DOMAIN 
+            ? `https://${process.env.REPLIT_DEV_DOMAIN}`
             : 'http://localhost:5000';
         
         const inviteLink = `${baseUrl}/accept-invite/${token}`;
