@@ -1965,7 +1965,9 @@ export async function registerRoutes(
       currentY = 75;
       
       // Parse and render terms - compact formatting to fit on one page
-      const terms = proposal.terms || '';
+      // Replace placeholder district name with actual client name
+      const rawTerms = proposal.terms || '';
+      const terms = rawTerms.replace(/Long Beach Unified School District/gi, proposal.clientName || 'Client');
       const termsParagraphs = terms.split(/\n\n+/).filter(p => p.trim());
       
       doc.fontSize(9).font('Helvetica');
