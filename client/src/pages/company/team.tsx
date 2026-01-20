@@ -11,6 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
+import { IorAgreementDialog } from "@/components/ior-agreement-dialog";
 import {
   Select,
   SelectContent,
@@ -38,6 +39,12 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
   Users,
   ArrowLeft,
   AlertCircle,
@@ -54,10 +61,13 @@ import {
   ChevronDown,
   ChevronRight,
   FileText,
+  Plus,
+  MoreVertical,
+  Download,
 } from "lucide-react";
 import { Link } from "wouter";
 import { useState } from "react";
-import type { CompanyMember, User, Project, Invite, JoinRequest } from "@shared/schema";
+import type { CompanyMember, User, Project, Invite, JoinRequest, IorAgreement, IorAgreementWithDetails } from "@shared/schema";
 
 const KNOWLAND_COMPANY_NAME = "Knowland Construction Services";
 
@@ -76,6 +86,8 @@ export default function CompanyTeamPage() {
   const [showInviteDialog, setShowInviteDialog] = useState(false);
   const [memberToAssignProjects, setMemberToAssignProjects] = useState<MemberWithUser | null>(null);
   const [expandedMembers, setExpandedMembers] = useState<Set<string>>(new Set());
+  const [showIorDialog, setShowIorDialog] = useState(false);
+  const [editingIorAgreement, setEditingIorAgreement] = useState<IorAgreementWithDetails | null>(null);
   const [inviteForm, setInviteForm] = useState({
     email: "",
     role: "inspector" as "inspector" | "admin",
@@ -103,7 +115,49 @@ export default function CompanyTeamPage() {
     enabled: !!activeCompany?.id && isEffectiveCompanyAdmin,
   });
 
+  const { data: iorAgreements = [], isLoading: isIorLoading } = useQuery<IorAgreementWithDetails[]>({
+    queryKey: ["/api/ior-agreements"],
+    enabled: !!activeCompany?.id && isEffectiveCompanyAdmin,
+  });
+
   const pendingJoinRequests = joinRequests.filter(r => r.status === "pending");
+  
+  const generateIorPdfMutation = useMutation({
+    mutationFn: async (agreementId: string) => {
+      const response = await fetch(`/api/ior-agreements/${agreementId}/pdf`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+      if (!response.ok) throw new Error('Failed to generate PDF');
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `IOR-Agreement-${agreementId}.pdf`;
+      a.click();
+      window.URL.revokeObjectURL(url);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/ior-agreements"] });
+      toast({ title: "PDF generated successfully" });
+    },
+    onError: () => {
+      toast({ title: "Failed to generate PDF", variant: "destructive" });
+    },
+  });
+
+  const deleteIorMutation = useMutation({
+    mutationFn: async (agreementId: string) => {
+      return apiRequest("DELETE", `/api/ior-agreements/${agreementId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/ior-agreements"] });
+      toast({ title: "IOR Agreement deleted" });
+    },
+    onError: () => {
+      toast({ title: "Failed to delete IOR Agreement", variant: "destructive" });
+    },
+  });
 
   const approveJoinMutation = useMutation({
     mutationFn: async (requestId: string) => {
@@ -569,6 +623,13 @@ export default function CompanyTeamPage() {
                 </Badge>
               )}
             </TabsTrigger>
+            <TabsTrigger value="ior" className="flex items-center gap-2" data-testid="tab-ior-agreements">
+              <FileText className="w-4 h-4" />
+              IOR Agreements
+              <Badge variant="secondary" className="ml-1 no-default-hover-elevate no-default-active-elevate">
+                {iorAgreements.length}
+              </Badge>
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="members" className="space-y-4">
@@ -796,6 +857,101 @@ export default function CompanyTeamPage() {
               </div>
             )}
           </TabsContent>
+
+          <TabsContent value="ior" className="space-y-4">
+            <div className="flex justify-end mb-4">
+              <Button onClick={() => { setEditingIorAgreement(null); setShowIorDialog(true); }} data-testid="button-create-ior">
+                <Plus className="w-4 h-4 mr-2" />
+                Generate IOR Agreement
+              </Button>
+            </div>
+
+            {isIorLoading ? (
+              <div className="space-y-4">
+                {[1, 2, 3].map((i) => (
+                  <Card key={i}>
+                    <CardContent className="p-4">
+                      <Skeleton className="h-12 w-full" />
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            ) : iorAgreements.length === 0 ? (
+              <Card>
+                <CardContent className="flex flex-col items-center justify-center py-12">
+                  <FileText className="w-12 h-12 text-muted-foreground mb-4" />
+                  <p className="text-lg font-medium">No IOR Agreements</p>
+                  <p className="text-muted-foreground text-center">
+                    Create IOR agreements to set inspector pay terms for projects
+                  </p>
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="space-y-4">
+                {iorAgreements.map((agreement) => (
+                  <Card key={agreement.id} data-testid={`card-ior-${agreement.id}`}>
+                    <CardContent className="p-4">
+                      <div className="flex items-center justify-between gap-4">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <p className="font-medium truncate">{agreement.consultantName || "Unknown Consultant"}</p>
+                            {agreement.rate && (
+                              <Badge variant="secondary" className="no-default-hover-elevate no-default-active-elevate">
+                                ${agreement.rate}/hr
+                              </Badge>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-4 text-sm text-muted-foreground mt-1">
+                            <span>{agreement.project?.name || "Unknown Project"}</span>
+                            <span>{agreement.clientName}</span>
+                          </div>
+                          {agreement.agreementDate && (
+                            <p className="text-xs text-muted-foreground mt-1">
+                              Agreement Date: {new Date(agreement.agreementDate).toLocaleDateString()}
+                            </p>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => generateIorPdfMutation.mutate(agreement.id)}
+                            disabled={generateIorPdfMutation.isPending}
+                            data-testid={`button-download-ior-${agreement.id}`}
+                          >
+                            <Download className="w-4 h-4 mr-1" />
+                            PDF
+                          </Button>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon" data-testid={`button-ior-menu-${agreement.id}`}>
+                                <MoreVertical className="w-4 h-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem 
+                                onClick={() => { setEditingIorAgreement(agreement); setShowIorDialog(true); }}
+                                data-testid={`button-edit-ior-${agreement.id}`}
+                              >
+                                Edit
+                              </DropdownMenuItem>
+                              <DropdownMenuItem 
+                                className="text-destructive"
+                                onClick={() => deleteIorMutation.mutate(agreement.id)}
+                                data-testid={`button-delete-ior-${agreement.id}`}
+                              >
+                                Delete
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </TabsContent>
         </Tabs>
       </div>
 
@@ -831,6 +987,18 @@ export default function CompanyTeamPage() {
           isLoading={addToProjectMutation.isPending || removeFromProjectMutation.isPending}
         />
       )}
+
+      {/* IOR Agreement Dialog */}
+      <IorAgreementDialog
+        open={showIorDialog}
+        onOpenChange={(open) => {
+          setShowIorDialog(open);
+          if (!open) setEditingIorAgreement(null);
+        }}
+        agreement={editingIorAgreement}
+        companyId={activeCompany?.id || ""}
+        companyName={activeCompany?.name || ""}
+      />
     </PageLayout>
   );
 }

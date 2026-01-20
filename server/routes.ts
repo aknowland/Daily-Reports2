@@ -2064,6 +2064,334 @@ export async function registerRoutes(
     }
   });
 
+  // ========== IOR AGREEMENTS ==========
+  
+  // Get all IOR agreements for active company
+  app.get("/api/ior-agreements", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      
+      if (!profile?.activeCompanyId) {
+        return res.status(400).json({ message: "No active company" });
+      }
+      
+      const isCompAdmin = await isEffectiveCompanyAdmin(userId, profile.activeCompanyId, profile);
+      if (!isCompAdmin) {
+        return res.status(403).json({ message: "Not authorized" });
+      }
+      
+      const agreements = await storage.getIorAgreements(profile.activeCompanyId);
+      res.json(agreements);
+    } catch (error) {
+      console.error("Error fetching IOR agreements:", error);
+      res.status(500).json({ message: "Failed to fetch IOR agreements" });
+    }
+  });
+
+  // Get single IOR agreement
+  app.get("/api/ior-agreements/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const agreement = await storage.getIorAgreement(req.params.id);
+      if (!agreement) {
+        return res.status(404).json({ message: "IOR agreement not found" });
+      }
+      
+      const profile = await storage.getUserProfile(userId);
+      const isCompAdmin = await isEffectiveCompanyAdmin(userId, agreement.companyId, profile);
+      if (!isCompAdmin) {
+        return res.status(403).json({ message: "Not authorized" });
+      }
+      
+      res.json(agreement);
+    } catch (error) {
+      console.error("Error fetching IOR agreement:", error);
+      res.status(500).json({ message: "Failed to fetch IOR agreement" });
+    }
+  });
+
+  // Create IOR agreement
+  app.post("/api/ior-agreements", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      
+      if (!profile?.activeCompanyId) {
+        return res.status(400).json({ message: "No active company" });
+      }
+      
+      const isCompAdmin = await isEffectiveCompanyAdmin(userId, profile.activeCompanyId, profile);
+      if (!isCompAdmin) {
+        return res.status(403).json({ message: "Not authorized" });
+      }
+      
+      const agreementNumber = await storage.getNextIorAgreementNumber(profile.activeCompanyId);
+      
+      const agreementData = {
+        projectId: req.body.projectId,
+        inspectorId: req.body.inspectorId,
+        agreementDate: req.body.agreementDate,
+        clientName: req.body.clientName,
+        consultantName: req.body.consultantName,
+        agentName: req.body.agentName,
+        projectLocation: req.body.projectLocation,
+        dsaAppNumber: req.body.dsaAppNumber,
+        rate: req.body.rate,
+        terms: req.body.terms,
+        companyId: profile.activeCompanyId,
+        agreementNumber,
+      };
+      
+      const agreement = await storage.createIorAgreement(agreementData);
+      
+      res.status(201).json(agreement);
+    } catch (error) {
+      console.error("Error creating IOR agreement:", error);
+      res.status(500).json({ message: "Failed to create IOR agreement" });
+    }
+  });
+
+  // Update IOR agreement
+  app.patch("/api/ior-agreements/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const existingAgreement = await storage.getIorAgreement(req.params.id);
+      
+      if (!existingAgreement) {
+        return res.status(404).json({ message: "IOR agreement not found" });
+      }
+      
+      const profile = await storage.getUserProfile(userId);
+      const isCompAdmin = await isEffectiveCompanyAdmin(userId, existingAgreement.companyId, profile);
+      
+      if (!isCompAdmin) {
+        return res.status(403).json({ message: "Not authorized" });
+      }
+      
+      const updateData: Record<string, any> = {};
+      const allowedFields = ['projectId', 'inspectorId', 'agreementDate', 'clientName', 
+        'consultantName', 'agentName', 'projectLocation', 'dsaAppNumber', 'rate', 'terms', 'pdfPath'];
+      
+      for (const field of allowedFields) {
+        if (req.body[field] !== undefined) {
+          updateData[field] = req.body[field];
+        }
+      }
+      
+      const agreement = await storage.updateIorAgreement(req.params.id, updateData);
+      res.json(agreement);
+    } catch (error) {
+      console.error("Error updating IOR agreement:", error);
+      res.status(500).json({ message: "Failed to update IOR agreement" });
+    }
+  });
+
+  // Delete IOR agreement
+  app.delete("/api/ior-agreements/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const existingAgreement = await storage.getIorAgreement(req.params.id);
+      
+      if (!existingAgreement) {
+        return res.status(404).json({ message: "IOR agreement not found" });
+      }
+      
+      const profile = await storage.getUserProfile(userId);
+      const isCompAdmin = await isEffectiveCompanyAdmin(userId, existingAgreement.companyId, profile);
+      
+      if (!isCompAdmin) {
+        return res.status(403).json({ message: "Not authorized" });
+      }
+      
+      await storage.deleteIorAgreement(req.params.id);
+      res.json({ message: "IOR agreement deleted" });
+    } catch (error) {
+      console.error("Error deleting IOR agreement:", error);
+      res.status(500).json({ message: "Failed to delete IOR agreement" });
+    }
+  });
+
+  // Generate IOR Agreement PDF
+  app.post("/api/ior-agreements/:id/pdf", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const agreement = await storage.getIorAgreement(req.params.id);
+      
+      if (!agreement) {
+        return res.status(404).json({ message: "IOR agreement not found" });
+      }
+      
+      const profile = await storage.getUserProfile(userId);
+      const isCompAdmin = await isEffectiveCompanyAdmin(userId, agreement.companyId, profile);
+      
+      if (!isCompAdmin) {
+        return res.status(403).json({ message: "Not authorized" });
+      }
+      
+      const company = await storage.getCompany(agreement.companyId);
+      const project = agreement.project;
+      
+      const PDFDocument = (await import('pdfkit')).default;
+      const doc = new PDFDocument({ size: 'LETTER', margin: 50 });
+      
+      const chunks: Buffer[] = [];
+      const pdfComplete = new Promise<Buffer>((resolve, reject) => {
+        doc.on('data', (chunk: Buffer) => chunks.push(chunk));
+        doc.on('end', () => resolve(Buffer.concat(chunks)));
+        doc.on('error', reject);
+      });
+      
+      const pageWidth = doc.page.width - 100;
+      const startX = 50;
+      const centerX = doc.page.width / 2;
+      
+      // Helper to load images
+      const loadImageBuffer = async (imagePath: string): Promise<Buffer | null> => {
+        try {
+          if (imagePath.startsWith('/objects/')) {
+            return await objectStorage.downloadBuffer(imagePath);
+          } else {
+            const localPath = path.join(process.cwd(), imagePath.replace(/^\//, ''));
+            if (fs.existsSync(localPath)) {
+              return fs.readFileSync(localPath);
+            }
+          }
+        } catch (err) {
+          console.error('Error loading image:', imagePath, err);
+        }
+        return null;
+      };
+      
+      // ===== PAGE 1: AGREEMENT =====
+      
+      // Company logo
+      if (company?.logoPath) {
+        try {
+          const logoBuffer = await loadImageBuffer(company.logoPath);
+          if (logoBuffer) {
+            doc.image(logoBuffer, startX, 30, { width: 150, height: 56, fit: [150, 56] });
+          }
+        } catch (err) {
+          console.error('Error adding company logo:', err);
+        }
+      }
+      
+      // Title
+      doc.fontSize(12).font('Helvetica-Bold').text('AGREEMENT FOR PROJECT INSPECTOR SERVICES', startX, 100, { width: pageWidth, align: 'center' });
+      
+      let currentY = 140;
+      
+      // Agreement date
+      const agreementDate = agreement.agreementDate 
+        ? new Date(agreement.agreementDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+        : new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+      
+      // Preamble paragraph
+      doc.fontSize(10).font('Helvetica');
+      const preamble1 = `Whereas, ${company?.name || 'The Company'}, (The Company) has contracted into agreement with ${agreement.clientName || 'The Client'} (The Client) to provide Project Inspector Services, and whereas ${agreement.consultantName || 'Consultant'} is engaged as an Inspection Services Firm (The Consultant) providing inspection services for various clients.`;
+      
+      doc.text(preamble1, startX, currentY, { width: pageWidth, lineGap: 2, align: 'justify' });
+      currentY = doc.y + 15;
+      
+      const preamble2 = `Now therefore, this agency agreement is made and entered into at Manhattan Beach, California, this ${agreementDate}, by and between ${company?.name || 'The Company'}, and ${agreement.consultantName || 'Consultant'} (${agreement.agentName || 'Agent'}) to provide project Inspector Consulting Services as brokered through ${company?.name || 'The Company'} for ${agreement.clientName || 'The Client'}, or other existing clients of ${company?.name || 'The Company'}.`;
+      
+      doc.text(preamble2, startX, currentY, { width: pageWidth, lineGap: 2, align: 'justify' });
+      currentY = doc.y + 20;
+      
+      // Section header
+      doc.fontSize(11).font('Helvetica-Bold').text('AGENCY AGREEMENT AND CONTRACT DUTIES:', startX, currentY);
+      currentY = doc.y + 15;
+      
+      // Numbered terms (condensed version)
+      const contractTerms = [
+        'Consultant agrees to provide continuous Project Inspector / quality assurance consulting services of work for compliance with approved contract documents. Consultant duties are as outlined in Title 24 California Building Code, and as required by current IR regulations of the California Division of the State Architect.',
+        'Represent the Client under the guidance of the designee of the District and the Architect of Record and interface in a professional manner with contractors, construction managers, testing labs, District staff, and other licensed professionals involved with the project.',
+        'Attend all planning, pre-construction conference, project meetings, or meetings as required by the Client.',
+        'Review project manual and specifications for project inspection requirements and project compliance. Review submittals and materials for project compliance. Review installation of all materials for compliance to contract documents.',
+        `The Consultant, ${agreement.consultantName || 'Consultant'} / ${agreement.agentName || 'Agent'}, and the company, ${company?.name || 'The Company'}, shall each defend and hold harmless each other against any losses, liabilities, damages, injuries, claims, costs, or expenses arising out of, or connected with the provisions of this agreement.`,
+        `The Agreement shall begin on, or about, ${agreementDate}, and remain in effect continuously until project closeout, unless terminated in writing. The project location and Client for this work is at ${agreement.clientName || 'The Client'} or other locations as required.`,
+      ];
+      
+      doc.fontSize(9).font('Helvetica');
+      contractTerms.forEach((term, index) => {
+        doc.font('Helvetica-Bold').text(`${index + 1}.`, startX, currentY);
+        doc.font('Helvetica').text(term, startX + 20, currentY, { width: pageWidth - 20, lineGap: 1 });
+        currentY = doc.y + 8;
+        
+        if (currentY > doc.page.height - 100) {
+          doc.addPage();
+          currentY = 50;
+        }
+      });
+      
+      // ===== PAGE 2 or continuation: ADDENDUM =====
+      if (currentY > doc.page.height - 250) {
+        doc.addPage();
+        currentY = 50;
+      } else {
+        currentY += 30;
+      }
+      
+      doc.fontSize(12).font('Helvetica-Bold').text('ADDENDUM', startX, currentY, { width: pageWidth, align: 'center' });
+      currentY = doc.y + 25;
+      
+      // Addendum details
+      const addendumFields = [
+        { label: 'Consultant:', value: agreement.consultantName || '' },
+        { label: 'District:', value: agreement.clientName || '' },
+        { label: 'Project:', value: `${project?.name || ''} ${agreement.dsaAppNumber || ''}` },
+        { label: 'Rate:', value: agreement.rate ? `$${agreement.rate} p/hr.` : '' },
+        { label: 'Terms:', value: agreement.terms || '' },
+      ];
+      
+      doc.fontSize(10);
+      addendumFields.forEach(field => {
+        doc.font('Helvetica-Bold').text(field.label, startX + 50, currentY, { continued: true });
+        doc.font('Helvetica').text(`  ${field.value}`, { width: pageWidth - 150, lineGap: 2 });
+        currentY = doc.y + 8;
+      });
+      
+      // Signature section
+      currentY = Math.max(currentY + 40, doc.page.height - 120);
+      
+      doc.moveTo(startX, currentY).lineTo(startX + 180, currentY).stroke();
+      doc.moveTo(centerX + 30, currentY).lineTo(centerX + 210, currentY).stroke();
+      
+      currentY += 5;
+      doc.fontSize(9).font('Helvetica');
+      doc.text(company?.name || 'Company', startX, currentY);
+      doc.text(agreement.consultantName || 'Consultant', centerX + 30, currentY);
+      
+      currentY += 12;
+      doc.text(`${profile?.firstName || ''} ${profile?.lastName || ''} – Agent`, startX, currentY);
+      doc.text(agreement.agentName || 'Agent', centerX + 30, currentY);
+      
+      doc.end();
+      
+      const pdfBuffer = await pdfComplete;
+      
+      // Save to object storage
+      const pdfPath = await objectStorage.uploadBuffer({
+        buffer: pdfBuffer,
+        filename: `${agreement.id}.pdf`,
+        contentType: 'application/pdf',
+        folder: 'ior-agreements',
+      });
+      
+      // Update agreement with PDF path
+      await storage.updateIorAgreement(agreement.id, { pdfPath });
+      
+      // Return PDF as download
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="IOR-Agreement-${agreement.agreementNumber || agreement.id}.pdf"`);
+      res.send(pdfBuffer);
+    } catch (error) {
+      console.error("Error generating IOR agreement PDF:", error);
+      res.status(500).json({ message: "Failed to generate IOR agreement PDF" });
+    }
+  });
+
   // ========== REPORTS ==========
   app.get("/api/reports", isAuthenticated, async (req: any, res) => {
     try {
