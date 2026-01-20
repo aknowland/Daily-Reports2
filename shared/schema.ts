@@ -259,6 +259,7 @@ export const clients = pgTable("clients", {
   email: text("email"),
   phone: text("phone"),
   address: text("address"),
+  directorOfFacilities: text("director_of_facilities"),
   notes: text("notes"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
