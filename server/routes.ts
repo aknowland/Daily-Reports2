@@ -1810,6 +1810,18 @@ export async function registerRoutes(
 
       // ===== PAGE 1: PROPOSAL COVER =====
       
+      // Company logo - top left corner
+      if (company?.logoPath) {
+        try {
+          const logoBuffer = await loadImageBuffer(company.logoPath);
+          if (logoBuffer) {
+            doc.image(logoBuffer, startX, 15, { width: 120, height: 45, fit: [120, 45] });
+          }
+        } catch (err) {
+          console.error('Error adding company logo to proposal:', err);
+        }
+      }
+      
       // Header: "DSA INSPECTORS" right-aligned
       doc.fontSize(10).font('Helvetica').text('DSA INSPECTORS', startX, 40, { width: pageWidth, align: 'right' });
       
