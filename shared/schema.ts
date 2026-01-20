@@ -115,6 +115,10 @@ export const projectMembers = pgTable("project_members", {
   projectId: varchar("project_id").references(() => projects.id, { onDelete: "cascade" }).notNull(),
   userId: varchar("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
   assignedAt: timestamp("assigned_at").defaultNow(),
+  // Inspector billing rates for this project (inspector → company)
+  regularRate: varchar("regular_rate"), // Hourly rate for regular hours
+  overtimeRate: varchar("overtime_rate"), // Hourly rate for overtime hours
+  premiumRate: varchar("premium_rate"), // Hourly rate for premium/weekend hours
 }, (table) => [
   unique().on(table.projectId, table.userId),
 ]);

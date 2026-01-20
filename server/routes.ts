@@ -631,7 +631,12 @@ export async function registerRoutes(
       }
       
       const validated = addProjectMemberSchema.parse(req.body);
-      const member = await storage.addProjectMember(req.params.id, validated.userId);
+      const rates = {
+        regularRate: req.body.regularRate,
+        overtimeRate: req.body.overtimeRate,
+        premiumRate: req.body.premiumRate,
+      };
+      const member = await storage.addProjectMember(req.params.id, validated.userId, rates);
       res.status(201).json(member);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -639,6 +644,37 @@ export async function registerRoutes(
       }
       console.error("Error adding project member:", error);
       res.status(500).json({ message: "Failed to add project member" });
+    }
+  });
+
+  // Update project member rates (inspector billing rates)
+  app.patch("/api/projects/:id/members/:userId/rates", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const { allowed, project } = await checkProjectAdminAccess(userId, req.params.id);
+      
+      if (!project) {
+        return res.status(404).json({ message: "Project not found" });
+      }
+      if (!allowed) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      const { regularRate, overtimeRate, premiumRate } = req.body;
+      const member = await storage.updateProjectMemberRates(req.params.id, req.params.userId, {
+        regularRate,
+        overtimeRate,
+        premiumRate,
+      });
+      
+      if (!member) {
+        return res.status(404).json({ message: "Project member not found" });
+      }
+      
+      res.json(member);
+    } catch (error) {
+      console.error("Error updating project member rates:", error);
+      res.status(500).json({ message: "Failed to update project member rates" });
     }
   });
 
