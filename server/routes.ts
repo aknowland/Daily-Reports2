@@ -1093,6 +1093,29 @@ export async function registerRoutes(
     }
   });
 
+  // Helper to preprocess contract data - converts date strings to Date objects
+  const preprocessContractData = (data: any) => {
+    const dateFields = ['bidReleaseDate', 'bidDueDate', 'awardDate', 'startDate', 'substantialCompletionDate', 'finalCloseoutDate'];
+    const processed = { ...data };
+    
+    for (const field of dateFields) {
+      if (processed[field] !== undefined) {
+        if (processed[field] === '' || processed[field] === null) {
+          processed[field] = null;
+        } else if (typeof processed[field] === 'string') {
+          processed[field] = new Date(processed[field]);
+        }
+      }
+    }
+    
+    // Convert empty projectId to null
+    if (processed.projectId === '' || processed.projectId === 'none') {
+      processed.projectId = null;
+    }
+    
+    return processed;
+  };
+
   // Create contract
   app.post("/api/contracts", isAuthenticated, async (req: any, res) => {
     try {
@@ -1111,9 +1134,12 @@ export async function registerRoutes(
         return res.status(403).json({ message: "Only admins can create contracts" });
       }
       
+      // Preprocess data to convert date strings
+      const preprocessed = preprocessContractData(req.body);
+      
       // Validate request body with Zod schema
       const baseSchema = insertContractSchema.omit({ companyId: true, createdById: true });
-      const validationResult = baseSchema.safeParse(req.body);
+      const validationResult = baseSchema.safeParse(preprocessed);
       if (!validationResult.success) {
         return res.status(400).json({ 
           message: "Invalid contract data", 
@@ -1153,9 +1179,12 @@ export async function registerRoutes(
         return res.status(403).json({ message: "Only admins can update contracts" });
       }
       
+      // Preprocess data to convert date strings
+      const preprocessed = preprocessContractData(req.body);
+      
       // Validate request body with partial Zod schema for updates
       const updateSchema = insertContractSchema.omit({ companyId: true, createdById: true }).partial();
-      const validationResult = updateSchema.safeParse(req.body);
+      const validationResult = updateSchema.safeParse(preprocessed);
       if (!validationResult.success) {
         return res.status(400).json({ 
           message: "Invalid contract data", 
