@@ -76,7 +76,12 @@ export default function ClientsPage() {
   const [searchQuery, setSearchQuery] = useState("");
 
   const { data: clients, isLoading } = useQuery<Client[]>({
-    queryKey: ["/api/clients", { companyId: activeCompany?.id }],
+    queryKey: ["/api/clients", activeCompany?.id],
+    queryFn: async () => {
+      const response = await fetch("/api/clients", { credentials: "include" });
+      if (!response.ok) throw new Error("Failed to fetch clients");
+      return response.json();
+    },
     enabled: !!activeCompany?.id,
   });
 
@@ -89,7 +94,7 @@ export default function ClientsPage() {
       return response.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/clients"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/clients", activeCompany?.id] });
       toast({ title: "Client created successfully" });
       handleCloseDialog();
     },
@@ -108,7 +113,7 @@ export default function ClientsPage() {
       return response.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/clients"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/clients", activeCompany?.id] });
       toast({ title: "Client updated successfully" });
       handleCloseDialog();
     },
@@ -126,7 +131,7 @@ export default function ClientsPage() {
       await apiRequest("DELETE", `/api/clients/${id}`);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/clients"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/clients", activeCompany?.id] });
       toast({ title: "Client deleted successfully" });
       setIsDeleteDialogOpen(false);
       setClientToDelete(null);
