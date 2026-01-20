@@ -1810,22 +1810,25 @@ export async function registerRoutes(
 
       // ===== PAGE 1: PROPOSAL COVER =====
       
-      // Company logo - top left corner (larger size)
+      // Company logo - top left corner
       if (company?.logoPath) {
         try {
           const logoBuffer = await loadImageBuffer(company.logoPath);
           if (logoBuffer) {
-            doc.image(logoBuffer, startX, 15, { width: 240, height: 90, fit: [240, 90] });
+            doc.image(logoBuffer, startX, 15, { width: 168, height: 63, fit: [168, 63] });
           }
         } catch (err) {
           console.error('Error adding company logo to proposal:', err);
         }
       }
       
-      // Title - positioned below logo
-      doc.fontSize(14).font('Helvetica-Bold').text('PROPOSAL FOR PROJECT INSPECTOR SERVICES', startX, 115, { width: pageWidth, align: 'center' });
+      // Header: "DSA INSPECTORS" right-aligned
+      doc.fontSize(10).font('Helvetica').text('DSA INSPECTORS', startX, 40, { width: pageWidth, align: 'right' });
       
-      doc.y = 145;
+      // Title - positioned below logo with spacing
+      doc.fontSize(14).font('Helvetica-Bold').text('PROPOSAL FOR PROJECT INSPECTOR SERVICES', startX, 95, { width: pageWidth, align: 'center' });
+      
+      doc.y = 125;
       
       // Proposal details table
       const labelX = startX + 50;
@@ -1954,15 +1957,17 @@ export async function registerRoutes(
       // ===== PAGE 2: TERMS & CONDITIONS =====
       doc.addPage();
       
-      doc.fontSize(12).font('Helvetica-Bold').text('PROJECT INSPECTOR AGENCY AGREEMENT AND CONTRACT DUTIES:', startX, 50, { width: pageWidth, align: 'center' });
+      // Header
+      doc.fontSize(10).font('Helvetica').text('DSA INSPECTORS', startX, 30, { width: pageWidth, align: 'right' });
+      doc.fontSize(11).font('Helvetica-Bold').text('PROJECT INSPECTOR AGENCY AGREEMENT AND CONTRACT DUTIES:', startX, 50, { width: pageWidth, align: 'center' });
       
-      currentY = 110;
+      currentY = 75;
       
-      // Parse and render terms
+      // Parse and render terms - compact formatting to fit on one page
       const terms = proposal.terms || '';
       const termsParagraphs = terms.split(/\n\n+/).filter(p => p.trim());
       
-      doc.fontSize(9).font('Helvetica');
+      doc.fontSize(8).font('Helvetica');
       termsParagraphs.forEach((para, index) => {
         const trimmed = para.trim();
         // Check if it starts with a number
@@ -1971,37 +1976,30 @@ export async function registerRoutes(
           const num = numMatch[1];
           const text = trimmed.replace(/^\d+\.\s*/, '');
           doc.font('Helvetica-Bold').text(`${num}.`, startX, currentY);
-          doc.font('Helvetica').text(text, startX + 25, currentY, { width: pageWidth - 25, lineGap: 2 });
+          doc.font('Helvetica').text(text, startX + 18, currentY, { width: pageWidth - 18, lineGap: 1 });
         } else {
-          doc.text(trimmed, startX, currentY, { width: pageWidth, lineGap: 2 });
+          doc.text(trimmed, startX, currentY, { width: pageWidth, lineGap: 1 });
         }
-        currentY = doc.y + 12;
-        
-        // Add new page if needed
-        if (currentY > doc.page.height - 150) {
-          doc.addPage();
-          currentY = 50;
-          doc.fontSize(9).font('Helvetica');
-        }
+        currentY = doc.y + 6;
       });
       
-      // Signature section
-      currentY = Math.max(currentY + 30, doc.page.height - 180);
+      // Signature section - positioned at bottom with enough space
+      currentY = Math.max(currentY + 15, doc.page.height - 100);
       
       const today = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
       
-      doc.fontSize(10).font('Helvetica');
+      doc.fontSize(9).font('Helvetica');
       doc.text(`Dated: ${today}`, startX, currentY);
       doc.text(`Dated: ${today}`, centerX + 20, currentY);
       
-      currentY += 40;
+      currentY += 25;
       
       // Signature lines
       doc.moveTo(startX, currentY).lineTo(startX + 180, currentY).stroke();
       doc.moveTo(centerX + 20, currentY).lineTo(centerX + 200, currentY).stroke();
       
       currentY += 5;
-      doc.fontSize(9);
+      doc.fontSize(8);
       doc.text(`${profile?.firstName || ''} ${profile?.lastName || ''} – ${company?.name || 'KCS'}`, startX, currentY);
       doc.text(`Agent – ${proposal.clientName}`, centerX + 20, currentY);
       
