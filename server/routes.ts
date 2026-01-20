@@ -103,6 +103,11 @@ const photoUpload = multer({
   },
 });
 
+const attachmentUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 50 * 1024 * 1024 }, // 50MB for documents
+});
+
 // Multer config for app logo (admin settings) - use memory storage for object storage
 const logoUpload = multer({
   storage: multer.memoryStorage(),
@@ -1228,6 +1233,154 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error deleting contract:", error);
       res.status(500).json({ message: "Failed to delete contract" });
+    }
+  });
+
+  // ========== CONTRACT ATTACHMENTS ==========
+
+  // Upload attachments to a contract
+  app.post("/api/contracts/:id/attachments", isAuthenticated, attachmentUpload.array("attachments", 10), async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      const contract = await storage.getContract(req.params.id);
+      
+      if (!contract) {
+        return res.status(404).json({ message: "Contract not found" });
+      }
+      
+      // Only admins can add attachments
+      const isCompAdmin = await isEffectiveCompanyAdmin(userId, contract.companyId, profile);
+      const isSysAdmin = isEffectiveSystemAdmin(profile);
+      
+      if (!isCompAdmin && !isSysAdmin) {
+        return res.status(403).json({ message: "Only admins can add attachments" });
+      }
+      
+      const files = req.files as Express.Multer.File[];
+      if (!files || files.length === 0) {
+        return res.status(400).json({ message: "No files provided" });
+      }
+      
+      const createdAttachments = [];
+      
+      for (const file of files) {
+        const ext = path.extname(file.originalname);
+        const filename = `${randomUUID()}${ext}`;
+        const objectPath = await objectStorage.uploadBuffer({
+          buffer: file.buffer,
+          filename: filename,
+          contentType: file.mimetype,
+          folder: `contracts/${req.params.id}`,
+        });
+        
+        const attachment = await storage.createContractAttachment({
+          contractId: req.params.id,
+          filePath: objectPath,
+          fileName: file.originalname,
+          fileType: file.mimetype,
+          fileSize: file.size,
+        });
+        createdAttachments.push(attachment);
+      }
+      
+      res.status(201).json(createdAttachments);
+    } catch (error) {
+      console.error("Error uploading contract attachments:", error);
+      res.status(500).json({ message: "Failed to upload attachments" });
+    }
+  });
+
+  // Get attachments for a contract
+  app.get("/api/contracts/:id/attachments", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      const contract = await storage.getContract(req.params.id);
+      
+      if (!contract) {
+        return res.status(404).json({ message: "Contract not found" });
+      }
+      
+      // Check membership in contract's company
+      const isMember = await storage.isUserMemberOfCompany(contract.companyId, userId);
+      if (!isMember) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      const attachments = await storage.getContractAttachments(req.params.id);
+      res.json(attachments);
+    } catch (error) {
+      console.error("Error fetching contract attachments:", error);
+      res.status(500).json({ message: "Failed to fetch attachments" });
+    }
+  });
+
+  // Download an attachment
+  app.get("/api/contract-attachments/:id/download", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const attachment = await storage.getContractAttachment(req.params.id);
+      
+      if (!attachment) {
+        return res.status(404).json({ message: "Attachment not found" });
+      }
+      
+      const contract = await storage.getContract(attachment.contractId);
+      if (!contract) {
+        return res.status(404).json({ message: "Contract not found" });
+      }
+      
+      // Check membership in contract's company
+      const isMember = await storage.isUserMemberOfCompany(contract.companyId, userId);
+      if (!isMember) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      const url = await objectStorage.getSignedDownloadUrl(attachment.filePath, 300); // 5 minute expiry
+      res.json({ url, fileName: attachment.fileName });
+    } catch (error) {
+      console.error("Error downloading attachment:", error);
+      res.status(500).json({ message: "Failed to download attachment" });
+    }
+  });
+
+  // Delete an attachment
+  app.delete("/api/contract-attachments/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      const attachment = await storage.getContractAttachment(req.params.id);
+      
+      if (!attachment) {
+        return res.status(404).json({ message: "Attachment not found" });
+      }
+      
+      const contract = await storage.getContract(attachment.contractId);
+      if (!contract) {
+        return res.status(404).json({ message: "Contract not found" });
+      }
+      
+      // Only admins can delete attachments
+      const isCompAdmin = await isEffectiveCompanyAdmin(userId, contract.companyId, profile);
+      const isSysAdmin = isEffectiveSystemAdmin(profile);
+      
+      if (!isCompAdmin && !isSysAdmin) {
+        return res.status(403).json({ message: "Only admins can delete attachments" });
+      }
+      
+      // Delete from object storage
+      try {
+        await objectStorage.deleteObject(attachment.filePath);
+      } catch (err) {
+        console.warn("Failed to delete file from object storage:", err);
+      }
+      
+      await storage.deleteContractAttachment(req.params.id);
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting attachment:", error);
+      res.status(500).json({ message: "Failed to delete attachment" });
     }
   });
 

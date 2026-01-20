@@ -1094,7 +1094,8 @@ export class DatabaseStorage implements IStorage {
         const [c] = await db.select().from(clients).where(eq(clients.id, contract.clientId));
         client = c;
       }
-      contractsWithProjects.push({ ...contract, project, client });
+      const attachments = await db.select().from(contractAttachments).where(eq(contractAttachments.contractId, contract.id)).orderBy(desc(contractAttachments.createdAt));
+      contractsWithProjects.push({ ...contract, project, client, attachments });
     }
     return contractsWithProjects;
   }
