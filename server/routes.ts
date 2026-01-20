@@ -1849,9 +1849,10 @@ export async function registerRoutes(
       doc.fontSize(10).font('Helvetica-Bold').text('RATE:', labelX, currentY);
       currentY += 20;
       
-      // Rate options table
-      const tableStartX = startX + 20;
-      const colWidths = [60, 100, 100, 60, 60, 90, 90];
+      // Rate options table - centered on page
+      const colWidths = [50, 85, 85, 55, 50, 75, 75];
+      const tableWidth = colWidths.reduce((a, b) => a + b, 0);
+      const tableStartX = startX + (pageWidth - tableWidth) / 2;
       const headers = ['Option', 'Title', 'Inspector Name', 'Rate', 'Hours', 'Total', 'Grand Total'];
       
       // Table header
@@ -1862,7 +1863,7 @@ export async function registerRoutes(
         colX += colWidths[i];
       });
       currentY += 15;
-      doc.moveTo(tableStartX, currentY).lineTo(tableStartX + colWidths.reduce((a, b) => a + b, 0), currentY).stroke();
+      doc.moveTo(tableStartX, currentY).lineTo(tableStartX + tableWidth, currentY).stroke();
       currentY += 5;
       
       // Table rows
@@ -1941,12 +1942,12 @@ export async function registerRoutes(
         doc.fontSize(9).font('Helvetica-Oblique').text(proposal.rateEscalationNote, startX, currentY, { width: pageWidth, align: 'center' });
       }
       
-      // Footer with company info
-      const footerY = doc.page.height - 80;
+      // Footer with company info - moved up to avoid page break
+      const footerY = doc.page.height - 55;
       doc.fontSize(10).font('Helvetica-Bold').text(company?.name || 'Knowland Construction Services', startX, footerY, { width: pageWidth, align: 'center' });
-      doc.fontSize(9).font('Helvetica').text(company?.address || '', startX, footerY + 14, { width: pageWidth, align: 'center' });
+      doc.fontSize(9).font('Helvetica').text(company?.address || '', startX, footerY + 12, { width: pageWidth, align: 'center' });
       const contactInfo = [company?.phone, company?.email].filter(Boolean).join(' / Email: ');
-      doc.text(`Phone: ${contactInfo}`, startX, footerY + 26, { width: pageWidth, align: 'center' });
+      doc.text(`Phone: ${contactInfo}`, startX, footerY + 22, { width: pageWidth, align: 'center' });
       
       // ===== PAGE 2: TERMS & CONDITIONS =====
       doc.addPage();
@@ -2004,11 +2005,11 @@ export async function registerRoutes(
       doc.text(`${profile?.firstName || ''} ${profile?.lastName || ''} – ${company?.name || 'KCS'}`, startX, currentY);
       doc.text(`Agent – ${proposal.clientName}`, centerX + 20, currentY);
       
-      // Footer
-      const page2FooterY = doc.page.height - 80;
+      // Footer - moved up to avoid page break
+      const page2FooterY = doc.page.height - 55;
       doc.fontSize(10).font('Helvetica-Bold').text(company?.name || 'Knowland Construction Services', startX, page2FooterY, { width: pageWidth, align: 'center' });
-      doc.fontSize(9).font('Helvetica').text(company?.address || '', startX, page2FooterY + 14, { width: pageWidth, align: 'center' });
-      doc.text(`Phone: ${contactInfo}`, startX, page2FooterY + 26, { width: pageWidth, align: 'center' });
+      doc.fontSize(9).font('Helvetica').text(company?.address || '', startX, page2FooterY + 12, { width: pageWidth, align: 'center' });
+      doc.text(`Phone: ${contactInfo}`, startX, page2FooterY + 22, { width: pageWidth, align: 'center' });
       
       doc.end();
       
