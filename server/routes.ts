@@ -1825,10 +1825,11 @@ export async function registerRoutes(
       // Header: "DSA INSPECTORS" right-aligned
       doc.fontSize(10).font('Helvetica').text('DSA INSPECTORS', startX, 40, { width: pageWidth, align: 'right' });
       
-      // Title - positioned 1 inch (72 points) below logo top (15 + 72 = 87)
-      doc.fontSize(11).font('Helvetica-Bold').text('PROPOSAL FOR PROJECT INSPECTOR SERVICES', startX, 87, { width: pageWidth, align: 'center' });
+      // Title - positioned half inch (36 points) below logo bottom (15 + 63 + 36 = 114)
+      doc.fontSize(11).font('Helvetica-Bold').text('PROPOSAL FOR PROJECT INSPECTOR SERVICES', startX, 114, { width: pageWidth, align: 'center' });
       
-      doc.y = 115;
+      // Half inch (36 points) space after title before SCHOOL DISTRICT
+      doc.y = 165;
       
       // Proposal details table
       const labelX = startX + 50;
@@ -1967,7 +1968,7 @@ export async function registerRoutes(
       const terms = proposal.terms || '';
       const termsParagraphs = terms.split(/\n\n+/).filter(p => p.trim());
       
-      doc.fontSize(11).font('Helvetica');
+      doc.fontSize(9).font('Helvetica');
       termsParagraphs.forEach((para, index) => {
         const trimmed = para.trim();
         // Check if it starts with a number
@@ -1976,11 +1977,11 @@ export async function registerRoutes(
           const num = numMatch[1];
           const text = trimmed.replace(/^\d+\.\s*/, '');
           doc.font('Helvetica-Bold').text(`${num}.`, startX, currentY);
-          doc.font('Helvetica').text(text, startX + 20, currentY, { width: pageWidth - 20, lineGap: 1 });
+          doc.font('Helvetica').text(text, startX + 18, currentY, { width: pageWidth - 18, lineGap: 1 });
         } else {
           doc.text(trimmed, startX, currentY, { width: pageWidth, lineGap: 1 });
         }
-        currentY = doc.y + 8;
+        currentY = doc.y + 6;
       });
       
       // Signature section - positioned at bottom with enough space
