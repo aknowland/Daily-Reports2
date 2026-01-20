@@ -1825,10 +1825,10 @@ export async function registerRoutes(
       // Header: "DSA INSPECTORS" right-aligned
       doc.fontSize(10).font('Helvetica').text('DSA INSPECTORS', startX, 40, { width: pageWidth, align: 'right' });
       
-      // Title - positioned below logo with spacing
-      doc.fontSize(14).font('Helvetica-Bold').text('PROPOSAL FOR PROJECT INSPECTOR SERVICES', startX, 95, { width: pageWidth, align: 'center' });
+      // Title - positioned 2 inches (144 points) below logo top (15 + 144 = 159)
+      doc.fontSize(11).font('Helvetica-Bold').text('PROPOSAL FOR PROJECT INSPECTOR SERVICES', startX, 159, { width: pageWidth, align: 'center' });
       
-      doc.y = 125;
+      doc.y = 185;
       
       // Proposal details table
       const labelX = startX + 50;
