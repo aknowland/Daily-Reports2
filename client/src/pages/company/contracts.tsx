@@ -52,7 +52,16 @@ import {
   X,
   Download,
   ArrowRightCircle,
+  RefreshCw,
+  MoreHorizontal,
 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { useState, useRef } from "react";
 import type { ContractWithProjects, Project, Client, ContractAttachment, ProposalWithDetails } from "@shared/schema";
 import { ProposalDialog } from "@/components/proposal-dialog";
@@ -783,33 +792,96 @@ export default function ContractsPage() {
                           )}
                         </div>
                         <div className="flex items-center gap-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={async () => {
-                              try {
-                                const response = await fetch(`/api/proposals/${proposal.id}/pdf`, {
-                                  method: 'POST',
-                                  credentials: 'include',
-                                });
-                                if (!response.ok) throw new Error('Failed to generate PDF');
-                                const blob = await response.blob();
-                                const url = window.URL.createObjectURL(blob);
-                                const a = document.createElement('a');
-                                a.href = url;
-                                a.download = `Proposal-${proposal.proposalNumber}.pdf`;
-                                a.click();
-                                window.URL.revokeObjectURL(url);
-                                toast({ title: "PDF downloaded successfully" });
-                              } catch (error) {
-                                toast({ title: "Failed to generate PDF", variant: "destructive" });
-                              }
-                            }}
-                            data-testid={`button-download-proposal-${proposal.id}`}
-                          >
-                            <Download className="w-4 h-4 mr-1" />
-                            PDF
-                          </Button>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                data-testid={`button-pdf-menu-proposal-${proposal.id}`}
+                              >
+                                <FileText className="w-4 h-4 mr-1" />
+                                PDF
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem
+                                onClick={async () => {
+                                  try {
+                                    const response = await fetch(`/api/proposals/${proposal.id}/pdf`, {
+                                      method: 'POST',
+                                      credentials: 'include',
+                                    });
+                                    if (!response.ok) throw new Error('Failed to generate PDF');
+                                    const blob = await response.blob();
+                                    const url = window.URL.createObjectURL(blob);
+                                    const a = document.createElement('a');
+                                    a.href = url;
+                                    a.download = `Proposal-${proposal.proposalNumber}.pdf`;
+                                    a.click();
+                                    window.URL.revokeObjectURL(url);
+                                    queryClient.invalidateQueries({ queryKey: ["/api/proposals"] });
+                                    toast({ title: "PDF downloaded successfully" });
+                                  } catch (error) {
+                                    toast({ title: "Failed to generate PDF", variant: "destructive" });
+                                  }
+                                }}
+                                data-testid={`button-download-proposal-${proposal.id}`}
+                              >
+                                <Download className="w-4 h-4 mr-2" />
+                                Download PDF
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={async () => {
+                                  try {
+                                    toast({ title: "Regenerating PDF..." });
+                                    const response = await fetch(`/api/proposals/${proposal.id}/pdf`, {
+                                      method: 'POST',
+                                      credentials: 'include',
+                                    });
+                                    if (!response.ok) throw new Error('Failed to regenerate PDF');
+                                    const blob = await response.blob();
+                                    const url = window.URL.createObjectURL(blob);
+                                    const a = document.createElement('a');
+                                    a.href = url;
+                                    a.download = `Proposal-${proposal.proposalNumber}.pdf`;
+                                    a.click();
+                                    window.URL.revokeObjectURL(url);
+                                    queryClient.invalidateQueries({ queryKey: ["/api/proposals"] });
+                                    toast({ title: "PDF regenerated and downloaded" });
+                                  } catch (error) {
+                                    toast({ title: "Failed to regenerate PDF", variant: "destructive" });
+                                  }
+                                }}
+                                data-testid={`button-regenerate-proposal-${proposal.id}`}
+                              >
+                                <RefreshCw className="w-4 h-4 mr-2" />
+                                Regenerate PDF
+                              </DropdownMenuItem>
+                              {proposal.pdfPath && (
+                                <>
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem
+                                    className="text-destructive"
+                                    onClick={async () => {
+                                      if (confirm("Delete the PDF for this proposal? You can regenerate it later.")) {
+                                        try {
+                                          await apiRequest("DELETE", `/api/proposals/${proposal.id}/pdf`);
+                                          queryClient.invalidateQueries({ queryKey: ["/api/proposals"] });
+                                          toast({ title: "PDF deleted successfully" });
+                                        } catch (error) {
+                                          toast({ title: "Failed to delete PDF", variant: "destructive" });
+                                        }
+                                      }
+                                    }}
+                                    data-testid={`button-delete-pdf-proposal-${proposal.id}`}
+                                  >
+                                    <Trash2 className="w-4 h-4 mr-2" />
+                                    Delete PDF
+                                  </DropdownMenuItem>
+                                </>
+                              )}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
                           {isCompanyAdmin && (
                             <>
                               <Button
