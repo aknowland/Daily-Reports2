@@ -3,7 +3,7 @@ import { createServer, type Server } from "http";
 import { storage, db } from "./storage";
 import { sql } from "drizzle-orm";
 import { setupAuth, isAuthenticated, registerAuthRoutes } from "./replit_integrations/auth";
-import { insertProjectSchema, insertDailyReportSchema, updateUserProfileSchema, WorkActivityRow, VisitorRow } from "@shared/schema";
+import { insertProjectSchema, insertDailyReportSchema, updateUserProfileSchema, WorkActivityRow, VisitorRow, insertContractSchema } from "@shared/schema";
 import { ObjectStorageService, registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 import multer from "multer";
 import path from "path";
@@ -1019,6 +1019,181 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error generating invoice PDF:", error);
       res.status(500).json({ message: "Failed to generate invoice PDF" });
+    }
+  });
+
+  // ========== CONTRACTS ==========
+  const contractStatusLabels: Record<string, string> = {
+    bid_release: "Bid Release",
+    bid_received: "Bid Received",
+    under_review: "Under Review",
+    awarded: "Awarded",
+    in_execution: "In Execution",
+    substantial_completion: "Substantial Completion",
+    final_closeout: "Final Closeout"
+  };
+
+  const contractTypeLabels: Record<string, string> = {
+    lump_sum: "Lump Sum",
+    time_and_materials: "Time & Materials",
+    unit_price: "Unit Price",
+    cost_plus: "Cost Plus",
+    design_build: "Design Build",
+    other: "Other"
+  };
+
+  // Get contracts for active company
+  app.get("/api/contracts", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      
+      if (!profile?.activeCompanyId) {
+        return res.json([]);
+      }
+      
+      // Check user has access to this company
+      const isMember = await storage.isUserMemberOfCompany(profile.activeCompanyId, userId);
+      const isSysAdmin = isEffectiveSystemAdmin(profile);
+      
+      if (!isMember && !isSysAdmin) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      const contracts = await storage.getContracts(profile.activeCompanyId);
+      res.json(contracts);
+    } catch (error) {
+      console.error("Error fetching contracts:", error);
+      res.status(500).json({ message: "Failed to fetch contracts" });
+    }
+  });
+
+  // Get single contract
+  app.get("/api/contracts/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const contract = await storage.getContract(req.params.id);
+      
+      if (!contract) {
+        return res.status(404).json({ message: "Contract not found" });
+      }
+      
+      const profile = await storage.getUserProfile(userId);
+      const isMember = await storage.isUserMemberOfCompany(contract.companyId, userId);
+      const isSysAdmin = isEffectiveSystemAdmin(profile);
+      
+      if (!isMember && !isSysAdmin) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      res.json(contract);
+    } catch (error) {
+      console.error("Error fetching contract:", error);
+      res.status(500).json({ message: "Failed to fetch contract" });
+    }
+  });
+
+  // Create contract
+  app.post("/api/contracts", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      
+      if (!profile?.activeCompanyId) {
+        return res.status(400).json({ message: "No active company selected" });
+      }
+      
+      // Only admins can create contracts
+      const isCompAdmin = await isEffectiveCompanyAdmin(userId, profile.activeCompanyId, profile);
+      const isSysAdmin = isEffectiveSystemAdmin(profile);
+      
+      if (!isCompAdmin && !isSysAdmin) {
+        return res.status(403).json({ message: "Only admins can create contracts" });
+      }
+      
+      // Validate request body with Zod schema
+      const baseSchema = insertContractSchema.omit({ companyId: true, createdById: true });
+      const validationResult = baseSchema.safeParse(req.body);
+      if (!validationResult.success) {
+        return res.status(400).json({ 
+          message: "Invalid contract data", 
+          errors: validationResult.error.format() 
+        });
+      }
+      
+      const contractData = {
+        ...validationResult.data,
+        companyId: profile.activeCompanyId,
+        createdById: userId,
+      };
+      
+      const contract = await storage.createContract(contractData);
+      res.status(201).json(contract);
+    } catch (error) {
+      console.error("Error creating contract:", error);
+      res.status(500).json({ message: "Failed to create contract" });
+    }
+  });
+
+  // Update contract
+  app.patch("/api/contracts/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const contract = await storage.getContract(req.params.id);
+      
+      if (!contract) {
+        return res.status(404).json({ message: "Contract not found" });
+      }
+      
+      const profile = await storage.getUserProfile(userId);
+      const isCompAdmin = await isEffectiveCompanyAdmin(userId, contract.companyId, profile);
+      const isSysAdmin = isEffectiveSystemAdmin(profile);
+      
+      if (!isCompAdmin && !isSysAdmin) {
+        return res.status(403).json({ message: "Only admins can update contracts" });
+      }
+      
+      // Validate request body with partial Zod schema for updates
+      const updateSchema = insertContractSchema.omit({ companyId: true, createdById: true }).partial();
+      const validationResult = updateSchema.safeParse(req.body);
+      if (!validationResult.success) {
+        return res.status(400).json({ 
+          message: "Invalid contract data", 
+          errors: validationResult.error.format() 
+        });
+      }
+      
+      const updated = await storage.updateContract(req.params.id, validationResult.data);
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating contract:", error);
+      res.status(500).json({ message: "Failed to update contract" });
+    }
+  });
+
+  // Delete contract
+  app.delete("/api/contracts/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const contract = await storage.getContract(req.params.id);
+      
+      if (!contract) {
+        return res.status(404).json({ message: "Contract not found" });
+      }
+      
+      const profile = await storage.getUserProfile(userId);
+      const isCompAdmin = await isEffectiveCompanyAdmin(userId, contract.companyId, profile);
+      const isSysAdmin = isEffectiveSystemAdmin(profile);
+      
+      if (!isCompAdmin && !isSysAdmin) {
+        return res.status(403).json({ message: "Only admins can delete contracts" });
+      }
+      
+      await storage.deleteContract(req.params.id);
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting contract:", error);
+      res.status(500).json({ message: "Failed to delete contract" });
     }
   });
 

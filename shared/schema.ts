@@ -15,6 +15,26 @@ export const distributionStatusEnum = pgEnum("distribution_status", ["pending", 
 export const inviteStatusEnum = pgEnum("invite_status", ["pending", "accepted", "expired"]);
 export const subscriptionStatusEnum = pgEnum("subscription_status", ["active", "canceled", "past_due", "trialing", "none"]);
 
+// Contract enums
+export const contractStatusEnum = pgEnum("contract_status", [
+  "bid_release",
+  "bid_received", 
+  "under_review",
+  "awarded",
+  "in_execution",
+  "substantial_completion",
+  "final_closeout"
+]);
+
+export const contractTypeEnum = pgEnum("contract_type", [
+  "lump_sum",
+  "time_and_materials",
+  "unit_price",
+  "cost_plus",
+  "design_build",
+  "other"
+]);
+
 // Companies table
 export const companies = pgTable("companies", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -225,10 +245,47 @@ export const joinRequests = pgTable("join_requests", {
   unique().on(table.userId, table.companyId),
 ]);
 
+// Contracts table - for tracking construction contracts from bid to closeout
+export const contracts = pgTable("contracts", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").references(() => companies.id, { onDelete: "cascade" }).notNull(),
+  projectId: varchar("project_id").references(() => projects.id, { onDelete: "set null" }),
+  contractNumber: varchar("contract_number").notNull(),
+  name: text("name").notNull(),
+  description: text("description"),
+  contractorName: text("contractor_name"),
+  contractType: contractTypeEnum("contract_type").default("lump_sum"),
+  status: contractStatusEnum("status").default("bid_release").notNull(),
+  originalValue: varchar("original_value"),
+  currentValue: varchar("current_value"),
+  bidReleaseDate: timestamp("bid_release_date"),
+  bidDueDate: timestamp("bid_due_date"),
+  awardDate: timestamp("award_date"),
+  startDate: timestamp("start_date"),
+  substantialCompletionDate: timestamp("substantial_completion_date"),
+  finalCloseoutDate: timestamp("final_closeout_date"),
+  notes: text("notes"),
+  createdById: varchar("created_by_id").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 // Relations
 export const companiesRelations = relations(companies, ({ many }) => ({
   projects: many(projects),
   members: many(companyMembers),
+  contracts: many(contracts),
+}));
+
+export const contractsRelations = relations(contracts, ({ one }) => ({
+  company: one(companies, {
+    fields: [contracts.companyId],
+    references: [companies.id],
+  }),
+  project: one(projects, {
+    fields: [contracts.projectId],
+    references: [projects.id],
+  }),
 }));
 
 export const companyMembersRelations = relations(companyMembers, ({ one }) => ({
@@ -307,6 +364,7 @@ export const insertDistributionLogSchema = createInsertSchema(distributionLogs).
 export const insertAppSettingSchema = createInsertSchema(appSettings);
 export const insertInviteSchema = createInsertSchema(invites).omit({ id: true, createdAt: true, acceptedAt: true });
 export const insertJoinRequestSchema = createInsertSchema(joinRequests).omit({ id: true, createdAt: true, reviewedAt: true });
+export const insertContractSchema = createInsertSchema(contracts).omit({ id: true, createdAt: true, updatedAt: true });
 
 // Types
 export type Company = typeof companies.$inferSelect;
@@ -331,6 +389,13 @@ export type Invite = typeof invites.$inferSelect;
 export type InsertInvite = z.infer<typeof insertInviteSchema>;
 export type JoinRequest = typeof joinRequests.$inferSelect;
 export type InsertJoinRequest = z.infer<typeof insertJoinRequestSchema>;
+export type Contract = typeof contracts.$inferSelect;
+export type InsertContract = z.infer<typeof insertContractSchema>;
+
+// Contract with related project
+export type ContractWithProject = Contract & {
+  project?: Project;
+};
 
 // Extended types for frontend
 export type TradeRow = z.infer<typeof tradeRowSchema>;
