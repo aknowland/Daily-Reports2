@@ -1810,25 +1810,22 @@ export async function registerRoutes(
 
       // ===== PAGE 1: PROPOSAL COVER =====
       
-      // Company logo - top left corner
+      // Company logo - top left corner (larger size)
       if (company?.logoPath) {
         try {
           const logoBuffer = await loadImageBuffer(company.logoPath);
           if (logoBuffer) {
-            doc.image(logoBuffer, startX, 15, { width: 120, height: 45, fit: [120, 45] });
+            doc.image(logoBuffer, startX, 15, { width: 240, height: 90, fit: [240, 90] });
           }
         } catch (err) {
           console.error('Error adding company logo to proposal:', err);
         }
       }
       
-      // Header: "DSA INSPECTORS" right-aligned
-      doc.fontSize(10).font('Helvetica').text('DSA INSPECTORS', startX, 40, { width: pageWidth, align: 'right' });
+      // Title - positioned below logo
+      doc.fontSize(14).font('Helvetica-Bold').text('PROPOSAL FOR PROJECT INSPECTOR SERVICES', startX, 115, { width: pageWidth, align: 'center' });
       
-      // Title
-      doc.fontSize(14).font('Helvetica-Bold').text('PROPOSAL FOR PROJECT INSPECTOR SERVICES', startX, 70, { width: pageWidth, align: 'center' });
-      
-      doc.y = 110;
+      doc.y = 145;
       
       // Proposal details table
       const labelX = startX + 50;
@@ -1954,18 +1951,10 @@ export async function registerRoutes(
         doc.fontSize(9).font('Helvetica-Oblique').text(proposal.rateEscalationNote, startX, currentY, { width: pageWidth, align: 'center' });
       }
       
-      // Footer with company info - moved up to avoid page break
-      const footerY = doc.page.height - 55;
-      doc.fontSize(10).font('Helvetica-Bold').text(company?.name || 'Knowland Construction Services', startX, footerY, { width: pageWidth, align: 'center' });
-      doc.fontSize(9).font('Helvetica').text(company?.address || '', startX, footerY + 12, { width: pageWidth, align: 'center' });
-      const contactInfo = [company?.phone, company?.email].filter(Boolean).join(' / Email: ');
-      doc.text(`Phone: ${contactInfo}`, startX, footerY + 22, { width: pageWidth, align: 'center' });
-      
       // ===== PAGE 2: TERMS & CONDITIONS =====
       doc.addPage();
       
-      doc.fontSize(10).font('Helvetica').text('DSA INSPECTORS', startX, 40, { width: pageWidth, align: 'right' });
-      doc.fontSize(12).font('Helvetica-Bold').text('PROJECT INSPECTOR AGENCY AGREEMENT AND CONTRACT DUTIES:', startX, 70, { width: pageWidth, align: 'center' });
+      doc.fontSize(12).font('Helvetica-Bold').text('PROJECT INSPECTOR AGENCY AGREEMENT AND CONTRACT DUTIES:', startX, 50, { width: pageWidth, align: 'center' });
       
       currentY = 110;
       
@@ -1991,8 +1980,7 @@ export async function registerRoutes(
         // Add new page if needed
         if (currentY > doc.page.height - 150) {
           doc.addPage();
-          doc.fontSize(10).font('Helvetica').text('DSA INSPECTORS', startX, 40, { width: pageWidth, align: 'right' });
-          currentY = 70;
+          currentY = 50;
           doc.fontSize(9).font('Helvetica');
         }
       });
@@ -2016,12 +2004,6 @@ export async function registerRoutes(
       doc.fontSize(9);
       doc.text(`${profile?.firstName || ''} ${profile?.lastName || ''} – ${company?.name || 'KCS'}`, startX, currentY);
       doc.text(`Agent – ${proposal.clientName}`, centerX + 20, currentY);
-      
-      // Footer - moved up to avoid page break
-      const page2FooterY = doc.page.height - 55;
-      doc.fontSize(10).font('Helvetica-Bold').text(company?.name || 'Knowland Construction Services', startX, page2FooterY, { width: pageWidth, align: 'center' });
-      doc.fontSize(9).font('Helvetica').text(company?.address || '', startX, page2FooterY + 12, { width: pageWidth, align: 'center' });
-      doc.text(`Phone: ${contactInfo}`, startX, page2FooterY + 22, { width: pageWidth, align: 'center' });
       
       doc.end();
       
