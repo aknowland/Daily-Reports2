@@ -1,6 +1,6 @@
 import { 
   projects, dailyReports, photos, distributionLogs, appSettings, userProfiles, projectMembers, invites,
-  companies, companyMembers, joinRequests, invoices, contracts,
+  companies, companyMembers, joinRequests, invoices, contracts, clients,
   type Project, type InsertProject,
   type DailyReport, type InsertDailyReport,
   type Photo, type InsertPhoto,
@@ -15,6 +15,7 @@ import {
   type DailyReportWithDetails,
   type Invoice,
   type Contract, type InsertContract, type ContractWithProject,
+  type Client, type InsertClient,
 } from "@shared/schema";
 import { users, type User } from "@shared/models/auth";
 import { db } from "./db";
@@ -180,6 +181,13 @@ export interface IStorage {
   createContract(data: InsertContract): Promise<Contract>;
   updateContract(id: string, data: Partial<InsertContract>): Promise<Contract | undefined>;
   deleteContract(id: string): Promise<boolean>;
+
+  // Clients
+  getClients(companyId: string): Promise<Client[]>;
+  getClient(id: string): Promise<Client | undefined>;
+  createClient(data: InsertClient): Promise<Client>;
+  updateClient(id: string, data: Partial<InsertClient>): Promise<Client | undefined>;
+  deleteClient(id: string): Promise<boolean>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1070,11 +1078,16 @@ export class DatabaseStorage implements IStorage {
     const contractsWithProjects: ContractWithProject[] = [];
     for (const contract of contractList) {
       let project: Project | undefined;
+      let client: Client | undefined;
       if (contract.projectId) {
         const [p] = await db.select().from(projects).where(eq(projects.id, contract.projectId));
         project = p;
       }
-      contractsWithProjects.push({ ...contract, project });
+      if (contract.clientId) {
+        const [c] = await db.select().from(clients).where(eq(clients.id, contract.clientId));
+        client = c;
+      }
+      contractsWithProjects.push({ ...contract, project, client });
     }
     return contractsWithProjects;
   }
@@ -1084,11 +1097,16 @@ export class DatabaseStorage implements IStorage {
     if (!contract) return undefined;
     
     let project: Project | undefined;
+    let client: Client | undefined;
     if (contract.projectId) {
       const [p] = await db.select().from(projects).where(eq(projects.id, contract.projectId));
       project = p;
     }
-    return { ...contract, project };
+    if (contract.clientId) {
+      const [c] = await db.select().from(clients).where(eq(clients.id, contract.clientId));
+      client = c;
+    }
+    return { ...contract, project, client };
   }
 
   async createContract(data: InsertContract): Promise<Contract> {
@@ -1107,6 +1125,39 @@ export class DatabaseStorage implements IStorage {
 
   async deleteContract(id: string): Promise<boolean> {
     const result = await db.delete(contracts).where(eq(contracts.id, id));
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  // Clients
+  async getClients(companyId: string): Promise<Client[]> {
+    return db
+      .select()
+      .from(clients)
+      .where(eq(clients.companyId, companyId))
+      .orderBy(clients.name);
+  }
+
+  async getClient(id: string): Promise<Client | undefined> {
+    const [client] = await db.select().from(clients).where(eq(clients.id, id));
+    return client;
+  }
+
+  async createClient(data: InsertClient): Promise<Client> {
+    const [client] = await db.insert(clients).values(data).returning();
+    return client;
+  }
+
+  async updateClient(id: string, data: Partial<InsertClient>): Promise<Client | undefined> {
+    const [client] = await db
+      .update(clients)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(clients.id, id))
+      .returning();
+    return client;
+  }
+
+  async deleteClient(id: string): Promise<boolean> {
+    const result = await db.delete(clients).where(eq(clients.id, id));
     return (result.rowCount ?? 0) > 0;
   }
 }

@@ -245,15 +245,29 @@ export const joinRequests = pgTable("join_requests", {
   unique().on(table.userId, table.companyId),
 ]);
 
+// Clients table - for tracking clients per company
+export const clients = pgTable("clients", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").references(() => companies.id, { onDelete: "cascade" }).notNull(),
+  name: text("name").notNull(),
+  contactName: text("contact_name"),
+  email: text("email"),
+  phone: text("phone"),
+  address: text("address"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 // Contracts table - for tracking construction contracts from bid to closeout
 export const contracts = pgTable("contracts", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   companyId: varchar("company_id").references(() => companies.id, { onDelete: "cascade" }).notNull(),
   projectId: varchar("project_id").references(() => projects.id, { onDelete: "set null" }),
+  clientId: varchar("client_id").references(() => clients.id, { onDelete: "set null" }),
   contractNumber: varchar("contract_number").notNull(),
   name: text("name").notNull(),
   description: text("description"),
-  contractorName: text("contractor_name"),
   contractType: contractTypeEnum("contract_type").default("lump_sum"),
   status: contractStatusEnum("status").default("bid_release").notNull(),
   originalValue: varchar("original_value"),
@@ -275,6 +289,15 @@ export const companiesRelations = relations(companies, ({ many }) => ({
   projects: many(projects),
   members: many(companyMembers),
   contracts: many(contracts),
+  clients: many(clients),
+}));
+
+export const clientsRelations = relations(clients, ({ one, many }) => ({
+  company: one(companies, {
+    fields: [clients.companyId],
+    references: [companies.id],
+  }),
+  contracts: many(contracts),
 }));
 
 export const contractsRelations = relations(contracts, ({ one }) => ({
@@ -285,6 +308,10 @@ export const contractsRelations = relations(contracts, ({ one }) => ({
   project: one(projects, {
     fields: [contracts.projectId],
     references: [projects.id],
+  }),
+  client: one(clients, {
+    fields: [contracts.clientId],
+    references: [clients.id],
   }),
 }));
 
@@ -364,6 +391,7 @@ export const insertDistributionLogSchema = createInsertSchema(distributionLogs).
 export const insertAppSettingSchema = createInsertSchema(appSettings);
 export const insertInviteSchema = createInsertSchema(invites).omit({ id: true, createdAt: true, acceptedAt: true });
 export const insertJoinRequestSchema = createInsertSchema(joinRequests).omit({ id: true, createdAt: true, reviewedAt: true });
+export const insertClientSchema = createInsertSchema(clients).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertContractSchema = createInsertSchema(contracts).omit({ id: true, createdAt: true, updatedAt: true });
 
 // Types
@@ -389,12 +417,15 @@ export type Invite = typeof invites.$inferSelect;
 export type InsertInvite = z.infer<typeof insertInviteSchema>;
 export type JoinRequest = typeof joinRequests.$inferSelect;
 export type InsertJoinRequest = z.infer<typeof insertJoinRequestSchema>;
+export type Client = typeof clients.$inferSelect;
+export type InsertClient = z.infer<typeof insertClientSchema>;
 export type Contract = typeof contracts.$inferSelect;
 export type InsertContract = z.infer<typeof insertContractSchema>;
 
-// Contract with related project
+// Contract with related project and client
 export type ContractWithProject = Contract & {
   project?: Project;
+  client?: Client;
 };
 
 // Extended types for frontend
