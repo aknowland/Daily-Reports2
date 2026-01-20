@@ -298,6 +298,86 @@ export const contractAttachments = pgTable("contract_attachments", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// Timesheet status enum
+export const timesheetStatusEnum = pgEnum("timesheet_status", ["draft", "submitted", "approved"]);
+
+// Timesheets table - tracks monthly timesheets for projects
+export const timesheets = pgTable("timesheets", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").references(() => companies.id, { onDelete: "cascade" }).notNull(),
+  projectId: varchar("project_id").references(() => projects.id, { onDelete: "cascade" }).notNull(),
+  contractId: varchar("contract_id").references(() => contracts.id, { onDelete: "set null" }),
+  inspectorId: varchar("inspector_id").references(() => users.id).notNull(),
+  month: integer("month").notNull(), // 1-12
+  year: integer("year").notNull(),
+  period1RegularHours: varchar("period1_regular_hours").default("0"),
+  period1OvertimeHours: varchar("period1_overtime_hours").default("0"),
+  period1PremiumHours: varchar("period1_premium_hours").default("0"),
+  period2RegularHours: varchar("period2_regular_hours").default("0"),
+  period2OvertimeHours: varchar("period2_overtime_hours").default("0"),
+  period2PremiumHours: varchar("period2_premium_hours").default("0"),
+  totalRegularHours: varchar("total_regular_hours").default("0"),
+  totalOvertimeHours: varchar("total_overtime_hours").default("0"),
+  totalPremiumHours: varchar("total_premium_hours").default("0"),
+  pdfPath: varchar("pdf_path"),
+  status: timesheetStatusEnum("status").default("draft").notNull(),
+  districtRepSignature: varchar("district_rep_signature"),
+  districtRepSignedAt: timestamp("district_rep_signed_at"),
+  estPercentComplete: varchar("est_percent_complete"),
+  estCompletionDate: timestamp("est_completion_date"),
+  remarks: text("remarks"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Invoice status enum
+export const invoiceStatusEnum = pgEnum("invoice_status", ["draft", "sent", "paid", "overdue", "cancelled"]);
+
+// Invoices table - for billing clients
+export const invoices = pgTable("invoices", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").references(() => companies.id, { onDelete: "cascade" }).notNull(),
+  projectId: varchar("project_id").references(() => projects.id, { onDelete: "cascade" }).notNull(),
+  contractId: varchar("contract_id").references(() => contracts.id, { onDelete: "set null" }),
+  clientId: varchar("client_id").references(() => clients.id, { onDelete: "set null" }),
+  invoiceNumber: varchar("invoice_number").notNull(),
+  month: integer("month").notNull(),
+  year: integer("year").notNull(),
+  regularHours: varchar("regular_hours").default("0"),
+  overtimeHours: varchar("overtime_hours").default("0"),
+  premiumHours: varchar("premium_hours").default("0"),
+  regularRate: varchar("regular_rate"),
+  overtimeRate: varchar("overtime_rate"),
+  premiumRate: varchar("premium_rate"),
+  regularAmount: varchar("regular_amount").default("0"),
+  overtimeAmount: varchar("overtime_amount").default("0"),
+  premiumAmount: varchar("premium_amount").default("0"),
+  subtotal: varchar("subtotal").default("0"),
+  taxRate: varchar("tax_rate"),
+  taxAmount: varchar("tax_amount"),
+  totalAmount: varchar("total_amount").default("0"),
+  dueDate: timestamp("due_date"),
+  paidDate: timestamp("paid_date"),
+  status: invoiceStatusEnum("status").default("draft").notNull(),
+  pdfPath: varchar("pdf_path"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Combined monthly reports table - for storing concatenated PDFs
+export const monthlyReportBundles = pgTable("monthly_report_bundles", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").references(() => companies.id, { onDelete: "cascade" }).notNull(),
+  projectId: varchar("project_id").references(() => projects.id, { onDelete: "cascade" }).notNull(),
+  inspectorId: varchar("inspector_id").references(() => users.id),
+  month: integer("month").notNull(),
+  year: integer("year").notNull(),
+  reportCount: integer("report_count").default(0),
+  pdfPath: varchar("pdf_path"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 // Relations
 export const companiesRelations = relations(companies, ({ many }) => ({
   projects: many(projects),
@@ -416,6 +496,9 @@ export const insertJoinRequestSchema = createInsertSchema(joinRequests).omit({ i
 export const insertClientSchema = createInsertSchema(clients).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertContractSchema = createInsertSchema(contracts).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertContractAttachmentSchema = createInsertSchema(contractAttachments).omit({ id: true, createdAt: true });
+export const insertTimesheetSchema = createInsertSchema(timesheets).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertInvoiceSchema = createInsertSchema(invoices).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertMonthlyReportBundleSchema = createInsertSchema(monthlyReportBundles).omit({ id: true, createdAt: true });
 
 // Types
 export type Company = typeof companies.$inferSelect;
@@ -446,6 +529,12 @@ export type Contract = typeof contracts.$inferSelect;
 export type InsertContract = z.infer<typeof insertContractSchema>;
 export type ContractAttachment = typeof contractAttachments.$inferSelect;
 export type InsertContractAttachment = z.infer<typeof insertContractAttachmentSchema>;
+export type Timesheet = typeof timesheets.$inferSelect;
+export type InsertTimesheet = z.infer<typeof insertTimesheetSchema>;
+export type Invoice = typeof invoices.$inferSelect;
+export type InsertInvoice = z.infer<typeof insertInvoiceSchema>;
+export type MonthlyReportBundle = typeof monthlyReportBundles.$inferSelect;
+export type InsertMonthlyReportBundle = z.infer<typeof insertMonthlyReportBundleSchema>;
 
 // Contract with related project, client, and attachments
 export type ContractWithProject = Contract & {
@@ -489,21 +578,3 @@ export type InsertConversation = z.infer<typeof insertConversationSchema>;
 export type Message = typeof messages.$inferSelect;
 export type InsertMessage = z.infer<typeof insertMessageSchema>;
 
-// Invoices table for tracking generated invoices
-export const invoices = pgTable("invoices", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  invoiceNumber: integer("invoice_number").notNull().unique(),
-  projectId: varchar("project_id").references(() => projects.id, { onDelete: "cascade" }).notNull(),
-  generatedById: varchar("generated_by_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
-  startDate: timestamp("start_date").notNull(),
-  endDate: timestamp("end_date").notNull(),
-  regularHours: varchar("regular_hours"),
-  otHours: varchar("ot_hours"),
-  totalHours: varchar("total_hours"),
-  reportCount: integer("report_count"),
-  createdAt: timestamp("created_at").defaultNow(),
-});
-
-export const insertInvoiceSchema = createInsertSchema(invoices).omit({ id: true, createdAt: true });
-export type Invoice = typeof invoices.$inferSelect;
-export type InsertInvoice = z.infer<typeof insertInvoiceSchema>;
