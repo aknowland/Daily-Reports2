@@ -23,6 +23,7 @@ The application is built with a modern web stack, utilizing **React, TypeScript,
 - **Contract-Project Relationship**: Enables multiple projects to link to a single contract for streamlined billing rate management.
 - **"View as Inspector" Mode**: System and Company Admins can toggle this mode to experience the application from an inspector's perspective without changing accounts.
 - **Proposal Management**: Company admins can create and manage detailed proposals for inspection services, including dynamic pricing options and PDF generation.
+- **Proposal-to-Contract Conversion**: Admins can convert accepted proposals into contracts with one click, automatically creating linked projects and mapping proposal data (rates, hours, dates) to the new contract.
 
 **Core Features:**
 
