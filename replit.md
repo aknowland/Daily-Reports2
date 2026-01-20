@@ -1,265 +1,41 @@
 # Field Daily Reports
 
-A mobile-first web application for construction inspectors to create daily field reports with photo uploads, digital signatures, and PDF generation.
-
 ## Overview
 
-Field Daily Reports helps construction inspection teams document their daily work efficiently with:
-- **Mobile-first forms**: Touch-optimized interfaces for field use
-- **Voice-to-text dictation**: Hands-free data entry using device microphone and AI transcription
-- **Photo documentation**: Upload and caption site photos
-- **Digital signatures**: Canvas-based signature capture
-- **PDF generation**: Professional reports with company branding
-- **Email distribution**: Send reports to project stakeholders
+Field Daily Reports is a mobile-first web application designed to streamline the daily reporting process for construction inspectors. It enables efficient documentation of on-site activities through intuitive features such as photo uploads, digital signatures, and automated PDF generation. The application aims to enhance productivity and communication within construction inspection teams by providing a robust platform for real-time data capture and distribution. Its core purpose is to replace traditional paper-based reporting with a digital solution that improves accuracy, reduces administrative overhead, and ensures timely dissemination of critical project information to all stakeholders.
 
-## Tech Stack
+## User Preferences
 
-- **Frontend**: React + TypeScript + Tailwind CSS + shadcn/ui
-- **Backend**: Node.js + Express
-- **Database**: PostgreSQL with Drizzle ORM
-- **Authentication**: Replit Auth (OpenID Connect)
-- **File Storage**: Replit Object Storage (persistent cloud storage)
+No specific user preferences were provided in the original `replit.md` file.
 
-## Project Structure
+## System Architecture
 
-```
-├── client/                 # Frontend React application
-│   └── src/
-│       ├── components/     # Reusable UI components
-│       ├── pages/          # Page components
-│       ├── hooks/          # Custom React hooks
-│       └── lib/            # Utilities
-├── server/                 # Backend Express server
-│   ├── routes.ts           # API endpoints
-│   ├── storage.ts          # Database operations
-│   └── replit_integrations/ # Auth integration
-├── shared/                 # Shared types and schemas
-│   ├── schema.ts           # Drizzle database schema
-│   └── models/             # Auth models
-└── server/replit_integrations/
-    ├── auth/               # Replit Auth integration
-    ├── object_storage/     # Persistent file storage (photos, signatures, PDFs, logos)
-    └── email/              # Resend email integration
-```
+The application is built with a modern web stack, utilizing **React, TypeScript, and Tailwind CSS** for a responsive, mobile-first frontend, complemented by **Node.js and Express** for the backend API. Data persistence is handled by **PostgreSQL with Drizzle ORM**.
 
-## Key Features
+**Key Architectural Decisions:**
 
-### User Roles
-- **Inspector**: Create, edit, and submit daily reports
-- **Admin**: Manage projects, users, and settings
+- **Mobile-First Design**: UI/UX is optimized for touch interaction and field use, ensuring accessibility and ease of use on mobile devices.
+- **Role-Based Access Control (RBAC)**: Supports `Inspector`, `Company Admin`, and `System Admin` roles, each with distinct permissions and data visibility.
+- **Multi-Company Support**: Allows inspectors to work across multiple companies, with project data filtered by the active company.
+- **Voice-to-Text Integration**: Leverages OpenAI for speech-to-text transcription and AI-powered structured data extraction for work activities and visitors, integrated into various input fields.
+- **Automated Report Generation**: Generates professional PDF reports with company branding and facilitates email distribution to stakeholders.
+- **Dynamic Billing & Invoicing**: Implements a two-tier rate structure for company-to-client and inspector-to-company billing, supporting invoice and timesheet generation.
+- **Contract-Project Relationship**: Enables multiple projects to link to a single contract for streamlined billing rate management.
+- **"View as Inspector" Mode**: System and Company Admins can toggle this mode to experience the application from an inspector's perspective without changing accounts.
+- **Proposal Management**: Company admins can create and manage detailed proposals for inspection services, including dynamic pricing options and PDF generation.
 
-### Daily Report Fields
-- Project selection (or custom project name for unassigned reports)
-- Date and weather conditions
-- Work Activities (unified entries combining contractor/trade, headcount, and work description)
-- Additional work notes
-- Visitors log
-- Issues/delays (yes/no with details)
-- Safety incidents (yes/no with details)
-- Notes and observations
-- Photo uploads with captions
-- Digital signature
-- Sequential report numbers (assigned when submitted)
+**Core Features:**
 
-### Previous Report Defaults
-- When creating a new report for a project, the form automatically fetches the latest report for that project
-- All fields are pre-filled with previous report values except:
-  - Date (uses today's date)
-  - Photos (not copied)
-- Time tracking fields default to: 7:00am, 11:00am, 12:00pm, 4:00pm (if no previous report)
+- **Daily Report Creation**: Comprehensive forms for project selection, weather, work activities, notes, issues, safety incidents, photos, and digital signatures.
+- **Previous Report Defaults**: Automatically pre-fills new reports with data from the latest project report for efficiency.
+- **Unassigned Reports**: Allows creation of reports for projects not formally assigned, using a custom project name.
+- **Inspector Profile**: Users can manage their names for report generation.
+- **Admin Capabilities**: Management of projects, users, company settings, and invitations.
+- **Billing Features**: Generation of timesheet PDFs, client invoices, combined reports, and inspector invoices.
 
-### Unassigned Reports
-- Reports can be created without assigning to a formal project
-- Users can enter a custom project name (customProjectName field) for unassigned reports
-- Custom project name displays in list views, detail views, PDFs, and email distribution
-- When a report is assigned to a project, the custom project name is cleared
+## External Dependencies
 
-### Inspector Profile
-- Inspectors can set their firstName and lastName in their profile
-- These names are used in daily reports and PDF generation
-- Falls back to auth user name, then email if profile name is not set
-
-### Voice-to-Text Feature
-- VoiceInput component uses MediaRecorder API for audio capture
-- 120-second max recording time with visual countdown and auto-stop
-- Audio sent as base64 WebM to /api/transcribe endpoint
-- OpenAI integration for speech-to-text transcription
-- AI-powered parsing for structured data extraction (work activities, visitors)
-- Integrated into all major text fields (inspections, notes, equipment, materials, issues, safety)
-
-### API Endpoints
-
-```
-Authentication:
-GET  /api/login           - Start login flow
-GET  /api/logout          - Logout
-GET  /api/auth/user       - Get current user
-
-Projects:
-GET    /api/projects      - List all projects
-POST   /api/projects      - Create project
-PATCH  /api/projects/:id  - Update project
-DELETE /api/projects/:id  - Delete project
-
-Reports:
-GET    /api/reports       - List reports with stats
-GET    /api/reports/:id   - Get report details
-POST   /api/reports       - Create report
-PATCH  /api/reports/:id   - Update report
-DELETE /api/reports/:id   - Delete report
-
-Photos/Signatures:
-POST   /api/reports/:id/photos    - Upload photos
-PATCH  /api/photos/:id            - Update photo caption
-DELETE /api/photos/:id            - Delete photo
-POST   /api/reports/:id/signature - Save signature
-POST   /api/reports/:id/pdf       - Generate PDF
-POST   /api/reports/:id/distribute - Send to recipients
-
-Admin:
-GET    /api/admin/users              - List all users
-DELETE /api/admin/users/:id          - Delete user (system admin only, cascades memberships)
-PATCH  /api/admin/users/:id/role     - Update user system role
-GET    /api/admin/users/:id/projects - Get user's assigned projects
-PUT    /api/admin/users/:id/projects - Update user's project assignments
-GET    /api/admin/users/:id/companies     - Get user's company memberships
-POST   /api/admin/users/:id/companies     - Assign user to a company
-PUT    /api/admin/users/:id/companies/:companyId - Update user's company role
-DELETE /api/admin/users/:id/companies/:companyId - Remove user from a company
-GET    /api/admin/settings           - Get app settings
-POST   /api/admin/settings           - Update settings
-POST   /api/admin/logo               - Upload company logo
-GET    /api/admin/invites            - List all invites
-POST   /api/admin/invites            - Create new invite
-DELETE /api/admin/invites/:id        - Delete invite
-
-Invites:
-GET    /api/invites/:token        - Get invite by token (public)
-GET    /api/invites/code/:code    - Get invite by short code (public)
-POST   /api/invites/:token/accept - Accept invite (requires auth)
-
-Voice/Transcription:
-POST   /api/transcribe            - Transcribe audio to text
-POST   /api/parse-report-voice    - Parse transcript into structured data
-
-Billing:
-POST   /api/billing/timesheet        - Generate timesheet PDF for a project/month
-POST   /api/billing/invoice          - Generate client invoice PDF (admin)
-POST   /api/billing/combined-reports - Generate combined reports PDF
-POST   /api/billing/inspector-invoice - Generate inspector invoice to bill company
-```
-
-## Billing & Invoicing
-
-### Two-Tier Rate Structure
-The system supports two types of billing relationships:
-
-1. **Company → Client Rates** (stored in `contracts` table)
-   - `regularRate`, `overtimeRate`, `premiumRate`
-   - Used when company admins generate invoices to bill clients for inspection work
-   
-2. **Inspector → Company Rates** (stored in `project_members` table)
-   - `regularRate`, `overtimeRate`, `premiumRate`
-   - Project-specific rates - same inspector can have different rates on different projects
-   - Used when inspectors generate invoices to bill their company for work performed
-
-### Inspector Invoices
-- Inspectors can generate invoices from My Projects dialog using "My Invoice" button
-- Invoice shows inspector as sender, company as bill-to
-- Uses project-specific rates from their project_members record
-- Invoice number format: INS-{userId-last4}-{projectId-last4}-{MMYYYY}
-- Only inspectors assigned to a project can generate invoices for that project
-
-### Admin Rate Management
-- Company admins can set/update inspector rates when managing project team members
-- Rates appear in the team member assignment dialog with inline editing
-- Changes saved via PATCH /api/projects/:id/members/:userId/rates
-
-## Development
-
-The application runs on port 5000 with:
-- Vite for frontend development (HMR enabled)
-- Express for API routes
-- PostgreSQL database
-
-## Database Schema
-
-- **users**: Auth user accounts
-- **sessions**: Session storage
-- **user_profiles**: Extended user data with roles and active company
-- **companies**: Construction companies
-- **company_members**: User-to-company assignments (many-to-many)
-- **projects**: Construction projects (linked to companies, optionally linked to contracts via contractId)
-- **contracts**: Contract management with client info, dates, billing rates (multiple projects can link to one contract)
-- **project_members**: User-to-project assignments (includes inspector billing rates)
-- **daily_reports**: Field inspection reports
-- **photos**: Report photo attachments
-- **distribution_logs**: Email/folder distribution history
-- **app_settings**: Company branding and config
-- **invites**: Pending user invitations with role, company, project assignments, and short invite codes
-
-### Contract-Project Relationship
-- **Many-to-one**: Multiple projects can link to the same contract via `projects.contractId`
-- Projects optionally reference a contract for billing rates
-- Contracts no longer have a projectId field - the relationship is owned by projects
-- API returns `ContractWithProjects` type containing `projects[]` array
-- When generating invoices, the project's linked contract determines billing rates
-- Project edit dialog includes contract selector dropdown
-- Contract detail view shows list of linked projects as badges
-
-## Multi-Company Support
-
-Inspectors can work for multiple companies:
-- Each project belongs to a company
-- Users can be members of multiple companies
-- Company switcher in header allows switching between companies
-- Projects filter based on active company
-- Company info is read-only for inspectors (admins manage companies)
-
-## Role-Based Access Control
-
-Three role levels with different access permissions:
-
-### System Admin (role="admin")
-- Sees ALL projects across all companies
-- Sees ALL reports from all inspectors
-- Can manage all users, settings, and invites
-- System admin emails configured via ADMIN_EMAILS environment variable
-
-### Company Admin (company member with role="admin")
-- Sees all projects in companies where they are admin
-- Sees all reports for those company's projects (not just their own reports)
-- Sees personal reports from inspectors who are members of their companies
-- Can manage company settings, invites, and project assignments
-- Access spans ALL companies where they have admin role (not just activeCompanyId)
-
-### Inspector (regular user)
-- Sees only projects they are assigned to
-- Sees only their own reports
-- Can create reports for assigned projects
-- Can delete their own DRAFT reports (submitted reports require admin access)
-- Cannot edit projects (admin-only)
-
-### Knowland Construction Services
-- Members of "Knowland Construction Services" company bypass all subscription limits
-- When accepting invites to Knowland, users automatically get the inspector role
-- When join requests to Knowland are approved, users get the inspector role
-- No report count limits apply - unlimited reports
-- Subscription status shows as "active" for Knowland members
-
-### Inspector Mode Toggle
-- System and company admins can toggle "View as Inspector" mode via switch in header
-- When enabled (preferAdminMode=false), admin users see only their assigned projects and own reports
-- This allows admins to test/preview the inspector experience without needing separate accounts
-- The toggle persists in user_profiles.preferAdminMode database column
-- Admin-only endpoints (settings, users, invites) are blocked when in inspector mode
-
-### Implementation Details
-- `isEffectiveSystemAdmin(profile)` - returns true only if role=admin AND preferAdminMode !== false
-- `isEffectiveCompanyAdmin(userId, companyId, profile)` - returns true only if company admin AND preferAdminMode !== false
-- `isAdmin` middleware uses effective admin check to block admin endpoints in inspector mode
-- `getCompaniesForUser(userId)` retrieves all company memberships to determine admin access
-- `getMemberUserIdsForCompanies(companyIds)` - returns user IDs for all members of specified companies (used for personal reports visibility)
-- Storage functions (`getReports`, `getReportStats`) support `companyIds` array and `personalReportUserIds` for efficient OR filtering
-- Database queries avoid N+1 patterns by filtering at the SQL level using `inArray` and `or` conditions
-- AdminRoute component checks actual role (isAdmin || isCompanyAdmin), not admin mode toggle - the toggle only affects data visibility, not page access
+- **Replit Auth**: For user authentication (OpenID Connect).
+- **Replit Object Storage**: For persistent cloud storage of photos, signatures, PDFs, and company logos.
+- **OpenAI**: Used for speech-to-text transcription and AI-powered parsing of voice input.
+- **Resend**: For email distribution of reports and other communications.
