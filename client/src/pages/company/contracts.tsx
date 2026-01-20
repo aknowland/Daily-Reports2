@@ -538,12 +538,12 @@ export default function ContractsPage() {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="projectId">Link to Project</Label>
-                <Select value={formData.projectId} onValueChange={(value) => setFormData({ ...formData, projectId: value })}>
+                <Select value={formData.projectId || "none"} onValueChange={(value) => setFormData({ ...formData, projectId: value === "none" ? "" : value })}>
                   <SelectTrigger data-testid="select-project">
                     <SelectValue placeholder="Select a project (optional)" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">No Project</SelectItem>
+                    <SelectItem value="none">No Project</SelectItem>
                     {projects.map(project => (
                       <SelectItem key={project.id} value={project.id}>{project.name}</SelectItem>
                     ))}
