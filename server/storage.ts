@@ -1,6 +1,6 @@
 import { 
   projects, dailyReports, photos, distributionLogs, appSettings, userProfiles, projectMembers, invites,
-  companies, companyMembers, joinRequests, invoices,
+  companies, companyMembers, joinRequests, invoices, contracts,
   type Project, type InsertProject,
   type DailyReport, type InsertDailyReport,
   type Photo, type InsertPhoto,
@@ -14,6 +14,7 @@ import {
   type JoinRequest, type InsertJoinRequest,
   type DailyReportWithDetails,
   type Invoice,
+  type Contract, type InsertContract, type ContractWithProject,
 } from "@shared/schema";
 import { users, type User } from "@shared/models/auth";
 import { db } from "./db";
@@ -172,6 +173,13 @@ export interface IStorage {
     totalHours: string;
     reportCount: number;
   }): Promise<{ id: string; invoiceNumber: number }>;
+
+  // Contracts
+  getContracts(companyId: string): Promise<ContractWithProject[]>;
+  getContract(id: string): Promise<ContractWithProject | undefined>;
+  createContract(data: InsertContract): Promise<Contract>;
+  updateContract(id: string, data: Partial<InsertContract>): Promise<Contract | undefined>;
+  deleteContract(id: string): Promise<boolean>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1049,6 +1057,57 @@ export class DatabaseStorage implements IStorage {
       })
       .returning();
     return { id: invoice.id, invoiceNumber: invoice.invoiceNumber };
+  }
+
+  // Contracts
+  async getContracts(companyId: string): Promise<ContractWithProject[]> {
+    const contractList = await db
+      .select()
+      .from(contracts)
+      .where(eq(contracts.companyId, companyId))
+      .orderBy(desc(contracts.createdAt));
+    
+    const contractsWithProjects: ContractWithProject[] = [];
+    for (const contract of contractList) {
+      let project: Project | undefined;
+      if (contract.projectId) {
+        const [p] = await db.select().from(projects).where(eq(projects.id, contract.projectId));
+        project = p;
+      }
+      contractsWithProjects.push({ ...contract, project });
+    }
+    return contractsWithProjects;
+  }
+
+  async getContract(id: string): Promise<ContractWithProject | undefined> {
+    const [contract] = await db.select().from(contracts).where(eq(contracts.id, id));
+    if (!contract) return undefined;
+    
+    let project: Project | undefined;
+    if (contract.projectId) {
+      const [p] = await db.select().from(projects).where(eq(projects.id, contract.projectId));
+      project = p;
+    }
+    return { ...contract, project };
+  }
+
+  async createContract(data: InsertContract): Promise<Contract> {
+    const [contract] = await db.insert(contracts).values(data).returning();
+    return contract;
+  }
+
+  async updateContract(id: string, data: Partial<InsertContract>): Promise<Contract | undefined> {
+    const [contract] = await db
+      .update(contracts)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(contracts.id, id))
+      .returning();
+    return contract;
+  }
+
+  async deleteContract(id: string): Promise<boolean> {
+    const result = await db.delete(contracts).where(eq(contracts.id, id));
+    return (result.rowCount ?? 0) > 0;
   }
 }
 

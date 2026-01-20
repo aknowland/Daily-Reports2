@@ -16,7 +16,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
-import { LogOut, User, Settings, HardHat, Menu, LayoutDashboard, FolderOpen, Users, UserPlus, Building2, ClipboardList, FilePlus, Shield } from "lucide-react";
+import { LogOut, User, Settings, HardHat, Menu, LayoutDashboard, FolderOpen, Users, UserPlus, Building2, ClipboardList, FilePlus, Shield, FileText } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
@@ -64,6 +64,7 @@ export function Header({ title = "Field Daily Reports" }: HeaderProps) {
     { href: "/company/dashboard", label: "Company Dashboard", icon: LayoutDashboard },
     { href: "/company/team", label: "Team Members", icon: Users },
     { href: "/company/projects", label: "Company Projects", icon: FolderOpen },
+    { href: "/company/contracts", label: "Contracts", icon: FileText },
     { href: "/company/requests", label: "Join Requests", icon: ClipboardList },
     { href: "/company/settings", label: "Company Settings", icon: Settings },
   ];
@@ -258,6 +259,12 @@ export function Header({ title = "Field Daily Reports" }: HeaderProps) {
                       <Link href="/company/projects" className="cursor-pointer">
                         <FolderOpen className="mr-2 h-4 w-4" />
                         Company Projects
+                      </Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                      <Link href="/company/contracts" className="cursor-pointer">
+                        <FileText className="mr-2 h-4 w-4" />
+                        Contracts
                       </Link>
                     </DropdownMenuItem>
                     <DropdownMenuItem asChild>
