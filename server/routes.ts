@@ -11,8 +11,10 @@ import fs from "fs";
 import { randomUUID, randomBytes } from "crypto";
 import { z } from "zod";
 import PDFDocument from "pdfkit";
+import { PDFDocument as PDFLibDocument } from "pdf-lib";
 import { format } from "date-fns";
 import { speechToText, openai } from "./replit_integrations/audio/client";
+import { generateTimesheetPdf, aggregateReportsToTimesheetData, generateInvoicePdf, InvoiceData } from "./billing-pdf";
 
 // Initialize object storage service for persistent file storage
 const objectStorage = new ObjectStorageService();
@@ -855,22 +857,25 @@ export async function registerRoutes(
       
       const totalHours = totalRegularHours + totalOTHours;
       
-      // Create invoice record FIRST with atomic retry for race condition handling
-      // This ensures we have a guaranteed unique invoice number before generating PDF
+      // Create invoice record with new schema
       const expectedInvoiceNumber = await storage.getNextInvoiceNumber();
       const invoiceResult = await storage.createInvoice({
-        invoiceNumber: expectedInvoiceNumber,
+        companyId: project.companyId || '',
         projectId: projectId,
-        generatedById: userId,
-        startDate: start,
-        endDate: end,
+        invoiceNumber: expectedInvoiceNumber,
+        month: start.getMonth() + 1,
+        year: start.getFullYear(),
         regularHours: totalRegularHours.toFixed(2),
-        otHours: totalOTHours.toFixed(2),
-        totalHours: totalHours.toFixed(2),
-        reportCount: reports.length,
+        overtimeHours: totalOTHours.toFixed(2),
+        premiumHours: '0',
+        regularAmount: '0',
+        overtimeAmount: '0',
+        premiumAmount: '0',
+        subtotal: '0',
+        totalAmount: totalHours.toFixed(2),
       });
       
-      // Use the actual invoice number returned (may differ due to retry)
+      // Use the actual invoice number returned
       const invoiceNumber = invoiceResult.invoiceNumber;
       
       // Generate PDF with the confirmed invoice number
@@ -2730,6 +2735,289 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error deleting PDF:", error);
       res.status(500).json({ message: "Failed to delete PDF" });
+    }
+  });
+
+  // ========== BILLING & TIMESHEETS ==========
+
+  // Generate timesheet PDF for a project/month
+  app.post("/api/billing/timesheet", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      const { projectId, month, year, inspectorId } = req.body;
+
+      if (!projectId || !month || !year) {
+        return res.status(400).json({ message: "Project ID, month, and year are required" });
+      }
+
+      const project = await storage.getProject(projectId);
+      if (!project) {
+        return res.status(404).json({ message: "Project not found" });
+      }
+
+      // Check access: Admin, company admin, or project member
+      const isProjectMember = await storage.isUserMemberOfProject(projectId, userId);
+      const hasCompanyAccess = project.companyId && await isEffectiveCompanyAdmin(userId, project.companyId, profile);
+      
+      if (!isEffectiveSystemAdmin(profile) && !hasCompanyAccess && !isProjectMember) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      // Get company info
+      let company = null;
+      if (project.companyId) {
+        company = await storage.getCompany(project.companyId);
+      }
+
+      // Get reports for the specified month
+      const startDate = new Date(year, month - 1, 1);
+      const endDate = new Date(year, month, 0);
+      
+      // Filter by inspector if specified (for inspector's own timesheet)
+      const targetInspectorId = inspectorId || userId;
+      const allReports = await storage.getReportsForInvoice(projectId, startDate, endDate);
+      const reports = allReports.filter(r => !inspectorId || r.inspectorId === targetInspectorId);
+
+      // Get contracts for rates
+      const contracts = project.companyId ? await storage.getContracts(project.companyId) : [];
+      
+      // Get inspector profile
+      const inspectorProfile = await storage.getUserProfile(targetInspectorId);
+      
+      // Build timesheet data
+      const timesheetData = aggregateReportsToTimesheetData(
+        reports,
+        [project],
+        contracts,
+        company,
+        inspectorProfile,
+        month,
+        year
+      );
+
+      // Generate PDF
+      const pdfBuffer = await generateTimesheetPdf(timesheetData);
+      
+      const monthName = format(startDate, 'MMMM-yyyy');
+      const filename = `Timesheet_${project.name || project.projectNumber}_${monthName}.pdf`;
+      
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.send(pdfBuffer);
+
+    } catch (error) {
+      console.error("Error generating timesheet:", error);
+      res.status(500).json({ message: "Failed to generate timesheet" });
+    }
+  });
+
+  // Generate invoice PDF for a project/month with rates
+  app.post("/api/billing/invoice", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      const { projectId, month, year, contractId } = req.body;
+
+      if (!projectId || !month || !year) {
+        return res.status(400).json({ message: "Project ID, month, and year are required" });
+      }
+
+      const project = await storage.getProject(projectId);
+      if (!project) {
+        return res.status(404).json({ message: "Project not found" });
+      }
+
+      // Only admins can generate invoices
+      const hasCompanyAccess = project.companyId && await isEffectiveCompanyAdmin(userId, project.companyId, profile);
+      if (!isEffectiveSystemAdmin(profile) && !hasCompanyAccess) {
+        return res.status(403).json({ message: "Only admins can generate invoices" });
+      }
+
+      // Get company info
+      let company = null;
+      if (project.companyId) {
+        company = await storage.getCompany(project.companyId);
+      }
+
+      // Get contract for rates
+      let contract = null;
+      if (contractId) {
+        contract = await storage.getContract(contractId);
+      }
+
+      // Get client info
+      let client = null;
+      if (contract?.clientId) {
+        client = await storage.getClient(contract.clientId);
+      }
+
+      // Get reports for the specified month
+      const startDate = new Date(year, month - 1, 1);
+      const endDate = new Date(year, month, 0);
+      const reports = await storage.getReportsForInvoice(projectId, startDate, endDate);
+
+      // Calculate hours
+      let regularHours = 0;
+      let overtimeHours = 0;
+      
+      for (const report of reports) {
+        regularHours += parseFloat(report.regularHours || '0') || 0;
+        overtimeHours += parseFloat(report.otHours || '0') || 0;
+      }
+
+      // Get rates from contract
+      const regularRate = parseFloat(contract?.regularRate || '0') || 0;
+      const overtimeRate = parseFloat(contract?.overtimeRate || '0') || 0;
+      const premiumRate = parseFloat(contract?.premiumRate || '0') || 0;
+
+      // Calculate amounts
+      const regularAmount = regularHours * regularRate;
+      const overtimeAmount = overtimeHours * overtimeRate;
+      const premiumAmount = 0; // Premium hours from reports if applicable
+      const subtotal = regularAmount + overtimeAmount + premiumAmount;
+
+      // Get next invoice number and create record
+      const invoiceNumber = await storage.getNextInvoiceNumber();
+      await storage.createInvoice({
+        companyId: project.companyId || '',
+        projectId,
+        contractId: contractId || undefined,
+        clientId: contract?.clientId || undefined,
+        invoiceNumber,
+        month,
+        year,
+        regularHours: regularHours.toFixed(2),
+        overtimeHours: overtimeHours.toFixed(2),
+        premiumHours: '0',
+        regularRate: regularRate.toFixed(2),
+        overtimeRate: overtimeRate.toFixed(2),
+        premiumRate: premiumRate.toFixed(2),
+        regularAmount: regularAmount.toFixed(2),
+        overtimeAmount: overtimeAmount.toFixed(2),
+        premiumAmount: '0',
+        subtotal: subtotal.toFixed(2),
+        totalAmount: subtotal.toFixed(2),
+      });
+
+      // Generate invoice PDF
+      const invoiceData: InvoiceData = {
+        companyName: company?.name || 'Company',
+        companyAddress: company?.address || undefined,
+        companyPhone: company?.phone || undefined,
+        companyEmail: company?.email || undefined,
+        clientName: client?.name,
+        clientAddress: client?.address || undefined,
+        projectName: project.name,
+        projectNumber: project.projectNumber || undefined,
+        invoiceNumber: `INV-${invoiceNumber}`,
+        invoiceDate: new Date(),
+        month,
+        year,
+        regularHours,
+        overtimeHours,
+        premiumHours: 0,
+        regularRate,
+        overtimeRate,
+        premiumRate,
+      };
+
+      const pdfBuffer = await generateInvoicePdf(invoiceData);
+      
+      const monthName = format(startDate, 'MMMM-yyyy');
+      const filename = `Invoice_${invoiceNumber}_${project.name || project.projectNumber}_${monthName}.pdf`;
+      
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.send(pdfBuffer);
+
+    } catch (error) {
+      console.error("Error generating invoice:", error);
+      res.status(500).json({ message: "Failed to generate invoice" });
+    }
+  });
+
+  // Combine monthly reports into single PDF
+  app.post("/api/billing/combined-reports", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      const { projectId, month, year, inspectorId } = req.body;
+
+      if (!projectId || !month || !year) {
+        return res.status(400).json({ message: "Project ID, month, and year are required" });
+      }
+
+      const project = await storage.getProject(projectId);
+      if (!project) {
+        return res.status(404).json({ message: "Project not found" });
+      }
+
+      // Check access: Admin, company admin, or project member
+      const isProjectMember = await storage.isUserMemberOfProject(projectId, userId);
+      const hasCompanyAccess = project.companyId && await isEffectiveCompanyAdmin(userId, project.companyId, profile);
+      
+      if (!isEffectiveSystemAdmin(profile) && !hasCompanyAccess && !isProjectMember) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      // Get reports for the specified month
+      const startDate = new Date(year, month - 1, 1);
+      const endDate = new Date(year, month, 0);
+      
+      const targetInspectorId = inspectorId || null;
+      const allReports = await storage.getReportsForInvoice(projectId, startDate, endDate);
+      const reports = allReports.filter(r => !targetInspectorId || r.inspectorId === targetInspectorId);
+
+      if (reports.length === 0) {
+        return res.status(400).json({ message: "No reports found for the specified period" });
+      }
+
+      // Check all reports have PDFs
+      const reportsWithPdfs = reports.filter(r => r.pdfPath);
+      if (reportsWithPdfs.length === 0) {
+        return res.status(400).json({ message: "No PDFs available. Please generate individual report PDFs first." });
+      }
+
+      // Create merged PDF using pdf-lib
+      const mergedPdf = await PDFLibDocument.create();
+      
+      for (const report of reportsWithPdfs) {
+        try {
+          let pdfBytes: Uint8Array;
+          if (report.pdfPath!.startsWith('/objects/')) {
+            const buffer = await objectStorage.downloadBuffer(report.pdfPath!);
+            pdfBytes = new Uint8Array(buffer);
+          } else {
+            const localPath = path.join(process.cwd(), report.pdfPath!.replace(/^\//, ''));
+            if (fs.existsSync(localPath)) {
+              pdfBytes = new Uint8Array(fs.readFileSync(localPath));
+            } else {
+              continue;
+            }
+          }
+          
+          const pdfDoc = await PDFLibDocument.load(pdfBytes);
+          const copiedPages = await mergedPdf.copyPages(pdfDoc, pdfDoc.getPageIndices());
+          copiedPages.forEach(page => mergedPdf.addPage(page));
+        } catch (err) {
+          console.error(`Error adding report ${report.id} to combined PDF:`, err);
+        }
+      }
+
+      const mergedPdfBytes = await mergedPdf.save();
+      const pdfBuffer = Buffer.from(mergedPdfBytes);
+      
+      const monthName = format(startDate, 'MMMM-yyyy');
+      const filename = `Combined_Reports_${project.name || project.projectNumber}_${monthName}.pdf`;
+      
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.send(pdfBuffer);
+
+    } catch (error) {
+      console.error("Error generating combined reports PDF:", error);
+      res.status(500).json({ message: "Failed to generate combined reports PDF" });
     }
   });
 
