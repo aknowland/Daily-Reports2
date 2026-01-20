@@ -14,7 +14,7 @@ import {
   type JoinRequest, type InsertJoinRequest,
   type DailyReportWithDetails,
   type Invoice,
-  type Contract, type InsertContract, type ContractWithProject,
+  type Contract, type InsertContract, type ContractWithProjects,
   type Client, type InsertClient,
   type ContractAttachment, type InsertContractAttachment,
   type Timesheet, type InsertTimesheet,
@@ -192,8 +192,8 @@ export interface IStorage {
   }): Promise<{ id: string; invoiceNumber: string }>;
 
   // Contracts
-  getContracts(companyId: string): Promise<ContractWithProject[]>;
-  getContract(id: string): Promise<ContractWithProject | undefined>;
+  getContracts(companyId: string): Promise<ContractWithProjects[]>;
+  getContract(id: string): Promise<ContractWithProjects | undefined>;
   createContract(data: InsertContract): Promise<Contract>;
   updateContract(id: string, data: Partial<InsertContract>): Promise<Contract | undefined>;
   deleteContract(id: string): Promise<boolean>;
@@ -1147,47 +1147,41 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Contracts
-  async getContracts(companyId: string): Promise<ContractWithProject[]> {
+  async getContracts(companyId: string): Promise<ContractWithProjects[]> {
     const contractList = await db
       .select()
       .from(contracts)
       .where(eq(contracts.companyId, companyId))
       .orderBy(desc(contracts.createdAt));
     
-    const contractsWithProjects: ContractWithProject[] = [];
+    const contractsWithProjects: ContractWithProjects[] = [];
     for (const contract of contractList) {
-      let project: Project | undefined;
       let client: Client | undefined;
-      if (contract.projectId) {
-        const [p] = await db.select().from(projects).where(eq(projects.id, contract.projectId));
-        project = p;
-      }
+      // Fetch projects that reference this contract
+      const contractProjects = await db.select().from(projects).where(eq(projects.contractId, contract.id));
       if (contract.clientId) {
         const [c] = await db.select().from(clients).where(eq(clients.id, contract.clientId));
         client = c;
       }
       const attachments = await db.select().from(contractAttachments).where(eq(contractAttachments.contractId, contract.id)).orderBy(desc(contractAttachments.createdAt));
-      contractsWithProjects.push({ ...contract, project, client, attachments });
+      contractsWithProjects.push({ ...contract, projects: contractProjects, client, attachments });
     }
     return contractsWithProjects;
   }
 
-  async getContract(id: string): Promise<ContractWithProject | undefined> {
+  async getContract(id: string): Promise<ContractWithProjects | undefined> {
     const [contract] = await db.select().from(contracts).where(eq(contracts.id, id));
     if (!contract) return undefined;
     
-    let project: Project | undefined;
     let client: Client | undefined;
-    if (contract.projectId) {
-      const [p] = await db.select().from(projects).where(eq(projects.id, contract.projectId));
-      project = p;
-    }
+    // Fetch projects that reference this contract
+    const contractProjects = await db.select().from(projects).where(eq(projects.contractId, contract.id));
     if (contract.clientId) {
       const [c] = await db.select().from(clients).where(eq(clients.id, contract.clientId));
       client = c;
     }
     const attachments = await db.select().from(contractAttachments).where(eq(contractAttachments.contractId, id)).orderBy(desc(contractAttachments.createdAt));
-    return { ...contract, project, client, attachments };
+    return { ...contract, projects: contractProjects, client, attachments };
   }
 
   async createContract(data: InsertContract): Promise<Contract> {

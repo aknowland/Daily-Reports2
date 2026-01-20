@@ -53,7 +53,7 @@ import {
   Download,
 } from "lucide-react";
 import { useState, useRef } from "react";
-import type { ContractWithProject, Project, Client, ContractAttachment } from "@shared/schema";
+import type { ContractWithProjects, Project, Client, ContractAttachment } from "@shared/schema";
 import { format } from "date-fns";
 
 const CONTRACT_STATUS_OPTIONS = [
@@ -84,7 +84,6 @@ type ContractFormData = {
   status: string;
   originalValue: string;
   currentValue: string;
-  projectId: string;
   bidReleaseDate: string;
   bidDueDate: string;
   awardDate: string;
@@ -106,7 +105,6 @@ const emptyFormData: ContractFormData = {
   status: "bid_release",
   originalValue: "",
   currentValue: "",
-  projectId: "",
   bidReleaseDate: "",
   bidDueDate: "",
   awardDate: "",
@@ -123,8 +121,8 @@ export default function ContractsPage() {
   const { toast } = useToast();
   const { activeCompany, isCompanyAdmin } = useAuth();
   const [showCreateDialog, setShowCreateDialog] = useState(false);
-  const [contractToDelete, setContractToDelete] = useState<ContractWithProject | null>(null);
-  const [editingContract, setEditingContract] = useState<ContractWithProject | null>(null);
+  const [contractToDelete, setContractToDelete] = useState<ContractWithProjects | null>(null);
+  const [editingContract, setEditingContract] = useState<ContractWithProjects | null>(null);
   const [formData, setFormData] = useState<ContractFormData>(emptyFormData);
   const [activeTab, setActiveTab] = useState("list");
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -132,7 +130,7 @@ export default function ContractsPage() {
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const { data: contracts = [], isLoading } = useQuery<ContractWithProject[]>({
+  const { data: contracts = [], isLoading } = useQuery<ContractWithProjects[]>({
     queryKey: ["/api/contracts"],
     enabled: !!activeCompany?.id,
   });
@@ -151,7 +149,6 @@ export default function ContractsPage() {
     mutationFn: async (data: ContractFormData) => {
       const payload = {
         ...data,
-        projectId: data.projectId || null,
         clientId: data.clientId || null,
         bidReleaseDate: data.bidReleaseDate ? new Date(data.bidReleaseDate) : null,
         bidDueDate: data.bidDueDate ? new Date(data.bidDueDate) : null,
@@ -184,7 +181,6 @@ export default function ContractsPage() {
     mutationFn: async (data: ContractFormData & { id: string }) => {
       const payload = {
         ...data,
-        projectId: data.projectId || null,
         clientId: data.clientId || null,
         bidReleaseDate: data.bidReleaseDate ? new Date(data.bidReleaseDate) : null,
         bidDueDate: data.bidDueDate ? new Date(data.bidDueDate) : null,
@@ -342,7 +338,6 @@ export default function ContractsPage() {
       try {
         const payload = {
           ...formData,
-          projectId: formData.projectId || null,
           clientId: formData.clientId || null,
           bidReleaseDate: formData.bidReleaseDate ? new Date(formData.bidReleaseDate) : null,
           bidDueDate: formData.bidDueDate ? new Date(formData.bidDueDate) : null,
@@ -376,7 +371,7 @@ export default function ContractsPage() {
     }
   };
 
-  const handleEdit = (contract: ContractWithProject) => {
+  const handleEdit = (contract: ContractWithProjects) => {
     setFormData({
       contractNumber: contract.contractNumber,
       name: contract.name,
@@ -386,7 +381,6 @@ export default function ContractsPage() {
       status: contract.status,
       originalValue: contract.originalValue || "",
       currentValue: contract.currentValue || "",
-      projectId: contract.projectId || "",
       bidReleaseDate: contract.bidReleaseDate ? format(new Date(contract.bidReleaseDate), "yyyy-MM-dd") : "",
       bidDueDate: contract.bidDueDate ? format(new Date(contract.bidDueDate), "yyyy-MM-dd") : "",
       awardDate: contract.awardDate ? format(new Date(contract.awardDate), "yyyy-MM-dd") : "",
@@ -420,7 +414,7 @@ export default function ContractsPage() {
     : contracts.filter(c => c.status === statusFilter);
 
   const calendarEvents = contracts.flatMap(contract => {
-    const events: { date: Date; title: string; type: string; contract: ContractWithProject }[] = [];
+    const events: { date: Date; title: string; type: string; contract: ContractWithProjects }[] = [];
     if (contract.bidDueDate) {
       events.push({ date: new Date(contract.bidDueDate), title: `Bid Due: ${contract.name}`, type: "bid_due", contract });
     }
@@ -544,10 +538,12 @@ export default function ContractsPage() {
                               </span>
                             )}
                           </div>
-                          {contract.project && (
-                            <div className="flex items-center gap-1">
-                              <span className="text-xs">Project:</span>
-                              <Badge variant="outline" className="text-xs">{contract.project.name}</Badge>
+                          {contract.projects && contract.projects.length > 0 && (
+                            <div className="flex items-center gap-1 flex-wrap">
+                              <span className="text-xs">Projects:</span>
+                              {contract.projects.map(project => (
+                                <Badge key={project.id} variant="outline" className="text-xs">{project.name}</Badge>
+                              ))}
                             </div>
                           )}
                           {(contract.originalValue || contract.currentValue) && (
@@ -682,35 +678,22 @@ export default function ContractsPage() {
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="clientId">Client Name</Label>
-                <Select value={formData.clientId || "none"} onValueChange={(value) => setFormData({ ...formData, clientId: value === "none" ? "" : value })}>
-                  <SelectTrigger data-testid="select-client">
-                    <SelectValue placeholder="Select a client" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">No Client</SelectItem>
-                    {clientsList.map(client => (
-                      <SelectItem key={client.id} value={client.id}>{client.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="projectId">Link to Project</Label>
-                <Select value={formData.projectId || "none"} onValueChange={(value) => setFormData({ ...formData, projectId: value === "none" ? "" : value })}>
-                  <SelectTrigger data-testid="select-project">
-                    <SelectValue placeholder="Select a project (optional)" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">No Project</SelectItem>
-                    {projects.map(project => (
-                      <SelectItem key={project.id} value={project.id}>{project.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+            <div className="space-y-2">
+              <Label htmlFor="clientId">Client Name</Label>
+              <Select value={formData.clientId || "none"} onValueChange={(value) => setFormData({ ...formData, clientId: value === "none" ? "" : value })}>
+                <SelectTrigger data-testid="select-client">
+                  <SelectValue placeholder="Select a client" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">No Client</SelectItem>
+                  {clientsList.map(client => (
+                    <SelectItem key={client.id} value={client.id}>{client.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Link projects to this contract from the project settings.
+              </p>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
