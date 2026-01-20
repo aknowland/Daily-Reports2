@@ -141,7 +141,39 @@ POST   /api/invites/:token/accept - Accept invite (requires auth)
 Voice/Transcription:
 POST   /api/transcribe            - Transcribe audio to text
 POST   /api/parse-report-voice    - Parse transcript into structured data
+
+Billing:
+POST   /api/billing/timesheet        - Generate timesheet PDF for a project/month
+POST   /api/billing/invoice          - Generate client invoice PDF (admin)
+POST   /api/billing/combined-reports - Generate combined reports PDF
+POST   /api/billing/inspector-invoice - Generate inspector invoice to bill company
 ```
+
+## Billing & Invoicing
+
+### Two-Tier Rate Structure
+The system supports two types of billing relationships:
+
+1. **Company → Client Rates** (stored in `contracts` table)
+   - `regularRate`, `overtimeRate`, `premiumRate`
+   - Used when company admins generate invoices to bill clients for inspection work
+   
+2. **Inspector → Company Rates** (stored in `project_members` table)
+   - `regularRate`, `overtimeRate`, `premiumRate`
+   - Project-specific rates - same inspector can have different rates on different projects
+   - Used when inspectors generate invoices to bill their company for work performed
+
+### Inspector Invoices
+- Inspectors can generate invoices from My Projects dialog using "My Invoice" button
+- Invoice shows inspector as sender, company as bill-to
+- Uses project-specific rates from their project_members record
+- Invoice number format: INS-{userId-last4}-{projectId-last4}-{MMYYYY}
+- Only inspectors assigned to a project can generate invoices for that project
+
+### Admin Rate Management
+- Company admins can set/update inspector rates when managing project team members
+- Rates appear in the team member assignment dialog with inline editing
+- Changes saved via PATCH /api/projects/:id/members/:userId/rates
 
 ## Development
 
