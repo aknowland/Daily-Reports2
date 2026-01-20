@@ -105,7 +105,9 @@ export interface IStorage {
   getProjectMembers(projectId: string): Promise<(ProjectMember & { user?: User })[]>;
   getProjectsForUser(userId: string): Promise<string[]>;
   getAllProjectsForUser(userId: string): Promise<Project[]>;
-  addProjectMember(projectId: string, userId: string): Promise<ProjectMember>;
+  addProjectMember(projectId: string, userId: string, rates?: { regularRate?: string; overtimeRate?: string; premiumRate?: string }): Promise<ProjectMember>;
+  updateProjectMemberRates(projectId: string, userId: string, rates: { regularRate?: string; overtimeRate?: string; premiumRate?: string }): Promise<ProjectMember | undefined>;
+  getProjectMember(projectId: string, userId: string): Promise<ProjectMember | undefined>;
   removeProjectMember(projectId: string, userId: string): Promise<boolean>;
   isUserMemberOfProject(projectId: string, userId: string): Promise<boolean>;
 
@@ -623,7 +625,7 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(projects.createdAt));
   }
 
-  async addProjectMember(projectId: string, userId: string): Promise<ProjectMember> {
+  async addProjectMember(projectId: string, userId: string, rates?: { regularRate?: string; overtimeRate?: string; premiumRate?: string }): Promise<ProjectMember> {
     // Check if already a member
     const existing = await db
       .select()
@@ -639,8 +641,41 @@ export class DatabaseStorage implements IStorage {
 
     const [member] = await db
       .insert(projectMembers)
-      .values({ projectId, userId })
+      .values({ 
+        projectId, 
+        userId,
+        regularRate: rates?.regularRate,
+        overtimeRate: rates?.overtimeRate,
+        premiumRate: rates?.premiumRate,
+      })
       .returning();
+    return member;
+  }
+
+  async updateProjectMemberRates(projectId: string, userId: string, rates: { regularRate?: string; overtimeRate?: string; premiumRate?: string }): Promise<ProjectMember | undefined> {
+    const [member] = await db
+      .update(projectMembers)
+      .set({
+        regularRate: rates.regularRate,
+        overtimeRate: rates.overtimeRate,
+        premiumRate: rates.premiumRate,
+      })
+      .where(and(
+        eq(projectMembers.projectId, projectId),
+        eq(projectMembers.userId, userId)
+      ))
+      .returning();
+    return member;
+  }
+
+  async getProjectMember(projectId: string, userId: string): Promise<ProjectMember | undefined> {
+    const [member] = await db
+      .select()
+      .from(projectMembers)
+      .where(and(
+        eq(projectMembers.projectId, projectId),
+        eq(projectMembers.userId, userId)
+      ));
     return member;
   }
 
