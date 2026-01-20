@@ -348,14 +348,14 @@ export default function BillingManagementPage() {
                 <label className="text-sm font-medium">Contract (for rates)</label>
                 <Select
                   value={selectedContract}
-                  onValueChange={setSelectedContract}
+                  onValueChange={(val) => setSelectedContract(val === "none" ? "" : val)}
                   disabled={!selectedProject}
                 >
                   <SelectTrigger data-testid="select-contract">
                     <SelectValue placeholder="Optional" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">None</SelectItem>
+                    <SelectItem value="none">None</SelectItem>
                     {projectContracts?.map((contract) => (
                       <SelectItem key={contract.id} value={contract.id}>
                         {contract.name || contract.contractNumber}
