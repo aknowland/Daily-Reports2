@@ -66,7 +66,7 @@ export default function BillingManagementPage() {
   });
 
   const { data: contracts, isLoading: contractsLoading } = useQuery<ContractWithProject[]>({
-    queryKey: ["/api/contracts", activeCompany?.id],
+    queryKey: ["/api/contracts"],
     enabled: !!activeCompany?.id,
   });
 

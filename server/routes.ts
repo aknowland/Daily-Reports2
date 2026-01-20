@@ -3093,7 +3093,7 @@ export async function registerRoutes(
 
       // Get inspector's profile for contact info
       const inspectorProfile = await storage.getUserProfile(userId);
-      const inspectorUser = await storage.getUser(userId);
+      const inspectorUser = await storage.getUserById(userId);
       const inspectorName = inspectorProfile?.firstName && inspectorProfile?.lastName 
         ? `${inspectorProfile.firstName} ${inspectorProfile.lastName}`
         : inspectorUser?.firstName && inspectorUser?.lastName
