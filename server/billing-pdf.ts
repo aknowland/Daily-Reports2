@@ -554,3 +554,179 @@ export async function generateInvoicePdf(data: InvoiceData): Promise<Buffer> {
     doc.end();
   });
 }
+
+// Inspector Invoice - for inspectors to bill their company for project work
+export interface InspectorInvoiceData {
+  // Inspector info (from party)
+  inspectorName: string;
+  inspectorAddress?: string;
+  inspectorPhone?: string;
+  inspectorEmail?: string;
+  // Company info (bill to party)
+  companyName: string;
+  companyAddress?: string;
+  // Project details
+  projectName: string;
+  projectNumber?: string;
+  // Invoice details
+  invoiceNumber: string;
+  invoiceDate: Date;
+  dueDate?: Date;
+  month: number;
+  year: number;
+  // Hours and rates (from project_members)
+  regularHours: number;
+  overtimeHours: number;
+  premiumHours: number;
+  regularRate: number;
+  overtimeRate: number;
+  premiumRate: number;
+  notes?: string;
+}
+
+export async function generateInspectorInvoicePdf(data: InspectorInvoiceData): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const doc = new PDFDocument({
+      size: 'LETTER',
+      margin: 50,
+    });
+
+    const chunks: Buffer[] = [];
+    doc.on('data', (chunk: Buffer) => chunks.push(chunk));
+    doc.on('end', () => resolve(Buffer.concat(chunks)));
+    doc.on('error', reject);
+
+    const pageWidth = doc.page.width - 100;
+    const startX = 50;
+
+    // Header - Inspector info (From)
+    doc.fontSize(16).font('Helvetica-Bold').text(data.inspectorName, startX, 50);
+    doc.fontSize(9).font('Helvetica');
+    if (data.inspectorAddress) {
+      const addressLines = data.inspectorAddress.split('\n');
+      addressLines.forEach(line => doc.text(line, startX, doc.y));
+    }
+    if (data.inspectorPhone) doc.text(data.inspectorPhone, startX, doc.y);
+    if (data.inspectorEmail) doc.text(data.inspectorEmail, startX, doc.y);
+
+    // Invoice title
+    doc.fontSize(24).font('Helvetica-Bold').text('INVOICE', pageWidth + 50, 50, { width: 100, align: 'right' });
+
+    // Invoice details box (right side)
+    const invoiceBoxY = 120;
+    doc.fontSize(10).font('Helvetica');
+    doc.text('Invoice #:', startX + pageWidth - 150, invoiceBoxY);
+    doc.font('Helvetica-Bold').text(data.invoiceNumber, startX + pageWidth - 50, invoiceBoxY, { width: 100 });
+    
+    doc.font('Helvetica').text('Date:', startX + pageWidth - 150, invoiceBoxY + 15);
+    doc.font('Helvetica-Bold').text(format(data.invoiceDate, 'MM/dd/yyyy'), startX + pageWidth - 50, invoiceBoxY + 15, { width: 100 });
+
+    if (data.dueDate) {
+      doc.font('Helvetica').text('Due Date:', startX + pageWidth - 150, invoiceBoxY + 30);
+      doc.font('Helvetica-Bold').text(format(data.dueDate, 'MM/dd/yyyy'), startX + pageWidth - 50, invoiceBoxY + 30, { width: 100 });
+    }
+
+    // Bill To (Company)
+    doc.fontSize(10).font('Helvetica-Bold').text('Bill To:', startX, invoiceBoxY);
+    doc.fontSize(10).font('Helvetica');
+    doc.text(data.companyName, startX, invoiceBoxY + 15);
+    if (data.companyAddress) {
+      const companyAddressLines = data.companyAddress.split('\n');
+      companyAddressLines.forEach(line => doc.text(line, startX, doc.y));
+    }
+
+    // Project info
+    const projectY = 200;
+    doc.fontSize(10).font('Helvetica-Bold').text('Project:', startX, projectY);
+    doc.font('Helvetica').text(data.projectName, startX + 50, projectY);
+    if (data.projectNumber) {
+      doc.font('Helvetica-Bold').text('Project #:', startX, projectY + 15);
+      doc.font('Helvetica').text(data.projectNumber, startX + 60, projectY + 15);
+    }
+
+    const monthName = format(new Date(data.year, data.month - 1), 'MMMM yyyy');
+    doc.font('Helvetica-Bold').text('Period:', startX, projectY + 30);
+    doc.font('Helvetica').text(monthName, startX + 45, projectY + 30);
+
+    // Line items table
+    const tableY = 270;
+    const colWidths = [200, 80, 80, 100];
+    doc.lineWidth(1);
+
+    // Header
+    doc.rect(startX, tableY, pageWidth, 25).fillAndStroke('#f0f0f0', '#000');
+    doc.fontSize(9).font('Helvetica-Bold').fillColor('#000');
+    let colX = startX;
+    ['Description', 'Hours', 'Rate', 'Amount'].forEach((header, i) => {
+      const w = colWidths[i];
+      doc.text(header, colX + 5, tableY + 8, { width: w - 10, align: i > 0 ? 'right' : 'left' });
+      colX += w;
+    });
+
+    // Line items
+    const lineItems = [
+      { desc: 'Regular Hours', hours: data.regularHours, rate: data.regularRate },
+      { desc: 'Overtime Hours', hours: data.overtimeHours, rate: data.overtimeRate },
+      { desc: 'Premium Hours', hours: data.premiumHours, rate: data.premiumRate },
+    ].filter(item => item.hours > 0 && item.rate > 0);
+
+    let rowY = tableY + 25;
+    let subtotal = 0;
+
+    lineItems.forEach(item => {
+      const amount = item.hours * item.rate;
+      subtotal += amount;
+
+      doc.rect(startX, rowY, pageWidth, 20).stroke();
+      doc.fontSize(9).font('Helvetica').fillColor('#000');
+      
+      colX = startX;
+      doc.text(item.desc, colX + 5, rowY + 6, { width: colWidths[0] - 10 });
+      colX += colWidths[0];
+      doc.text(item.hours.toFixed(2), colX + 5, rowY + 6, { width: colWidths[1] - 10, align: 'right' });
+      colX += colWidths[1];
+      doc.text('$' + item.rate.toFixed(2), colX + 5, rowY + 6, { width: colWidths[2] - 10, align: 'right' });
+      colX += colWidths[2];
+      doc.text('$' + amount.toFixed(2), colX + 5, rowY + 6, { width: colWidths[3] - 10, align: 'right' });
+
+      rowY += 20;
+    });
+
+    // If no line items with hours, show message
+    if (lineItems.length === 0) {
+      doc.rect(startX, rowY, pageWidth, 20).stroke();
+      doc.fontSize(9).font('Helvetica').fillColor('#666');
+      doc.text('No hours recorded for this period', startX + 5, rowY + 6, { width: pageWidth - 10, align: 'center' });
+      rowY += 20;
+    }
+
+    // Totals
+    rowY += 10;
+    doc.fontSize(10).font('Helvetica-Bold').fillColor('#000');
+    doc.text('Subtotal:', startX + 280, rowY);
+    doc.text('$' + subtotal.toFixed(2), startX + 360, rowY, { width: 100, align: 'right' });
+
+    rowY += 20;
+    doc.fontSize(12).font('Helvetica-Bold');
+    doc.text('Total Due:', startX + 280, rowY);
+    doc.text('$' + subtotal.toFixed(2), startX + 360, rowY, { width: 100, align: 'right' });
+
+    // Notes
+    if (data.notes) {
+      rowY += 40;
+      doc.fontSize(9).font('Helvetica-Bold').text('Notes:', startX, rowY);
+      doc.fontSize(9).font('Helvetica').text(data.notes, startX, rowY + 15, { width: pageWidth });
+    }
+
+    // Payment info section
+    rowY += 60;
+    doc.fontSize(9).font('Helvetica-Bold').text('Payment Information:', startX, rowY);
+    doc.fontSize(9).font('Helvetica').text('Please remit payment within 30 days.', startX, rowY + 15);
+
+    // Footer
+    doc.fontSize(8).font('Helvetica').fillColor('#666');
+    doc.text('Thank you for your business!', startX, doc.page.height - 50, { width: pageWidth, align: 'center' });
+
+    doc.end();
+  });
+}
