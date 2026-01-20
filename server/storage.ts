@@ -1,6 +1,6 @@
 import { 
   projects, dailyReports, photos, distributionLogs, appSettings, userProfiles, projectMembers, invites,
-  companies, companyMembers, joinRequests, invoices, contracts, clients,
+  companies, companyMembers, joinRequests, invoices, contracts, clients, contractAttachments,
   type Project, type InsertProject,
   type DailyReport, type InsertDailyReport,
   type Photo, type InsertPhoto,
@@ -16,6 +16,7 @@ import {
   type Invoice,
   type Contract, type InsertContract, type ContractWithProject,
   type Client, type InsertClient,
+  type ContractAttachment, type InsertContractAttachment,
 } from "@shared/schema";
 import { users, type User } from "@shared/models/auth";
 import { db } from "./db";
@@ -188,6 +189,12 @@ export interface IStorage {
   createClient(data: InsertClient): Promise<Client>;
   updateClient(id: string, data: Partial<InsertClient>): Promise<Client | undefined>;
   deleteClient(id: string): Promise<boolean>;
+
+  // Contract Attachments
+  getContractAttachments(contractId: string): Promise<ContractAttachment[]>;
+  getContractAttachment(id: string): Promise<ContractAttachment | undefined>;
+  createContractAttachment(data: InsertContractAttachment): Promise<ContractAttachment>;
+  deleteContractAttachment(id: string): Promise<boolean>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1106,7 +1113,8 @@ export class DatabaseStorage implements IStorage {
       const [c] = await db.select().from(clients).where(eq(clients.id, contract.clientId));
       client = c;
     }
-    return { ...contract, project, client };
+    const attachments = await db.select().from(contractAttachments).where(eq(contractAttachments.contractId, id)).orderBy(desc(contractAttachments.createdAt));
+    return { ...contract, project, client, attachments };
   }
 
   async createContract(data: InsertContract): Promise<Contract> {
@@ -1158,6 +1166,26 @@ export class DatabaseStorage implements IStorage {
 
   async deleteClient(id: string): Promise<boolean> {
     const result = await db.delete(clients).where(eq(clients.id, id));
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  // Contract Attachments
+  async getContractAttachments(contractId: string): Promise<ContractAttachment[]> {
+    return db.select().from(contractAttachments).where(eq(contractAttachments.contractId, contractId)).orderBy(desc(contractAttachments.createdAt));
+  }
+
+  async getContractAttachment(id: string): Promise<ContractAttachment | undefined> {
+    const [attachment] = await db.select().from(contractAttachments).where(eq(contractAttachments.id, id));
+    return attachment;
+  }
+
+  async createContractAttachment(data: InsertContractAttachment): Promise<ContractAttachment> {
+    const [attachment] = await db.insert(contractAttachments).values(data).returning();
+    return attachment;
+  }
+
+  async deleteContractAttachment(id: string): Promise<boolean> {
+    const result = await db.delete(contractAttachments).where(eq(contractAttachments.id, id));
     return (result.rowCount ?? 0) > 0;
   }
 }
