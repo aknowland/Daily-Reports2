@@ -91,6 +91,9 @@ type ContractFormData = {
   startDate: string;
   substantialCompletionDate: string;
   finalCloseoutDate: string;
+  regularRate: string;
+  overtimeRate: string;
+  premiumRate: string;
   notes: string;
 };
 
@@ -110,6 +113,9 @@ const emptyFormData: ContractFormData = {
   startDate: "",
   substantialCompletionDate: "",
   finalCloseoutDate: "",
+  regularRate: "",
+  overtimeRate: "",
+  premiumRate: "",
   notes: "",
 };
 
@@ -387,6 +393,9 @@ export default function ContractsPage() {
       startDate: contract.startDate ? format(new Date(contract.startDate), "yyyy-MM-dd") : "",
       substantialCompletionDate: contract.substantialCompletionDate ? format(new Date(contract.substantialCompletionDate), "yyyy-MM-dd") : "",
       finalCloseoutDate: contract.finalCloseoutDate ? format(new Date(contract.finalCloseoutDate), "yyyy-MM-dd") : "",
+      regularRate: contract.regularRate || "",
+      overtimeRate: contract.overtimeRate || "",
+      premiumRate: contract.premiumRate || "",
       notes: contract.notes || "",
     });
     setEditingContract(contract);
@@ -819,6 +828,48 @@ export default function ContractsPage() {
                     value={formData.finalCloseoutDate}
                     onChange={(e) => setFormData({ ...formData, finalCloseoutDate: e.target.value })}
                     data-testid="input-final-closeout-date"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="border-t pt-4">
+              <h4 className="text-sm font-medium mb-3">Hourly Rates (for Billing)</h4>
+              <div className="grid grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="regularRate">Regular Rate ($/hr)</Label>
+                  <Input
+                    id="regularRate"
+                    type="number"
+                    step="0.01"
+                    value={formData.regularRate}
+                    onChange={(e) => setFormData({ ...formData, regularRate: e.target.value })}
+                    placeholder="0.00"
+                    data-testid="input-regular-rate"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="overtimeRate">Overtime Rate ($/hr)</Label>
+                  <Input
+                    id="overtimeRate"
+                    type="number"
+                    step="0.01"
+                    value={formData.overtimeRate}
+                    onChange={(e) => setFormData({ ...formData, overtimeRate: e.target.value })}
+                    placeholder="0.00"
+                    data-testid="input-overtime-rate"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="premiumRate">Premium Rate ($/hr)</Label>
+                  <Input
+                    id="premiumRate"
+                    type="number"
+                    step="0.01"
+                    value={formData.premiumRate}
+                    onChange={(e) => setFormData({ ...formData, premiumRate: e.target.value })}
+                    placeholder="0.00"
+                    data-testid="input-premium-rate"
                   />
                 </div>
               </div>
