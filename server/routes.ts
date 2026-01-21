@@ -2532,8 +2532,14 @@ export async function registerRoutes(
         currentY = doc.y + 8;
       });
       
-      // Signature section
-      currentY = Math.max(currentY + 40, doc.page.height - 120);
+      // Signature section - ensure all elements stay on the same page
+      const signatureBlockHeight = 60;
+      if (currentY + signatureBlockHeight > doc.page.height - 50) {
+        doc.addPage();
+        currentY = 50;
+      }
+      
+      currentY += 40;
       
       doc.moveTo(startX, currentY).lineTo(startX + 180, currentY).stroke();
       doc.moveTo(centerX + 30, currentY).lineTo(centerX + 210, currentY).stroke();
