@@ -25,7 +25,7 @@ interface Conversation {
 }
 
 export default function AIChatPage() {
-  const { isCompanyAdmin, isOwner, activeCompany } = useAuth();
+  const { isCompanyAdmin, isAdmin, activeCompany } = useAuth();
   const { toast } = useToast();
   const [inputValue, setInputValue] = useState("");
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
@@ -33,7 +33,8 @@ export default function AIChatPage() {
   const [isStreaming, setIsStreaming] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const canAccessChat = isCompanyAdmin || isOwner;
+  // Allow access for Company Admins or any System Admin level (admin, owner, system_owner)
+  const canAccessChat = isCompanyAdmin || isAdmin;
 
   const { data: conversations = [], isLoading: conversationsLoading } = useQuery<Conversation[]>({
     queryKey: ["/api/ai-chat/conversations", activeCompany?.id],
