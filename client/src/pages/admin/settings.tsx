@@ -59,7 +59,8 @@ export default function AdminSettingsPage() {
   }, [activeCompany]);
 
   const isAdmin = user?.profile?.role === "admin";
-  const isSystemAdmin = user?.profile?.role === "owner";
+  const isSystemOwner = user?.profile?.role === "system_owner";
+  const isSystemAdmin = user?.profile?.role === "owner" || isSystemOwner;
   const canEdit = activeCompany?.isCompanyAdmin === true;
 
   // Only fetch users if the current user is a system admin
@@ -395,7 +396,9 @@ export default function AdminSettingsPage() {
                 <div className="space-y-2">
                   {allUsers.map((u) => {
                     const isCurrentUser = u.id === user?.id;
-                    const isOwner = u.profile?.role === "owner";
+                    const userIsSystemOwner = u.profile?.role === "system_owner";
+                    const userIsOwner = u.profile?.role === "owner";
+                    const userIsSystemAdmin = userIsOwner || userIsSystemOwner;
                     const displayName = u.profile?.firstName && u.profile?.lastName
                       ? `${u.profile.firstName} ${u.profile.lastName}`
                       : u.firstName && u.lastName 
@@ -409,8 +412,10 @@ export default function AdminSettingsPage() {
                         data-testid={`user-row-${u.id}`}
                       >
                         <div className="flex items-center gap-3 min-w-0">
-                          <div className={`p-2 rounded-full ${isOwner ? "bg-primary/10" : "bg-muted"}`}>
-                            {isOwner ? (
+                          <div className={`p-2 rounded-full ${userIsSystemOwner ? "bg-amber-100 dark:bg-amber-900/30" : userIsOwner ? "bg-primary/10" : "bg-muted"}`}>
+                            {userIsSystemOwner ? (
+                              <Shield className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                            ) : userIsOwner ? (
                               <ShieldCheck className="w-4 h-4 text-primary" />
                             ) : (
                               <Users className="w-4 h-4 text-muted-foreground" />
@@ -425,20 +430,34 @@ export default function AdminSettingsPage() {
                           </div>
                         </div>
                         <div className="flex items-center gap-3 flex-shrink-0">
-                          <span className="text-sm text-muted-foreground">
-                            System Admin
-                          </span>
-                          <Switch
-                            checked={isOwner}
-                            disabled={isCurrentUser || updateUserRoleMutation.isPending}
-                            onCheckedChange={(checked) => {
-                              updateUserRoleMutation.mutate({
-                                userId: u.id,
-                                role: checked ? "owner" : "inspector",
-                              });
-                            }}
-                            data-testid={`switch-admin-${u.id}`}
-                          />
+                          {userIsSystemOwner ? (
+                            <span className="text-sm font-medium text-amber-600 dark:text-amber-400">
+                              System Owner
+                            </span>
+                          ) : (
+                            <>
+                              <span className="text-sm text-muted-foreground">
+                                System Admin
+                              </span>
+                              {isSystemOwner ? (
+                                <Switch
+                                  checked={userIsOwner}
+                                  disabled={isCurrentUser || userIsSystemOwner || updateUserRoleMutation.isPending}
+                                  onCheckedChange={(checked) => {
+                                    updateUserRoleMutation.mutate({
+                                      userId: u.id,
+                                      role: checked ? "owner" : "inspector",
+                                    });
+                                  }}
+                                  data-testid={`switch-admin-${u.id}`}
+                                />
+                              ) : (
+                                <span className="text-xs text-muted-foreground px-2">
+                                  {userIsOwner ? "Yes" : "No"}
+                                </span>
+                              )}
+                            </>
+                          )}
                         </div>
                       </div>
                     );
@@ -451,8 +470,9 @@ export default function AdminSettingsPage() {
                 </div>
               )}
               <p className="text-xs text-muted-foreground">
-                System admins have full access to all companies, projects, and settings. 
-                You cannot remove your own system admin access.
+                System Owners (highest level) can promote/demote System Admins. 
+                System Admins have full access to all companies, projects, and settings.
+                {isSystemOwner ? " Toggle the switch to grant or revoke System Admin access." : " Only System Owners can modify these settings."}
               </p>
             </CardContent>
           </Card>

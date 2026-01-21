@@ -4479,24 +4479,36 @@ export async function registerRoutes(
   app.patch("/api/admin/users/:id/role", isAuthenticated, isAdmin, async (req: any, res) => {
     try {
       const { role } = req.body;
-      const validRoles = ["inspector", "admin", "owner"];
+      const validRoles = ["inspector", "admin", "owner", "system_owner"];
       if (!role || !validRoles.includes(role)) {
         return res.status(400).json({ message: "Invalid role" });
       }
 
-      // Only system admins (owners) can assign or remove the owner role
+      // Role hierarchy: system_owner > owner > admin > inspector
       const userId = req.user?.claims?.sub;
       const requestingUserProfile = await storage.getUserProfile(userId);
-      const isSystemAdmin = requestingUserProfile?.role === "owner";
+      const isSystemOwner = requestingUserProfile?.role === "system_owner";
+      const isSystemAdmin = requestingUserProfile?.role === "owner" || isSystemOwner;
       
-      if (role === "owner" && !isSystemAdmin) {
-        return res.status(403).json({ message: "Only system admins can assign the system admin role" });
+      // Only system owners can assign or remove the owner (System Admin) role
+      if (role === "owner" && !isSystemOwner) {
+        return res.status(403).json({ message: "Only System Owners can assign the System Admin role" });
       }
       
-      // Also check if we're demoting an owner - only owners can do this
+      // Cannot assign system_owner role via this endpoint (must be done directly in database)
+      if (role === "system_owner") {
+        return res.status(403).json({ message: "System Owner role cannot be assigned through this interface" });
+      }
+      
+      // Check if we're modifying a system_owner - nobody can change this via UI
       const targetProfile = await storage.getUserProfile(req.params.id);
-      if (targetProfile?.role === "owner" && !isSystemAdmin) {
-        return res.status(403).json({ message: "Only system admins can modify system admin users" });
+      if (targetProfile?.role === "system_owner") {
+        return res.status(403).json({ message: "System Owner role cannot be modified" });
+      }
+      
+      // Only system owners can demote a system admin (owner)
+      if (targetProfile?.role === "owner" && !isSystemOwner) {
+        return res.status(403).json({ message: "Only System Owners can modify System Admin users" });
       }
 
       const profile = await storage.updateUserRole(req.params.id, role);

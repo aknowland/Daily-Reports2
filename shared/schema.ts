@@ -8,7 +8,7 @@ export * from "./models/auth";
 import { users, type User } from "./models/auth";
 
 // Enums
-export const userRoleEnum = pgEnum("user_role", ["inspector", "admin", "owner"]);
+export const userRoleEnum = pgEnum("user_role", ["inspector", "admin", "owner", "system_owner"]);
 export const weatherTypeEnum = pgEnum("weather_type", ["clear", "cloudy", "rain", "wind", "heat", "cold"]);
 export const reportStatusEnum = pgEnum("report_status", ["draft", "submitted"]);
 export const distributionStatusEnum = pgEnum("distribution_status", ["pending", "sent", "failed"]);
