@@ -58,13 +58,18 @@ const isAdmin: RequestHandler = async (req: any, res, next) => {
 // Helper to check if user is System Owner (highest level)
 // System Owner can manage System Admins
 const isSystemOwner = (profile: any): boolean => {
-  return profile?.role === "owner";
+  return profile?.role === "system_owner";
 };
 
-// Helper to check if user is effectively acting as system admin (or owner)
-// Returns true only if user has admin/owner role AND has admin mode enabled (not in inspector mode)
+// Helper to check if user is System Admin (owner role) or higher (system_owner)
+const isSystemAdmin = (profile: any): boolean => {
+  return profile?.role === "owner" || profile?.role === "system_owner";
+};
+
+// Helper to check if user is effectively acting as system admin (or system owner)
+// Returns true only if user has admin/owner/system_owner role AND has admin mode enabled (not in inspector mode)
 const isEffectiveSystemAdmin = (profile: any): boolean => {
-  return (profile?.role === "admin" || profile?.role === "owner") && profile?.preferAdminMode !== false;
+  return (profile?.role === "admin" || profile?.role === "owner" || profile?.role === "system_owner") && profile?.preferAdminMode !== false;
 };
 
 // Knowland Construction Services - members bypass all subscription limits
