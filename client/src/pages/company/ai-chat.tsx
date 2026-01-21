@@ -9,7 +9,7 @@ import { PageLayout } from "@/components/layout/page-layout";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { MessageSquare, Send, Loader2, Plus, Trash2 } from "lucide-react";
+import { MessageSquare, Send, Loader2 } from "lucide-react";
 
 interface Message {
   id: string;
@@ -37,16 +37,6 @@ export default function AIChatPage() {
   // Wait for companies to load before determining access
   const canAccessChat = !isCompaniesLoading && (isCompanyAdmin || isAdmin);
 
-  const { data: conversations = [], isLoading: conversationsLoading } = useQuery<Conversation[]>({
-    queryKey: ["/api/ai-chat/conversations", activeCompany?.id],
-    queryFn: async () => {
-      const res = await fetch("/api/ai-chat/conversations", { credentials: "include" });
-      if (!res.ok) throw new Error("Failed to fetch conversations");
-      return res.json();
-    },
-    enabled: canAccessChat,
-  });
-
   const { data: conversationData, isLoading: messagesLoading } = useQuery<{
     conversation: Conversation;
     messages: Message[];
@@ -71,19 +61,6 @@ export default function AIChatPage() {
     },
     onError: () => {
       toast({ title: "Failed to create conversation", variant: "destructive" });
-    },
-  });
-
-  const deleteConversationMutation = useMutation({
-    mutationFn: async (id: string) => {
-      await apiRequest("DELETE", `/api/ai-chat/conversations/${id}`);
-    },
-    onSuccess: () => {
-      setActiveConversationId(null);
-      queryClient.invalidateQueries({ queryKey: ["/api/ai-chat/conversations"] });
-    },
-    onError: () => {
-      toast({ title: "Failed to delete conversation", variant: "destructive" });
     },
   });
 
@@ -163,10 +140,6 @@ export default function AIChatPage() {
     }
   };
 
-  const handleNewConversation = () => {
-    setActiveConversationId(null);
-  };
-
   if (!canAccessChat) {
     return (
       <PageLayout title="AI Assistant">
@@ -186,81 +159,12 @@ export default function AIChatPage() {
       </Helmet>
       <PageLayout title="AI Assistant">
         <div className="flex gap-4 h-[calc(100vh-200px)]">
-          <Card className="w-80 flex flex-col">
-            <CardHeader className="pb-2 flex flex-row items-center justify-between gap-2">
-              <CardTitle className="text-base">Conversations</CardTitle>
-              <Button
-                data-testid="button-new-chat"
-                size="icon"
-                variant="ghost"
-                onClick={handleNewConversation}
-                title="New conversation"
-              >
-                <Plus className="h-4 w-4" />
-              </Button>
-            </CardHeader>
-            <CardContent className="flex-1 overflow-hidden p-0">
-              <ScrollArea className="h-full">
-                {conversationsLoading ? (
-                  <div className="flex justify-center py-4">
-                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                  </div>
-                ) : conversations.length === 0 ? (
-                  <p className="text-center text-muted-foreground text-sm py-4 px-3">
-                    No conversations yet
-                  </p>
-                ) : (
-                  <div className="p-2 space-y-1">
-                    {conversations.map((conv) => (
-                      <div
-                        key={conv.id}
-                        data-testid={`conversation-item-${conv.id}`}
-                        className={`flex items-center gap-2 p-2 rounded cursor-pointer ${
-                          activeConversationId === conv.id
-                            ? "bg-primary/10"
-                            : "hover-elevate"
-                        }`}
-                        onClick={() => setActiveConversationId(conv.id)}
-                      >
-                        <MessageSquare className="h-4 w-4 flex-shrink-0" />
-                        <span className="flex-1 truncate text-sm">{conv.title}</span>
-                        <Button
-                          data-testid={`button-delete-${conv.id}`}
-                          size="icon"
-                          variant="ghost"
-                          className="h-6 w-6 opacity-0 group-hover:opacity-100"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            deleteConversationMutation.mutate(conv.id);
-                          }}
-                        >
-                          <Trash2 className="h-3 w-3" />
-                        </Button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </ScrollArea>
-            </CardContent>
-          </Card>
-
           <Card className="flex-1 flex flex-col">
-            <CardHeader className="pb-2 border-b flex flex-row items-center justify-between gap-2">
+            <CardHeader className="pb-2 border-b">
               <CardTitle className="text-base flex items-center gap-2">
                 <MessageSquare className="h-5 w-5" />
-                {conversationData?.conversation?.title || "New Conversation"}
+                AI Assistant
               </CardTitle>
-              {activeConversationId && (
-                <Button
-                  data-testid="button-delete-current"
-                  size="icon"
-                  variant="ghost"
-                  onClick={() => deleteConversationMutation.mutate(activeConversationId)}
-                  title="Delete conversation"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              )}
             </CardHeader>
             <CardContent className="flex-1 overflow-hidden p-0 flex flex-col">
               <ScrollArea className="flex-1 p-4">

@@ -20,7 +20,7 @@ const isCompanyAdminOrHigher = async (userId: string, companyId: string) => {
   if (!profile) return false;
   
   // System Owner or System Admin - always has access
-  if (profile.role === "system_owner" || profile.role === "owner") {
+  if (profile.role === "system_owner" || profile.role === "admin" || profile.role === "owner") {
     return true;
   }
   
