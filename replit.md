@@ -35,6 +35,7 @@ The application is built with a modern web stack, utilizing **React, TypeScript,
 - **Billing Features**: Generation of timesheet PDFs, client invoices, combined reports, and inspector invoices.
 - **Clients Management**: Full CRUD for managing company clients with reusable ClientSelect dropdown for inline client creation in contracts/proposals forms. Clicking a client card navigates to filtered projects view.
 - **IOR Agreements**: Inspector of Record agreements for setting inspector pay terms on specific projects. Company admins can create, edit, delete agreements and generate professional PDF documents. Access restricted to company admins only.
+- **Project Dashboard**: Visual dashboard for each contract showing schedule progress (based on start/substantial completion dates) and budget tracking (auto-calculated from invoices with manual override option). Accessible via "Dashboard" button on contract cards.
 
 ## Technical Notes
 
