@@ -1146,6 +1146,119 @@ export async function registerRoutes(
     }
   });
 
+  // Get contract dashboard data (schedule progress + budget)
+  app.get("/api/contracts/:id/dashboard", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const contract = await storage.getContract(req.params.id);
+      
+      if (!contract) {
+        return res.status(404).json({ message: "Contract not found" });
+      }
+      
+      const profile = await storage.getUserProfile(userId);
+      const isMember = await storage.isUserMemberOfCompany(contract.companyId, userId);
+      const isSysAdmin = isEffectiveSystemAdmin(profile);
+      
+      if (!isMember && !isSysAdmin) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      // Calculate schedule progress
+      const now = new Date();
+      let scheduleProgress = 0;
+      let daysRemaining: number | null = null;
+      let daysOverdue: number | null = null;
+      let scheduleStatus: 'not_started' | 'on_track' | 'warning' | 'overdue' | 'complete' = 'not_started';
+      
+      if (contract.startDate && contract.substantialCompletionDate) {
+        const startDate = new Date(contract.startDate);
+        const endDate = new Date(contract.substantialCompletionDate);
+        const totalDuration = endDate.getTime() - startDate.getTime();
+        const elapsed = now.getTime() - startDate.getTime();
+        
+        if (now < startDate) {
+          scheduleProgress = 0;
+          scheduleStatus = 'not_started';
+          daysRemaining = Math.ceil((endDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+        } else if (now > endDate) {
+          scheduleProgress = 100;
+          daysOverdue = Math.ceil((now.getTime() - endDate.getTime()) / (1000 * 60 * 60 * 24));
+          scheduleStatus = contract.status === 'substantial_completion' || contract.status === 'final_closeout' 
+            ? 'complete' 
+            : 'overdue';
+        } else {
+          scheduleProgress = Math.min(100, Math.max(0, (elapsed / totalDuration) * 100));
+          daysRemaining = Math.ceil((endDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+          
+          // Warning if more than 80% of time elapsed
+          if (scheduleProgress >= 80) {
+            scheduleStatus = 'warning';
+          } else {
+            scheduleStatus = 'on_track';
+          }
+        }
+      }
+      
+      // Calculate budget
+      const budgetSummary = await storage.getContractBudgetSummary(req.params.id);
+      const totalBudget = contract.budgetOverride 
+        ? parseFloat(contract.budgetOverride) 
+        : parseFloat(contract.currentValue || contract.originalValue || '0');
+      
+      const budgetSpent = budgetSummary.totalBilled;
+      const budgetProgress = totalBudget > 0 ? (budgetSpent / totalBudget) * 100 : 0;
+      const budgetRemaining = totalBudget - budgetSpent;
+      
+      let budgetStatus: 'under' | 'on_track' | 'warning' | 'over' = 'on_track';
+      if (budgetProgress >= 100) {
+        budgetStatus = 'over';
+      } else if (budgetProgress >= 80) {
+        budgetStatus = 'warning';
+      } else if (budgetProgress < 50) {
+        budgetStatus = 'under';
+      }
+      
+      res.json({
+        contract: {
+          id: contract.id,
+          name: contract.name,
+          contractNumber: contract.contractNumber,
+          status: contract.status,
+          startDate: contract.startDate,
+          substantialCompletionDate: contract.substantialCompletionDate,
+          originalValue: contract.originalValue,
+          currentValue: contract.currentValue,
+          budgetOverride: contract.budgetOverride,
+        },
+        schedule: {
+          progress: Math.round(scheduleProgress * 100) / 100,
+          status: scheduleStatus,
+          daysRemaining,
+          daysOverdue,
+          startDate: contract.startDate,
+          endDate: contract.substantialCompletionDate,
+        },
+        budget: {
+          totalBudget,
+          spent: budgetSpent,
+          remaining: budgetRemaining,
+          progress: Math.round(budgetProgress * 100) / 100,
+          status: budgetStatus,
+          hours: {
+            regular: budgetSummary.regularHours,
+            overtime: budgetSummary.overtimeHours,
+            premium: budgetSummary.premiumHours,
+            total: budgetSummary.totalHours,
+          },
+        },
+      });
+    } catch (error) {
+      console.error("Error fetching contract dashboard:", error);
+      res.status(500).json({ message: "Failed to fetch contract dashboard" });
+    }
+  });
+
   // Helper to preprocess contract data - converts date strings to Date objects
   const preprocessContractData = (data: any) => {
     const dateFields = ['bidReleaseDate', 'bidDueDate', 'awardDate', 'startDate', 'substantialCompletionDate', 'finalCloseoutDate'];
