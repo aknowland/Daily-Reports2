@@ -186,7 +186,10 @@ export default function AIChatPage() {
               if (data === "[DONE]") continue;
               try {
                 const parsed = JSON.parse(data);
-                if (parsed.content) {
+                if (parsed.action) {
+                  // Show action status (e.g., "Executing: create_proposal...")
+                  setStreamingContent(parsed.action);
+                } else if (parsed.content) {
                   fullContent += parsed.content;
                   setStreamingContent(fullContent);
                 }
