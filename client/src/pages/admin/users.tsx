@@ -49,7 +49,7 @@ type CompanyMemberWithCompany = CompanyMember & { company: Company };
 
 export default function AdminUsersPage() {
   const { toast } = useToast();
-  const { isOwner: currentUserIsOwner } = useAuth();
+  const { isOwner: currentUserIsOwner, user: currentUser } = useAuth();
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedUser, setSelectedUser] = useState<UserWithProfile | null>(null);
   const [selectedProjectIds, setSelectedProjectIds] = useState<string[]>([]);
@@ -90,7 +90,7 @@ export default function AdminUsersPage() {
   }, [userProjectIds, projectDialogOpen]);
 
   const updateRoleMutation = useMutation({
-    mutationFn: async ({ userId, role }: { userId: string; role: "inspector" | "admin" }) => {
+    mutationFn: async ({ userId, role }: { userId: string; role: "inspector" | "admin" | "owner" }) => {
       return apiRequest("PATCH", `/api/admin/users/${userId}/role`, { role });
     },
     onSuccess: () => {
@@ -409,13 +409,13 @@ export default function AdminUsersPage() {
                         {user.profile?.role === "owner" && (
                           <Badge variant="secondary" className="bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300 no-default-hover-elevate no-default-active-elevate">
                             <Shield className="w-3 h-3 mr-1" />
-                            Owner
+                            System Admin
                           </Badge>
                         )}
                         {user.profile?.role === "admin" && (
                           <Badge variant="secondary" className="bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300 no-default-hover-elevate no-default-active-elevate">
                             <Shield className="w-3 h-3 mr-1" />
-                            Sys Admin
+                            Company Admin
                           </Badge>
                         )}
                       </div>
@@ -444,10 +444,10 @@ export default function AdminUsersPage() {
                       
                       <Select
                         value={user.profile?.role || "inspector"}
-                        onValueChange={(role: "inspector" | "admin") => 
+                        onValueChange={(role: "inspector" | "admin" | "owner") => 
                           updateRoleMutation.mutate({ userId: user.id, role })
                         }
-                        disabled={updateRoleMutation.isPending || user.profile?.role === "owner"}
+                        disabled={updateRoleMutation.isPending || (user.id === currentUser?.id && user.profile?.role === "owner")}
                       >
                         <SelectTrigger 
                           className="w-32"
@@ -456,25 +456,23 @@ export default function AdminUsersPage() {
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          {user.profile?.role === "owner" && (
-                            <SelectItem value="owner">
-                              <div className="flex items-center gap-2">
-                                <Shield className="w-4 h-4" />
-                                Owner
-                              </div>
-                            </SelectItem>
-                          )}
                           <SelectItem value="inspector">
                             <div className="flex items-center gap-2">
                               <HardHat className="w-4 h-4" />
                               Inspector
                             </div>
                           </SelectItem>
+                          <SelectItem value="admin">
+                            <div className="flex items-center gap-2">
+                              <Shield className="w-4 h-4" />
+                              Company Admin
+                            </div>
+                          </SelectItem>
                           {currentUserIsOwner && (
-                            <SelectItem value="admin">
+                            <SelectItem value="owner">
                               <div className="flex items-center gap-2">
-                                <Shield className="w-4 h-4" />
-                                Sys Admin
+                                <Shield className="w-4 h-4 text-primary" />
+                                System Admin
                               </div>
                             </SelectItem>
                           )}
