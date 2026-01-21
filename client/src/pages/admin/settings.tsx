@@ -175,7 +175,9 @@ export default function AdminSettingsPage() {
     }
   };
 
-  if (!activeCompany && !companyLoading) {
+  // Only show "no company" message if user is not a system admin and has no company
+  // System admins can still access this page to manage other system admins
+  if (!activeCompany && !companyLoading && !isSystemAdmin) {
     return (
       <PageLayout title="Settings" isAdmin={isAdmin}>
         <div className="container px-4 py-6 mx-auto max-w-2xl">
