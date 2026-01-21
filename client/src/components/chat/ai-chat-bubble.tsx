@@ -24,7 +24,7 @@ interface Conversation {
 }
 
 export function AIChatBubble() {
-  const { isCompanyAdmin, isAdmin, activeCompany } = useAuth();
+  const { isCompanyAdmin, isAdmin, activeCompany, isCompaniesLoading } = useAuth();
   const { toast } = useToast();
   const [isOpen, setIsOpen] = useState(false);
   const [inputValue, setInputValue] = useState("");
@@ -35,7 +35,8 @@ export function AIChatBubble() {
   const scrollAreaRef = useRef<HTMLDivElement>(null);
 
   // Allow access for Company Admins or any System Admin level (admin, owner, system_owner)
-  const canAccessChat = isCompanyAdmin || isAdmin;
+  // Wait for companies to load before determining access
+  const canAccessChat = !isCompaniesLoading && (isCompanyAdmin || isAdmin);
 
   const { data: conversations = [], isLoading: conversationsLoading } = useQuery<Conversation[]>({
     queryKey: ["/api/ai-chat/conversations", activeCompany?.id],
