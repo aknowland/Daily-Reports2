@@ -1219,6 +1219,23 @@ export async function registerRoutes(
         budgetStatus = 'under';
       }
       
+      // Fetch additional dashboard data
+      const attachments = await storage.getContractAttachments(req.params.id);
+      const contractProjects = await storage.getProjectsByContract(req.params.id);
+      
+      // Get IOR agreements for all projects
+      const iorAgreements: any[] = [];
+      for (const project of contractProjects) {
+        const projectAgreements = await storage.getIorAgreementsByProject(project.id);
+        iorAgreements.push(...projectAgreements.map(a => ({
+          ...a,
+          projectName: project.name,
+        })));
+      }
+      
+      // Get daily reports for all projects under this contract
+      const dailyReports = await storage.getReportsByContractProjects(req.params.id);
+      
       res.json({
         contract: {
           id: contract.id,
@@ -1230,6 +1247,7 @@ export async function registerRoutes(
           originalValue: contract.originalValue,
           currentValue: contract.currentValue,
           budgetOverride: contract.budgetOverride,
+          notes: contract.notes,
         },
         schedule: {
           progress: Math.round(scheduleProgress * 100) / 100,
@@ -1252,6 +1270,51 @@ export async function registerRoutes(
             total: budgetSummary.totalHours,
           },
         },
+        bidSchedule: {
+          bidReleaseDate: contract.bidReleaseDate,
+          bidDueDate: contract.bidDueDate,
+          awardDate: contract.awardDate,
+          startDate: contract.startDate,
+          substantialCompletionDate: contract.substantialCompletionDate,
+          finalCloseoutDate: contract.finalCloseoutDate,
+        },
+        billingRates: {
+          client: {
+            regular: contract.regularRate,
+            overtime: contract.overtimeRate,
+            premium: contract.premiumRate,
+          },
+          inspectorAgreements: iorAgreements.map(a => ({
+            id: a.id,
+            projectName: a.projectName,
+            inspectorName: a.inspector ? `${a.inspector.firstName || ''} ${a.inspector.lastName || ''}`.trim() : 'Unknown',
+            rate: a.rate,
+            terms: a.terms,
+          })),
+        },
+        attachments: attachments.map(a => ({
+          id: a.id,
+          fileName: a.fileName,
+          filePath: a.filePath,
+          fileType: a.fileType,
+          fileSize: a.fileSize,
+          createdAt: a.createdAt,
+        })),
+        dailyReports: dailyReports.slice(0, 50).map(r => ({
+          id: r.id,
+          date: r.date,
+          projectName: r.projectName,
+          status: r.status,
+          weatherType: r.weatherType,
+          regularHours: r.regularHours,
+          otHours: r.otHours,
+          signedAt: r.signedAt,
+        })),
+        projects: contractProjects.map(p => ({
+          id: p.id,
+          name: p.name,
+          projectNumber: p.projectNumber,
+        })),
       });
     } catch (error) {
       console.error("Error fetching contract dashboard:", error);
