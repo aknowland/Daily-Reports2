@@ -69,10 +69,11 @@ export function useAuth() {
   const isCompanyAdmin = activeCompanyMembership?.role === "admin";
   const activeCompany = activeCompanyMembership?.company;
   
-  // Role checks - owner has all admin privileges
+  // Role checks - system_owner is highest, owner is System Admin, admin is legacy
   const userRole = user?.profile?.role;
-  const isOwner = userRole === "owner";
-  const isSystemAdmin = userRole === "admin" || isOwner;
+  const isSystemOwner = userRole === "system_owner";
+  const isOwner = userRole === "owner" || isSystemOwner; // System Admin (includes System Owner)
+  const isSystemAdmin = userRole === "admin" || isOwner; // includes all higher roles
   
   // Effective admin checks respect preferAdminMode toggle (inspector mode)
   const preferAdminMode = user?.profile?.preferAdminMode;
@@ -85,8 +86,9 @@ export function useAuth() {
     isLoading,
     isCompaniesLoading,
     isAuthenticated: !!user,
-    isOwner,
-    isAdmin: isSystemAdmin, // includes both admin and owner roles
+    isSystemOwner, // system_owner role - highest level
+    isOwner, // owner role (System Admin) - includes System Owner
+    isAdmin: isSystemAdmin, // includes admin, owner, system_owner roles
     isCompanyAdmin,
     isEffectiveSystemAdmin,
     isEffectiveCompanyAdmin,
