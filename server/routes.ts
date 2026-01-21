@@ -3670,23 +3670,35 @@ export async function registerRoutes(
       console.log(`PDF Debug: After signature section - pages=${postSignaturePages}`);
       
       if (photos.length > 0) {
-        doc.addPage();
-        console.log(`PDF Debug: Added page 2 for photos, now pages=${doc.bufferedPageRange().count}`);
-        doc.fontSize(12).font('Helvetica-Bold').text('PHOTO DOCUMENTATION', startX, 25, { lineBreak: false });
-        doc.fontSize(9).font('Helvetica').text(`${projectName} - ${dateStr}`, startX, 42, { lineBreak: false });
-        
         const photoGap = 12;
         const photoWidth = (pageWidth - photoGap) / 2;
         const photoHeight = 160;
         const captionHeight = 18;
+        const rowHeight = photoHeight + captionHeight + 8;
+        const headerHeight = 55; // Space for header on each photo page
         
-        let currentPhotoY = 55;
+        // Helper to add photo page header
+        const addPhotoPageHeader = () => {
+          doc.fontSize(12).font('Helvetica-Bold').text('PHOTO DOCUMENTATION', startX, 25, { lineBreak: false });
+          doc.fontSize(9).font('Helvetica').text(`${projectName} - ${dateStr}`, startX, 42, { lineBreak: false });
+        };
+        
+        // Start first photo page
+        doc.addPage();
+        console.log(`PDF Debug: Added page 2 for photos, now pages=${doc.bufferedPageRange().count}`);
+        addPhotoPageHeader();
+        
+        let currentPhotoY = headerHeight;
         let currentPhotoX = startX;
         
         for (let i = 0; i < photos.length; i++) {
-          // Stop if we would need page 3 - limit to 2 pages total
-          if (currentPhotoY + photoHeight + captionHeight > doc.page.height - 35) {
-            break; // Don't add more pages, stop adding photos
+          // Check if we need a new page BEFORE starting a new row (not mid-row)
+          // Only check when starting a new row (left column position)
+          if (currentPhotoX === startX && currentPhotoY + rowHeight > doc.page.height - 35) {
+            doc.addPage();
+            console.log(`PDF Debug: Added additional page for photos, now pages=${doc.bufferedPageRange().count}`);
+            addPhotoPageHeader();
+            currentPhotoY = headerHeight;
           }
           
           const photo = photos[i];
@@ -3722,24 +3734,22 @@ export async function registerRoutes(
             }
           }
           
+          // Move to next position in grid (2 photos per row)
           if (currentPhotoX === startX) {
             currentPhotoX = startX + photoWidth + photoGap;
           } else {
             currentPhotoX = startX;
-            currentPhotoY += photoHeight + captionHeight + 8;
+            currentPhotoY += rowHeight;
           }
         }
       }
 
-      // ===== FOOTER ON PAGES 1 AND 2 =====
+      // ===== FOOTER ON ALL PAGES =====
       const range = doc.bufferedPageRange();
       const totalPages = range.count;
       
-      // DEBUG: Log page count to identify source of extra pages
-      console.log(`PDF Generation Debug: Total pages before footer = ${totalPages}, expected max = 2`);
-      if (totalPages > 2) {
-        console.error(`WARNING: PDF has ${totalPages} pages. Extra pages detected!`);
-      }
+      // DEBUG: Log page count
+      console.log(`PDF Generation Debug: Total pages = ${totalPages} (page 1 = report, remaining = photos)`);
       
       
       doc.end();
