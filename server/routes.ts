@@ -2496,8 +2496,7 @@ export async function registerRoutes(
       
       doc.fontSize(9).font('Helvetica');
       contractTerms.forEach((term, index) => {
-        doc.font('Helvetica-Bold').text(`${index + 1}.`, startX, currentY);
-        doc.font('Helvetica').text(term, startX + 20, currentY, { width: pageWidth - 20, lineGap: 1 });
+        doc.text(`${index + 1}. ${term}`, startX, currentY, { width: pageWidth, lineGap: 1 });
         currentY = doc.y + 8;
         
         if (currentY > doc.page.height - 100) {
