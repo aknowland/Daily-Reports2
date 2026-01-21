@@ -15,6 +15,7 @@ import { PDFDocument as PDFLibDocument } from "pdf-lib";
 import { format } from "date-fns";
 import { speechToText, openai } from "./replit_integrations/audio/client";
 import { generateTimesheetPdf, aggregateReportsToTimesheetData, generateInvoicePdf, InvoiceData, generateInspectorInvoicePdf, InspectorInvoiceData } from "./billing-pdf";
+import { registerChatRoutes } from "./replit_integrations/chat";
 
 // Initialize object storage service for persistent file storage
 const objectStorage = new ObjectStorageService();
@@ -204,6 +205,9 @@ export async function registerRoutes(
   
   // Register object storage routes for persistent file storage
   registerObjectStorageRoutes(app);
+  
+  // Register AI chat routes
+  registerChatRoutes(app);
 
   // Serve object storage files (authenticated access with ownership check)
   app.use("/objects", isAuthenticated, async (req: any, res, next) => {

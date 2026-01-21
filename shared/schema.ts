@@ -5,6 +5,7 @@ import { z } from "zod";
 
 // Re-export auth models
 export * from "./models/auth";
+export * from "./models/chat";
 import { users, type User } from "./models/auth";
 
 // Enums
@@ -675,28 +676,7 @@ export type ProposalWithDetails = Proposal & {
   client?: Client;
 };
 
-// Chat tables for AI integrations
-export const conversations = pgTable("conversations", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  title: text("title").notNull(),
-  createdAt: timestamp("created_at").defaultNow(),
-});
-
-export const messages = pgTable("messages", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  conversationId: varchar("conversation_id").references(() => conversations.id, { onDelete: "cascade" }).notNull(),
-  role: text("role").notNull(),
-  content: text("content").notNull(),
-  createdAt: timestamp("created_at").defaultNow(),
-});
-
-export const insertConversationSchema = createInsertSchema(conversations).omit({ id: true, createdAt: true });
-export const insertMessageSchema = createInsertSchema(messages).omit({ id: true, createdAt: true });
-
-export type Conversation = typeof conversations.$inferSelect;
-export type InsertConversation = z.infer<typeof insertConversationSchema>;
-export type Message = typeof messages.$inferSelect;
-export type InsertMessage = z.infer<typeof insertMessageSchema>;
+// Chat tables are now in ./models/chat.ts and re-exported above
 
 // IOR (Inspector of Record) Agreements - sets terms for inspector pay
 export const iorAgreements = pgTable("ior_agreements", {
