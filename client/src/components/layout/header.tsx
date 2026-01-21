@@ -34,7 +34,7 @@ interface HeaderProps {
 }
 
 export function Header({ title = "Field Daily Reports" }: HeaderProps) {
-  const { user, isLoading, isAdmin, isOwner, isCompanyAdmin, activeCompany, logout, profile } = useAuth();
+  const { user, isLoading, isAdmin, isCompanyAdmin, activeCompany, logout, profile } = useAuth();
   const [location] = useLocation();
   const [sheetOpen, setSheetOpen] = useState(false);
   const [sysAdminOpen, setSysAdminOpen] = useState(false);

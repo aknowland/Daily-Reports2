@@ -58,9 +58,8 @@ export default function AdminSettingsPage() {
     }
   }, [activeCompany]);
 
-  const isAdmin = user?.profile?.role === "admin";
   const isSystemOwner = user?.profile?.role === "system_owner";
-  const isSystemAdmin = user?.profile?.role === "owner" || isSystemOwner;
+  const isSystemAdmin = user?.profile?.role === "admin" || user?.profile?.role === "owner" || isSystemOwner;
   const canEdit = activeCompany?.isCompanyAdmin === true;
 
   // Only fetch users if the current user is a system admin
@@ -397,8 +396,7 @@ export default function AdminSettingsPage() {
                   {allUsers.map((u) => {
                     const isCurrentUser = u.id === user?.id;
                     const userIsSystemOwner = u.profile?.role === "system_owner";
-                    const userIsOwner = u.profile?.role === "owner";
-                    const userIsSystemAdmin = userIsOwner || userIsSystemOwner;
+                    const userIsSystemAdmin = u.profile?.role === "admin" || u.profile?.role === "owner" || userIsSystemOwner;
                     const displayName = u.profile?.firstName && u.profile?.lastName
                       ? `${u.profile.firstName} ${u.profile.lastName}`
                       : u.firstName && u.lastName 
@@ -412,10 +410,10 @@ export default function AdminSettingsPage() {
                         data-testid={`user-row-${u.id}`}
                       >
                         <div className="flex items-center gap-3 min-w-0">
-                          <div className={`p-2 rounded-full ${userIsSystemOwner ? "bg-amber-100 dark:bg-amber-900/30" : userIsOwner ? "bg-primary/10" : "bg-muted"}`}>
+                          <div className={`p-2 rounded-full ${userIsSystemOwner ? "bg-amber-100 dark:bg-amber-900/30" : userIsSystemAdmin ? "bg-primary/10" : "bg-muted"}`}>
                             {userIsSystemOwner ? (
                               <Shield className="w-4 h-4 text-amber-600 dark:text-amber-400" />
-                            ) : userIsOwner ? (
+                            ) : userIsSystemAdmin ? (
                               <ShieldCheck className="w-4 h-4 text-primary" />
                             ) : (
                               <Users className="w-4 h-4 text-muted-foreground" />
@@ -441,19 +439,19 @@ export default function AdminSettingsPage() {
                               </span>
                               {isSystemOwner ? (
                                 <Switch
-                                  checked={userIsOwner}
+                                  checked={userIsSystemAdmin}
                                   disabled={isCurrentUser || userIsSystemOwner || updateUserRoleMutation.isPending}
                                   onCheckedChange={(checked) => {
                                     updateUserRoleMutation.mutate({
                                       userId: u.id,
-                                      role: checked ? "owner" : "inspector",
+                                      role: checked ? "admin" : "inspector",
                                     });
                                   }}
                                   data-testid={`switch-admin-${u.id}`}
                                 />
                               ) : (
                                 <span className="text-xs text-muted-foreground px-2">
-                                  {userIsOwner ? "Yes" : "No"}
+                                  {userIsSystemAdmin ? "Yes" : "No"}
                                 </span>
                               )}
                             </>

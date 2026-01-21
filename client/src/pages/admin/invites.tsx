@@ -79,7 +79,7 @@ export default function AdminInvitesPage() {
     address: "",
   });
 
-  const isSystemAdmin = (profile?.role === "admin" || profile?.role === "owner") && profile?.preferAdminMode !== false;
+  const isSystemAdmin = (profile?.role === "admin" || profile?.role === "owner" || profile?.role === "system_owner") && profile?.preferAdminMode !== false;
 
   const { data: invites, isLoading, error } = useQuery<InviteWithDetails[]>({
     queryKey: ["/api/admin/invites"],
