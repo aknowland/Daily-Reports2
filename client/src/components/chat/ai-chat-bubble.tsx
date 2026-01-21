@@ -38,9 +38,6 @@ export function AIChatBubble() {
   // isAdmin includes system-level admin roles (admin, owner, system_owner)
   // isCompanyAdmin is true when user is an admin of their active company
   const canAccessChat = isCompanyAdmin || isAdmin;
-  
-  // Debug: log access state
-  console.log("Chat access:", { isCompanyAdmin, isAdmin, canAccessChat, isCompaniesLoading });
 
   const { data: conversations = [], isLoading: conversationsLoading } = useQuery<Conversation[]>({
     queryKey: ["/api/ai-chat/conversations", activeCompany?.id],
