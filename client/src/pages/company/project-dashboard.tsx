@@ -19,6 +19,14 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
   ArrowLeft,
   Calendar,
   DollarSign,
@@ -26,10 +34,15 @@ import {
   AlertTriangle,
   CheckCircle2,
   TrendingUp,
-  ChevronRight,
+  FileText,
+  Paperclip,
+  ListChecks,
+  Users,
+  ClipboardList,
+  Download,
+  ExternalLink,
 } from "lucide-react";
 import { useState } from "react";
-import { Progress } from "@/components/ui/progress";
 import { format } from "date-fns";
 
 type DashboardData = {
@@ -43,6 +56,7 @@ type DashboardData = {
     originalValue: string | null;
     currentValue: string | null;
     budgetOverride: string | null;
+    notes: string | null;
   };
   schedule: {
     progress: number;
@@ -65,6 +79,51 @@ type DashboardData = {
       total: number;
     };
   };
+  bidSchedule: {
+    bidReleaseDate: string | null;
+    bidDueDate: string | null;
+    awardDate: string | null;
+    startDate: string | null;
+    substantialCompletionDate: string | null;
+    finalCloseoutDate: string | null;
+  };
+  billingRates: {
+    client: {
+      regular: string | null;
+      overtime: string | null;
+      premium: string | null;
+    };
+    inspectorAgreements: {
+      id: string;
+      projectName: string;
+      inspectorName: string;
+      rate: string | null;
+      terms: string | null;
+    }[];
+  };
+  attachments: {
+    id: string;
+    fileName: string;
+    filePath: string;
+    fileType: string | null;
+    fileSize: number | null;
+    createdAt: string;
+  }[];
+  dailyReports: {
+    id: string;
+    date: string;
+    projectName?: string;
+    status: string;
+    weatherType: string | null;
+    regularHours: string | null;
+    otHours: string | null;
+    signedAt: string | null;
+  }[];
+  projects: {
+    id: string;
+    name: string;
+    projectNumber: string;
+  }[];
 };
 
 const getScheduleStatusConfig = (status: string) => {
@@ -98,13 +157,37 @@ const getBudgetStatusConfig = (status: string) => {
   }
 };
 
-const formatCurrency = (amount: number) => {
+const formatCurrency = (amount: number | string | null) => {
+  if (amount === null || amount === undefined) return '-';
+  const num = typeof amount === 'string' ? parseFloat(amount) : amount;
+  if (isNaN(num)) return '-';
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency: 'USD',
     minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(amount);
+    maximumFractionDigits: 2,
+  }).format(num);
+};
+
+const formatDate = (dateStr: string | null) => {
+  if (!dateStr) return '-';
+  try {
+    return format(new Date(dateStr), 'MMM d, yyyy');
+  } catch {
+    return '-';
+  }
+};
+
+const formatFileSize = (bytes: number | null) => {
+  if (!bytes) return '-';
+  const units = ['B', 'KB', 'MB', 'GB'];
+  let size = bytes;
+  let unitIndex = 0;
+  while (size >= 1024 && unitIndex < units.length - 1) {
+    size /= 1024;
+    unitIndex++;
+  }
+  return `${size.toFixed(1)} ${units[unitIndex]}`;
 };
 
 export default function ProjectDashboard() {
@@ -172,6 +255,8 @@ export default function ProjectDashboard() {
             <Skeleton className="h-64" />
             <Skeleton className="h-64" />
           </div>
+          <Skeleton className="h-48" />
+          <Skeleton className="h-48" />
         </div>
       </PageLayout>
     );
@@ -233,7 +318,7 @@ export default function ProjectDashboard() {
         <div className="grid gap-6 md:grid-cols-2">
           <Card>
             <CardHeader>
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
                 <CardTitle className="flex items-center gap-2">
                   <Calendar className="h-5 w-5" />
                   Schedule Progress
@@ -265,17 +350,13 @@ export default function ProjectDashboard() {
                 <div>
                   <p className="text-sm text-muted-foreground">Start Date</p>
                   <p className="font-medium" data-testid="text-start-date">
-                    {dashboard.schedule.startDate 
-                      ? format(new Date(dashboard.schedule.startDate), 'MMM d, yyyy')
-                      : 'Not set'}
+                    {formatDate(dashboard.schedule.startDate)}
                   </p>
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Completion Date</p>
                   <p className="font-medium" data-testid="text-end-date">
-                    {dashboard.schedule.endDate 
-                      ? format(new Date(dashboard.schedule.endDate), 'MMM d, yyyy')
-                      : 'Not set'}
+                    {formatDate(dashboard.schedule.endDate)}
                   </p>
                 </div>
               </div>
@@ -302,7 +383,7 @@ export default function ProjectDashboard() {
 
           <Card>
             <CardHeader>
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
                 <CardTitle className="flex items-center gap-2">
                   <DollarSign className="h-5 w-5" />
                   Budget Status
@@ -391,6 +472,247 @@ export default function ProjectDashboard() {
             </CardContent>
           </Card>
         </div>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <ListChecks className="h-5 w-5" />
+              Bid Schedule
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-4">
+              <div>
+                <p className="text-xs text-muted-foreground">Bid Release</p>
+                <p className="font-medium text-sm" data-testid="text-bid-release-date">
+                  {formatDate(dashboard.bidSchedule.bidReleaseDate)}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Bid Due</p>
+                <p className="font-medium text-sm" data-testid="text-bid-due-date">
+                  {formatDate(dashboard.bidSchedule.bidDueDate)}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Award Date</p>
+                <p className="font-medium text-sm" data-testid="text-award-date">
+                  {formatDate(dashboard.bidSchedule.awardDate)}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Start Date</p>
+                <p className="font-medium text-sm" data-testid="text-schedule-start-date">
+                  {formatDate(dashboard.bidSchedule.startDate)}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Substantial Completion</p>
+                <p className="font-medium text-sm" data-testid="text-substantial-completion-date">
+                  {formatDate(dashboard.bidSchedule.substantialCompletionDate)}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Final Closeout</p>
+                <p className="font-medium text-sm" data-testid="text-final-closeout-date">
+                  {formatDate(dashboard.bidSchedule.finalCloseoutDate)}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <div className="grid gap-6 md:grid-cols-2">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <DollarSign className="h-5 w-5" />
+                Client Billing Rates
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <p className="text-xs text-muted-foreground">Regular Rate</p>
+                  <p className="font-medium text-lg" data-testid="text-client-regular-rate">
+                    {dashboard.billingRates.client.regular ? `${formatCurrency(dashboard.billingRates.client.regular)}/hr` : '-'}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Overtime Rate</p>
+                  <p className="font-medium text-lg" data-testid="text-client-overtime-rate">
+                    {dashboard.billingRates.client.overtime ? `${formatCurrency(dashboard.billingRates.client.overtime)}/hr` : '-'}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Premium Rate</p>
+                  <p className="font-medium text-lg" data-testid="text-client-premium-rate">
+                    {dashboard.billingRates.client.premium ? `${formatCurrency(dashboard.billingRates.client.premium)}/hr` : '-'}
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Users className="h-5 w-5" />
+                Inspector Billing Rates
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {dashboard.billingRates.inspectorAgreements.length === 0 ? (
+                <p className="text-sm text-muted-foreground" data-testid="text-no-inspector-rates">
+                  No IOR agreements found for this contract's projects
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  {dashboard.billingRates.inspectorAgreements.map((agreement) => (
+                    <div key={agreement.id} className="flex justify-between items-start border-b pb-2 last:border-0 last:pb-0" data-testid={`inspector-rate-${agreement.id}`}>
+                      <div>
+                        <p className="font-medium text-sm">{agreement.inspectorName}</p>
+                        <p className="text-xs text-muted-foreground">{agreement.projectName}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-medium">{agreement.rate ? `${formatCurrency(agreement.rate)}/hr` : '-'}</p>
+                        {agreement.terms && (
+                          <p className="text-xs text-muted-foreground max-w-32 truncate">{agreement.terms}</p>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        {dashboard.contract.notes && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <FileText className="h-5 w-5" />
+                Project Notes
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm whitespace-pre-wrap" data-testid="text-project-notes">
+                {dashboard.contract.notes}
+              </p>
+            </CardContent>
+          </Card>
+        )}
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Paperclip className="h-5 w-5" />
+              Attached Files
+              <Badge variant="secondary" className="ml-2">{dashboard.attachments.length}</Badge>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {dashboard.attachments.length === 0 ? (
+              <p className="text-sm text-muted-foreground" data-testid="text-no-attachments">
+                No files attached to this contract
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {dashboard.attachments.map((attachment) => (
+                  <div 
+                    key={attachment.id} 
+                    className="flex items-center justify-between p-2 rounded-md hover-elevate"
+                    data-testid={`attachment-${attachment.id}`}
+                  >
+                    <div className="flex items-center gap-3 overflow-hidden">
+                      <Paperclip className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                      <div className="overflow-hidden">
+                        <p className="font-medium text-sm truncate">{attachment.fileName}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {formatFileSize(attachment.fileSize)} - {formatDate(attachment.createdAt)}
+                        </p>
+                      </div>
+                    </div>
+                    <Button variant="ghost" size="icon" asChild data-testid={`download-attachment-${attachment.id}`}>
+                      <a href={attachment.filePath} target="_blank" rel="noopener noreferrer">
+                        <Download className="h-4 w-4" />
+                      </a>
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <CardTitle className="flex items-center gap-2">
+                <ClipboardList className="h-5 w-5" />
+                Daily Reports
+                <Badge variant="secondary" className="ml-2">{dashboard.dailyReports.length}</Badge>
+              </CardTitle>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {dashboard.dailyReports.length === 0 ? (
+              <p className="text-sm text-muted-foreground" data-testid="text-no-reports">
+                No daily reports found for this contract's projects
+              </p>
+            ) : (
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Date</TableHead>
+                      <TableHead>Project</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Weather</TableHead>
+                      <TableHead className="text-right">Hours</TableHead>
+                      <TableHead></TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {dashboard.dailyReports.map((report) => (
+                      <TableRow key={report.id} data-testid={`report-row-${report.id}`}>
+                        <TableCell className="font-medium">
+                          {formatDate(report.date)}
+                        </TableCell>
+                        <TableCell>{report.projectName || '-'}</TableCell>
+                        <TableCell>
+                          <Badge 
+                            variant={report.status === 'submitted' ? 'default' : 'secondary'}
+                            className="capitalize"
+                          >
+                            {report.status}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="capitalize">
+                          {report.weatherType?.replace(/_/g, ' ') || '-'}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {report.regularHours || '0'}
+                          {report.otHours && parseFloat(report.otHours) > 0 && (
+                            <span className="text-muted-foreground"> + {report.otHours} OT</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <Button variant="ghost" size="icon" asChild data-testid={`view-report-${report.id}`}>
+                            <Link href={`/report/${report.id}`}>
+                              <ExternalLink className="h-4 w-4" />
+                            </Link>
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
       </div>
 
       <Dialog open={showBudgetOverrideDialog} onOpenChange={setShowBudgetOverrideDialog}>
