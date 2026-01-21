@@ -7,6 +7,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { useAuth } from "@/hooks/use-auth";
 import { AdminModeProvider } from "@/hooks/use-admin-mode";
 import { AdminRoute } from "@/components/layout/admin-route";
+import { AIChatBubble } from "@/components/chat/ai-chat-bubble";
 import { Loader2 } from "lucide-react";
 
 import NotFound from "@/pages/not-found";
@@ -35,6 +36,7 @@ import CompanyContractsPage from "@/pages/company/contracts";
 import CompanyClientsPage from "@/pages/company/clients";
 import CompanyBillingManagementPage from "@/pages/company/billing-management";
 import ProjectDashboardPage from "@/pages/company/project-dashboard";
+import AIChatPage from "@/pages/company/ai-chat";
 import BillingPage from "@/pages/billing";
 import LearnMorePage from "@/pages/learn-more";
 import PricingPage from "@/pages/pricing";
@@ -72,6 +74,7 @@ function AuthenticatedRoutes() {
       <Route path="/company/requests" component={CompanyRequestsPage} />
       <Route path="/company/settings" component={CompanySettingsPage} />
       <Route path="/company/dashboard" component={CompanyDashboardPage} />
+      <Route path="/company/chat" component={AIChatPage} />
       <Route path="/settings">
         {() => <AdminRoute><AdminSettingsPage /></AdminRoute>}
       </Route>
@@ -112,7 +115,10 @@ function AppContent() {
       {!isAuthenticated ? (
         <Route component={LandingPage} />
       ) : (
-        <AuthenticatedRoutes />
+        <>
+          <AuthenticatedRoutes />
+          <AIChatBubble />
+        </>
       )}
     </Switch>
   );
