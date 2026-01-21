@@ -24,6 +24,7 @@ The application is built with a modern web stack, utilizing **React, TypeScript,
 - **"View as Inspector" Mode**: System and Company Admins can toggle this mode to experience the application from an inspector's perspective without changing accounts.
 - **Proposal Management**: Company admins can create and manage detailed proposals for inspection services, including dynamic pricing options and PDF generation.
 - **Proposal-to-Contract Conversion**: Admins can convert accepted proposals into contracts with one click, automatically creating linked projects and mapping proposal data (rates, hours, dates) to the new contract.
+- **AI Assistant with Task Execution**: Company Admins and System Admins can use an AI chat assistant (accessible via chat bubble or /company/chat) that can both answer questions about company data AND perform actions like creating proposals. Features voice transcription for hands-free input.
 
 **Core Features:**
 
