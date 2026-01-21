@@ -249,6 +249,11 @@ export interface IStorage {
     overtimeHours: number;
     premiumHours: number;
   }>;
+  
+  // Dashboard data
+  getProjectsByContract(contractId: string): Promise<Project[]>;
+  getIorAgreementsByProject(projectId: string): Promise<IorAgreementWithDetails[]>;
+  getReportsByContractProjects(contractId: string): Promise<(DailyReport & { projectName?: string })[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1550,6 +1555,64 @@ export class DatabaseStorage implements IStorage {
       overtimeHours,
       premiumHours,
     };
+  }
+
+  async getProjectsByContract(contractId: string): Promise<Project[]> {
+    return db
+      .select()
+      .from(projects)
+      .where(eq(projects.contractId, contractId))
+      .orderBy(desc(projects.createdAt));
+  }
+
+  async getIorAgreementsByProject(projectId: string): Promise<IorAgreementWithDetails[]> {
+    const agreements = await db
+      .select()
+      .from(iorAgreements)
+      .where(eq(iorAgreements.projectId, projectId))
+      .orderBy(desc(iorAgreements.createdAt));
+    
+    const agreementsWithDetails: IorAgreementWithDetails[] = [];
+    for (const agreement of agreements) {
+      let project: Project | undefined;
+      let inspector: User | undefined;
+      
+      if (agreement.projectId) {
+        const [p] = await db.select().from(projects).where(eq(projects.id, agreement.projectId));
+        project = p;
+      }
+      if (agreement.inspectorId) {
+        const [u] = await db.select().from(users).where(eq(users.id, agreement.inspectorId));
+        inspector = u;
+      }
+      
+      agreementsWithDetails.push({
+        ...agreement,
+        project,
+        inspector,
+      });
+    }
+    
+    return agreementsWithDetails;
+  }
+
+  async getReportsByContractProjects(contractId: string): Promise<(DailyReport & { projectName?: string })[]> {
+    const contractProjects = await this.getProjectsByContract(contractId);
+    if (contractProjects.length === 0) return [];
+    
+    const projectIds = contractProjects.map(p => p.id);
+    const projectMap = new Map(contractProjects.map(p => [p.id, p.name]));
+    
+    const reports = await db
+      .select()
+      .from(dailyReports)
+      .where(inArray(dailyReports.projectId, projectIds))
+      .orderBy(desc(dailyReports.date));
+    
+    return reports.map(r => ({
+      ...r,
+      projectName: r.projectId ? projectMap.get(r.projectId) : undefined,
+    }));
   }
 }
 
