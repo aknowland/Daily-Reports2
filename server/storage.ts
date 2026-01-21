@@ -239,6 +239,16 @@ export interface IStorage {
   updateIorAgreement(id: string, data: Partial<InsertIorAgreement>): Promise<IorAgreement | undefined>;
   deleteIorAgreement(id: string): Promise<boolean>;
   getNextIorAgreementNumber(companyId: string): Promise<string>;
+  
+  // Budget tracking
+  getInvoicesByContract(contractId: string): Promise<{ totalAmount: string; regularHours: string; overtimeHours: string; premiumHours: string }[]>;
+  getContractBudgetSummary(contractId: string): Promise<{ 
+    totalBilled: number; 
+    totalHours: number;
+    regularHours: number;
+    overtimeHours: number;
+    premiumHours: number;
+  }>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1491,6 +1501,55 @@ export class DatabaseStorage implements IStorage {
       );
     const count = (result?.count || 0) + 1;
     return `IOR-${year}-${String(count).padStart(4, '0')}`;
+  }
+
+  async getInvoicesByContract(contractId: string): Promise<{ totalAmount: string; regularHours: string; overtimeHours: string; premiumHours: string }[]> {
+    const results = await db
+      .select({
+        totalAmount: invoices.totalAmount,
+        regularHours: invoices.regularHours,
+        overtimeHours: invoices.overtimeHours,
+        premiumHours: invoices.premiumHours,
+      })
+      .from(invoices)
+      .where(eq(invoices.contractId, contractId));
+    
+    return results.map(r => ({
+      totalAmount: r.totalAmount || '0',
+      regularHours: r.regularHours || '0',
+      overtimeHours: r.overtimeHours || '0',
+      premiumHours: r.premiumHours || '0',
+    }));
+  }
+
+  async getContractBudgetSummary(contractId: string): Promise<{ 
+    totalBilled: number; 
+    totalHours: number;
+    regularHours: number;
+    overtimeHours: number;
+    premiumHours: number;
+  }> {
+    const invoiceData = await this.getInvoicesByContract(contractId);
+    
+    let totalBilled = 0;
+    let regularHours = 0;
+    let overtimeHours = 0;
+    let premiumHours = 0;
+    
+    for (const inv of invoiceData) {
+      totalBilled += parseFloat(inv.totalAmount || '0');
+      regularHours += parseFloat(inv.regularHours || '0');
+      overtimeHours += parseFloat(inv.overtimeHours || '0');
+      premiumHours += parseFloat(inv.premiumHours || '0');
+    }
+    
+    return {
+      totalBilled,
+      totalHours: regularHours + overtimeHours + premiumHours,
+      regularHours,
+      overtimeHours,
+      premiumHours,
+    };
   }
 }
 
