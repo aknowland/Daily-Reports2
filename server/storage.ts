@@ -104,7 +104,7 @@ export interface IStorage {
   
   // Users (admin)
   getAllUsers(): Promise<(User & { profile?: UserProfile })[]>;
-  updateUserRole(userId: string, role: "inspector" | "admin"): Promise<UserProfile | undefined>;
+  updateUserRole(userId: string, role: "inspector" | "admin" | "owner"): Promise<UserProfile | undefined>;
 
   // Project Members
   getProjectMembers(projectId: string): Promise<(ProjectMember & { user?: User })[]>;
@@ -622,7 +622,7 @@ export class DatabaseStorage implements IStorage {
     }));
   }
 
-  async updateUserRole(userId: string, role: "inspector" | "admin"): Promise<UserProfile | undefined> {
+  async updateUserRole(userId: string, role: "inspector" | "admin" | "owner"): Promise<UserProfile | undefined> {
     const [profile] = await db
       .insert(userProfiles)
       .values({ userId, role })

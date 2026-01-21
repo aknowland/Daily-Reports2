@@ -18,12 +18,20 @@ import {
   X,
   Lock,
   ArrowLeft,
+  Shield,
+  ShieldCheck,
+  Users,
 } from "lucide-react";
 import { Link } from "wouter";
-import type { Company } from "@shared/schema";
+import { Switch } from "@/components/ui/switch";
+import type { Company, User, UserProfile } from "@shared/schema";
 
 interface ActiveCompany extends Company {
   isCompanyAdmin: boolean;
+}
+
+interface UserWithProfile extends User {
+  profile?: UserProfile;
 }
 
 export default function AdminSettingsPage() {
@@ -51,7 +59,34 @@ export default function AdminSettingsPage() {
   }, [activeCompany]);
 
   const isAdmin = user?.profile?.role === "admin";
+  const isSystemAdmin = user?.profile?.role === "owner";
   const canEdit = activeCompany?.isCompanyAdmin === true;
+
+  // Only fetch users if the current user is a system admin
+  const { data: allUsers, isLoading: usersLoading } = useQuery<UserWithProfile[]>({
+    queryKey: ["/api/admin/users"],
+    enabled: isSystemAdmin,
+  });
+
+  const updateUserRoleMutation = useMutation({
+    mutationFn: async ({ userId, role }: { userId: string; role: string }) => {
+      return apiRequest("PATCH", `/api/admin/users/${userId}/role`, { role });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
+      toast({
+        title: "Role Updated",
+        description: "User role has been updated successfully",
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to update user role",
+        variant: "destructive",
+      });
+    },
+  });
 
   const updateCompanyMutation = useMutation({
     mutationFn: async (data: { name?: string; address?: string; phone?: string; email?: string }) => {
@@ -331,6 +366,91 @@ export default function AdminSettingsPage() {
               <p className="text-xs text-muted-foreground">
                 Recommended: PNG with transparent background, max 5MB.
                 The logo will be displayed at approximately 2 inches wide in PDF headers.
+              </p>
+            </CardContent>
+          </Card>
+        )}
+
+        {isSystemAdmin && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <ShieldCheck className="w-5 h-5" />
+                System Admin Management
+              </CardTitle>
+              <CardDescription>
+                Manage users with system-wide administrator privileges
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {usersLoading ? (
+                <div className="space-y-3">
+                  <Skeleton className="h-12 w-full" />
+                  <Skeleton className="h-12 w-full" />
+                  <Skeleton className="h-12 w-full" />
+                </div>
+              ) : allUsers && allUsers.length > 0 ? (
+                <div className="space-y-2">
+                  {allUsers.map((u) => {
+                    const isCurrentUser = u.id === user?.id;
+                    const isOwner = u.profile?.role === "owner";
+                    const displayName = u.profile?.firstName && u.profile?.lastName
+                      ? `${u.profile.firstName} ${u.profile.lastName}`
+                      : u.firstName && u.lastName 
+                        ? `${u.firstName} ${u.lastName}`
+                        : u.email || "Unknown User";
+                    
+                    return (
+                      <div
+                        key={u.id}
+                        className="flex items-center justify-between gap-3 p-3 bg-muted/50 rounded-lg"
+                        data-testid={`user-row-${u.id}`}
+                      >
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className={`p-2 rounded-full ${isOwner ? "bg-primary/10" : "bg-muted"}`}>
+                            {isOwner ? (
+                              <ShieldCheck className="w-4 h-4 text-primary" />
+                            ) : (
+                              <Users className="w-4 h-4 text-muted-foreground" />
+                            )}
+                          </div>
+                          <div className="min-w-0">
+                            <p className="font-medium truncate">{displayName}</p>
+                            <p className="text-xs text-muted-foreground truncate">
+                              {u.email || "No email"}
+                              {isCurrentUser && " (You)"}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-3 flex-shrink-0">
+                          <span className="text-sm text-muted-foreground">
+                            System Admin
+                          </span>
+                          <Switch
+                            checked={isOwner}
+                            disabled={isCurrentUser || updateUserRoleMutation.isPending}
+                            onCheckedChange={(checked) => {
+                              updateUserRoleMutation.mutate({
+                                userId: u.id,
+                                role: checked ? "owner" : "inspector",
+                              });
+                            }}
+                            data-testid={`switch-admin-${u.id}`}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="text-center py-8">
+                  <Users className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+                  <p className="text-muted-foreground">No users found</p>
+                </div>
+              )}
+              <p className="text-xs text-muted-foreground">
+                System admins have full access to all companies, projects, and settings. 
+                You cannot remove your own system admin access.
               </p>
             </CardContent>
           </Card>
