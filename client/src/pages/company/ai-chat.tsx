@@ -175,12 +175,33 @@ export default function AIChatPage() {
                 ) : (
                   <div className="space-y-4">
                     {messages.length === 0 && !streamingContent && (
-                      <div className="text-center text-muted-foreground py-12">
+                      <div className="text-center text-muted-foreground py-8">
                         <MessageSquare className="h-12 w-12 mx-auto mb-4 opacity-50" />
                         <p className="text-lg font-medium">Ask me anything about {activeCompany?.name || "your company"}!</p>
-                        <p className="text-sm mt-2">
+                        <p className="text-sm mt-2 mb-6">
                           I can help with projects, reports, clients, team members, and more.
                         </p>
+                        <div className="max-w-md mx-auto space-y-2">
+                          <p className="text-xs uppercase tracking-wide mb-3">Try asking:</p>
+                          {[
+                            "How many active projects do we have?",
+                            "Who submitted reports this week?",
+                            "List all our clients",
+                            "What's the status of our team members?",
+                            "Summarize recent daily reports",
+                          ].map((question) => (
+                            <button
+                              key={question}
+                              data-testid={`sample-question-${question.slice(0, 20).replace(/\s+/g, '-').toLowerCase()}`}
+                              className="w-full text-left px-4 py-3 rounded-lg border bg-card hover-elevate text-sm text-foreground transition-colors"
+                              onClick={() => {
+                                setInputValue(question);
+                              }}
+                            >
+                              {question}
+                            </button>
+                          ))}
+                        </div>
                       </div>
                     )}
                     {messages.map((msg) => (
