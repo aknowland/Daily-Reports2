@@ -112,7 +112,7 @@ export function AIChatBubble() {
     setStreamingContent("");
 
     try {
-      const response = await fetch(`/api/ai-chat/conversations/${conversationId}/message`, {
+      const response = await fetch(`/api/ai-chat/conversations/${conversationId}/messages`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
