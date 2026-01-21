@@ -54,7 +54,9 @@ import {
   ArrowRightCircle,
   RefreshCw,
   MoreHorizontal,
+  LayoutDashboard,
 } from "lucide-react";
+import { Link } from "wouter";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -691,26 +693,38 @@ export default function ContractsPage() {
                           )}
                         </div>
                       </div>
-                      {isCompanyAdmin && (
-                        <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2">
+                        <Link href={`/company/contracts/${contract.id}/dashboard`}>
                           <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => handleEdit(contract)}
-                            data-testid={`button-edit-${contract.id}`}
+                            variant="outline"
+                            size="sm"
+                            data-testid={`button-dashboard-${contract.id}`}
                           >
-                            <Edit className="w-4 h-4" />
+                            <LayoutDashboard className="w-4 h-4 mr-1" />
+                            Dashboard
                           </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => setContractToDelete(contract)}
-                            data-testid={`button-delete-${contract.id}`}
-                          >
-                            <Trash2 className="w-4 h-4 text-destructive" />
-                          </Button>
-                        </div>
-                      )}
+                        </Link>
+                        {isCompanyAdmin && (
+                          <>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleEdit(contract)}
+                              data-testid={`button-edit-${contract.id}`}
+                            >
+                              <Edit className="w-4 h-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => setContractToDelete(contract)}
+                              data-testid={`button-delete-${contract.id}`}
+                            >
+                              <Trash2 className="w-4 h-4 text-destructive" />
+                            </Button>
+                          </>
+                        )}
+                      </div>
                     </div>
                   </CardContent>
                 </Card>
