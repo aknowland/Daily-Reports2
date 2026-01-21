@@ -447,7 +447,7 @@ export default function AdminUsersPage() {
                         onValueChange={(role: string) => 
                           updateRoleMutation.mutate({ userId: user.id, role: role as "inspector" | "admin" | "system_owner" })
                         }
-                        disabled={updateRoleMutation.isPending || user.profile?.role === "system_owner" || (user.id === currentUser?.id && (user.profile?.role === "admin" || user.profile?.role === "owner" || user.profile?.role === "system_owner"))}
+                        disabled={updateRoleMutation.isPending || (user.profile?.role as string) === "system_owner" || (user.id === currentUser?.id && ((user.profile?.role as string) === "admin" || (user.profile?.role as string) === "owner" || (user.profile?.role as string) === "system_owner"))}
                       >
                         <SelectTrigger 
                           className="w-36"
