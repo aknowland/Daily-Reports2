@@ -4466,11 +4466,27 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/admin/users/:id/role", isAuthenticated, isAdmin, async (req, res) => {
+  app.patch("/api/admin/users/:id/role", isAuthenticated, isAdmin, async (req: any, res) => {
     try {
       const { role } = req.body;
-      if (!role || !["inspector", "admin"].includes(role)) {
+      const validRoles = ["inspector", "admin", "owner"];
+      if (!role || !validRoles.includes(role)) {
         return res.status(400).json({ message: "Invalid role" });
+      }
+
+      // Only system admins (owners) can assign or remove the owner role
+      const userId = req.user?.claims?.sub;
+      const requestingUserProfile = await storage.getUserProfile(userId);
+      const isSystemAdmin = requestingUserProfile?.role === "owner";
+      
+      if (role === "owner" && !isSystemAdmin) {
+        return res.status(403).json({ message: "Only system admins can assign the system admin role" });
+      }
+      
+      // Also check if we're demoting an owner - only owners can do this
+      const targetProfile = await storage.getUserProfile(req.params.id);
+      if (targetProfile?.role === "owner" && !isSystemAdmin) {
+        return res.status(403).json({ message: "Only system admins can modify system admin users" });
       }
 
       const profile = await storage.updateUserRole(req.params.id, role);
