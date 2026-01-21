@@ -49,7 +49,7 @@ type CompanyMemberWithCompany = CompanyMember & { company: Company };
 
 export default function AdminUsersPage() {
   const { toast } = useToast();
-  const { isSystemOwner: currentUserIsSystemOwner, isOwner: currentUserIsOwner, user: currentUser } = useAuth();
+  const { isSystemOwner: currentUserIsSystemOwner, isAdmin: currentUserIsAdmin, user: currentUser } = useAuth();
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedUser, setSelectedUser] = useState<UserWithProfile | null>(null);
   const [selectedProjectIds, setSelectedProjectIds] = useState<string[]>([]);
@@ -90,7 +90,7 @@ export default function AdminUsersPage() {
   }, [userProjectIds, projectDialogOpen]);
 
   const updateRoleMutation = useMutation({
-    mutationFn: async ({ userId, role }: { userId: string; role: "inspector" | "admin" | "owner" | "system_owner" }) => {
+    mutationFn: async ({ userId, role }: { userId: string; role: "inspector" | "admin" | "system_owner" }) => {
       return apiRequest("PATCH", `/api/admin/users/${userId}/role`, { role });
     },
     onSuccess: () => {
@@ -412,16 +412,10 @@ export default function AdminUsersPage() {
                             System Owner
                           </Badge>
                         )}
-                        {user.profile?.role === "owner" && (
+                        {(user.profile?.role === "admin" || user.profile?.role === "owner") && (
                           <Badge variant="secondary" className="bg-primary/10 text-primary dark:bg-primary/20 no-default-hover-elevate no-default-active-elevate">
                             <Shield className="w-3 h-3 mr-1" />
                             System Admin
-                          </Badge>
-                        )}
-                        {user.profile?.role === "admin" && (
-                          <Badge variant="secondary" className="bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300 no-default-hover-elevate no-default-active-elevate">
-                            <Shield className="w-3 h-3 mr-1" />
-                            Company Admin
                           </Badge>
                         )}
                       </div>
@@ -449,11 +443,11 @@ export default function AdminUsersPage() {
                       </Button>
                       
                       <Select
-                        value={user.profile?.role || "inspector"}
-                        onValueChange={(role: "inspector" | "admin" | "owner" | "system_owner") => 
+                        value={user.profile?.role === "owner" ? "admin" : (user.profile?.role || "inspector")}
+                        onValueChange={(role: "inspector" | "admin" | "system_owner") => 
                           updateRoleMutation.mutate({ userId: user.id, role })
                         }
-                        disabled={updateRoleMutation.isPending || user.profile?.role === "system_owner" || (user.id === currentUser?.id && (user.profile?.role === "owner" || user.profile?.role === "system_owner"))}
+                        disabled={updateRoleMutation.isPending || user.profile?.role === "system_owner" || (user.id === currentUser?.id && (user.profile?.role === "admin" || user.profile?.role === "owner" || user.profile?.role === "system_owner"))}
                       >
                         <SelectTrigger 
                           className="w-36"
@@ -468,14 +462,8 @@ export default function AdminUsersPage() {
                               Inspector
                             </div>
                           </SelectItem>
-                          <SelectItem value="admin">
-                            <div className="flex items-center gap-2">
-                              <Shield className="w-4 h-4" />
-                              Company Admin
-                            </div>
-                          </SelectItem>
                           {currentUserIsSystemOwner && (
-                            <SelectItem value="owner">
+                            <SelectItem value="admin">
                               <div className="flex items-center gap-2">
                                 <Shield className="w-4 h-4 text-primary" />
                                 System Admin

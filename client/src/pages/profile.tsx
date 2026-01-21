@@ -186,7 +186,7 @@ export default function ProfilePage() {
                 </CardDescription>
                 <Badge variant="secondary" className="mt-2" data-testid="badge-user-role">
                   <Shield className="w-3 h-3 mr-1" />
-                  {profile?.role === "owner" ? "System Owner" : profile?.role === "admin" ? "System Administrator" : "Inspector"}
+                  {profile?.role === "system_owner" ? "System Owner" : (profile?.role === "admin" || profile?.role === "owner") ? "System Admin" : "Inspector"}
                 </Badge>
               </div>
             </div>

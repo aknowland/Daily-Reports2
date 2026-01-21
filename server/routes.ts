@@ -62,9 +62,10 @@ const isSystemOwner = (profile: any): boolean => {
   return profile?.role === "system_owner";
 };
 
-// Helper to check if user is System Admin (owner role) or higher (system_owner)
+// Helper to check if user is System Admin (admin role) or higher (system_owner)
+// Note: "owner" is legacy and treated as equivalent to "admin"
 const isSystemAdmin = (profile: any): boolean => {
-  return profile?.role === "owner" || profile?.role === "system_owner";
+  return profile?.role === "admin" || profile?.role === "owner" || profile?.role === "system_owner";
 };
 
 // Helper to check if user is effectively acting as system admin (or system owner)
@@ -4493,14 +4494,14 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Invalid role" });
       }
 
-      // Role hierarchy: system_owner > owner > admin > inspector
+      // Role hierarchy: system_owner > admin > inspector
+      // Note: "owner" is legacy and treated as equivalent to "admin"
       const userId = req.user?.claims?.sub;
       const requestingUserProfile = await storage.getUserProfile(userId);
-      const isSystemOwner = requestingUserProfile?.role === "system_owner";
-      const isSystemAdmin = requestingUserProfile?.role === "owner" || isSystemOwner;
+      const requestingIsSystemOwner = requestingUserProfile?.role === "system_owner";
       
-      // Only system owners can assign or remove the owner (System Admin) role
-      if (role === "owner" && !isSystemOwner) {
+      // Only system owners can assign System Admin role
+      if (role === "admin" && !requestingIsSystemOwner) {
         return res.status(403).json({ message: "Only System Owners can assign the System Admin role" });
       }
       
@@ -4515,8 +4516,8 @@ export async function registerRoutes(
         return res.status(403).json({ message: "System Owner role cannot be modified" });
       }
       
-      // Only system owners can demote a system admin (owner)
-      if (targetProfile?.role === "owner" && !isSystemOwner) {
+      // Only system owners can demote a system admin
+      if ((targetProfile?.role === "admin" || targetProfile?.role === "owner") && !requestingIsSystemOwner) {
         return res.status(403).json({ message: "Only System Owners can modify System Admin users" });
       }
 
