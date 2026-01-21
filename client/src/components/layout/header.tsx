@@ -216,7 +216,7 @@ export function Header({ title = "Field Daily Reports" }: HeaderProps) {
         </div>
 
         <div className="flex items-center gap-2">
-          {isAdmin && <ModeToggle />}
+          {isOwner && <ModeToggle />}
           {user && <CompanySwitcher activeCompanyId={profile?.activeCompanyId} />}
           {user && <ProjectSwitcher activeProjectId={profile?.activeProjectId} />}
           {isLoading ? (
