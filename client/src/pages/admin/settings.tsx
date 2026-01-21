@@ -179,7 +179,7 @@ export default function AdminSettingsPage() {
   // System admins can still access this page to manage other system admins
   if (!activeCompany && !companyLoading && !isSystemAdmin) {
     return (
-      <PageLayout title="Settings" isAdmin={isAdmin}>
+      <PageLayout title="Settings" isAdmin={isSystemAdmin}>
         <div className="container px-4 py-6 mx-auto max-w-2xl">
           <Card>
             <CardContent className="py-8 text-center">
@@ -195,7 +195,7 @@ export default function AdminSettingsPage() {
   }
 
   return (
-    <PageLayout title="Settings" isAdmin={isAdmin}>
+    <PageLayout title="Settings" isAdmin={isSystemAdmin}>
       <div className="container px-4 py-6 mx-auto max-w-2xl space-y-6">
         <div className="flex items-center gap-2">
           <Button variant="ghost" size="sm" asChild data-testid="button-back">
