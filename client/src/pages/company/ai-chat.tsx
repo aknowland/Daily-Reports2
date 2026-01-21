@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Helmet } from "react-helmet-async";
 import { Button } from "@/components/ui/button";
@@ -9,7 +9,7 @@ import { PageLayout } from "@/components/layout/page-layout";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { MessageSquare, Send, Loader2 } from "lucide-react";
+import { MessageSquare, Send, Loader2, Mic, MicOff } from "lucide-react";
 
 interface Message {
   id: string;
@@ -31,7 +31,11 @@ export default function AIChatPage() {
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [streamingContent, setStreamingContent] = useState<string>("");
   const [isStreaming, setIsStreaming] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
 
   // Allow access for Company Admins or any System Admin level (admin, owner, system_owner)
   // Wait for companies to load before determining access
@@ -71,6 +75,69 @@ export default function AIChatPage() {
   useEffect(() => {
     scrollToBottom();
   }, [conversationData?.messages, streamingContent]);
+
+  const startRecording = useCallback(async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
+      mediaRecorderRef.current = mediaRecorder;
+      audioChunksRef.current = [];
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+
+      mediaRecorder.onstop = async () => {
+        stream.getTracks().forEach((track) => track.stop());
+        const audioBlob = new Blob(audioChunksRef.current, { type: "audio/webm" });
+        await transcribeAudio(audioBlob);
+      };
+
+      mediaRecorder.start();
+      setIsRecording(true);
+    } catch (error) {
+      toast({ title: "Could not access microphone", variant: "destructive" });
+    }
+  }, []);
+
+  const stopRecording = useCallback(() => {
+    if (mediaRecorderRef.current && isRecording) {
+      mediaRecorderRef.current.stop();
+      setIsRecording(false);
+    }
+  }, [isRecording]);
+
+  const transcribeAudio = async (audioBlob: Blob) => {
+    setIsTranscribing(true);
+    try {
+      const reader = new FileReader();
+      reader.readAsDataURL(audioBlob);
+      reader.onloadend = async () => {
+        const base64Audio = (reader.result as string).split(",")[1];
+        const response = await fetch("/api/ai-chat/transcribe", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ audio: base64Audio, format: "webm" }),
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data.text) {
+            setInputValue((prev) => prev + (prev ? " " : "") + data.text);
+          }
+        } else {
+          toast({ title: "Failed to transcribe audio", variant: "destructive" });
+        }
+        setIsTranscribing(false);
+      };
+    } catch (error) {
+      toast({ title: "Failed to transcribe audio", variant: "destructive" });
+      setIsTranscribing(false);
+    }
+  };
 
   const handleSendMessage = async () => {
     if (!inputValue.trim() || isStreaming) return;
@@ -236,19 +303,35 @@ export default function AIChatPage() {
               </ScrollArea>
 
               <div className="p-4 border-t flex gap-2">
+                <Button
+                  data-testid="button-mic"
+                  size="icon"
+                  variant={isRecording ? "destructive" : "outline"}
+                  onClick={isRecording ? stopRecording : startRecording}
+                  disabled={isStreaming || isTranscribing}
+                  title={isRecording ? "Stop recording" : "Start voice input"}
+                >
+                  {isTranscribing ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : isRecording ? (
+                    <MicOff className="h-4 w-4" />
+                  ) : (
+                    <Mic className="h-4 w-4" />
+                  )}
+                </Button>
                 <Input
                   data-testid="input-chat"
                   value={inputValue}
                   onChange={(e) => setInputValue(e.target.value)}
-                  placeholder="Ask a question about your company data..."
+                  placeholder={isRecording ? "Listening..." : "Ask a question or use voice input..."}
                   onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSendMessage()}
-                  disabled={isStreaming}
+                  disabled={isStreaming || isRecording}
                   className="text-base"
                 />
                 <Button
                   data-testid="button-send"
                   onClick={handleSendMessage}
-                  disabled={!inputValue.trim() || isStreaming}
+                  disabled={!inputValue.trim() || isStreaming || isRecording}
                 >
                   {isStreaming ? (
                     <Loader2 className="h-4 w-4 animate-spin" />

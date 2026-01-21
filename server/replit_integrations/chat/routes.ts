@@ -1,5 +1,5 @@
 import type { Express, Request, Response } from "express";
-import OpenAI from "openai";
+import OpenAI, { toFile } from "openai";
 import { chatStorage } from "./storage";
 import { storage } from "../../storage";
 
@@ -299,6 +299,45 @@ export function registerChatRoutes(app: Express): void {
       } else {
         res.status(500).json({ error: "Failed to send message" });
       }
+    }
+  });
+
+  // Transcribe audio to text
+  app.post("/api/ai-chat/transcribe", async (req: Request, res: Response) => {
+    try {
+      const { userId } = getUserInfo(req);
+      if (!userId) {
+        return res.status(401).json({ error: "Unauthorized" });
+      }
+
+      const profile = await storage.getUserProfile(userId);
+      if (!profile?.activeCompanyId) {
+        return res.status(400).json({ error: "No active company" });
+      }
+
+      // Check authorization
+      const hasAccess = await isCompanyAdminOrHigher(userId, profile.activeCompanyId);
+      if (!hasAccess) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+
+      const { audio, format = "webm" } = req.body;
+      if (!audio) {
+        return res.status(400).json({ error: "Audio data (base64) is required" });
+      }
+
+      const audioBuffer = Buffer.from(audio, "base64");
+      const file = await toFile(audioBuffer, `audio.${format}`);
+      
+      const response = await openai.audio.transcriptions.create({
+        file,
+        model: "gpt-4o-mini-transcribe",
+      });
+
+      res.json({ text: response.text });
+    } catch (error) {
+      console.error("Error transcribing audio:", error);
+      res.status(500).json({ error: "Failed to transcribe audio" });
     }
   });
 }
