@@ -349,12 +349,18 @@ export default function CompanyProjectsPage() {
           </Card>
         ) : (
           <div className="grid gap-4 md:grid-cols-2">
-            {filteredProjects.map((project) => (
+            {filteredProjects.map((project) => {
+              // Navigate to contract dashboard if linked, otherwise to reports
+              const projectLink = project.contractId 
+                ? `/company/contracts/${project.contractId}/dashboard`
+                : `/reports?project=${project.id}`;
+              
+              return (
               <Card key={project.id} className="hover-elevate" data-testid={`card-project-${project.id}`}>
                 <CardHeader>
                   <div className="flex items-start justify-between gap-2">
                     <Link 
-                      href={`/reports?project=${project.id}`}
+                      href={projectLink}
                       className="flex items-center gap-2 cursor-pointer flex-1 min-w-0"
                     >
                       <FolderOpen className="w-5 h-5 text-muted-foreground" />
@@ -383,7 +389,7 @@ export default function CompanyProjectsPage() {
                     </div>
                   </div>
                   <Link 
-                    href={`/reports?project=${project.id}`}
+                    href={projectLink}
                     className="block cursor-pointer"
                   >
                     <CardDescription className="flex items-center gap-2">
@@ -393,7 +399,7 @@ export default function CompanyProjectsPage() {
                   </Link>
                 </CardHeader>
                 <Link 
-                  href={`/reports?project=${project.id}`}
+                  href={projectLink}
                   className="block cursor-pointer"
                 >
                   <CardContent className="space-y-2">
@@ -420,7 +426,8 @@ export default function CompanyProjectsPage() {
                   </CardContent>
                 </Link>
               </Card>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
