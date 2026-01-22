@@ -27,6 +27,7 @@ type InspectorEntry = {
   inspectorName: string;
   rate: string;
   hours: string;
+  scheduleType: "fullTime" | "partTime";
 };
 
 type OptionEntry = {
@@ -54,6 +55,7 @@ const emptyInspector: InspectorEntry = {
   inspectorName: "",
   rate: "",
   hours: "",
+  scheduleType: "fullTime",
 };
 
 const emptyOption: OptionEntry = {
@@ -126,6 +128,7 @@ export function ProposalDialog({ open, onOpenChange, editingProposal }: Proposal
             inspectorName: ins.inspectorName || "",
             rate: ins.rate,
             hours: ins.hours,
+            scheduleType: (ins.scheduleType as "fullTime" | "partTime") || "fullTime",
           })),
         })));
       }
@@ -503,66 +506,130 @@ export function ProposalDialog({ open, onOpenChange, editingProposal }: Proposal
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-3">
-                  <div className="grid grid-cols-12 gap-2 text-xs font-medium text-muted-foreground pb-1 border-b">
-                    <div className="col-span-3">Title</div>
-                    <div className="col-span-3">Inspector Name</div>
-                    <div className="col-span-2">Rate ($)</div>
-                    <div className="col-span-2">Hours</div>
-                    <div className="col-span-1">Total</div>
-                    <div className="col-span-1"></div>
-                  </div>
-
-                  {option.inspectors.map((inspector, inspectorIndex) => (
-                    <div key={inspectorIndex} className="grid grid-cols-12 gap-2 items-center">
-                      <Input
-                        className="col-span-3 h-9"
-                        value={inspector.title}
-                        onChange={(e) => updateInspector(optionIndex, inspectorIndex, "title", e.target.value)}
-                        placeholder="e.g., DSA Class 1 Inspector"
-                        data-testid={`input-inspector-title-${optionIndex}-${inspectorIndex}`}
-                      />
-                      <Input
-                        className="col-span-3 h-9"
-                        value={inspector.inspectorName}
-                        onChange={(e) => updateInspector(optionIndex, inspectorIndex, "inspectorName", e.target.value)}
-                        placeholder="e.g., John Smith"
-                        data-testid={`input-inspector-name-${optionIndex}-${inspectorIndex}`}
-                      />
-                      <Input
-                        className="col-span-2 h-9"
-                        type="number"
-                        value={inspector.rate}
-                        onChange={(e) => updateInspector(optionIndex, inspectorIndex, "rate", e.target.value)}
-                        placeholder="108.00"
-                        data-testid={`input-inspector-rate-${optionIndex}-${inspectorIndex}`}
-                      />
-                      <Input
-                        className="col-span-2 h-9"
-                        type="number"
-                        value={inspector.hours}
-                        onChange={(e) => updateInspector(optionIndex, inspectorIndex, "hours", e.target.value)}
-                        placeholder="4488"
-                        data-testid={`input-inspector-hours-${optionIndex}-${inspectorIndex}`}
-                      />
-                      <div className="col-span-1 text-sm font-medium text-right">
-                        ${calculateInspectorTotal(inspector).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                  {option.inspectors.map((inspector, inspectorIndex) => {
+                    const inspectorHours = formData.startDate && formData.endDate
+                      ? calculateTotalHours(formData.startDate, formData.endDate, inspector.scheduleType)
+                      : 0;
+                    
+                    return (
+                      <div key={inspectorIndex} className="border rounded-lg p-3 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-medium text-muted-foreground">Inspector #{inspectorIndex + 1}</span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-semibold text-green-600">
+                              ${calculateInspectorTotal(inspector).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                            </span>
+                            {option.inspectors.length > 1 && (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7"
+                                onClick={() => removeInspector(optionIndex, inspectorIndex)}
+                                data-testid={`button-remove-inspector-${optionIndex}-${inspectorIndex}`}
+                              >
+                                <Trash2 className="h-3 w-3 text-destructive" />
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                        
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="space-y-1">
+                            <Label className="text-xs">Title/Role</Label>
+                            <Input
+                              className="h-9"
+                              value={inspector.title}
+                              onChange={(e) => updateInspector(optionIndex, inspectorIndex, "title", e.target.value)}
+                              placeholder="e.g., DSA Class 1 Inspector"
+                              data-testid={`input-inspector-title-${optionIndex}-${inspectorIndex}`}
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-xs">Inspector Name</Label>
+                            <Input
+                              className="h-9"
+                              value={inspector.inspectorName}
+                              onChange={(e) => updateInspector(optionIndex, inspectorIndex, "inspectorName", e.target.value)}
+                              placeholder="e.g., John Smith"
+                              data-testid={`input-inspector-name-${optionIndex}-${inspectorIndex}`}
+                            />
+                          </div>
+                        </div>
+                        
+                        <div className="grid grid-cols-3 gap-2">
+                          <div className="space-y-1">
+                            <Label className="text-xs">Schedule</Label>
+                            <div className="flex gap-1">
+                              <Button
+                                type="button"
+                                variant={inspector.scheduleType === "fullTime" ? "default" : "outline"}
+                                size="sm"
+                                className="flex-1 h-9 text-xs px-2"
+                                onClick={() => updateInspector(optionIndex, inspectorIndex, "scheduleType", "fullTime")}
+                                data-testid={`button-schedule-full-${optionIndex}-${inspectorIndex}`}
+                              >
+                                FT (8hr)
+                              </Button>
+                              <Button
+                                type="button"
+                                variant={inspector.scheduleType === "partTime" ? "default" : "outline"}
+                                size="sm"
+                                className="flex-1 h-9 text-xs px-2"
+                                onClick={() => updateInspector(optionIndex, inspectorIndex, "scheduleType", "partTime")}
+                                data-testid={`button-schedule-part-${optionIndex}-${inspectorIndex}`}
+                              >
+                                PT (4hr)
+                              </Button>
+                            </div>
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-xs">Rate ($/hr)</Label>
+                            <Input
+                              className="h-9"
+                              type="number"
+                              value={inspector.rate}
+                              onChange={(e) => updateInspector(optionIndex, inspectorIndex, "rate", e.target.value)}
+                              placeholder="108.00"
+                              data-testid={`input-inspector-rate-${optionIndex}-${inspectorIndex}`}
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-xs">Hours</Label>
+                            <div className="flex gap-1">
+                              <Input
+                                className="h-9 flex-1"
+                                type="number"
+                                value={inspector.hours}
+                                onChange={(e) => updateInspector(optionIndex, inspectorIndex, "hours", e.target.value)}
+                                placeholder="4488"
+                                data-testid={`input-inspector-hours-${optionIndex}-${inspectorIndex}`}
+                              />
+                              {formData.startDate && formData.endDate && inspectorHours > 0 && (
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      type="button"
+                                      variant="outline"
+                                      size="sm"
+                                      className="h-9 px-2 text-xs whitespace-nowrap"
+                                      onClick={() => updateInspector(optionIndex, inspectorIndex, "hours", String(inspectorHours))}
+                                      data-testid={`button-calc-hours-${optionIndex}-${inspectorIndex}`}
+                                    >
+                                      {formatHoursDisplay(inspectorHours)}
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    <p>Use calculated hours ({inspector.scheduleType === "fullTime" ? "8" : "4"} hrs/day × {calculatedData.workingDays} days)</p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              )}
+                            </div>
+                          </div>
+                        </div>
                       </div>
-                      <div className="col-span-1 flex justify-end">
-                        {option.inspectors.length > 1 && (
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8"
-                            onClick={() => removeInspector(optionIndex, inspectorIndex)}
-                            data-testid={`button-remove-inspector-${optionIndex}-${inspectorIndex}`}
-                          >
-                            <Trash2 className="h-3 w-3 text-destructive" />
-                          </Button>
-                        )}
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
 
                   <Button
                     type="button"

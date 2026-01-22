@@ -1860,6 +1860,7 @@ export async function registerRoutes(
                 inspectorName: inspector.inspectorName,
                 rate: inspector.rate,
                 hours: inspector.hours,
+                scheduleType: inspector.scheduleType || "fullTime",
               });
             }
           }
@@ -1924,6 +1925,7 @@ export async function registerRoutes(
                 inspectorName: inspector.inspectorName,
                 rate: inspector.rate,
                 hours: inspector.hours,
+                scheduleType: inspector.scheduleType || "fullTime",
               });
             }
           }
@@ -2056,11 +2058,25 @@ export async function registerRoutes(
       addRow('PROJECT MANAGER', proposal.projectManager || '');
       addRow('PROJECT', proposal.projectName);
       
-      // Duration
+      // Duration - calculate schedule summary based on per-inspector schedules
       const startDateStr = proposal.startDate ? new Date(proposal.startDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : 'TBD';
       const endDateStr = proposal.endDate ? new Date(proposal.endDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : 'TBD';
-      const scheduleTypeLabel = proposal.scheduleType === 'partTime' ? 'Part Time' : 'Full Time';
-      const durationStr = `${startDateStr} – ${endDateStr}${proposal.totalHours ? `\n${scheduleTypeLabel}, ${proposal.totalHours} hours` : ''}`;
+      
+      // Determine schedule summary from per-inspector schedules
+      const allInspectors = proposal.options?.flatMap(opt => opt.inspectors || []) || [];
+      const hasFullTime = allInspectors.some(ins => ins.scheduleType !== 'partTime');
+      const hasPartTime = allInspectors.some(ins => ins.scheduleType === 'partTime');
+      let scheduleTypeLabel = 'Full Time';
+      if (hasFullTime && hasPartTime) {
+        scheduleTypeLabel = 'Mixed Schedules (see rate table)';
+      } else if (hasPartTime) {
+        scheduleTypeLabel = 'Part Time';
+      }
+      
+      // Calculate total hours from all inspectors
+      const totalInspectorHours = allInspectors.reduce((sum, ins) => sum + (parseFloat(ins.hours) || 0), 0);
+      const hoursDisplay = totalInspectorHours > 0 ? totalInspectorHours.toLocaleString() : (proposal.totalHours || '');
+      const durationStr = `${startDateStr} – ${endDateStr}${hoursDisplay ? `\n${scheduleTypeLabel}, ${hoursDisplay} hours` : ''}`;
       addRow('DURATION', durationStr, true);
       
       currentY += 10;
@@ -2070,10 +2086,10 @@ export async function registerRoutes(
       currentY += 20;
       
       // Rate options table - centered on page
-      const colWidths = [50, 85, 85, 55, 50, 75, 75];
+      const colWidths = [45, 80, 75, 45, 50, 45, 65, 70];
       const tableWidth = colWidths.reduce((a, b) => a + b, 0);
       const tableStartX = startX + (pageWidth - tableWidth) / 2;
-      const headers = ['Option', 'Title', 'Inspector Name', 'Rate', 'Hours', 'Total', 'Grand Total'];
+      const headers = ['Option', 'Title', 'Inspector', 'Schedule', 'Rate', 'Hours', 'Total', 'Grand Total'];
       
       // Table header
       doc.fontSize(8).font('Helvetica-Bold');
@@ -2100,6 +2116,7 @@ export async function registerRoutes(
           const rate = parseFloat(inspector.rate) || 0;
           const hours = parseFloat(inspector.hours) || 0;
           const total = rate * hours;
+          const scheduleLabel = inspector.scheduleType === 'partTime' ? 'PT (4hr)' : 'FT (8hr)';
           
           // Option number (only on first inspector of each option)
           if (insIndex === 0) {
@@ -2114,18 +2131,21 @@ export async function registerRoutes(
           doc.text(inspector.inspectorName || '', colX, currentY, { width: colWidths[2], align: 'center' });
           colX += colWidths[2];
           
-          doc.text(`$ ${rate.toFixed(2)}`, colX, currentY, { width: colWidths[3], align: 'right' });
+          doc.text(scheduleLabel, colX, currentY, { width: colWidths[3], align: 'center' });
           colX += colWidths[3];
           
-          doc.text(hours.toLocaleString(), colX, currentY, { width: colWidths[4], align: 'right' });
+          doc.text(`$ ${rate.toFixed(2)}`, colX, currentY, { width: colWidths[4], align: 'right' });
           colX += colWidths[4];
           
-          doc.text(`$ ${total.toLocaleString('en-US', { minimumFractionDigits: 2 })}`, colX, currentY, { width: colWidths[5], align: 'right' });
+          doc.text(hours.toLocaleString(), colX, currentY, { width: colWidths[5], align: 'right' });
           colX += colWidths[5];
+          
+          doc.text(`$ ${total.toLocaleString('en-US', { minimumFractionDigits: 2 })}`, colX, currentY, { width: colWidths[6], align: 'right' });
+          colX += colWidths[6];
           
           // Grand total (only on first inspector of each option)
           if (insIndex === 0) {
-            doc.font('Helvetica-Bold').text(`$ ${optionTotal.toLocaleString('en-US', { minimumFractionDigits: 2 })}`, colX, currentY, { width: colWidths[6], align: 'right' });
+            doc.font('Helvetica-Bold').text(`$ ${optionTotal.toLocaleString('en-US', { minimumFractionDigits: 2 })}`, colX, currentY, { width: colWidths[7], align: 'right' });
           }
           
           currentY += 18;

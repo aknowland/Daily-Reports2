@@ -620,6 +620,7 @@ export const proposalOptionInspectors = pgTable("proposal_option_inspectors", {
   inspectorName: text("inspector_name"),
   rate: varchar("rate").notNull(),
   hours: varchar("hours").notNull(),
+  scheduleType: varchar("schedule_type").default("fullTime"), // fullTime (8 hrs/day) or partTime (4 hrs/day)
   createdAt: timestamp("created_at").defaultNow(),
 });
 
