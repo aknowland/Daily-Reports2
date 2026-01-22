@@ -144,6 +144,7 @@ async function executeFunction(
             inspectorName: args.inspectorName || null,
             rate: args.hourlyRate || "0",
             hours: args.estimatedHours || args.totalHours || "0",
+            scheduleType: args.scheduleType || "fullTime",
           });
         }
         
