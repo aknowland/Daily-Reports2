@@ -56,6 +56,7 @@ type DashboardData = {
     originalValue: string | null;
     currentValue: string | null;
     budgetOverride: string | null;
+    baseBudgetSpent: string | null;
     notes: string | null;
   };
   schedule: {
@@ -69,6 +70,8 @@ type DashboardData = {
   budget: {
     totalBudget: number;
     spent: number;
+    baseBudgetSpent: number;    // Manual starting point for mid-project
+    calculatedSpent: number;     // Auto-calculated from reports/invoices
     remaining: number;
     progress: number;
     status: 'under' | 'on_track' | 'warning' | 'over';
@@ -198,6 +201,8 @@ export default function ProjectDashboard() {
   const [, setLocation] = useLocation();
   const [showBudgetOverrideDialog, setShowBudgetOverrideDialog] = useState(false);
   const [budgetOverrideValue, setBudgetOverrideValue] = useState("");
+  const [showBaseBudgetDialog, setShowBaseBudgetDialog] = useState(false);
+  const [baseBudgetValue, setBaseBudgetValue] = useState("");
 
   const { data: dashboard, isLoading } = useQuery<DashboardData>({
     queryKey: ["/api/contracts", contractId, "dashboard"],
@@ -244,6 +249,41 @@ export default function ProjectDashboard() {
   const handleOpenBudgetOverride = () => {
     setBudgetOverrideValue(dashboard?.contract.budgetOverride || "");
     setShowBudgetOverrideDialog(true);
+  };
+
+  const updateBaseBudgetMutation = useMutation({
+    mutationFn: async (baseBudgetSpent: string | null) => {
+      const res = await apiRequest("PATCH", `/api/contracts/${contractId}`, {
+        baseBudgetSpent,
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/contracts", contractId, "dashboard"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/contracts"] });
+      setShowBaseBudgetDialog(false);
+      toast({
+        title: "Base Budget Updated",
+        description: "The base budget has been saved. Future reports will stack on top of this amount.",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleSaveBaseBudget = () => {
+    const value = baseBudgetValue.trim();
+    updateBaseBudgetMutation.mutate(value === "" ? null : value);
+  };
+
+  const handleOpenBaseBudget = () => {
+    setBaseBudgetValue(dashboard?.contract.baseBudgetSpent || "");
+    setShowBaseBudgetDialog(true);
   };
 
   if (isLoading) {
@@ -418,7 +458,7 @@ export default function ProjectDashboard() {
                   </p>
                 </div>
                 <div>
-                  <p className="text-xs text-muted-foreground">Spent</p>
+                  <p className="text-xs text-muted-foreground">Total Spent</p>
                   <p className="font-medium text-sm" data-testid="text-budget-spent">
                     {formatCurrency(dashboard.budget.spent)}
                   </p>
@@ -430,6 +470,32 @@ export default function ProjectDashboard() {
                   </p>
                 </div>
               </div>
+
+              {(dashboard.budget.baseBudgetSpent > 0 || dashboard.budget.calculatedSpent > 0) && (
+                <div className="pt-3 border-t">
+                  <p className="text-sm text-muted-foreground mb-2">Spent Breakdown</p>
+                  <div className="grid grid-cols-3 gap-2 text-sm">
+                    <div>
+                      <p className="text-xs text-muted-foreground">Base (Manual)</p>
+                      <p className="font-medium" data-testid="text-base-budget">
+                        {formatCurrency(dashboard.budget.baseBudgetSpent)}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">From Reports</p>
+                      <p className="font-medium" data-testid="text-calculated-spent">
+                        {formatCurrency(dashboard.budget.calculatedSpent)}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Total</p>
+                      <p className="font-medium" data-testid="text-total-spent">
+                        {formatCurrency(dashboard.budget.spent)}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               <div className="pt-4 border-t">
                 <p className="text-sm text-muted-foreground mb-2">Hours Breakdown</p>
@@ -453,19 +519,33 @@ export default function ProjectDashboard() {
                 </div>
               </div>
 
-              <div className="pt-2">
+              <div className="pt-2 space-y-2">
                 <Button 
                   variant="outline" 
+                  size="sm" 
+                  className="w-full"
+                  onClick={handleOpenBaseBudget}
+                  data-testid="button-set-base-budget"
+                >
+                  {dashboard.contract.baseBudgetSpent ? 'Edit Base Budget' : 'Set Base Budget (Mid-Project)'}
+                </Button>
+                {dashboard.contract.baseBudgetSpent && (
+                  <p className="text-xs text-muted-foreground text-center">
+                    Base amount: {formatCurrency(parseFloat(dashboard.contract.baseBudgetSpent))} (auto-stacks with new reports)
+                  </p>
+                )}
+                <Button 
+                  variant="ghost" 
                   size="sm" 
                   className="w-full"
                   onClick={handleOpenBudgetOverride}
                   data-testid="button-edit-budget"
                 >
-                  {dashboard.contract.budgetOverride ? 'Edit Budget Override' : 'Set Manual Budget'}
+                  {dashboard.contract.budgetOverride ? 'Edit Total Budget Override' : 'Override Total Budget'}
                 </Button>
                 {dashboard.contract.budgetOverride && (
-                  <p className="text-xs text-muted-foreground mt-1 text-center">
-                    Manual override active: {formatCurrency(parseFloat(dashboard.contract.budgetOverride))}
+                  <p className="text-xs text-muted-foreground text-center">
+                    Budget override: {formatCurrency(parseFloat(dashboard.contract.budgetOverride))}
                   </p>
                 )}
               </div>
@@ -756,6 +836,57 @@ export default function ProjectDashboard() {
               data-testid="button-save-budget"
             >
               {updateBudgetMutation.isPending ? "Saving..." : "Save"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showBaseBudgetDialog} onOpenChange={setShowBaseBudgetDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Set Base Budget (Mid-Project Onboarding)</DialogTitle>
+            <DialogDescription>
+              Set a base amount for work completed before the inspector joined. 
+              This amount will stack with future daily reports automatically.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="baseBudget">Base Amount Spent ($)</Label>
+              <Input
+                id="baseBudget"
+                type="number"
+                step="0.01"
+                min="0"
+                placeholder="Enter amount already spent before onboarding"
+                value={baseBudgetValue}
+                onChange={(e) => setBaseBudgetValue(e.target.value)}
+                data-testid="input-base-budget"
+              />
+            </div>
+            <div className="bg-muted/50 p-3 rounded-md space-y-1">
+              <p className="text-sm font-medium">How it works:</p>
+              <ul className="text-sm text-muted-foreground space-y-1">
+                <li>Base: {formatCurrency(parseFloat(baseBudgetValue || '0'))} (what you enter)</li>
+                <li>+ Reports: {formatCurrency(dashboard?.budget.calculatedSpent || 0)} (auto-calculated)</li>
+                <li>= Total: {formatCurrency(parseFloat(baseBudgetValue || '0') + (dashboard?.budget.calculatedSpent || 0))}</li>
+              </ul>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button 
+              variant="outline" 
+              onClick={() => setShowBaseBudgetDialog(false)}
+              data-testid="button-cancel-base-budget"
+            >
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleSaveBaseBudget}
+              disabled={updateBaseBudgetMutation.isPending}
+              data-testid="button-save-base-budget"
+            >
+              {updateBaseBudgetMutation.isPending ? "Saving..." : "Save"}
             </Button>
           </DialogFooter>
         </DialogContent>
