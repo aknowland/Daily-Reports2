@@ -38,13 +38,14 @@ The application is built with a modern web stack, utilizing **React, TypeScript,
 - **IOR Agreements**: Inspector of Record agreements for setting inspector pay terms on specific projects. Company admins can create, edit, delete agreements and generate professional PDF documents. Access restricted to company admins only.
 - **Project Dashboard**: Comprehensive visual dashboard for each contract accessible via "Dashboard" button on contract cards. Displays:
   - Schedule progress (based on start/substantial completion dates with status indicators)
-  - Budget tracking (auto-calculated from invoices with manual override option)
+  - Budget tracking with stacking support (base budget + auto-calculated from reports)
   - Bid schedule (all milestone dates from bid release to final closeout)
   - Client billing rates (regular, overtime, premium hourly rates)
   - Inspector billing rates (from IOR agreements linked to contract projects)
   - Project notes
   - Attached files (with download links)
   - Daily reports table (showing reports from all linked projects)
+- **Stacking Budget for Mid-Project Onboarding**: When an inspector joins a project mid-way, admins can set a "base budget" representing work done before they joined. This base amount automatically stacks with new daily reports - no manual recalculation needed.
 
 ## Technical Notes
 
