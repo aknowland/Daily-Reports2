@@ -591,6 +591,7 @@ export const proposals = pgTable("proposals", {
   startDate: timestamp("start_date"),
   endDate: timestamp("end_date"),
   totalHours: varchar("total_hours"),
+  scheduleType: varchar("schedule_type").default("fullTime"),
   rateEscalationNote: text("rate_escalation_note"),
   terms: text("terms"),
   status: proposalStatusEnum("status").default("draft").notNull(),

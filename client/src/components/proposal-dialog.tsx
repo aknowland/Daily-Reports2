@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,10 +15,12 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Plus, Trash2, Users, FileText } from "lucide-react";
+import { Plus, Trash2, Users, FileText, Clock, Calendar, Info } from "lucide-react";
 import { ClientSelect } from "@/components/client-select";
 import { useAuth } from "@/hooks/use-auth";
 import type { ProposalWithDetails } from "@shared/schema";
+import { calculateTotalHours, calculateWorkingDays, getHolidaysInRange, formatHoursDisplay } from "@/lib/working-days-calculator";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 type InspectorEntry = {
   title: string;
@@ -32,6 +34,8 @@ type OptionEntry = {
   inspectors: InspectorEntry[];
 };
 
+type ScheduleType = "fullTime" | "partTime";
+
 type ProposalFormData = {
   clientId: string;
   clientName: string;
@@ -40,6 +44,7 @@ type ProposalFormData = {
   startDate: string;
   endDate: string;
   totalHours: string;
+  scheduleType: ScheduleType;
   rateEscalationNote: string;
   terms: string;
 };
@@ -64,6 +69,7 @@ const emptyFormData: ProposalFormData = {
   startDate: "",
   endDate: "",
   totalHours: "",
+  scheduleType: "fullTime",
   rateEscalationNote: "*Hourly Rate increase of $3 at the start of every January of the construction/contract period.",
   terms: `1. Knowland Construction Services agrees to provide for continuous inspection of work for compliance with approved contract documents. Project Inspector duties as outlined in Title 24, Part 1, Chapter 4, Sections 4-333 thru 4-342 California Code of Regulations, including DSA Interpretive Regulations A-6, A-7, A-8, and as incorporated in the following paragraphs.
 
@@ -107,6 +113,7 @@ export function ProposalDialog({ open, onOpenChange, editingProposal }: Proposal
         startDate: editingProposal.startDate ? new Date(editingProposal.startDate).toISOString().split('T')[0] : "",
         endDate: editingProposal.endDate ? new Date(editingProposal.endDate).toISOString().split('T')[0] : "",
         totalHours: editingProposal.totalHours || "",
+        scheduleType: (editingProposal.scheduleType as ScheduleType) || "fullTime",
         rateEscalationNote: editingProposal.rateEscalationNote || "",
         terms: editingProposal.terms || "",
       });
@@ -127,6 +134,20 @@ export function ProposalDialog({ open, onOpenChange, editingProposal }: Proposal
       setOptions([{ ...emptyOption, inspectors: [{ ...emptyInspector }] }]);
     }
   }, [editingProposal, open]);
+
+  const calculatedData = useMemo(() => {
+    const workingDays = calculateWorkingDays(formData.startDate, formData.endDate);
+    const calculatedHours = calculateTotalHours(formData.startDate, formData.endDate, formData.scheduleType);
+    const holidays = getHolidaysInRange(formData.startDate, formData.endDate);
+    return { workingDays, calculatedHours, holidays };
+  }, [formData.startDate, formData.endDate, formData.scheduleType]);
+
+  const applyCalculatedHours = () => {
+    setFormData(prev => ({ 
+      ...prev, 
+      totalHours: formatHoursDisplay(calculatedData.calculatedHours) 
+    }));
+  };
 
   const handleClientChange = (clientId: string, clientName?: string) => {
     setFormData(prev => ({
@@ -298,7 +319,7 @@ export function ProposalDialog({ open, onOpenChange, editingProposal }: Proposal
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="startDate">Start Date</Label>
               <Input
@@ -320,18 +341,116 @@ export function ProposalDialog({ open, onOpenChange, editingProposal }: Proposal
                 onChange={(e) => setFormData(prev => ({ ...prev, endDate: e.target.value }))}
               />
             </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label>Schedule Type</Label>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant={formData.scheduleType === "fullTime" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setFormData(prev => ({ ...prev, scheduleType: "fullTime" }))}
+                  className="flex-1"
+                  data-testid="button-schedule-full-time"
+                >
+                  <Clock className="h-4 w-4 mr-2" />
+                  Full Time (8 hrs/day)
+                </Button>
+                <Button
+                  type="button"
+                  variant={formData.scheduleType === "partTime" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setFormData(prev => ({ ...prev, scheduleType: "partTime" }))}
+                  className="flex-1"
+                  data-testid="button-schedule-part-time"
+                >
+                  <Clock className="h-4 w-4 mr-2" />
+                  Part Time (4 hrs/day)
+                </Button>
+              </div>
+            </div>
 
             <div className="space-y-2">
               <Label htmlFor="totalHours">Total Hours</Label>
-              <Input
-                id="totalHours"
-                data-testid="input-proposal-total-hours"
-                value={formData.totalHours}
-                onChange={(e) => setFormData(prev => ({ ...prev, totalHours: e.target.value }))}
-                placeholder="e.g., 4,488"
-              />
+              <div className="flex gap-2">
+                <Input
+                  id="totalHours"
+                  data-testid="input-proposal-total-hours"
+                  value={formData.totalHours}
+                  onChange={(e) => setFormData(prev => ({ ...prev, totalHours: e.target.value }))}
+                  placeholder="e.g., 4,488"
+                  className="flex-1"
+                />
+                {formData.startDate && formData.endDate && calculatedData.calculatedHours > 0 && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={applyCalculatedHours}
+                    className="whitespace-nowrap"
+                    data-testid="button-apply-calculated-hours"
+                  >
+                    Use {formatHoursDisplay(calculatedData.calculatedHours)}
+                  </Button>
+                )}
+              </div>
             </div>
           </div>
+
+          {formData.startDate && formData.endDate && calculatedData.workingDays > 0 && (
+            <Card className="bg-muted/50">
+              <CardContent className="pt-4 pb-3">
+                <div className="flex items-start gap-3">
+                  <Calendar className="h-5 w-5 text-muted-foreground mt-0.5" />
+                  <div className="flex-1 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium">Hours Calculation Preview</span>
+                      <span className="text-sm text-muted-foreground">
+                        {formData.scheduleType === "fullTime" ? "Full Time" : "Part Time"} Schedule
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-3 gap-4 text-sm">
+                      <div>
+                        <span className="text-muted-foreground">Working Days:</span>{" "}
+                        <span className="font-medium">{calculatedData.workingDays}</span>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">Hours/Day:</span>{" "}
+                        <span className="font-medium">{formData.scheduleType === "fullTime" ? 8 : 4}</span>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">Total Hours:</span>{" "}
+                        <span className="font-medium text-primary">{formatHoursDisplay(calculatedData.calculatedHours)}</span>
+                      </div>
+                    </div>
+                    {calculatedData.holidays.length > 0 && (
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground pt-1 border-t">
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button type="button" className="flex items-center gap-1 hover:text-foreground transition-colors">
+                              <Info className="h-3 w-3" />
+                              {calculatedData.holidays.length} holiday{calculatedData.holidays.length !== 1 ? 's' : ''} excluded
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent side="bottom" className="max-w-xs">
+                            <div className="space-y-1">
+                              {calculatedData.holidays.map(h => (
+                                <div key={h.date} className="text-xs">
+                                  {h.name} ({new Date(h.date + 'T00:00:00').toLocaleDateString()})
+                                </div>
+                              ))}
+                            </div>
+                          </TooltipContent>
+                        </Tooltip>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           <div className="space-y-4">
             <div className="flex items-center justify-between">
