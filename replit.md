@@ -22,7 +22,8 @@ The application is built with a modern web stack, utilizing **React, TypeScript,
 - **Dynamic Billing & Invoicing**: Implements a two-tier rate structure for company-to-client and inspector-to-company billing, supporting invoice and timesheet generation.
 - **Contract-Project Relationship**: Enables multiple projects to link to a single contract for streamlined billing rate management.
 - **"View as Inspector" Mode**: System and Company Admins can toggle this mode to experience the application from an inspector's perspective without changing accounts.
-- **Proposal Management**: Company admins can create and manage detailed proposals for inspection services, including dynamic pricing options and PDF generation.
+- **Proposal Management**: Company admins can create and manage detailed proposals for inspection services, including dynamic pricing options, automatic hours calculation, and PDF generation.
+- **Proposal Hours Calculator**: Proposals support Full Time (8 hrs/day) or Part Time (4 hrs/day) schedule types. When start and end dates are set, the system automatically calculates total working hours excluding weekends and US federal holidays (New Year's, MLK Day, Presidents' Day, Memorial Day, Juneteenth, Independence Day, Labor Day, Columbus Day, Veterans Day, Thanksgiving, Christmas).
 - **Proposal-to-Contract Conversion**: Admins can convert accepted proposals into contracts with one click, automatically creating linked projects and mapping proposal data (rates, hours, dates) to the new contract.
 - **AI Assistant with Task Execution**: Company Admins and System Admins can use an AI chat assistant (accessible via chat bubble or /company/chat) that can both answer questions about company data AND perform actions like creating proposals. Features voice transcription for hands-free input.
 

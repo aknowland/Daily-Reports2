@@ -2059,7 +2059,8 @@ export async function registerRoutes(
       // Duration
       const startDateStr = proposal.startDate ? new Date(proposal.startDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : 'TBD';
       const endDateStr = proposal.endDate ? new Date(proposal.endDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : 'TBD';
-      const durationStr = `${startDateStr} – ${endDateStr}${proposal.totalHours ? `\nFull Time, ${proposal.totalHours} hours` : ''}`;
+      const scheduleTypeLabel = proposal.scheduleType === 'partTime' ? 'Part Time' : 'Full Time';
+      const durationStr = `${startDateStr} – ${endDateStr}${proposal.totalHours ? `\n${scheduleTypeLabel}, ${proposal.totalHours} hours` : ''}`;
       addRow('DURATION', durationStr, true);
       
       currentY += 10;
