@@ -90,7 +90,7 @@ interface InvoiceData {
 
 export default function MyProjectsPage() {
   const { toast } = useToast();
-  const { companies, isCompanyAdmin } = useAuth();
+  const { companies, isCompanyAdmin, isEffectiveSystemAdmin } = useAuth();
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [showAssignDialog, setShowAssignDialog] = useState(false);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
@@ -124,6 +124,12 @@ export default function MyProjectsPage() {
 
   const { data: profile } = useQuery<{ activeProjectId?: string; activeCompanyId?: string }>({
     queryKey: ["/api/profile"],
+  });
+
+  // Fetch all companies for system admins
+  const { data: allCompanies = [] } = useQuery<Company[]>({
+    queryKey: ["/api/admin/companies"],
+    enabled: isEffectiveSystemAdmin,
   });
 
   const switchMutation = useMutation({
@@ -453,6 +459,12 @@ export default function MyProjectsPage() {
 
   // Get companies where user is admin
   const adminCompanies = companies.filter(c => c.role === "admin");
+  
+  // For system admins, use all companies; for company admins, use their admin companies
+  // Convert allCompanies to same format as adminCompanies for consistency
+  const assignableCompanies = isEffectiveSystemAdmin 
+    ? allCompanies.map(c => ({ companyId: c.id, company: c, role: "admin" as const }))
+    : adminCompanies;
 
   if (isLoading) {
     return (
@@ -613,8 +625,8 @@ export default function MyProjectsPage() {
                       )}
                     </Link>
                     <div className="flex flex-col gap-2 mt-2">
-                      {/* Show assign button if user has any admin companies and can edit this project */}
-                      {adminCompanies.length > 0 && (isPersonal || adminCompanies.some(c => c.companyId === project.companyId)) && (
+                      {/* Show assign button for system admins (any project) or company admins (their company's projects) */}
+                      {(isEffectiveSystemAdmin || (adminCompanies.length > 0 && (isPersonal || adminCompanies.some(c => c.companyId === project.companyId)))) && (
                         <Button
                           variant="outline"
                           className="w-full"
@@ -645,7 +657,7 @@ export default function MyProjectsPage() {
                         <FileText className="w-4 h-4 mr-2" />
                         Generate Invoice
                       </Button>
-                      {(isPersonal || adminCompanies.some(c => c.companyId === project.companyId)) && (
+                      {(isEffectiveSystemAdmin || isPersonal || adminCompanies.some(c => c.companyId === project.companyId)) && (
                         <Button
                           variant="outline"
                           className="w-full text-destructive"
@@ -786,13 +798,13 @@ export default function MyProjectsPage() {
               <div className="flex items-center gap-2 p-3 rounded-md bg-muted border">
                 <Building2 className="w-4 h-4 text-muted-foreground" />
                 <span className="text-sm">
-                  Currently assigned to: <strong>{adminCompanies.find(c => c.companyId === selectedProject.companyId)?.company?.name || "Another Company"}</strong>
+                  Currently assigned to: <strong>{assignableCompanies.find(c => c.companyId === selectedProject.companyId)?.company?.name || "Another Company"}</strong>
                 </span>
               </div>
             )}
             
             {/* Check if there are alternative companies available */}
-            {adminCompanies.filter(m => m.companyId !== selectedProject?.companyId).length === 0 ? (
+            {assignableCompanies.filter(m => m.companyId !== selectedProject?.companyId).length === 0 ? (
               <div className="p-4 text-center text-muted-foreground border rounded-md bg-muted/50">
                 <p className="text-sm">
                   {selectedProject?.companyId 
@@ -808,7 +820,7 @@ export default function MyProjectsPage() {
                     <SelectValue placeholder="Choose a company" />
                   </SelectTrigger>
                   <SelectContent>
-                    {adminCompanies
+                    {assignableCompanies
                       .filter(membership => membership.companyId !== selectedProject?.companyId)
                       .map((membership) => (
                         <SelectItem key={membership.companyId} value={membership.companyId}>
@@ -818,7 +830,7 @@ export default function MyProjectsPage() {
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-muted-foreground">
-                  Only companies where you are an admin are shown.
+                  {isEffectiveSystemAdmin ? "All companies are shown (System Admin)." : "Only companies where you are an admin are shown."}
                 </p>
               </div>
             )}
@@ -833,9 +845,9 @@ export default function MyProjectsPage() {
               }}
               data-testid="button-cancel-assign"
             >
-              {adminCompanies.filter(m => m.companyId !== selectedProject?.companyId).length === 0 ? "Close" : "Cancel"}
+              {assignableCompanies.filter(m => m.companyId !== selectedProject?.companyId).length === 0 ? "Close" : "Cancel"}
             </Button>
-            {adminCompanies.filter(m => m.companyId !== selectedProject?.companyId).length > 0 && (
+            {assignableCompanies.filter(m => m.companyId !== selectedProject?.companyId).length > 0 && (
               <Button
                 onClick={() => selectedProject && assignMutation.mutate({ 
                   projectId: selectedProject.id, 
