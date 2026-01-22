@@ -1210,13 +1210,18 @@ export async function registerRoutes(
         }
       }
       
-      // Calculate budget
+      // Calculate budget with stacking support (base + calculated from reports)
       const budgetSummary = await storage.getContractBudgetSummary(req.params.id);
       const totalBudget = contract.budgetOverride 
         ? parseFloat(contract.budgetOverride) 
         : parseFloat(contract.currentValue || contract.originalValue || '0');
       
-      const budgetSpent = budgetSummary.totalBilled;
+      // Base budget = manual starting point for mid-project onboarding
+      const baseBudgetSpent = parseFloat(contract.baseBudgetSpent || '0');
+      // Calculated = hours from daily reports/invoices
+      const calculatedSpent = budgetSummary.totalBilled;
+      // Total spent = base + calculated (stacking)
+      const budgetSpent = baseBudgetSpent + calculatedSpent;
       const budgetProgress = totalBudget > 0 ? (budgetSpent / totalBudget) * 100 : 0;
       const budgetRemaining = totalBudget - budgetSpent;
       
@@ -1257,6 +1262,7 @@ export async function registerRoutes(
           originalValue: contract.originalValue,
           currentValue: contract.currentValue,
           budgetOverride: contract.budgetOverride,
+          baseBudgetSpent: contract.baseBudgetSpent,
           notes: contract.notes,
         },
         schedule: {
@@ -1270,6 +1276,8 @@ export async function registerRoutes(
         budget: {
           totalBudget,
           spent: budgetSpent,
+          baseBudgetSpent,  // Manual starting point for mid-project
+          calculatedSpent,  // Auto-calculated from reports/invoices
           remaining: budgetRemaining,
           progress: Math.round(budgetProgress * 100) / 100,
           status: budgetStatus,

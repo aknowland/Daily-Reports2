@@ -289,6 +289,7 @@ export const contracts = pgTable("contracts", {
   overtimeRate: varchar("overtime_rate"),
   premiumRate: varchar("premium_rate"),
   budgetOverride: varchar("budget_override"),
+  baseBudgetSpent: varchar("base_budget_spent"), // Manual starting point for mid-project onboarding
   notes: text("notes"),
   createdById: varchar("created_by_id").references(() => users.id),
   createdAt: timestamp("created_at").defaultNow(),
