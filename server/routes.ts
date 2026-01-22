@@ -1801,12 +1801,24 @@ export async function registerRoutes(
       const userId = req.user?.claims?.sub;
       const profile = await storage.getUserProfile(userId);
       
+      console.log("[Proposal Create] userId:", userId);
+      console.log("[Proposal Create] profile:", { 
+        role: profile?.role, 
+        activeCompanyId: profile?.activeCompanyId, 
+        preferAdminMode: profile?.preferAdminMode 
+      });
+      
       if (!profile?.activeCompanyId) {
         return res.status(400).json({ message: "No active company selected" });
       }
       
+      const membership = await storage.getCompanyMember(profile.activeCompanyId, userId);
+      console.log("[Proposal Create] company membership:", membership);
+      
       const isCompAdmin = await isEffectiveCompanyAdmin(userId, profile.activeCompanyId, profile);
       const isSysAdmin = isEffectiveSystemAdmin(profile);
+      
+      console.log("[Proposal Create] isCompAdmin:", isCompAdmin, "isSysAdmin:", isSysAdmin);
       
       if (!isCompAdmin && !isSysAdmin) {
         return res.status(403).json({ message: "Only admins can create proposals" });
