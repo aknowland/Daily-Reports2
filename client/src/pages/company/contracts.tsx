@@ -70,6 +70,35 @@ import { ProposalDialog } from "@/components/proposal-dialog";
 import { ClientSelect } from "@/components/client-select";
 import { format } from "date-fns";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { calculateTotalHours, calculateWorkingDays, formatHoursDisplay } from "@/lib/working-days-calculator";
+import { Users, Info } from "lucide-react";
+
+type ContractInspectorEntry = {
+  title: string;
+  inspectorName: string;
+  rate: string;
+  hours: string;
+  scheduleType: "fullTime" | "partTime";
+};
+
+type ContractOptionEntry = {
+  name: string;
+  inspectors: ContractInspectorEntry[];
+};
+
+const emptyContractInspector: ContractInspectorEntry = {
+  title: "",
+  inspectorName: "",
+  rate: "",
+  hours: "",
+  scheduleType: "fullTime",
+};
+
+const emptyContractOption: ContractOptionEntry = {
+  name: "",
+  inspectors: [{ ...emptyContractInspector }],
+};
 
 const CONTRACT_STATUS_OPTIONS = [
   { value: "bid_release", label: "Bid Release", color: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300" },
@@ -151,6 +180,62 @@ export default function ContractsPage() {
   const [selectedOptionIndex, setSelectedOptionIndex] = useState(0);
   const [createProjectAfterContract, setCreateProjectAfterContract] = useState(true);
   const [isConverting, setIsConverting] = useState(false);
+  const [contractOptions, setContractOptions] = useState<ContractOptionEntry[]>([{ ...emptyContractOption, inspectors: [{ ...emptyContractInspector }] }]);
+
+  const addContractOption = () => {
+    setContractOptions([...contractOptions, { ...emptyContractOption, inspectors: [{ ...emptyContractInspector }] }]);
+  };
+
+  const removeContractOption = (index: number) => {
+    setContractOptions(contractOptions.filter((_, i) => i !== index));
+  };
+
+  const updateContractOption = (index: number, field: keyof ContractOptionEntry, value: string) => {
+    setContractOptions(contractOptions.map((opt, i) => 
+      i === index ? { ...opt, [field]: value } : opt
+    ));
+  };
+
+  const addContractInspector = (optionIndex: number) => {
+    setContractOptions(contractOptions.map((opt, i) => 
+      i === optionIndex ? { ...opt, inspectors: [...opt.inspectors, { ...emptyContractInspector }] } : opt
+    ));
+  };
+
+  const removeContractInspector = (optionIndex: number, inspectorIndex: number) => {
+    setContractOptions(contractOptions.map((opt, i) => {
+      if (i === optionIndex) {
+        return { ...opt, inspectors: opt.inspectors.filter((_, j) => j !== inspectorIndex) };
+      }
+      return opt;
+    }));
+  };
+
+  const updateContractInspector = (optionIndex: number, inspectorIndex: number, field: keyof ContractInspectorEntry, value: string) => {
+    setContractOptions(contractOptions.map((opt, i) => {
+      if (i !== optionIndex) return opt;
+      return {
+        ...opt,
+        inspectors: opt.inspectors.map((ins, j) => 
+          j === inspectorIndex ? { ...ins, [field]: value } : ins
+        ),
+      };
+    }));
+  };
+
+  const calculateContractOptionTotal = (option: ContractOptionEntry): number => {
+    return option.inspectors.reduce((sum, ins) => {
+      const rate = parseFloat(ins.rate) || 0;
+      const hours = parseFloat(ins.hours) || 0;
+      return sum + (rate * hours);
+    }, 0);
+  };
+
+  const calculateContractInspectorTotal = (inspector: ContractInspectorEntry): number => {
+    const rate = parseFloat(inspector.rate) || 0;
+    const hours = parseFloat(inspector.hours) || 0;
+    return rate * hours;
+  };
 
   const { data: contracts = [], isLoading } = useQuery<ContractWithProjects[]>({
     queryKey: ["/api/contracts"],
@@ -178,7 +263,7 @@ export default function ContractsPage() {
   });
 
   const createMutation = useMutation({
-    mutationFn: async (data: ContractFormData) => {
+    mutationFn: async (data: ContractFormData & { options: ContractOptionEntry[] }) => {
       const payload = {
         ...data,
         clientId: data.clientId || null,
@@ -188,6 +273,10 @@ export default function ContractsPage() {
         startDate: data.startDate ? new Date(data.startDate) : null,
         substantialCompletionDate: data.substantialCompletionDate ? new Date(data.substantialCompletionDate) : null,
         finalCloseoutDate: data.finalCloseoutDate ? new Date(data.finalCloseoutDate) : null,
+        options: data.options.map(opt => ({
+          name: opt.name,
+          inspectors: opt.inspectors.filter(ins => ins.title.trim() || ins.inspectorName.trim() || ins.rate.trim()),
+        })),
       };
       return apiRequest("POST", "/api/contracts", payload);
     },
@@ -195,6 +284,7 @@ export default function ContractsPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/contracts"] });
       setShowCreateDialog(false);
       setFormData(emptyFormData);
+      setContractOptions([{ ...emptyContractOption, inspectors: [{ ...emptyContractInspector }] }]);
       toast({
         title: "Contract Created",
         description: "New contract has been created.",
@@ -210,7 +300,7 @@ export default function ContractsPage() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: async (data: ContractFormData & { id: string }) => {
+    mutationFn: async (data: ContractFormData & { id: string; options: ContractOptionEntry[] }) => {
       const payload = {
         ...data,
         clientId: data.clientId || null,
@@ -220,6 +310,10 @@ export default function ContractsPage() {
         startDate: data.startDate ? new Date(data.startDate) : null,
         substantialCompletionDate: data.substantialCompletionDate ? new Date(data.substantialCompletionDate) : null,
         finalCloseoutDate: data.finalCloseoutDate ? new Date(data.finalCloseoutDate) : null,
+        options: data.options.map(opt => ({
+          name: opt.name,
+          inspectors: opt.inspectors.filter(ins => ins.title.trim() || ins.inspectorName.trim() || ins.rate.trim()),
+        })),
       };
       return apiRequest("PATCH", `/api/contracts/${data.id}`, payload);
     },
@@ -227,6 +321,7 @@ export default function ContractsPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/contracts"] });
       setEditingContract(null);
       setFormData(emptyFormData);
+      setContractOptions([{ ...emptyContractOption, inspectors: [{ ...emptyContractInspector }] }]);
       toast({
         title: "Contract Updated",
         description: "Contract has been updated.",
@@ -358,7 +453,7 @@ export default function ContractsPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (editingContract) {
-      updateMutation.mutate({ ...formData, id: editingContract.id }, {
+      updateMutation.mutate({ ...formData, id: editingContract.id, options: contractOptions }, {
         onSuccess: async () => {
           if (pendingFiles.length > 0) {
             await uploadAttachments(editingContract.id, pendingFiles);
@@ -377,6 +472,10 @@ export default function ContractsPage() {
           startDate: formData.startDate ? new Date(formData.startDate) : null,
           substantialCompletionDate: formData.substantialCompletionDate ? new Date(formData.substantialCompletionDate) : null,
           finalCloseoutDate: formData.finalCloseoutDate ? new Date(formData.finalCloseoutDate) : null,
+          options: contractOptions.map(opt => ({
+            name: opt.name,
+            inspectors: opt.inspectors.filter(ins => ins.title.trim() || ins.inspectorName.trim() || ins.rate.trim()),
+          })),
         };
         const response = await apiRequest("POST", "/api/contracts", payload);
         const newContract = await response.json();
@@ -388,6 +487,7 @@ export default function ContractsPage() {
         queryClient.invalidateQueries({ queryKey: ["/api/contracts"] });
         setShowCreateDialog(false);
         setFormData(emptyFormData);
+        setContractOptions([{ ...emptyContractOption, inspectors: [{ ...emptyContractInspector }] }]);
         setPendingFiles([]);
         toast({
           title: "Contract Created",
@@ -424,6 +524,23 @@ export default function ContractsPage() {
       premiumRate: contract.premiumRate || "",
       notes: contract.notes || "",
     });
+    
+    // Initialize options from contract
+    if (contract.options && contract.options.length > 0) {
+      setContractOptions(contract.options.map(opt => ({
+        name: opt.name || "",
+        inspectors: (opt.inspectors || []).map(ins => ({
+          title: ins.title,
+          inspectorName: ins.inspectorName || "",
+          rate: ins.rate,
+          hours: ins.hours,
+          scheduleType: (ins.scheduleType as "fullTime" | "partTime") || "fullTime",
+        })),
+      })));
+    } else {
+      setContractOptions([{ ...emptyContractOption, inspectors: [{ ...emptyContractInspector }] }]);
+    }
+    
     setEditingContract(contract);
   };
 
@@ -475,6 +592,18 @@ export default function ContractsPage() {
         return sum + (parseFloat(ins.rate) || 0) * (parseFloat(ins.hours) || 0);
       }, 0) || 0;
       
+      // Copy the selected option to the contract with all inspectors
+      const contractOptions = selectedOption ? [{
+        name: selectedOption.name || "",
+        inspectors: (selectedOption.inspectors || []).map(ins => ({
+          title: ins.title,
+          inspectorName: ins.inspectorName || "",
+          rate: ins.rate,
+          hours: ins.hours,
+          scheduleType: ins.scheduleType || "fullTime",
+        })),
+      }] : [];
+      
       // Create the contract
       const contractPayload = {
         contractNumber: `C-${convertingProposal.proposalNumber?.replace('PROP-', '') || Date.now()}`,
@@ -491,6 +620,7 @@ export default function ContractsPage() {
         overtimeRate: "",
         premiumRate: "",
         notes: `Converted from proposal: ${convertingProposal.proposalNumber}\nClient: ${convertingProposal.clientName}`,
+        options: contractOptions,
       };
       
       const contractResponse = await apiRequest("POST", "/api/contracts", contractPayload);
@@ -689,6 +819,18 @@ export default function ContractsPage() {
                                   Current: ${contract.currentValue}
                                 </span>
                               )}
+                            </div>
+                          )}
+                          {contract.options && contract.options.length > 0 && contract.options[0].inspectors && contract.options[0].inspectors.length > 0 && (
+                            <div className="flex items-center gap-2 flex-wrap mt-1">
+                              <Users className="w-3 h-3" />
+                              <span className="text-xs">Inspectors:</span>
+                              {contract.options[0].inspectors.map((ins, idx) => (
+                                <Badge key={idx} variant="secondary" className="text-xs">
+                                  {ins.title || ins.inspectorName || `Inspector ${idx + 1}`}
+                                  {ins.rate && ` @ $${ins.rate}/hr`}
+                                </Badge>
+                              ))}
                             </div>
                           )}
                         </div>
@@ -994,6 +1136,8 @@ export default function ContractsPage() {
           setShowCreateDialog(false);
           setEditingContract(null);
           setFormData(emptyFormData);
+          setContractOptions([{ ...emptyContractOption, inspectors: [{ ...emptyContractInspector }] }]);
+          setPendingFiles([]);
         }
       }}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
@@ -1214,6 +1358,202 @@ export default function ContractsPage() {
                   />
                 </div>
               </div>
+            </div>
+
+            <div className="border-t pt-4 space-y-4">
+              <div className="flex items-center justify-between">
+                <h4 className="text-sm font-medium flex items-center gap-2">
+                  <Users className="h-4 w-4" />
+                  Inspector Rate Options
+                </h4>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={addContractOption}
+                  data-testid="button-add-contract-option"
+                >
+                  <Plus className="h-4 w-4 mr-1" />
+                  Add Option
+                </Button>
+              </div>
+
+              {contractOptions.map((option, optionIndex) => {
+                const workingDays = calculateWorkingDays(formData.startDate, formData.substantialCompletionDate || formData.finalCloseoutDate);
+                
+                return (
+                  <Card key={optionIndex} className="relative">
+                    <CardHeader className="pb-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 flex-1">
+                          <span className="font-medium text-sm">Option #{optionIndex + 1}</span>
+                          <Input
+                            value={option.name}
+                            onChange={(e) => updateContractOption(optionIndex, "name", e.target.value)}
+                            placeholder="Option name (optional)"
+                            className="max-w-xs h-8"
+                            data-testid={`input-contract-option-name-${optionIndex}`}
+                          />
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-semibold text-green-600 dark:text-green-400">
+                            Total: ${calculateContractOptionTotal(option).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                          </span>
+                          {contractOptions.length > 1 && (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => removeContractOption(optionIndex)}
+                              data-testid={`button-remove-contract-option-${optionIndex}`}
+                            >
+                              <Trash2 className="h-4 w-4 text-destructive" />
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      {option.inspectors.map((inspector, inspectorIndex) => {
+                        const inspectorHours = formData.startDate && (formData.substantialCompletionDate || formData.finalCloseoutDate)
+                          ? calculateTotalHours(formData.startDate, formData.substantialCompletionDate || formData.finalCloseoutDate, inspector.scheduleType)
+                          : 0;
+                        
+                        return (
+                          <div key={inspectorIndex} className="border rounded-lg p-3 space-y-3">
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-medium text-muted-foreground">Inspector #{inspectorIndex + 1}</span>
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm font-semibold text-green-600 dark:text-green-400">
+                                  ${calculateContractInspectorTotal(inspector).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                                </span>
+                                {option.inspectors.length > 1 && (
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-7 w-7"
+                                    onClick={() => removeContractInspector(optionIndex, inspectorIndex)}
+                                    data-testid={`button-remove-contract-inspector-${optionIndex}-${inspectorIndex}`}
+                                  >
+                                    <Trash2 className="h-3 w-3 text-destructive" />
+                                  </Button>
+                                )}
+                              </div>
+                            </div>
+                            
+                            <div className="grid grid-cols-2 gap-2">
+                              <div className="space-y-1">
+                                <Label className="text-xs">Title/Role</Label>
+                                <Input
+                                  className="h-9"
+                                  value={inspector.title}
+                                  onChange={(e) => updateContractInspector(optionIndex, inspectorIndex, "title", e.target.value)}
+                                  placeholder="e.g., DSA Class 1 Inspector"
+                                  data-testid={`input-contract-inspector-title-${optionIndex}-${inspectorIndex}`}
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <Label className="text-xs">Inspector Name</Label>
+                                <Input
+                                  className="h-9"
+                                  value={inspector.inspectorName}
+                                  onChange={(e) => updateContractInspector(optionIndex, inspectorIndex, "inspectorName", e.target.value)}
+                                  placeholder="e.g., John Smith"
+                                  data-testid={`input-contract-inspector-name-${optionIndex}-${inspectorIndex}`}
+                                />
+                              </div>
+                            </div>
+                            
+                            <div className="grid grid-cols-3 gap-2">
+                              <div className="space-y-1">
+                                <Label className="text-xs">Schedule</Label>
+                                <div className="flex gap-1">
+                                  <Button
+                                    type="button"
+                                    variant={inspector.scheduleType === "fullTime" ? "default" : "outline"}
+                                    size="sm"
+                                    className="flex-1 h-9 text-xs px-2"
+                                    onClick={() => updateContractInspector(optionIndex, inspectorIndex, "scheduleType", "fullTime")}
+                                    data-testid={`button-contract-schedule-full-${optionIndex}-${inspectorIndex}`}
+                                  >
+                                    FT (8hr)
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    variant={inspector.scheduleType === "partTime" ? "default" : "outline"}
+                                    size="sm"
+                                    className="flex-1 h-9 text-xs px-2"
+                                    onClick={() => updateContractInspector(optionIndex, inspectorIndex, "scheduleType", "partTime")}
+                                    data-testid={`button-contract-schedule-part-${optionIndex}-${inspectorIndex}`}
+                                  >
+                                    PT (4hr)
+                                  </Button>
+                                </div>
+                              </div>
+                              <div className="space-y-1">
+                                <Label className="text-xs">Rate ($/hr)</Label>
+                                <Input
+                                  className="h-9"
+                                  type="number"
+                                  value={inspector.rate}
+                                  onChange={(e) => updateContractInspector(optionIndex, inspectorIndex, "rate", e.target.value)}
+                                  placeholder="108.00"
+                                  data-testid={`input-contract-inspector-rate-${optionIndex}-${inspectorIndex}`}
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <Label className="text-xs">Hours</Label>
+                                <div className="flex gap-1">
+                                  <Input
+                                    className="h-9 flex-1"
+                                    type="number"
+                                    value={inspector.hours}
+                                    onChange={(e) => updateContractInspector(optionIndex, inspectorIndex, "hours", e.target.value)}
+                                    placeholder="4488"
+                                    data-testid={`input-contract-inspector-hours-${optionIndex}-${inspectorIndex}`}
+                                  />
+                                  {formData.startDate && (formData.substantialCompletionDate || formData.finalCloseoutDate) && inspectorHours > 0 && (
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <Button
+                                          type="button"
+                                          variant="outline"
+                                          size="sm"
+                                          className="h-9 px-2 text-xs whitespace-nowrap"
+                                          onClick={() => updateContractInspector(optionIndex, inspectorIndex, "hours", String(inspectorHours))}
+                                          data-testid={`button-calc-contract-hours-${optionIndex}-${inspectorIndex}`}
+                                        >
+                                          {formatHoursDisplay(inspectorHours)}
+                                        </Button>
+                                      </TooltipTrigger>
+                                      <TooltipContent>
+                                        <p>Use calculated hours ({inspector.scheduleType === "fullTime" ? "8" : "4"} hrs/day x {workingDays} days)</p>
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => addContractInspector(optionIndex)}
+                        className="w-full"
+                        data-testid={`button-add-contract-inspector-${optionIndex}`}
+                      >
+                        <Plus className="h-4 w-4 mr-1" />
+                        Add Inspector
+                      </Button>
+                    </CardContent>
+                  </Card>
+                );
+              })}
             </div>
 
             <div className="space-y-2">
