@@ -2313,8 +2313,12 @@ export async function registerRoutes(
         // Draw text with padding and wrapping
         doc.font(font).fontSize(fontSize);
         const textWidth = width - (cellPadding * 2);
-        const textHeight = doc.heightOfString(text, { width: textWidth, lineGap: 1 });
-        // Ensure text Y never goes above minimum padding from top
+        // For single-line text, use fontSize as text height for more consistent centering
+        // For wrapped text, use heightOfString
+        const singleLineWidth = doc.widthOfString(text);
+        const willWrap = singleLineWidth > textWidth;
+        const textHeight = willWrap ? doc.heightOfString(text, { width: textWidth, lineGap: 1 }) : fontSize;
+        // Calculate centered Y position with bounds
         const calculatedY = y + (height - textHeight) / 2;
         const minY = y + cellPadding;
         const textY = verticalCenter ? Math.max(calculatedY, minY) : minY;
@@ -2329,8 +2333,11 @@ export async function registerRoutes(
         // Draw text centered vertically with wrapping
         doc.font(font).fontSize(fontSize);
         const textWidth = width - (cellPadding * 2);
-        const textHeight = doc.heightOfString(text, { width: textWidth, lineGap: 1 });
-        // Ensure text Y never goes above minimum padding from top
+        // For single-line text, use fontSize as text height for more consistent centering
+        const singleLineWidth = doc.widthOfString(text);
+        const willWrap = singleLineWidth > textWidth;
+        const textHeight = willWrap ? doc.heightOfString(text, { width: textWidth, lineGap: 1 }) : fontSize;
+        // Calculate centered Y position with min bound
         const calculatedY = y + (height - textHeight) / 2;
         const minY = y + cellPadding;
         const textY = Math.max(calculatedY, minY);
@@ -2433,8 +2440,8 @@ export async function registerRoutes(
         currentY += doc.heightOfString(proposal.rateEscalationNote, { width: pageWidth }) + 10;
       }
       
-      // ===== TERMS & CONDITIONS (same page, 0.75 inch spacing) =====
-      currentY += 54; // 0.75 inch spacing before agreement section
+      // ===== TERMS & CONDITIONS (same page, reduced spacing) =====
+      currentY += 40; // ~0.56 inch spacing before agreement section (25% reduction from 54pt)
       
       // Agreement title
       doc.fontSize(11).font('Helvetica-Bold').text('PROJECT INSPECTOR AGENCY AGREEMENT AND CONTRACT DUTIES:', startX, currentY, { width: pageWidth, align: 'center' });
