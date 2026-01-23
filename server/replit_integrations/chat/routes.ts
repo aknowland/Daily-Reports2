@@ -2,6 +2,7 @@ import type { Express, Request, Response } from "express";
 import OpenAI, { toFile } from "openai";
 import { chatStorage } from "./storage";
 import { storage } from "../../storage";
+import { isAuthenticated } from "../auth";
 
 const openai = new OpenAI({
   apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
@@ -300,7 +301,7 @@ GUIDELINES:
 
 export function registerChatRoutes(app: Express): void {
   // Get all conversations for user/company
-  app.get("/api/ai-chat/conversations", async (req: any, res: Response) => {
+  app.get("/api/ai-chat/conversations", isAuthenticated, async (req: any, res: Response) => {
     try {
       const { userId } = getUserInfo(req);
       if (!userId) {
@@ -329,7 +330,7 @@ export function registerChatRoutes(app: Express): void {
   });
 
   // Get single conversation with messages
-  app.get("/api/ai-chat/conversations/:id", async (req: any, res: Response) => {
+  app.get("/api/ai-chat/conversations/:id", isAuthenticated, async (req: any, res: Response) => {
     try {
       const { userId } = getUserInfo(req);
       if (!userId) {
@@ -362,7 +363,7 @@ export function registerChatRoutes(app: Express): void {
   });
 
   // Create new conversation
-  app.post("/api/ai-chat/conversations", async (req: any, res: Response) => {
+  app.post("/api/ai-chat/conversations", isAuthenticated, async (req: any, res: Response) => {
     try {
       const { userId } = getUserInfo(req);
       if (!userId) {
@@ -391,7 +392,7 @@ export function registerChatRoutes(app: Express): void {
   });
 
   // Delete conversation
-  app.delete("/api/ai-chat/conversations/:id", async (req: any, res: Response) => {
+  app.delete("/api/ai-chat/conversations/:id", isAuthenticated, async (req: any, res: Response) => {
     try {
       const { userId } = getUserInfo(req);
       if (!userId) {
@@ -420,7 +421,7 @@ export function registerChatRoutes(app: Express): void {
   });
 
   // Send message and get AI response (with function calling support)
-  app.post("/api/ai-chat/conversations/:id/messages", async (req: any, res: Response) => {
+  app.post("/api/ai-chat/conversations/:id/messages", isAuthenticated, async (req: any, res: Response) => {
     try {
       const { userId } = getUserInfo(req);
       if (!userId) {
@@ -560,7 +561,7 @@ export function registerChatRoutes(app: Express): void {
   });
 
   // Transcribe audio to text
-  app.post("/api/ai-chat/transcribe", async (req: Request, res: Response) => {
+  app.post("/api/ai-chat/transcribe", isAuthenticated, async (req: Request, res: Response) => {
     try {
       const { userId } = getUserInfo(req);
       if (!userId) {
