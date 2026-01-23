@@ -65,9 +65,10 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useState, useRef } from "react";
-import type { ContractWithProjects, Project, Client, ContractAttachment, ProposalWithDetails, PurchaseOrder } from "@shared/schema";
+import type { ContractWithProjects, Project, Client, ContractAttachment, ProposalWithDetails } from "@shared/schema";
 import { ProposalDialog } from "@/components/proposal-dialog";
 import { ClientSelect } from "@/components/client-select";
+import { PurchaseOrderSelect } from "@/components/purchase-order-select";
 import { format } from "date-fns";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -263,20 +264,6 @@ export default function ContractsPage() {
     queryKey: ["/api/proposals"],
     enabled: !!activeCompany?.id,
   });
-
-  const { data: purchaseOrders = [] } = useQuery<PurchaseOrder[]>({
-    queryKey: ["/api/purchase-orders", activeCompany?.id],
-    queryFn: async () => {
-      const response = await fetch("/api/purchase-orders", { credentials: "include" });
-      if (!response.ok) throw new Error("Failed to fetch purchase orders");
-      return response.json();
-    },
-    enabled: !!activeCompany?.id,
-  });
-
-  const filteredPurchaseOrders = formData.clientId 
-    ? purchaseOrders.filter(po => po.clientId === formData.clientId)
-    : purchaseOrders;
 
   const createMutation = useMutation({
     mutationFn: async (data: ContractFormData & { options: ContractOptionEntry[] }) => {
@@ -1238,30 +1225,17 @@ export default function ContractsPage() {
               </div>
             )}
 
-            {formData.clientId && (
+            {formData.clientId && activeCompany?.id && (
               <div className="space-y-2">
                 <Label htmlFor="purchaseOrderId">Purchase Order (PO)</Label>
-                {filteredPurchaseOrders.length === 0 ? (
-                  <p className="text-sm text-muted-foreground py-2">
-                    No purchase orders exist for this client. Create one in Billing Management first.
-                  </p>
-                ) : (
-                  <Select 
-                    value={formData.purchaseOrderId} 
-                    onValueChange={(value) => setFormData({ ...formData, purchaseOrderId: value })}
-                  >
-                    <SelectTrigger data-testid="select-purchase-order">
-                      <SelectValue placeholder="Select a purchase order (optional)" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {filteredPurchaseOrders.map(po => (
-                        <SelectItem key={po.id} value={po.id}>
-                          {po.poNumber} - ${parseFloat(po.amount || "0").toLocaleString()}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
+                <PurchaseOrderSelect
+                  value={formData.purchaseOrderId}
+                  onValueChange={(value) => setFormData({ ...formData, purchaseOrderId: value })}
+                  companyId={activeCompany.id}
+                  clientId={formData.clientId}
+                  placeholder="Select or create a purchase order (optional)"
+                  data-testid="select-purchase-order"
+                />
                 <p className="text-xs text-muted-foreground">
                   Link this contract to a client's purchase order for billing.
                 </p>
