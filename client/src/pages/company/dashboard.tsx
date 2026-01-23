@@ -21,7 +21,7 @@ type ContractDashboardSummary = {
   status: string;
   schedule: {
     progress: number;
-    status: 'not_started' | 'on_track' | 'warning' | 'overdue' | 'complete';
+    status: 'not_started' | 'on_track' | 'warning' | 'overdue' | 'complete' | 'upcoming';
     daysRemaining: number | null;
     daysOverdue: number | null;
     startDate: string | null;

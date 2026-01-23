@@ -19,7 +19,7 @@ type ContractDashboardSummary = {
   status: string;
   schedule: {
     progress: number;
-    status: 'not_started' | 'on_track' | 'warning' | 'overdue' | 'complete';
+    status: 'not_started' | 'on_track' | 'warning' | 'overdue' | 'complete' | 'upcoming';
     daysRemaining: number | null;
     daysOverdue: number | null;
     startDate: string | null;
@@ -72,6 +72,14 @@ const getScheduleStatusConfig = (status: string) => {
         textColor: 'text-red-600 dark:text-red-400', 
         label: 'Overdue', 
         icon: XCircle 
+      };
+    case 'upcoming':
+      return { 
+        color: 'bg-purple-500', 
+        bgColor: 'bg-purple-500/20',
+        textColor: 'text-purple-600 dark:text-purple-400', 
+        label: 'Upcoming', 
+        icon: Calendar 
       };
     case 'not_started':
     default:
@@ -208,8 +216,13 @@ export function ProjectStatusChart({ contracts, isLoading }: Props) {
                         Schedule
                       </span>
                       <span className={scheduleConfig.textColor}>
-                        {contract.schedule.progress}%
-                        {contract.schedule.daysRemaining !== null && contract.schedule.daysRemaining > 0 && (
+                        {contract.schedule.status === 'upcoming' ? 'Bid Phase' : `${contract.schedule.progress}%`}
+                        {contract.schedule.status === 'upcoming' && contract.schedule.daysRemaining !== null && contract.schedule.daysRemaining > 0 && (
+                          <span className="text-purple-500 dark:text-purple-400 ml-1">
+                            ({contract.schedule.daysRemaining}d to start)
+                          </span>
+                        )}
+                        {contract.schedule.status !== 'upcoming' && contract.schedule.daysRemaining !== null && contract.schedule.daysRemaining > 0 && (
                           <span className="text-muted-foreground ml-1">
                             ({contract.schedule.daysRemaining}d left)
                           </span>
@@ -273,6 +286,7 @@ export function StatusSummaryCards({ contracts, isLoading }: Props) {
   }
 
   const scheduleStats = {
+    upcoming: contracts.filter(c => c.schedule.status === 'upcoming').length,
     onTrack: contracts.filter(c => c.schedule.status === 'on_track').length,
     warning: contracts.filter(c => c.schedule.status === 'warning').length,
     overdue: contracts.filter(c => c.schedule.status === 'overdue').length,
@@ -287,7 +301,20 @@ export function StatusSummaryCards({ contracts, isLoading }: Props) {
   };
 
   return (
-    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
+      <Card data-testid="card-schedule-upcoming">
+        <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
+          <CardTitle className="text-sm font-medium">Upcoming</CardTitle>
+          <Calendar className="h-4 w-4 text-purple-500" />
+        </CardHeader>
+        <CardContent>
+          <div className="text-2xl font-bold text-purple-600 dark:text-purple-400">
+            {scheduleStats.upcoming}
+          </div>
+          <p className="text-xs text-muted-foreground">projects in bid phase</p>
+        </CardContent>
+      </Card>
+
       <Card data-testid="card-schedule-on-track">
         <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
           <CardTitle className="text-sm font-medium">On Track</CardTitle>

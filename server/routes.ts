@@ -1237,10 +1237,10 @@ export async function registerRoutes(
       const allContracts = await storage.getContracts(profile.activeCompanyId);
       const now = new Date();
       
-      // Filter to active contracts only (awarded, in_progress, active)
-      const contracts = allContracts.filter(c => 
-        c.status === 'awarded' || c.status === 'in_progress' || c.status === 'active'
-      );
+      // Filter to show all upcoming and active contracts until closeout
+      // Includes: bid_release, bid_received, under_review, in_execution, substantial_completion
+      // Excludes: final_closeout (project is complete)
+      const contracts = allContracts.filter(c => c.status !== 'final_closeout');
       
       // Calculate schedule and budget progress for each contract
       const dashboardData = await Promise.all(contracts.map(async (contract) => {
@@ -1248,9 +1248,26 @@ export async function registerRoutes(
         let scheduleProgress = 0;
         let daysRemaining: number | null = null;
         let daysOverdue: number | null = null;
-        let scheduleStatus: 'not_started' | 'on_track' | 'warning' | 'overdue' | 'complete' = 'not_started';
+        let scheduleStatus: 'not_started' | 'on_track' | 'warning' | 'overdue' | 'complete' | 'upcoming' = 'not_started';
         
-        if (contract.startDate && contract.substantialCompletionDate) {
+        // Check if contract is in bid/pre-execution phase
+        const isBidPhase = ['bid_release', 'bid_received', 'under_review'].includes(contract.status);
+        const isComplete = contract.status === 'substantial_completion';
+        
+        if (isComplete) {
+          // Contract has reached substantial completion
+          scheduleProgress = 100;
+          scheduleStatus = 'complete';
+        } else if (isBidPhase) {
+          // Contract is in bid phase - show as upcoming
+          scheduleProgress = 0;
+          scheduleStatus = 'upcoming';
+          if (contract.startDate) {
+            const startDate = new Date(contract.startDate);
+            const daysToStart = Math.ceil((startDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+            daysRemaining = daysToStart > 0 ? daysToStart : null;
+          }
+        } else if (contract.startDate && contract.substantialCompletionDate) {
           const startDate = new Date(contract.startDate);
           const endDate = new Date(contract.substantialCompletionDate);
           const totalDuration = endDate.getTime() - startDate.getTime();
@@ -1262,14 +1279,12 @@ export async function registerRoutes(
             scheduleStatus = 'not_started';
           } else if (now < startDate) {
             scheduleProgress = 0;
-            scheduleStatus = 'not_started';
+            scheduleStatus = 'upcoming';
             daysRemaining = Math.ceil((endDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
           } else if (now > endDate) {
             scheduleProgress = 100;
             daysOverdue = Math.ceil((now.getTime() - endDate.getTime()) / (1000 * 60 * 60 * 24));
-            scheduleStatus = contract.status === 'substantial_completion' || contract.status === 'final_closeout' 
-              ? 'complete' 
-              : 'overdue';
+            scheduleStatus = 'overdue';
           } else {
             scheduleProgress = Math.min(100, Math.max(0, (elapsed / totalDuration) * 100));
             daysRemaining = Math.ceil((endDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
