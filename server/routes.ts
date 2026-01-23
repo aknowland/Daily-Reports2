@@ -981,7 +981,7 @@ export async function registerRoutes(
       let headerY = 50;
       if (logoBuffer) {
         try {
-          doc.image(logoBuffer, startX, headerY, { width: 178, height: 67, fit: [178, 67] });
+          doc.image(logoBuffer, startX, headerY, { width: 205, height: 77, fit: [205, 77] });
           headerY += 72;
         } catch (e) {
           console.log("Could not render logo in invoice PDF");
@@ -2496,7 +2496,7 @@ export async function registerRoutes(
         try {
           const logoBuffer = await loadImageBuffer(company.logoPath);
           if (logoBuffer) {
-            doc.image(logoBuffer, startX, 15, { width: 178, height: 67, fit: [178, 67] });
+            doc.image(logoBuffer, startX, 15, { width: 205, height: 77, fit: [205, 77] });
           }
         } catch (err) {
           console.error('Error adding company logo to proposal:', err);
@@ -3082,7 +3082,7 @@ export async function registerRoutes(
         try {
           const logoBuffer = await loadImageBuffer(company.logoPath);
           if (logoBuffer) {
-            doc.image(logoBuffer, startX, 15, { width: 178, height: 67, fit: [178, 67] });
+            doc.image(logoBuffer, startX, 15, { width: 205, height: 77, fit: [205, 77] });
           }
         } catch (err) {
           console.error('Error adding company logo:', err);
@@ -3855,7 +3855,7 @@ export async function registerRoutes(
         try {
           const logoBuffer = await loadImageBuffer(company.logoPath);
           if (logoBuffer) {
-            doc.image(logoBuffer, startX, 8, { width: 178, height: 67, fit: [178, 67] });
+            doc.image(logoBuffer, startX, 8, { width: 205, height: 77, fit: [205, 77] });
           }
         } catch (err) {
           console.error('Error adding company logo:', err);
