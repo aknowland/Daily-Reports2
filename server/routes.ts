@@ -1564,10 +1564,34 @@ export async function registerRoutes(
           otHours: r.otHours,
           signedAt: r.signedAt,
         })),
-        projects: contractProjects.map(p => ({
-          id: p.id,
-          name: p.name,
-          projectNumber: p.projectNumber,
+        projects: await Promise.all(contractProjects.map(async (p) => {
+          // Get report count and budget for this project
+          const projectReports = dailyReports.filter(r => r.projectId === p.id);
+          const reportCount = projectReports.length;
+          
+          // Calculate project budget from its reports
+          let projectBilled = 0;
+          for (const report of projectReports) {
+            const regularHours = parseFloat(report.regularHours || '0');
+            const otHours = parseFloat(report.otHours || '0');
+            const premiumHours = parseFloat(report.premiumHours || '0');
+            
+            // Use first rate option's first inspector rate as base
+            const firstOption = contractRateOptions[0];
+            const firstInspector = firstOption?.inspectors?.[0];
+            const hourlyRate = parseFloat(firstInspector?.rate || '0');
+            
+            projectBilled += (regularHours + otHours * 1.5 + premiumHours * 2) * hourlyRate;
+          }
+          
+          return {
+            id: p.id,
+            name: p.name,
+            projectNumber: p.projectNumber,
+            status: p.status || 'active',
+            reportCount,
+            budgetSpent: projectBilled,
+          };
         })),
       });
     } catch (error) {
