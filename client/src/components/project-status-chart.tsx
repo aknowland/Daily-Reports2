@@ -133,7 +133,34 @@ const getBudgetStatusConfig = (status: string) => {
   }
 };
 
+// Status priority for sorting (lower = shows first)
+const getStatusPriority = (status: string): number => {
+  const priorities: Record<string, number> = {
+    // Upcoming statuses (show first)
+    'bid_release': 1,
+    'bid_received': 2,
+    'under_review': 3,
+    'awarded': 4,
+    // In Progress statuses
+    'in_execution': 5,
+    'substantial_completion': 6,
+    // Completed/Cancelled (filtered out but just in case)
+    'final_closeout': 7,
+    'not_awarded': 8,
+    'cancelled': 9,
+  };
+  return priorities[status] ?? 10;
+};
+
+// Statuses to exclude from dashboard
+const EXCLUDED_STATUSES = ['cancelled', 'not_awarded', 'final_closeout'];
+
 export function ProjectStatusChart({ contracts, isLoading }: Props) {
+  // Filter out completed/cancelled and sort by status priority
+  const activeContracts = contracts
+    .filter(c => !EXCLUDED_STATUSES.includes(c.status))
+    .sort((a, b) => getStatusPriority(a.status) - getStatusPriority(b.status));
+
   if (isLoading) {
     return (
       <Card data-testid="card-project-status-chart">
@@ -152,7 +179,7 @@ export function ProjectStatusChart({ contracts, isLoading }: Props) {
     );
   }
 
-  if (contracts.length === 0) {
+  if (activeContracts.length === 0) {
     return (
       <Card data-testid="card-project-status-chart">
         <CardHeader>
@@ -179,7 +206,7 @@ export function ProjectStatusChart({ contracts, isLoading }: Props) {
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        {contracts.map((contract) => {
+        {activeContracts.map((contract) => {
           const scheduleConfig = getScheduleStatusConfig(contract.schedule.status);
           const budgetConfig = getBudgetStatusConfig(contract.budget.status);
           const ScheduleIcon = scheduleConfig.icon;

@@ -778,9 +778,29 @@ export default function ContractsPage() {
     return option?.label || type;
   };
 
-  const filteredContracts = statusFilter === "all" 
+  // Status priority for sorting (lower = shows first)
+  const getStatusPriority = (status: string): number => {
+    const priorities: Record<string, number> = {
+      // Upcoming statuses (show first)
+      'bid_release': 1,
+      'bid_received': 2,
+      'under_review': 3,
+      'awarded': 4,
+      // In Progress statuses
+      'in_execution': 5,
+      'substantial_completion': 6,
+      // Completed/Cancelled (show last)
+      'final_closeout': 7,
+      'not_awarded': 8,
+      'cancelled': 9,
+    };
+    return priorities[status] ?? 10;
+  };
+
+  const filteredContracts = (statusFilter === "all" 
     ? contracts 
-    : contracts.filter(c => c.status === statusFilter);
+    : contracts.filter(c => c.status === statusFilter)
+  ).sort((a, b) => getStatusPriority(a.status) - getStatusPriority(b.status));
 
   const calendarEvents = contracts.flatMap(contract => {
     const events: { date: Date; title: string; type: string; contract: ContractWithProjects }[] = [];

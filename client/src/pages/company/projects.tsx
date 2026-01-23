@@ -120,17 +120,39 @@ export default function CompanyProjectsPage() {
   }, [projectIdFilter, projects]);
 
   const filteredProjects = useMemo(() => {
+    // Get project status priority based on dates (lower = shows first)
+    const getProjectStatusPriority = (project: Project): number => {
+      const now = new Date();
+      const startDate = project.startDate ? new Date(project.startDate) : null;
+      const completionDate = project.substantialCompletionDate ? new Date(project.substantialCompletionDate) : null;
+      const closeoutDate = project.finalCloseoutDate ? new Date(project.finalCloseoutDate) : null;
+      
+      // Completed projects (past closeout or completion date)
+      if (closeoutDate && closeoutDate < now) return 3;
+      if (completionDate && completionDate < now) return 3;
+      
+      // Upcoming projects (future start date or no start date)
+      if (!startDate || startDate > now) return 1;
+      
+      // In progress projects (started but not completed)
+      return 2;
+    };
+
+    let result = projects;
+    
     // Filter by specific project ID if provided
     if (projectIdFilter) {
-      return projects.filter((p) => p.id === projectIdFilter);
+      result = projects.filter((p) => p.id === projectIdFilter);
     }
     // Filter by client if provided
-    if (selectedClient) {
-      return projects.filter((p) => 
+    else if (selectedClient) {
+      result = projects.filter((p) => 
         (p as any).clientId === selectedClient.id || p.client?.toLowerCase() === selectedClient.name.toLowerCase()
       );
     }
-    return projects;
+    
+    // Sort by status priority (upcoming first, then in progress, then completed)
+    return result.sort((a, b) => getProjectStatusPriority(a) - getProjectStatusPriority(b));
   }, [projects, selectedClient, projectIdFilter]);
 
   // Helper to get client name from clientId
