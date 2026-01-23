@@ -75,7 +75,13 @@ type MemberWithUser = CompanyMember & { user?: User };
 
 type InviteWithDetails = Invite & { projects?: Project[] };
 
-type JoinRequestWithUser = JoinRequest & { user?: User };
+type JoinRequestWithUser = JoinRequest & { 
+  user?: User;
+  proposedProjectName?: string | null;
+  proposedProjectNumber?: string | null;
+  proposedProjectAddress?: string | null;
+  proposedProjectClient?: string | null;
+};
 
 type ProjectMember = { projectId: string; userId: string; assignedAt: string };
 
@@ -804,51 +810,95 @@ export default function CompanyTeamPage() {
                   const displayName = request.user?.firstName && request.user?.lastName
                     ? `${request.user.firstName} ${request.user.lastName}`
                     : request.user?.email || "Unknown User";
+                  
+                  const hasProposedProject = !!request.proposedProjectName;
 
                   return (
                     <Card key={request.id} data-testid={`card-request-${request.id}`}>
                       <CardContent className="p-4">
-                        <div className="flex items-center justify-between gap-4">
-                          <div className="flex-1 min-w-0">
-                            <p className="font-medium" data-testid={`text-request-name-${request.id}`}>
-                              {displayName}
-                            </p>
-                            {request.user?.email && (
-                              <div className="flex items-center gap-1 text-sm text-muted-foreground mt-1">
-                                <Mail className="w-3 h-3" />
-                                <span className="truncate">{request.user.email}</span>
-                              </div>
-                            )}
-                            {request.message && (
-                              <p className="text-sm mt-2 text-muted-foreground italic">
-                                "{request.message}"
+                        <div className="flex flex-col gap-4">
+                          <div className="flex items-start justify-between gap-4">
+                            <div className="flex-1 min-w-0">
+                              <p className="font-medium" data-testid={`text-request-name-${request.id}`}>
+                                {displayName}
                               </p>
-                            )}
-                            <p className="text-xs text-muted-foreground mt-2">
-                              Requested {new Date(request.createdAt || Date.now()).toLocaleDateString()}
-                            </p>
+                              {request.user?.email && (
+                                <div className="flex items-center gap-1 text-sm text-muted-foreground mt-1">
+                                  <Mail className="w-3 h-3" />
+                                  <span className="truncate">{request.user.email}</span>
+                                </div>
+                              )}
+                              {request.message && (
+                                <p className="text-sm mt-2 text-muted-foreground italic">
+                                  "{request.message}"
+                                </p>
+                              )}
+                              <p className="text-xs text-muted-foreground mt-2">
+                                Requested {new Date(request.createdAt || Date.now()).toLocaleDateString()}
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => rejectJoinMutation.mutate(request.id)}
+                                disabled={rejectJoinMutation.isPending || approveJoinMutation.isPending}
+                                data-testid={`button-reject-${request.id}`}
+                              >
+                                <X className="w-4 h-4 mr-1" />
+                                Reject
+                              </Button>
+                              <Button
+                                size="sm"
+                                onClick={() => approveJoinMutation.mutate(request.id)}
+                                disabled={approveJoinMutation.isPending || rejectJoinMutation.isPending}
+                                data-testid={`button-approve-${request.id}`}
+                              >
+                                <Check className="w-4 h-4 mr-1" />
+                                {hasProposedProject ? "Approve All" : "Approve"}
+                              </Button>
+                            </div>
                           </div>
-                          <div className="flex items-center gap-2">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => rejectJoinMutation.mutate(request.id)}
-                              disabled={rejectJoinMutation.isPending || approveJoinMutation.isPending}
-                              data-testid={`button-reject-${request.id}`}
-                            >
-                              <X className="w-4 h-4 mr-1" />
-                              Reject
-                            </Button>
-                            <Button
-                              size="sm"
-                              onClick={() => approveJoinMutation.mutate(request.id)}
-                              disabled={approveJoinMutation.isPending || rejectJoinMutation.isPending}
-                              data-testid={`button-approve-${request.id}`}
-                            >
-                              <Check className="w-4 h-4 mr-1" />
-                              Approve
-                            </Button>
-                          </div>
+
+                          {hasProposedProject && (
+                            <div className="border-t pt-3">
+                              <div className="flex items-center gap-2 mb-2">
+                                <FolderOpen className="w-4 h-4 text-primary" />
+                                <span className="text-sm font-medium">Proposed Project Assignment</span>
+                              </div>
+                              <div className="bg-muted/50 rounded-md p-3 space-y-1 text-sm">
+                                <div className="flex gap-2">
+                                  <span className="text-muted-foreground w-24">Name:</span>
+                                  <span className="font-medium" data-testid={`text-proposed-name-${request.id}`}>
+                                    {request.proposedProjectName}
+                                  </span>
+                                </div>
+                                {request.proposedProjectNumber && (
+                                  <div className="flex gap-2">
+                                    <span className="text-muted-foreground w-24">Number:</span>
+                                    <span data-testid={`text-proposed-number-${request.id}`}>
+                                      {request.proposedProjectNumber}
+                                    </span>
+                                  </div>
+                                )}
+                                {request.proposedProjectClient && (
+                                  <div className="flex gap-2">
+                                    <span className="text-muted-foreground w-24">Client:</span>
+                                    <span>{request.proposedProjectClient}</span>
+                                  </div>
+                                )}
+                                {request.proposedProjectAddress && (
+                                  <div className="flex gap-2">
+                                    <span className="text-muted-foreground w-24">Address:</span>
+                                    <span>{request.proposedProjectAddress}</span>
+                                  </div>
+                                )}
+                              </div>
+                              <p className="text-xs text-muted-foreground mt-2">
+                                Approving will create this project and assign the inspector to it.
+                              </p>
+                            </div>
+                          )}
                         </div>
                       </CardContent>
                     </Card>
