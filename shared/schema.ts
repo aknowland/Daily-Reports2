@@ -266,12 +266,34 @@ export const clients = pgTable("clients", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+// Purchase Order status enum
+export const purchaseOrderStatusEnum = pgEnum("purchase_order_status", ["active", "closed", "cancelled"]);
+
+// Purchase Orders table - client POs that contracts are billed against
+// Hierarchy: Purchase Order → Contract → Project
+export const purchaseOrders = pgTable("purchase_orders", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").references(() => companies.id, { onDelete: "cascade" }).notNull(),
+  clientId: varchar("client_id").references(() => clients.id, { onDelete: "set null" }),
+  poNumber: varchar("po_number").notNull(),
+  description: text("description"),
+  totalAmount: varchar("total_amount"),
+  remainingAmount: varchar("remaining_amount"),
+  issueDate: timestamp("issue_date"),
+  expirationDate: timestamp("expiration_date"),
+  status: purchaseOrderStatusEnum("status").default("active").notNull(),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 // Contracts table - for tracking construction contracts from bid to closeout
 // NOTE: Projects now reference contracts (many projects can be under one contract)
 export const contracts = pgTable("contracts", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   companyId: varchar("company_id").references(() => companies.id, { onDelete: "cascade" }).notNull(),
   clientId: varchar("client_id").references(() => clients.id, { onDelete: "set null" }),
+  purchaseOrderId: varchar("purchase_order_id").references(() => purchaseOrders.id, { onDelete: "set null" }),
   contractNumber: varchar("contract_number").notNull(),
   name: text("name").notNull(),
   description: text("description"),
@@ -414,12 +436,26 @@ export const companiesRelations = relations(companies, ({ many }) => ({
   members: many(companyMembers),
   contracts: many(contracts),
   clients: many(clients),
+  purchaseOrders: many(purchaseOrders),
 }));
 
 export const clientsRelations = relations(clients, ({ one, many }) => ({
   company: one(companies, {
     fields: [clients.companyId],
     references: [companies.id],
+  }),
+  contracts: many(contracts),
+  purchaseOrders: many(purchaseOrders),
+}));
+
+export const purchaseOrdersRelations = relations(purchaseOrders, ({ one, many }) => ({
+  company: one(companies, {
+    fields: [purchaseOrders.companyId],
+    references: [companies.id],
+  }),
+  client: one(clients, {
+    fields: [purchaseOrders.clientId],
+    references: [clients.id],
   }),
   contracts: many(contracts),
 }));
@@ -432,6 +468,10 @@ export const contractsRelations = relations(contracts, ({ one, many }) => ({
   client: one(clients, {
     fields: [contracts.clientId],
     references: [clients.id],
+  }),
+  purchaseOrder: one(purchaseOrders, {
+    fields: [contracts.purchaseOrderId],
+    references: [purchaseOrders.id],
   }),
   projects: many(projects),
   attachments: many(contractAttachments),
@@ -541,6 +581,7 @@ export const insertAppSettingSchema = createInsertSchema(appSettings);
 export const insertInviteSchema = createInsertSchema(invites).omit({ id: true, createdAt: true, acceptedAt: true });
 export const insertJoinRequestSchema = createInsertSchema(joinRequests).omit({ id: true, createdAt: true, reviewedAt: true });
 export const insertClientSchema = createInsertSchema(clients).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertPurchaseOrderSchema = createInsertSchema(purchaseOrders).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertContractSchema = createInsertSchema(contracts).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertContractAttachmentSchema = createInsertSchema(contractAttachments).omit({ id: true, createdAt: true });
 export const insertContractOptionSchema = createInsertSchema(contractOptions).omit({ id: true, createdAt: true });
@@ -574,6 +615,8 @@ export type JoinRequest = typeof joinRequests.$inferSelect;
 export type InsertJoinRequest = z.infer<typeof insertJoinRequestSchema>;
 export type Client = typeof clients.$inferSelect;
 export type InsertClient = z.infer<typeof insertClientSchema>;
+export type PurchaseOrder = typeof purchaseOrders.$inferSelect;
+export type InsertPurchaseOrder = z.infer<typeof insertPurchaseOrderSchema>;
 export type Contract = typeof contracts.$inferSelect;
 export type InsertContract = z.infer<typeof insertContractSchema>;
 export type ContractAttachment = typeof contractAttachments.$inferSelect;
@@ -598,6 +641,7 @@ export type ContractOptionWithInspectors = ContractOption & {
 export type ContractWithProjects = Contract & {
   projects?: Project[];
   client?: Client;
+  purchaseOrder?: PurchaseOrder;
   attachments?: ContractAttachment[];
   options?: ContractOptionWithInspectors[];
 };
@@ -605,10 +649,24 @@ export type ContractWithProjects = Contract & {
 // Legacy type for backwards compatibility
 export type ContractWithProject = ContractWithProjects;
 
+// Purchase order with client and contracts
+export type PurchaseOrderWithClient = PurchaseOrder & {
+  client?: Client;
+  contracts?: Contract[];
+};
+
 // Project with related contract
 export type ProjectWithContract = Project & {
   contract?: Contract;
   company?: Company;
+};
+
+// Invoice with related data
+export type InvoiceWithDetails = Invoice & {
+  project?: Project;
+  contract?: Contract;
+  client?: Client;
+  purchaseOrder?: PurchaseOrder;
 };
 
 // Extended types for frontend

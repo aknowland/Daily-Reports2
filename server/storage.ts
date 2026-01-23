@@ -1,7 +1,7 @@
 import { 
   projects, dailyReports, photos, distributionLogs, appSettings, userProfiles, projectMembers, invites,
   companies, companyMembers, joinRequests, invoices, contracts, clients, contractAttachments, contractOptions, contractOptionInspectors, timesheets, monthlyReportBundles,
-  proposals, proposalOptions, proposalOptionInspectors, iorAgreements,
+  proposals, proposalOptions, proposalOptionInspectors, iorAgreements, purchaseOrders,
   type Project, type InsertProject,
   type DailyReport, type InsertDailyReport,
   type Photo, type InsertPhoto,
@@ -14,9 +14,10 @@ import {
   type CompanyMember, type InsertCompanyMember,
   type JoinRequest, type InsertJoinRequest,
   type DailyReportWithDetails,
-  type Invoice,
+  type Invoice, type InsertInvoice, type InvoiceWithDetails,
   type Contract, type InsertContract, type ContractWithProjects,
   type Client, type InsertClient,
+  type PurchaseOrder, type InsertPurchaseOrder, type PurchaseOrderWithClient,
   type ContractAttachment, type InsertContractAttachment,
   type ContractOption, type InsertContractOption, type ContractOptionWithInspectors,
   type ContractOptionInspector, type InsertContractOptionInspector,
@@ -211,6 +212,21 @@ export interface IStorage {
   createClient(data: InsertClient): Promise<Client>;
   updateClient(id: string, data: Partial<InsertClient>): Promise<Client | undefined>;
   deleteClient(id: string): Promise<boolean>;
+
+  // Purchase Orders
+  getPurchaseOrders(companyId: string): Promise<PurchaseOrderWithClient[]>;
+  getPurchaseOrder(id: string): Promise<PurchaseOrderWithClient | undefined>;
+  getPurchaseOrdersByClient(clientId: string): Promise<PurchaseOrder[]>;
+  createPurchaseOrder(data: InsertPurchaseOrder): Promise<PurchaseOrder>;
+  updatePurchaseOrder(id: string, data: Partial<InsertPurchaseOrder>): Promise<PurchaseOrder | undefined>;
+  deletePurchaseOrder(id: string): Promise<boolean>;
+
+  // Invoices
+  getInvoices(companyId: string): Promise<InvoiceWithDetails[]>;
+  getInvoice(id: string): Promise<InvoiceWithDetails | undefined>;
+  getInvoicesByProject(projectId: string): Promise<Invoice[]>;
+  updateInvoice(id: string, data: Partial<InsertInvoice>): Promise<Invoice | undefined>;
+  deleteInvoice(id: string): Promise<boolean>;
 
   // Contract Attachments
   getContractAttachments(contractId: string): Promise<ContractAttachment[]>;
@@ -1321,6 +1337,125 @@ export class DatabaseStorage implements IStorage {
 
   async deleteClient(id: string): Promise<boolean> {
     const result = await db.delete(clients).where(eq(clients.id, id));
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  // Purchase Orders
+  async getPurchaseOrders(companyId: string): Promise<PurchaseOrderWithClient[]> {
+    const pos = await db
+      .select()
+      .from(purchaseOrders)
+      .where(eq(purchaseOrders.companyId, companyId))
+      .orderBy(desc(purchaseOrders.createdAt));
+    
+    const result: PurchaseOrderWithClient[] = [];
+    for (const po of pos) {
+      const client = po.clientId ? await this.getClient(po.clientId) : undefined;
+      const poContracts = await db
+        .select()
+        .from(contracts)
+        .where(eq(contracts.purchaseOrderId, po.id));
+      result.push({ ...po, client, contracts: poContracts });
+    }
+    return result;
+  }
+
+  async getPurchaseOrder(id: string): Promise<PurchaseOrderWithClient | undefined> {
+    const [po] = await db.select().from(purchaseOrders).where(eq(purchaseOrders.id, id));
+    if (!po) return undefined;
+    
+    const client = po.clientId ? await this.getClient(po.clientId) : undefined;
+    const poContracts = await db
+      .select()
+      .from(contracts)
+      .where(eq(contracts.purchaseOrderId, po.id));
+    return { ...po, client, contracts: poContracts };
+  }
+
+  async getPurchaseOrdersByClient(clientId: string): Promise<PurchaseOrder[]> {
+    return db
+      .select()
+      .from(purchaseOrders)
+      .where(eq(purchaseOrders.clientId, clientId))
+      .orderBy(desc(purchaseOrders.createdAt));
+  }
+
+  async createPurchaseOrder(data: InsertPurchaseOrder): Promise<PurchaseOrder> {
+    const [po] = await db.insert(purchaseOrders).values(data).returning();
+    return po;
+  }
+
+  async updatePurchaseOrder(id: string, data: Partial<InsertPurchaseOrder>): Promise<PurchaseOrder | undefined> {
+    const [po] = await db
+      .update(purchaseOrders)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(purchaseOrders.id, id))
+      .returning();
+    return po;
+  }
+
+  async deletePurchaseOrder(id: string): Promise<boolean> {
+    const result = await db.delete(purchaseOrders).where(eq(purchaseOrders.id, id));
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  // Invoices
+  async getInvoices(companyId: string): Promise<InvoiceWithDetails[]> {
+    const invoiceList = await db
+      .select()
+      .from(invoices)
+      .where(eq(invoices.companyId, companyId))
+      .orderBy(desc(invoices.createdAt));
+    
+    const result: InvoiceWithDetails[] = [];
+    for (const inv of invoiceList) {
+      const project = inv.projectId ? await this.getProject(inv.projectId) : undefined;
+      const contract = inv.contractId ? await this.getContract(inv.contractId) : undefined;
+      const client = inv.clientId ? await this.getClient(inv.clientId) : undefined;
+      let purchaseOrder: PurchaseOrder | undefined;
+      if (contract?.purchaseOrderId) {
+        const [po] = await db.select().from(purchaseOrders).where(eq(purchaseOrders.id, contract.purchaseOrderId));
+        purchaseOrder = po;
+      }
+      result.push({ ...inv, project, contract, client, purchaseOrder });
+    }
+    return result;
+  }
+
+  async getInvoice(id: string): Promise<InvoiceWithDetails | undefined> {
+    const [inv] = await db.select().from(invoices).where(eq(invoices.id, id));
+    if (!inv) return undefined;
+    
+    const project = inv.projectId ? await this.getProject(inv.projectId) : undefined;
+    const contract = inv.contractId ? await this.getContract(inv.contractId) : undefined;
+    const client = inv.clientId ? await this.getClient(inv.clientId) : undefined;
+    let purchaseOrder: PurchaseOrder | undefined;
+    if (contract?.purchaseOrderId) {
+      const [po] = await db.select().from(purchaseOrders).where(eq(purchaseOrders.id, contract.purchaseOrderId));
+      purchaseOrder = po;
+    }
+    return { ...inv, project, contract, client, purchaseOrder };
+  }
+
+  async getInvoicesByProject(projectId: string): Promise<Invoice[]> {
+    return db
+      .select()
+      .from(invoices)
+      .where(eq(invoices.projectId, projectId))
+      .orderBy(desc(invoices.createdAt));
+  }
+
+  async updateInvoice(id: string, data: Partial<InsertInvoice>): Promise<Invoice | undefined> {
+    const [inv] = await db
+      .update(invoices)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(invoices.id, id))
+      .returning();
+    return inv;
+  }
+
+  async deleteInvoice(id: string): Promise<boolean> {
+    const result = await db.delete(invoices).where(eq(invoices.id, id));
     return (result.rowCount ?? 0) > 0;
   }
 

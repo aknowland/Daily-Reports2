@@ -65,7 +65,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useState, useRef } from "react";
-import type { ContractWithProjects, Project, Client, ContractAttachment, ProposalWithDetails } from "@shared/schema";
+import type { ContractWithProjects, Project, Client, ContractAttachment, ProposalWithDetails, PurchaseOrder } from "@shared/schema";
 import { ProposalDialog } from "@/components/proposal-dialog";
 import { ClientSelect } from "@/components/client-select";
 import { format } from "date-fns";
@@ -124,6 +124,7 @@ type ContractFormData = {
   name: string;
   description: string;
   clientId: string;
+  purchaseOrderId: string;
   contractType: string;
   status: string;
   originalValue: string;
@@ -145,6 +146,7 @@ const emptyFormData: ContractFormData = {
   name: "",
   description: "",
   clientId: "",
+  purchaseOrderId: "",
   contractType: "lump_sum",
   status: "bid_release",
   originalValue: "",
@@ -262,11 +264,26 @@ export default function ContractsPage() {
     enabled: !!activeCompany?.id,
   });
 
+  const { data: purchaseOrders = [] } = useQuery<PurchaseOrder[]>({
+    queryKey: ["/api/purchase-orders", activeCompany?.id],
+    queryFn: async () => {
+      const response = await fetch("/api/purchase-orders", { credentials: "include" });
+      if (!response.ok) throw new Error("Failed to fetch purchase orders");
+      return response.json();
+    },
+    enabled: !!activeCompany?.id,
+  });
+
+  const filteredPurchaseOrders = formData.clientId 
+    ? purchaseOrders.filter(po => po.clientId === formData.clientId)
+    : purchaseOrders;
+
   const createMutation = useMutation({
     mutationFn: async (data: ContractFormData & { options: ContractOptionEntry[] }) => {
       const payload = {
         ...data,
         clientId: data.clientId || null,
+        purchaseOrderId: data.purchaseOrderId || null,
         bidReleaseDate: data.bidReleaseDate ? new Date(data.bidReleaseDate) : null,
         bidDueDate: data.bidDueDate ? new Date(data.bidDueDate) : null,
         awardDate: data.awardDate ? new Date(data.awardDate) : null,
@@ -304,6 +321,7 @@ export default function ContractsPage() {
       const payload = {
         ...data,
         clientId: data.clientId || null,
+        purchaseOrderId: data.purchaseOrderId || null,
         bidReleaseDate: data.bidReleaseDate ? new Date(data.bidReleaseDate) : null,
         bidDueDate: data.bidDueDate ? new Date(data.bidDueDate) : null,
         awardDate: data.awardDate ? new Date(data.awardDate) : null,
@@ -466,6 +484,7 @@ export default function ContractsPage() {
         const payload = {
           ...formData,
           clientId: formData.clientId || null,
+          purchaseOrderId: formData.purchaseOrderId || null,
           bidReleaseDate: formData.bidReleaseDate ? new Date(formData.bidReleaseDate) : null,
           bidDueDate: formData.bidDueDate ? new Date(formData.bidDueDate) : null,
           awardDate: formData.awardDate ? new Date(formData.awardDate) : null,
@@ -509,6 +528,7 @@ export default function ContractsPage() {
       name: contract.name,
       description: contract.description || "",
       clientId: contract.clientId || "",
+      purchaseOrderId: contract.purchaseOrderId || "",
       contractType: contract.contractType || "lump_sum",
       status: contract.status,
       originalValue: contract.originalValue || "",
@@ -610,6 +630,7 @@ export default function ContractsPage() {
         name: convertingProposal.projectName,
         description: `Contract created from proposal ${convertingProposal.proposalNumber}`,
         clientId: convertingProposal.clientId || null,
+        purchaseOrderId: null,
         contractType: "time_and_materials",
         status: "awarded",
         originalValue: totalValue.toFixed(2),
@@ -1198,13 +1219,43 @@ export default function ContractsPage() {
                 <Label htmlFor="clientId">Client</Label>
                 <ClientSelect
                   value={formData.clientId}
-                  onValueChange={(value) => setFormData({ ...formData, clientId: value })}
+                  onValueChange={(value) => setFormData({ ...formData, clientId: value, purchaseOrderId: "" })}
                   companyId={activeCompany.id}
                   placeholder="Select or create a client"
                   data-testid="select-client"
                 />
                 <p className="text-xs text-muted-foreground">
                   Link projects to this contract from the project settings.
+                </p>
+              </div>
+            )}
+
+            {formData.clientId && (
+              <div className="space-y-2">
+                <Label htmlFor="purchaseOrderId">Purchase Order (PO)</Label>
+                {filteredPurchaseOrders.length === 0 ? (
+                  <p className="text-sm text-muted-foreground py-2">
+                    No purchase orders exist for this client. Create one in Billing Management first.
+                  </p>
+                ) : (
+                  <Select 
+                    value={formData.purchaseOrderId} 
+                    onValueChange={(value) => setFormData({ ...formData, purchaseOrderId: value })}
+                  >
+                    <SelectTrigger data-testid="select-purchase-order">
+                      <SelectValue placeholder="Select a purchase order (optional)" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {filteredPurchaseOrders.map(po => (
+                        <SelectItem key={po.id} value={po.id}>
+                          {po.poNumber} - ${parseFloat(po.amount || "0").toLocaleString()}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  Link this contract to a client's purchase order for billing.
                 </p>
               </div>
             )}

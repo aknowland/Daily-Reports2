@@ -1971,6 +1971,256 @@ export async function registerRoutes(
     }
   });
 
+  // ========== PURCHASE ORDERS ==========
+
+  // Get purchase orders for active company
+  app.get("/api/purchase-orders", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      
+      if (!profile?.activeCompanyId) {
+        return res.json([]);
+      }
+      
+      const isMember = await storage.isUserMemberOfCompany(profile.activeCompanyId, userId);
+      if (!isMember) {
+        return res.json([]);
+      }
+      
+      const purchaseOrderList = await storage.getPurchaseOrders(profile.activeCompanyId);
+      res.json(purchaseOrderList);
+    } catch (error) {
+      console.error("Error fetching purchase orders:", error);
+      res.status(500).json({ message: "Failed to fetch purchase orders" });
+    }
+  });
+
+  // Get purchase orders by client
+  app.get("/api/purchase-orders/by-client/:clientId", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const client = await storage.getClient(req.params.clientId);
+      
+      if (!client) {
+        return res.status(404).json({ message: "Client not found" });
+      }
+      
+      const isMember = await storage.isUserMemberOfCompany(client.companyId, userId);
+      if (!isMember) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      const purchaseOrderList = await storage.getPurchaseOrdersByClient(req.params.clientId);
+      res.json(purchaseOrderList);
+    } catch (error) {
+      console.error("Error fetching purchase orders by client:", error);
+      res.status(500).json({ message: "Failed to fetch purchase orders" });
+    }
+  });
+
+  // Get single purchase order
+  app.get("/api/purchase-orders/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const purchaseOrder = await storage.getPurchaseOrder(req.params.id);
+      
+      if (!purchaseOrder) {
+        return res.status(404).json({ message: "Purchase order not found" });
+      }
+      
+      const isMember = await storage.isUserMemberOfCompany(purchaseOrder.companyId, userId);
+      if (!isMember) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      res.json(purchaseOrder);
+    } catch (error) {
+      console.error("Error fetching purchase order:", error);
+      res.status(500).json({ message: "Failed to fetch purchase order" });
+    }
+  });
+
+  // Create purchase order
+  app.post("/api/purchase-orders", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      
+      if (!profile?.activeCompanyId) {
+        return res.status(400).json({ message: "No active company" });
+      }
+      
+      const isCompAdmin = await isEffectiveCompanyAdmin(userId, profile.activeCompanyId, profile);
+      const isSysAdmin = isEffectiveSystemAdmin(profile);
+      
+      if (!isCompAdmin && !isSysAdmin) {
+        return res.status(403).json({ message: "Only admins can create purchase orders" });
+      }
+      
+      const purchaseOrder = await storage.createPurchaseOrder({
+        ...req.body,
+        companyId: profile.activeCompanyId,
+      });
+      
+      res.status(201).json(purchaseOrder);
+    } catch (error) {
+      console.error("Error creating purchase order:", error);
+      res.status(500).json({ message: "Failed to create purchase order" });
+    }
+  });
+
+  // Update purchase order
+  app.patch("/api/purchase-orders/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const purchaseOrder = await storage.getPurchaseOrder(req.params.id);
+      
+      if (!purchaseOrder) {
+        return res.status(404).json({ message: "Purchase order not found" });
+      }
+      
+      const profile = await storage.getUserProfile(userId);
+      const isCompAdmin = await isEffectiveCompanyAdmin(userId, purchaseOrder.companyId, profile);
+      const isSysAdmin = isEffectiveSystemAdmin(profile);
+      
+      if (!isCompAdmin && !isSysAdmin) {
+        return res.status(403).json({ message: "Only admins can update purchase orders" });
+      }
+      
+      const updated = await storage.updatePurchaseOrder(req.params.id, req.body);
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating purchase order:", error);
+      res.status(500).json({ message: "Failed to update purchase order" });
+    }
+  });
+
+  // Delete purchase order
+  app.delete("/api/purchase-orders/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const purchaseOrder = await storage.getPurchaseOrder(req.params.id);
+      
+      if (!purchaseOrder) {
+        return res.status(404).json({ message: "Purchase order not found" });
+      }
+      
+      const profile = await storage.getUserProfile(userId);
+      const isCompAdmin = await isEffectiveCompanyAdmin(userId, purchaseOrder.companyId, profile);
+      const isSysAdmin = isEffectiveSystemAdmin(profile);
+      
+      if (!isCompAdmin && !isSysAdmin) {
+        return res.status(403).json({ message: "Only admins can delete purchase orders" });
+      }
+      
+      await storage.deletePurchaseOrder(req.params.id);
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting purchase order:", error);
+      res.status(500).json({ message: "Failed to delete purchase order" });
+    }
+  });
+
+  // ========== INVOICES ==========
+
+  // Get invoices for active company
+  app.get("/api/invoices", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      
+      if (!profile?.activeCompanyId) {
+        return res.json([]);
+      }
+      
+      const isMember = await storage.isUserMemberOfCompany(profile.activeCompanyId, userId);
+      if (!isMember) {
+        return res.json([]);
+      }
+      
+      const invoiceList = await storage.getInvoices(profile.activeCompanyId);
+      res.json(invoiceList);
+    } catch (error) {
+      console.error("Error fetching invoices:", error);
+      res.status(500).json({ message: "Failed to fetch invoices" });
+    }
+  });
+
+  // Get single invoice
+  app.get("/api/invoices/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const invoice = await storage.getInvoice(req.params.id);
+      
+      if (!invoice) {
+        return res.status(404).json({ message: "Invoice not found" });
+      }
+      
+      const isMember = await storage.isUserMemberOfCompany(invoice.companyId, userId);
+      if (!isMember) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      res.json(invoice);
+    } catch (error) {
+      console.error("Error fetching invoice:", error);
+      res.status(500).json({ message: "Failed to fetch invoice" });
+    }
+  });
+
+  // Update invoice (status, dates, etc.)
+  app.patch("/api/invoices/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const invoice = await storage.getInvoice(req.params.id);
+      
+      if (!invoice) {
+        return res.status(404).json({ message: "Invoice not found" });
+      }
+      
+      const profile = await storage.getUserProfile(userId);
+      const isCompAdmin = await isEffectiveCompanyAdmin(userId, invoice.companyId, profile);
+      const isSysAdmin = isEffectiveSystemAdmin(profile);
+      
+      if (!isCompAdmin && !isSysAdmin) {
+        return res.status(403).json({ message: "Only admins can update invoices" });
+      }
+      
+      const updated = await storage.updateInvoice(req.params.id, req.body);
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating invoice:", error);
+      res.status(500).json({ message: "Failed to update invoice" });
+    }
+  });
+
+  // Delete invoice
+  app.delete("/api/invoices/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const invoice = await storage.getInvoice(req.params.id);
+      
+      if (!invoice) {
+        return res.status(404).json({ message: "Invoice not found" });
+      }
+      
+      const profile = await storage.getUserProfile(userId);
+      const isCompAdmin = await isEffectiveCompanyAdmin(userId, invoice.companyId, profile);
+      const isSysAdmin = isEffectiveSystemAdmin(profile);
+      
+      if (!isCompAdmin && !isSysAdmin) {
+        return res.status(403).json({ message: "Only admins can delete invoices" });
+      }
+      
+      await storage.deleteInvoice(req.params.id);
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting invoice:", error);
+      res.status(500).json({ message: "Failed to delete invoice" });
+    }
+  });
+
   // ========== PROPOSALS ==========
   
   // Get proposals for active company
