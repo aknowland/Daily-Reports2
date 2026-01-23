@@ -38,6 +38,8 @@ export function AdminModeProvider({ children }: { children: ReactNode }) {
     queryClient.invalidateQueries({ queryKey: ["/api/my-projects"] });
     queryClient.invalidateQueries({ queryKey: ["/api/reports"] });
     queryClient.invalidateQueries({ queryKey: ["/api/auth/profile"] });
+    // This is the main auth query that contains the profile - must invalidate for UI to update
+    queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
   }, []);
 
   const toggleMode = useCallback(async () => {
