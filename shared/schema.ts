@@ -111,6 +111,9 @@ export const projects = pgTable("projects", {
   address: text("address"),
   distributionEmails: json("distribution_emails").$type<string[]>().default([]),
   defaultFolderPath: text("default_folder_path"),
+  startDate: timestamp("start_date"),
+  substantialCompletionDate: timestamp("substantial_completion_date"),
+  finalCloseoutDate: timestamp("final_closeout_date"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

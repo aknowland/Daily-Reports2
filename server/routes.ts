@@ -161,6 +161,9 @@ const createProjectSchema = z.object({
   address: z.string().optional(),
   distributionEmails: z.array(z.string().email()).optional().default([]),
   defaultFolderPath: z.string().optional(),
+  startDate: z.string().or(z.date()).transform(val => val ? new Date(val) : null).nullable().optional(),
+  substantialCompletionDate: z.string().or(z.date()).transform(val => val ? new Date(val) : null).nullable().optional(),
+  finalCloseoutDate: z.string().or(z.date()).transform(val => val ? new Date(val) : null).nullable().optional(),
 });
 
 const updateProjectSchema = createProjectSchema.partial();
@@ -1540,6 +1543,36 @@ export async function registerRoutes(
             projectBilled += (regularHours + otHours * 1.5 + premiumHours * 2) * hourlyRate;
           }
           
+          // Calculate per-project schedule progress
+          let projectScheduleProgress = 0;
+          let projectScheduleStatus: 'not_started' | 'on_track' | 'warning' | 'overdue' | 'complete' = 'not_started';
+          const projectStatus = (p as any).status || 'active';
+          
+          if ((p as any).startDate && (p as any).substantialCompletionDate) {
+            const projectStartDate = new Date((p as any).startDate);
+            const projectEndDate = new Date((p as any).substantialCompletionDate);
+            const projectTotalDuration = projectEndDate.getTime() - projectStartDate.getTime();
+            const projectElapsed = now.getTime() - projectStartDate.getTime();
+            
+            if (now < projectStartDate) {
+              projectScheduleProgress = 0;
+              projectScheduleStatus = 'not_started';
+            } else if (now > projectEndDate) {
+              projectScheduleProgress = 100;
+              // Check if project is complete based on status or final closeout date
+              const isComplete = projectStatus === 'complete' || projectStatus === 'closed' || 
+                ((p as any).finalCloseoutDate && new Date((p as any).finalCloseoutDate) <= now);
+              projectScheduleStatus = isComplete ? 'complete' : 'overdue';
+            } else {
+              projectScheduleProgress = Math.min(100, Math.max(0, (projectElapsed / projectTotalDuration) * 100));
+              projectScheduleStatus = projectScheduleProgress >= 80 ? 'warning' : 'on_track';
+            }
+          } else if (projectStatus === 'complete' || projectStatus === 'closed') {
+            // Project is complete but has no schedule dates
+            projectScheduleProgress = 100;
+            projectScheduleStatus = 'complete';
+          }
+          
           return {
             id: p.id,
             name: p.name,
@@ -1547,6 +1580,11 @@ export async function registerRoutes(
             status: (p as any).status || 'active',
             reportCount,
             budgetSpent: projectBilled,
+            startDate: (p as any).startDate,
+            substantialCompletionDate: (p as any).substantialCompletionDate,
+            finalCloseoutDate: (p as any).finalCloseoutDate,
+            scheduleProgress: Math.round(projectScheduleProgress * 100) / 100,
+            scheduleStatus: projectScheduleStatus,
           };
         })),
       });
