@@ -87,6 +87,7 @@ type ContractInspectorEntry = {
 type ContractOptionEntry = {
   name: string;
   inspectors: ContractInspectorEntry[];
+  awardStatus?: "pending" | "awarded" | "not_awarded";
 };
 
 const emptyContractInspector: ContractInspectorEntry = {
@@ -100,6 +101,7 @@ const emptyContractInspector: ContractInspectorEntry = {
 const emptyContractOption: ContractOptionEntry = {
   name: "",
   inspectors: [{ ...emptyContractInspector }],
+  awardStatus: "pending",
 };
 
 const CONTRACT_STATUS_OPTIONS = [
@@ -194,6 +196,16 @@ export default function ContractsPage() {
   const [contractForPO, setContractForPO] = useState<ContractWithProjects | null>(null);
   const [isCreatingPO, setIsCreatingPO] = useState(false);
   const [contractOptions, setContractOptions] = useState<ContractOptionEntry[]>([{ ...emptyContractOption, inspectors: [{ ...emptyContractInspector }] }]);
+  
+  // Award options dialog state - for partial awards
+  const [showAwardOptionsDialog, setShowAwardOptionsDialog] = useState(false);
+  const [pendingAwardContract, setPendingAwardContract] = useState<{
+    formData: ContractFormData;
+    options: ContractOptionEntry[];
+    previousStatus: string;
+    contractId: string;
+  } | null>(null);
+  const [optionAwardSelections, setOptionAwardSelections] = useState<Record<number, boolean>>({});
 
   const addContractOption = () => {
     setContractOptions([...contractOptions, { ...emptyContractOption, inspectors: [{ ...emptyContractInspector }] }]);
@@ -250,18 +262,77 @@ export default function ContractsPage() {
     return rate * hours;
   };
   
-  // Calculate total budget from contract's all options
-  const calculateContractTotalBudget = (contract: ContractWithProjects): number => {
+  // Calculate total budget from contract's awarded options only (or all if none awarded yet)
+  const calculateContractTotalBudget = (contract: ContractWithProjects, awardedOnly: boolean = true): number => {
     if (!contract.options || contract.options.length === 0) {
       return parseFloat(contract.currentValue || contract.originalValue || "0") || 0;
     }
     let total = 0;
     for (const opt of contract.options) {
-      for (const ins of opt.inspectors || []) {
-        total += (parseFloat(ins.rate) || 0) * (parseFloat(ins.hours) || 0);
+      // If awardedOnly is true, only count options that are awarded (or all if none are awarded yet)
+      const hasAnyAwarded = contract.options.some(o => o.awardStatus === "awarded");
+      const shouldInclude = !awardedOnly || opt.awardStatus === "awarded" || !hasAnyAwarded;
+      if (shouldInclude) {
+        for (const ins of opt.inspectors || []) {
+          total += (parseFloat(ins.rate) || 0) * (parseFloat(ins.hours) || 0);
+        }
       }
     }
     return total;
+  };
+  
+  // Calculate budget from options by index selection (for award dialog preview)
+  const calculateSelectedOptionsBudget = (options: ContractOptionEntry[], selections: Record<number, boolean>): number => {
+    let total = 0;
+    options.forEach((opt, idx) => {
+      if (selections[idx]) {
+        for (const ins of opt.inspectors) {
+          total += (parseFloat(ins.rate) || 0) * (parseFloat(ins.hours) || 0);
+        }
+      }
+    });
+    return total;
+  };
+  
+  // Handle confirming award selections and saving contract
+  const handleConfirmAwardSelections = async () => {
+    if (!pendingAwardContract) return;
+    
+    // At least one option must be awarded
+    const anySelected = Object.values(optionAwardSelections).some(v => v);
+    if (!anySelected) {
+      toast({
+        title: "Selection Required",
+        description: "Please select at least one option to award.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    // Update options with award status based on selections
+    const updatedOptions = pendingAwardContract.options.map((opt, idx) => ({
+      ...opt,
+      awardStatus: optionAwardSelections[idx] ? "awarded" as const : "not_awarded" as const,
+    }));
+    
+    // Now trigger the actual update with award statuses set
+    updateMutation.mutate({
+      ...pendingAwardContract.formData,
+      id: pendingAwardContract.contractId,
+      options: updatedOptions,
+      previousStatus: pendingAwardContract.previousStatus,
+    }, {
+      onSuccess: async () => {
+        if (pendingFiles.length > 0) {
+          await uploadAttachments(pendingAwardContract.contractId, pendingFiles);
+        }
+      }
+    });
+    
+    // Close the award options dialog
+    setShowAwardOptionsDialog(false);
+    setPendingAwardContract(null);
+    setOptionAwardSelections({});
   };
   
   // Handle creating PO from contract
@@ -559,6 +630,29 @@ export default function ContractsPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (editingContract) {
+      // Check if status is changing to "awarded" - show award options dialog first
+      const isChangingToAwarded = formData.status === "awarded" && editingContract.status !== "awarded";
+      const hasMultipleOptions = contractOptions.length > 1;
+      
+      if (isChangingToAwarded && hasMultipleOptions) {
+        // Store pending contract data and show award options dialog
+        setPendingAwardContract({
+          formData: formData,
+          options: contractOptions,
+          previousStatus: editingContract.status,
+          contractId: editingContract.id,
+        });
+        // Initialize all options as selected by default
+        const initialSelections: Record<number, boolean> = {};
+        contractOptions.forEach((_, idx) => {
+          initialSelections[idx] = true;
+        });
+        setOptionAwardSelections(initialSelections);
+        setShowAwardOptionsDialog(true);
+        return; // Don't save yet - wait for award selection
+      }
+      
+      // For single option or non-award status changes, proceed directly
       updateMutation.mutate({ 
         ...formData, 
         id: editingContract.id, 
@@ -642,6 +736,7 @@ export default function ContractsPage() {
     if (contract.options && contract.options.length > 0) {
       setContractOptions(contract.options.map(opt => ({
         name: opt.name || "",
+        awardStatus: (opt.awardStatus as "pending" | "awarded" | "not_awarded") || "pending",
         inspectors: (opt.inspectors || []).map(ins => ({
           title: ins.title,
           inspectorName: ins.inspectorName || "",
@@ -2043,6 +2138,111 @@ export default function ContractsPage() {
               data-testid="button-confirm-convert"
             >
               {isConverting ? "Converting..." : addToExistingContract ? "Add to Contract" : "Convert to Contract"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      
+      {/* Award Options Dialog - for selecting which options to award */}
+      <Dialog open={showAwardOptionsDialog} onOpenChange={(open) => {
+        if (!open) {
+          setShowAwardOptionsDialog(false);
+          setPendingAwardContract(null);
+          setOptionAwardSelections({});
+        }
+      }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Select Options to Award</DialogTitle>
+            <DialogDescription>
+              This contract has multiple options. Select which options are being awarded.
+            </DialogDescription>
+          </DialogHeader>
+          
+          {pendingAwardContract && (
+            <div className="space-y-4">
+              <div className="space-y-3 max-h-[300px] overflow-y-auto">
+                {pendingAwardContract.options.map((option, idx) => {
+                  const optionTotal = calculateContractOptionTotal(option);
+                  return (
+                    <div 
+                      key={idx}
+                      className={`p-4 rounded-lg border transition-colors cursor-pointer ${
+                        optionAwardSelections[idx] 
+                          ? "bg-green-50 dark:bg-green-900/20 border-green-300 dark:border-green-700" 
+                          : "bg-muted/50 border-muted"
+                      }`}
+                      onClick={() => setOptionAwardSelections(prev => ({
+                        ...prev,
+                        [idx]: !prev[idx]
+                      }))}
+                      data-testid={`award-option-${idx}`}
+                    >
+                      <div className="flex items-start gap-3">
+                        <Checkbox
+                          checked={optionAwardSelections[idx] || false}
+                          onCheckedChange={(checked) => setOptionAwardSelections(prev => ({
+                            ...prev,
+                            [idx]: !!checked
+                          }))}
+                          className="mt-1"
+                          data-testid={`checkbox-award-option-${idx}`}
+                        />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="font-medium">
+                              Option {idx + 1}{option.name ? `: ${option.name}` : ""}
+                            </span>
+                            <Badge variant="secondary">
+                              ${optionTotal.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                            </Badge>
+                          </div>
+                          <div className="mt-1 text-sm text-muted-foreground">
+                            {option.inspectors.filter(i => i.title).map((ins, i) => (
+                              <span key={i} className="mr-2">
+                                {ins.title}{ins.inspectorName ? ` (${ins.inspectorName})` : ""}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              
+              <div className="pt-3 border-t">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">
+                    {Object.values(optionAwardSelections).filter(v => v).length} of {pendingAwardContract.options.length} options selected
+                  </span>
+                  <span className="font-semibold">
+                    Total: ${calculateSelectedOptionsBudget(pendingAwardContract.options, optionAwardSelections).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
+          
+          <DialogFooter>
+            <Button 
+              type="button" 
+              variant="outline" 
+              onClick={() => {
+                setShowAwardOptionsDialog(false);
+                setPendingAwardContract(null);
+                setOptionAwardSelections({});
+              }}
+              data-testid="button-cancel-award"
+            >
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleConfirmAwardSelections}
+              disabled={updateMutation.isPending || !Object.values(optionAwardSelections).some(v => v)}
+              data-testid="button-confirm-award"
+            >
+              {updateMutation.isPending ? "Saving..." : "Confirm Awards"}
             </Button>
           </DialogFooter>
         </DialogContent>
