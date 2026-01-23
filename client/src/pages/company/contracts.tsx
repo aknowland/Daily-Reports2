@@ -442,6 +442,7 @@ export default function ContractsPage() {
         finalCloseoutDate: data.finalCloseoutDate ? new Date(data.finalCloseoutDate) : null,
         options: data.options.map(opt => ({
           name: opt.name,
+          awardStatus: opt.awardStatus || "pending", // Include award status for partial awards
           inspectors: opt.inspectors.filter(ins => ins.title.trim() || ins.inspectorName.trim() || ins.rate.trim()),
         })),
       };
@@ -480,6 +481,7 @@ export default function ContractsPage() {
         finalCloseoutDate: data.finalCloseoutDate ? new Date(data.finalCloseoutDate) : null,
         options: data.options.map(opt => ({
           name: opt.name,
+          awardStatus: opt.awardStatus || "pending", // Include award status for partial awards
           inspectors: opt.inspectors.filter(ins => ins.title.trim() || ins.inspectorName.trim() || ins.rate.trim()),
         })),
       };
@@ -1073,6 +1075,44 @@ export default function ContractsPage() {
                                   {ins.rate && ` @ $${ins.rate}/hr`}
                                 </Badge>
                               ))}
+                            </div>
+                          )}
+                          {/* Award status indicator for multi-option contracts */}
+                          {contract.options && contract.options.length > 1 && (
+                            <div className="flex items-center gap-2 mt-1">
+                              {(() => {
+                                const awarded = contract.options.filter(o => o.awardStatus === "awarded").length;
+                                const notAwarded = contract.options.filter(o => o.awardStatus === "not_awarded").length;
+                                const pending = contract.options.filter(o => o.awardStatus === "pending" || !o.awardStatus).length;
+                                const total = contract.options.length;
+                                
+                                if (awarded > 0 || notAwarded > 0) {
+                                  return (
+                                    <Badge 
+                                      variant="outline" 
+                                      className={`text-xs ${awarded === total 
+                                        ? "border-green-500 text-green-700 dark:text-green-400" 
+                                        : awarded > 0 
+                                          ? "border-amber-500 text-amber-700 dark:text-amber-400"
+                                          : "border-muted text-muted-foreground"
+                                      }`}
+                                      data-testid={`award-indicator-${contract.id}`}
+                                    >
+                                      {awarded === total 
+                                        ? `All ${total} options awarded`
+                                        : `${awarded} of ${total} options awarded`
+                                      }
+                                    </Badge>
+                                  );
+                                } else if (contract.status === "awarded" && pending === total) {
+                                  return (
+                                    <Badge variant="outline" className="text-xs border-amber-500 text-amber-700 dark:text-amber-400">
+                                      {total} options pending award selection
+                                    </Badge>
+                                  );
+                                }
+                                return null;
+                              })()}
                             </div>
                           )}
                         </div>
@@ -2179,15 +2219,17 @@ export default function ContractsPage() {
                       data-testid={`award-option-${idx}`}
                     >
                       <div className="flex items-start gap-3">
-                        <Checkbox
-                          checked={optionAwardSelections[idx] || false}
-                          onCheckedChange={(checked) => setOptionAwardSelections(prev => ({
-                            ...prev,
-                            [idx]: !!checked
-                          }))}
-                          className="mt-1"
-                          data-testid={`checkbox-award-option-${idx}`}
-                        />
+                        <div onClick={(e) => e.stopPropagation()}>
+                          <Checkbox
+                            checked={optionAwardSelections[idx] || false}
+                            onCheckedChange={(checked) => setOptionAwardSelections(prev => ({
+                              ...prev,
+                              [idx]: !!checked
+                            }))}
+                            className="mt-1"
+                            data-testid={`checkbox-award-option-${idx}`}
+                          />
+                        </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center justify-between gap-2">
                             <span className="font-medium">
