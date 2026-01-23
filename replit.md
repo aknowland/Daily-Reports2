@@ -41,6 +41,7 @@ The application is built with a modern web stack, utilizing **React, TypeScript,
 - **Contract Dashboard**: Comprehensive visual dashboard for each contract accessible via "Dashboard" button on contract cards. Displays:
   - Schedule progress (based on start/substantial completion dates with status indicators)
   - Budget tracking with stacking support (base budget + auto-calculated from reports)
+  - Linked Projects section showing all projects under this contract with report counts and budget contributions
   - Bid schedule (all milestone dates from bid release to final closeout)
   - Client billing rates (regular, overtime, premium hourly rates)
   - Inspector billing rates (from IOR agreements linked to contract projects)
