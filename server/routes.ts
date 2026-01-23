@@ -2430,18 +2430,17 @@ export async function registerRoutes(
       // Rate escalation note
       if (proposal.rateEscalationNote) {
         doc.fontSize(9).font('Helvetica-Oblique').text(proposal.rateEscalationNote, startX, currentY, { width: pageWidth, align: 'center' });
+        currentY += doc.heightOfString(proposal.rateEscalationNote, { width: pageWidth }) + 10;
       }
       
-      // ===== PAGE 2: TERMS & CONDITIONS =====
-      doc.addPage();
+      // ===== TERMS & CONDITIONS (same page, 0.75 inch spacing) =====
+      currentY += 54; // 0.75 inch spacing before agreement section
       
-      // Header
-      doc.fontSize(10).font('Helvetica').text('DSA INSPECTORS', startX, 30, { width: pageWidth, align: 'right' });
-      // Half inch (36 points) space after DSA INSPECTORS
-      doc.fontSize(11).font('Helvetica-Bold').text('PROJECT INSPECTOR AGENCY AGREEMENT AND CONTRACT DUTIES:', startX, 76, { width: pageWidth, align: 'center' });
+      // Agreement title
+      doc.fontSize(11).font('Helvetica-Bold').text('PROJECT INSPECTOR AGENCY AGREEMENT AND CONTRACT DUTIES:', startX, currentY, { width: pageWidth, align: 'center' });
       
-      // Half inch (36 points) space after title before terms
-      currentY = 126;
+      // Space after title before terms
+      currentY += 36;
       
       // Parse and render terms - compact formatting to fit on one page
       // Replace placeholder district name with actual client name
