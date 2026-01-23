@@ -2289,26 +2289,30 @@ export async function registerRoutes(
       const cellPadding = 4;
       const optionSpacing = 8; // Vertical spacing between options
       
-      // Helper function to draw cell with borders
+      // Helper function to draw cell with borders and text wrapping
       const drawCell = (x: number, y: number, width: number, height: number, text: string, options: { align?: 'left' | 'center' | 'right', font?: string, fontSize?: number, verticalCenter?: boolean } = {}) => {
         const { align = 'center', font = 'Helvetica', fontSize = 9, verticalCenter = true } = options;
         // Draw cell border
         doc.rect(x, y, width, height).stroke();
-        // Draw text with padding
+        // Draw text with padding and wrapping
         doc.font(font).fontSize(fontSize);
-        const textY = verticalCenter ? y + (height - fontSize) / 2 : y + cellPadding;
-        doc.text(text, x + cellPadding, textY, { width: width - (cellPadding * 2), align });
+        const textWidth = width - (cellPadding * 2);
+        const textHeight = doc.heightOfString(text, { width: textWidth });
+        const textY = verticalCenter ? y + (height - textHeight) / 2 : y + cellPadding;
+        doc.text(text, x + cellPadding, textY, { width: textWidth, align, lineGap: 1 });
       };
       
-      // Helper function to draw merged cell spanning multiple rows
+      // Helper function to draw merged cell spanning multiple rows with text wrapping
       const drawMergedCell = (x: number, y: number, width: number, height: number, text: string, options: { align?: 'left' | 'center' | 'right', font?: string, fontSize?: number } = {}) => {
         const { align = 'center', font = 'Helvetica-Bold', fontSize = 9 } = options;
         // Draw cell border
         doc.rect(x, y, width, height).stroke();
-        // Draw text centered vertically
+        // Draw text centered vertically with wrapping
         doc.font(font).fontSize(fontSize);
-        const textY = y + (height - fontSize) / 2;
-        doc.text(text, x + cellPadding, textY, { width: width - (cellPadding * 2), align });
+        const textWidth = width - (cellPadding * 2);
+        const textHeight = doc.heightOfString(text, { width: textWidth });
+        const textY = y + (height - textHeight) / 2;
+        doc.text(text, x + cellPadding, textY, { width: textWidth, align, lineGap: 1 });
       };
       
       // Table header row
