@@ -1,7 +1,7 @@
 import { 
   projects, dailyReports, photos, distributionLogs, appSettings, userProfiles, projectMembers, invites,
   companies, companyMembers, joinRequests, invoices, contracts, clients, contractAttachments, contractOptions, contractOptionInspectors, timesheets, monthlyReportBundles,
-  proposals, proposalOptions, proposalOptionInspectors, iorAgreements, purchaseOrders, contractNotifications,
+  proposals, proposalOptions, proposalOptionInspectors, iorAgreements, purchaseOrders, contractNotifications, budgetNotifications,
   type Project, type InsertProject,
   type DailyReport, type InsertDailyReport,
   type Photo, type InsertPhoto,
@@ -22,6 +22,7 @@ import {
   type ContractOption, type InsertContractOption, type ContractOptionWithInspectors,
   type ContractOptionInspector, type InsertContractOptionInspector,
   type ContractNotification, type InsertContractNotification,
+  type BudgetNotification, type InsertBudgetNotification,
   type Timesheet, type InsertTimesheet,
   type MonthlyReportBundle, type InsertMonthlyReportBundle,
   type Proposal, type InsertProposal, type ProposalWithDetails,
@@ -1631,6 +1632,34 @@ export class DatabaseStorage implements IStorage {
     }
     
     return emails;
+  }
+
+  // Budget Notifications
+  async hasBudgetNotificationBeenSent(contractId: string, milestonePercent: number): Promise<boolean> {
+    const existing = await db
+      .select()
+      .from(budgetNotifications)
+      .where(
+        and(
+          eq(budgetNotifications.contractId, contractId),
+          eq(budgetNotifications.milestonePercent, milestonePercent)
+        )
+      )
+      .limit(1);
+    return existing.length > 0;
+  }
+
+  async createBudgetNotification(data: InsertBudgetNotification): Promise<BudgetNotification> {
+    const [notification] = await db.insert(budgetNotifications).values(data).returning();
+    return notification;
+  }
+
+  async getBudgetNotificationsForContract(contractId: string): Promise<BudgetNotification[]> {
+    return db
+      .select()
+      .from(budgetNotifications)
+      .where(eq(budgetNotifications.contractId, contractId))
+      .orderBy(desc(budgetNotifications.sentAt));
   }
 
   // Proposals
