@@ -137,6 +137,11 @@ type DashboardData = {
     status: string;
     reportCount: number;
     budgetSpent: number;
+    startDate: string | null;
+    substantialCompletionDate: string | null;
+    finalCloseoutDate: string | null;
+    scheduleProgress: number;
+    scheduleStatus: 'not_started' | 'on_track' | 'warning' | 'overdue' | 'complete';
   }[];
 };
 
@@ -429,6 +434,40 @@ export default function ContractDashboard() {
                   </span>
                 </div>
               )}
+
+              {dashboard.projects.length > 0 && (
+                <div className="pt-4 border-t">
+                  <p className="text-sm font-medium text-muted-foreground mb-3">Project Schedule Breakdown</p>
+                  <div className="space-y-3">
+                    {dashboard.projects.map((project) => {
+                      const projectConfig = getScheduleStatusConfig(project.scheduleStatus);
+                      const ProjectIcon = projectConfig.icon;
+                      return (
+                        <div key={project.id} className="border rounded-md p-3 space-y-2" data-testid={`project-schedule-${project.id}`}>
+                          <div className="flex items-center justify-between gap-2 flex-wrap">
+                            <span className="font-medium text-sm">{project.name}</span>
+                            <Badge className={`${projectConfig.textColor} text-xs`} variant="outline">
+                              <ProjectIcon className="h-3 w-3 mr-1" />
+                              {projectConfig.label}
+                            </Badge>
+                          </div>
+                          <div className="relative h-2 w-full overflow-hidden rounded-full bg-secondary">
+                            <div
+                              className={`h-full transition-all ${projectConfig.color}`}
+                              style={{ width: `${Math.min(100, project.scheduleProgress)}%` }}
+                            />
+                          </div>
+                          <div className="flex justify-between text-xs text-muted-foreground">
+                            <span>{project.startDate ? format(new Date(project.startDate), "MMM d, yyyy") : "No start"}</span>
+                            <span>{project.scheduleProgress.toFixed(0)}%</span>
+                            <span>{project.substantialCompletionDate ? format(new Date(project.substantialCompletionDate), "MMM d, yyyy") : "No end"}</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
 
@@ -529,6 +568,26 @@ export default function ContractDashboard() {
                   <p className="font-medium" data-testid="text-total-hours">{dashboard.budget.hours.total.toFixed(1)}</p>
                 </div>
               </div>
+
+              {dashboard.projects.length > 0 && (
+                <div className="pt-4 border-t">
+                  <p className="text-sm font-medium text-muted-foreground mb-3">Project Budget Breakdown</p>
+                  <div className="space-y-2">
+                    {dashboard.projects.map((project) => {
+                      const projectPercent = dashboard.budget.totalBudget > 0 
+                        ? (project.budgetSpent / dashboard.budget.totalBudget) * 100 
+                        : 0;
+                      return (
+                        <div key={project.id} className="flex items-center justify-between gap-2 text-sm" data-testid={`project-budget-${project.id}`}>
+                          <span className="truncate flex-1">{project.name}</span>
+                          <span className="font-medium whitespace-nowrap">{formatCurrency(project.budgetSpent)}</span>
+                          <span className="text-muted-foreground text-xs w-12 text-right">({projectPercent.toFixed(1)}%)</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
               <div className="pt-2 space-y-2">
                 <Button 
