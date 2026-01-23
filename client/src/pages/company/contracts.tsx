@@ -822,7 +822,15 @@ export default function ContractsPage() {
                             <div className="flex items-center gap-1 flex-wrap">
                               <span className="text-xs">Projects:</span>
                               {contract.projects.map(project => (
-                                <Badge key={project.id} variant="outline" className="text-xs">{project.name}</Badge>
+                                <Link key={project.id} href={`/company/contracts/${contract.id}/dashboard`}>
+                                  <Badge 
+                                    variant="outline" 
+                                    className="text-xs cursor-pointer hover-elevate"
+                                    data-testid={`badge-project-${project.id}`}
+                                  >
+                                    {project.name}
+                                  </Badge>
+                                </Link>
                               ))}
                             </div>
                           )}
