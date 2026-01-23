@@ -97,6 +97,92 @@ export default function CompanyDashboard() {
           isLoading={contractsLoading} 
         />
 
+        {/* Invoice Tracking Overview */}
+        <Card data-testid="card-invoice-overview">
+          <CardHeader className="flex flex-row items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <Receipt className="h-5 w-5 text-primary" />
+              <CardTitle>Invoice Tracking</CardTitle>
+            </div>
+            <Link href="/company/billing">
+              <span className="text-sm text-primary hover:underline cursor-pointer flex items-center gap-1" data-testid="link-view-all-invoices">
+                View All <ChevronRight className="h-4 w-4" />
+              </span>
+            </Link>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 text-muted-foreground">
+                  <DollarSign className="h-4 w-4" />
+                  <span className="text-sm">Outstanding</span>
+                </div>
+                {invoiceStatsLoading ? (
+                  <Skeleton className="h-8 w-24" />
+                ) : (
+                  <div className="text-2xl font-bold text-amber-600 dark:text-amber-500" data-testid="text-outstanding-amount">
+                    {formatCurrency(invoiceStats?.outstandingAmount || 0)}
+                  </div>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  {invoiceStats?.sent || 0} sent, {invoiceStats?.overdue || 0} overdue
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 text-muted-foreground">
+                  <CheckCircle2 className="h-4 w-4" />
+                  <span className="text-sm">Paid</span>
+                </div>
+                {invoiceStatsLoading ? (
+                  <Skeleton className="h-8 w-24" />
+                ) : (
+                  <div className="text-2xl font-bold text-green-600 dark:text-green-500" data-testid="text-paid-amount">
+                    {formatCurrency(invoiceStats?.paidAmount || 0)}
+                  </div>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  {invoiceStats?.paid || 0} invoices paid
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 text-muted-foreground">
+                  <Clock className="h-4 w-4" />
+                  <span className="text-sm">Draft</span>
+                </div>
+                {invoiceStatsLoading ? (
+                  <Skeleton className="h-8 w-16" />
+                ) : (
+                  <div className="text-2xl font-bold" data-testid="text-draft-count">
+                    {invoiceStats?.draft || 0}
+                  </div>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  Pending review
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 text-muted-foreground">
+                  <Receipt className="h-4 w-4" />
+                  <span className="text-sm">Total Invoices</span>
+                </div>
+                {invoiceStatsLoading ? (
+                  <Skeleton className="h-8 w-16" />
+                ) : (
+                  <div className="text-2xl font-bold" data-testid="text-total-invoices">
+                    {invoiceStats?.total || 0}
+                  </div>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  {formatCurrency(invoiceStats?.totalAmount || 0)} total
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
         {/* Quick Links */}
         <div className="grid gap-4 md:grid-cols-3">
           <Link href="/reports">
@@ -211,92 +297,6 @@ export default function CompanyDashboard() {
             </CardContent>
           </Card>
         </div>
-
-        {/* Invoice Tracking Overview */}
-        <Card data-testid="card-invoice-overview">
-          <CardHeader className="flex flex-row items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <Receipt className="h-5 w-5 text-primary" />
-              <CardTitle>Invoice Tracking</CardTitle>
-            </div>
-            <Link href="/company/billing">
-              <span className="text-sm text-primary hover:underline cursor-pointer flex items-center gap-1" data-testid="link-view-all-invoices">
-                View All <ChevronRight className="h-4 w-4" />
-              </span>
-            </Link>
-          </CardHeader>
-          <CardContent>
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-              <div className="space-y-2">
-                <div className="flex items-center gap-2 text-muted-foreground">
-                  <DollarSign className="h-4 w-4" />
-                  <span className="text-sm">Outstanding</span>
-                </div>
-                {invoiceStatsLoading ? (
-                  <Skeleton className="h-8 w-24" />
-                ) : (
-                  <div className="text-2xl font-bold text-amber-600 dark:text-amber-500" data-testid="text-outstanding-amount">
-                    {formatCurrency(invoiceStats?.outstandingAmount || 0)}
-                  </div>
-                )}
-                <p className="text-xs text-muted-foreground">
-                  {invoiceStats?.sent || 0} sent, {invoiceStats?.overdue || 0} overdue
-                </p>
-              </div>
-
-              <div className="space-y-2">
-                <div className="flex items-center gap-2 text-muted-foreground">
-                  <CheckCircle2 className="h-4 w-4" />
-                  <span className="text-sm">Paid</span>
-                </div>
-                {invoiceStatsLoading ? (
-                  <Skeleton className="h-8 w-24" />
-                ) : (
-                  <div className="text-2xl font-bold text-green-600 dark:text-green-500" data-testid="text-paid-amount">
-                    {formatCurrency(invoiceStats?.paidAmount || 0)}
-                  </div>
-                )}
-                <p className="text-xs text-muted-foreground">
-                  {invoiceStats?.paid || 0} invoices paid
-                </p>
-              </div>
-
-              <div className="space-y-2">
-                <div className="flex items-center gap-2 text-muted-foreground">
-                  <Clock className="h-4 w-4" />
-                  <span className="text-sm">Draft</span>
-                </div>
-                {invoiceStatsLoading ? (
-                  <Skeleton className="h-8 w-16" />
-                ) : (
-                  <div className="text-2xl font-bold" data-testid="text-draft-count">
-                    {invoiceStats?.draft || 0}
-                  </div>
-                )}
-                <p className="text-xs text-muted-foreground">
-                  Pending review
-                </p>
-              </div>
-
-              <div className="space-y-2">
-                <div className="flex items-center gap-2 text-muted-foreground">
-                  <Receipt className="h-4 w-4" />
-                  <span className="text-sm">Total Invoices</span>
-                </div>
-                {invoiceStatsLoading ? (
-                  <Skeleton className="h-8 w-16" />
-                ) : (
-                  <div className="text-2xl font-bold" data-testid="text-total-invoices">
-                    {invoiceStats?.total || 0}
-                  </div>
-                )}
-                <p className="text-xs text-muted-foreground">
-                  {formatCurrency(invoiceStats?.totalAmount || 0)} total
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
       </div>
     </PageLayout>
   );
