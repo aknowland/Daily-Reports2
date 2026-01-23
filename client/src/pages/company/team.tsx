@@ -558,7 +558,7 @@ export default function CompanyTeamPage() {
                           <SelectItem value="admin">
                             <div className="flex items-center gap-2">
                               <Shield className="w-4 h-4" />
-                              Admin
+                              Company Admin
                             </div>
                           </SelectItem>
                         </SelectContent>
@@ -714,7 +714,7 @@ export default function CompanyTeamPage() {
                               </SelectTrigger>
                               <SelectContent>
                                 <SelectItem value="inspector">Inspector</SelectItem>
-                                <SelectItem value="admin">Admin</SelectItem>
+                                <SelectItem value="admin">Company Admin</SelectItem>
                               </SelectContent>
                             </Select>
                             {!isCurrentUser && (
@@ -762,7 +762,7 @@ export default function CompanyTeamPage() {
                             <p className="font-medium truncate">{invite.email}</p>
                             <Badge variant="outline" className="text-xs no-default-hover-elevate no-default-active-elevate">
                               {invite.role === "admin" ? (
-                                <><Shield className="w-3 h-3 mr-1" />Admin</>
+                                <><Shield className="w-3 h-3 mr-1" />Company Admin</>
                               ) : (
                                 <><HardHat className="w-3 h-3 mr-1" />Inspector</>
                               )}

@@ -15,7 +15,12 @@ The application is built with a modern web stack, utilizing **React, TypeScript,
 **Key Architectural Decisions:**
 
 - **Mobile-First Design**: UI/UX is optimized for touch interaction and field use, ensuring accessibility and ease of use on mobile devices.
-- **Role-Based Access Control (RBAC)**: Supports `Inspector`, `Company Admin`, and `System Admin` roles, each with distinct permissions and data visibility.
+- **Role-Based Access Control (RBAC)**: Three-tier role hierarchy with distinct permissions:
+  - **Inspector**: Field workers who create daily reports and manage their assigned projects.
+  - **Company Admin**: Manages team member roles within their company (can assign users as Inspector or Company Admin). Has access to company-level features like proposals, contracts, billing, and team management.
+  - **System Admin**: Has system-level controls and can promote users to System Admin. Can manage all companies, all users, and system-wide settings. Includes `system_owner` role (highest level) and `admin` role (standard system admin).
+  
+  The database uses `role` field in `companyMembers` for company-level roles (`inspector` or `admin` meaning Company Admin), and `role` field in `userProfiles` for system-level roles (`inspector`, `admin` meaning System Admin, or `system_owner`).
 - **Multi-Company Support**: Allows inspectors to work across multiple companies, with project data filtered by the active company.
 - **Voice-to-Text Integration**: Leverages OpenAI for speech-to-text transcription and AI-powered structured data extraction for work activities and visitors, integrated into various input fields.
 - **Automated Report Generation**: Generates professional PDF reports with company branding and facilitates email distribution to stakeholders.

@@ -605,7 +605,7 @@ export default function AdminUsersPage() {
                           </SelectTrigger>
                           <SelectContent>
                             <SelectItem value="inspector">Inspector</SelectItem>
-                            <SelectItem value="admin">Admin</SelectItem>
+                            <SelectItem value="admin">Company Admin</SelectItem>
                           </SelectContent>
                         </Select>
                         <Button
@@ -652,7 +652,7 @@ export default function AdminUsersPage() {
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="inspector">Inspector</SelectItem>
-                        <SelectItem value="admin">Admin</SelectItem>
+                        <SelectItem value="admin">Company Admin</SelectItem>
                       </SelectContent>
                     </Select>
                     <Button
