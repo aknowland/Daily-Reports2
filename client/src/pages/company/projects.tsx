@@ -484,14 +484,14 @@ export default function CompanyProjectsPage() {
           setFormData({ name: "", projectNumber: "", client: "", clientId: "", address: "", distributionEmails: "", contractId: "", startDate: "", substantialCompletionDate: "", finalCloseoutDate: "", budgetAmount: "", baseBudget: "" });
         }
       }}>
-        <DialogContent>
+        <DialogContent className="max-h-[90vh] flex flex-col">
           <DialogHeader>
             <DialogTitle>{editingProject ? "Edit Project" : "Create Project"}</DialogTitle>
             <DialogDescription>
               {editingProject ? "Update project details" : "Add a new project to your company"}
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 pt-4">
+          <div className="space-y-4 pt-4 overflow-y-auto flex-1 pr-2">
             <div className="space-y-2">
               <Label htmlFor="name">Project Name *</Label>
               <Input
