@@ -38,9 +38,10 @@ import {
   User,
   FolderOpen,
   Search,
+  ArrowLeft,
 } from "lucide-react";
 import { useState } from "react";
-import { useLocation } from "wouter";
+import { useLocation, Link } from "wouter";
 import type { Client } from "@shared/schema";
 
 type ClientFormData = {
@@ -240,6 +241,14 @@ export default function ClientsPage() {
   return (
     <PageLayout title="Clients">
       <div className="space-y-6">
+        <div className="flex items-center gap-2">
+          <Button variant="ghost" size="sm" asChild data-testid="button-back">
+            <Link href="/">
+              <ArrowLeft className="w-4 h-4 mr-1" />
+              Back to Dashboard
+            </Link>
+          </Button>
+        </div>
         <Card>
           <CardHeader>
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">

@@ -55,8 +55,9 @@ import {
   RefreshCw,
   MoreHorizontal,
   LayoutDashboard,
+  ArrowLeft,
 } from "lucide-react";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -170,6 +171,7 @@ const emptyFormData: ContractFormData = {
 export default function ContractsPage() {
   const { toast } = useToast();
   const { activeCompany, isCompanyAdmin } = useAuth();
+  const [, setLocation] = useLocation();
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [contractToDelete, setContractToDelete] = useState<ContractWithProjects | null>(null);
   const [editingContract, setEditingContract] = useState<ContractWithProjects | null>(null);
@@ -699,8 +701,15 @@ export default function ContractsPage() {
       title="Contract Management"
       description={`Manage contracts for ${activeCompany?.name || "your company"}`}
     >
-      {isCompanyAdmin && (
-        <div className="flex justify-end gap-2 mb-4">
+      <div className="flex items-center justify-between gap-2 mb-4 flex-wrap">
+        <Button variant="ghost" size="sm" asChild data-testid="button-back">
+          <Link href="/">
+            <ArrowLeft className="w-4 h-4 mr-1" />
+            Back to Dashboard
+          </Link>
+        </Button>
+        {isCompanyAdmin && (
+          <div className="flex gap-2">
           <Button 
             variant="outline"
             onClick={() => {
@@ -722,8 +731,9 @@ export default function ContractsPage() {
             <Plus className="w-4 h-4 mr-2" />
             New Contract
           </Button>
-        </div>
-      )}
+          </div>
+        )}
+      </div>
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="mb-4">
           <TabsTrigger value="list" className="gap-2" data-testid="tab-list">
@@ -781,7 +791,12 @@ export default function ContractsPage() {
           ) : (
             <div className="space-y-3">
               {filteredContracts.map(contract => (
-                <Card key={contract.id} className="hover-elevate" data-testid={`contract-${contract.id}`}>
+                <Card 
+                  key={contract.id} 
+                  className="hover-elevate cursor-pointer" 
+                  data-testid={`contract-${contract.id}`}
+                  onClick={() => setLocation(`/company/contracts/${contract.id}/dashboard`)}
+                >
                   <CardContent className="p-4">
                     <div className="flex items-start justify-between gap-4 flex-wrap">
                       <div className="flex-1 min-w-0">
@@ -812,15 +827,14 @@ export default function ContractsPage() {
                             <div className="flex items-center gap-1 flex-wrap">
                               <span className="text-xs">Projects:</span>
                               {contract.projects.map(project => (
-                                <Link key={project.id} href={`/company/contracts/${contract.id}/dashboard`}>
-                                  <Badge 
-                                    variant="outline" 
-                                    className="text-xs cursor-pointer hover-elevate"
-                                    data-testid={`badge-project-${project.id}`}
-                                  >
-                                    {project.name}
-                                  </Badge>
-                                </Link>
+                                <Badge 
+                                  key={project.id}
+                                  variant="outline" 
+                                  className="text-xs"
+                                  data-testid={`badge-project-${project.id}`}
+                                >
+                                  {project.name}
+                                </Badge>
                               ))}
                             </div>
                           )}
@@ -854,17 +868,7 @@ export default function ContractsPage() {
                           )}
                         </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <Link href={`/company/contracts/${contract.id}/dashboard`}>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            data-testid={`button-dashboard-${contract.id}`}
-                          >
-                            <LayoutDashboard className="w-4 h-4 mr-1" />
-                            Dashboard
-                          </Button>
-                        </Link>
+                      <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
                         {isCompanyAdmin && (
                           <>
                             <Button

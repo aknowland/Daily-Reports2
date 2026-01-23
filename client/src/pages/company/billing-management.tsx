@@ -43,7 +43,9 @@ import {
   XCircle,
   AlertCircle,
   Plus,
+  ArrowLeft,
 } from "lucide-react";
+import { Link } from "wouter";
 import { useState } from "react";
 import type { Project, ContractWithProjects, InvoiceWithDetails, PurchaseOrder, Client } from "@shared/schema";
 import { Input } from "@/components/ui/input";
@@ -608,6 +610,14 @@ export default function BillingManagementPage() {
   return (
     <PageLayout title="Billing">
       <div className="p-4 space-y-6">
+        <div className="flex items-center gap-2 mb-2">
+          <Button variant="ghost" size="sm" asChild data-testid="button-back">
+            <Link href="/">
+              <ArrowLeft className="w-4 h-4 mr-1" />
+              Back to Dashboard
+            </Link>
+          </Button>
+        </div>
         <Tabs defaultValue="invoices" className="space-y-4">
           <TabsList>
             <TabsTrigger value="invoices" className="gap-2" data-testid="tab-invoices">

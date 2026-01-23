@@ -786,7 +786,12 @@ export default function ContractDashboard() {
                   </TableHeader>
                   <TableBody>
                     {dashboard.projects.map((project) => (
-                      <TableRow key={project.id} data-testid={`project-row-${project.id}`}>
+                      <TableRow 
+                        key={project.id} 
+                        data-testid={`project-row-${project.id}`}
+                        className="cursor-pointer hover:bg-muted/50"
+                        onClick={() => setLocation(`/company/projects?projectId=${project.id}`)}
+                      >
                         <TableCell className="font-medium">{project.name}</TableCell>
                         <TableCell className="text-muted-foreground">{project.projectNumber || '-'}</TableCell>
                         <TableCell>
@@ -800,11 +805,9 @@ export default function ContractDashboard() {
                         <TableCell className="text-right">{project.reportCount}</TableCell>
                         <TableCell className="text-right font-medium">{formatCurrency(project.budgetSpent)}</TableCell>
                         <TableCell>
-                          <Link href={`/company/projects?filter=${project.id}`}>
-                            <Button variant="ghost" size="icon" data-testid={`view-project-${project.id}`}>
-                              <ExternalLink className="h-4 w-4" />
-                            </Button>
-                          </Link>
+                          <Button variant="ghost" size="icon" data-testid={`view-project-${project.id}`}>
+                            <ExternalLink className="h-4 w-4" />
+                          </Button>
                         </TableCell>
                       </TableRow>
                     ))}
