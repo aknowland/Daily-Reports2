@@ -350,6 +350,27 @@ export const contractOptionInspectors = pgTable("contract_option_inspectors", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// Contract notification type enum
+export const contractNotificationTypeEnum = pgEnum("contract_notification_type", [
+  "start_date",
+  "substantial_completion",
+  "final_closeout"
+]);
+
+// Contract notifications table - tracks sent notifications to prevent duplicates
+export const contractNotifications = pgTable("contract_notifications", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  contractId: varchar("contract_id").references(() => contracts.id, { onDelete: "cascade" }).notNull(),
+  companyId: varchar("company_id").references(() => companies.id, { onDelete: "cascade" }).notNull(),
+  notificationType: contractNotificationTypeEnum("notification_type").notNull(),
+  daysBefore: integer("days_before").notNull(), // 30, 14, 7, etc.
+  sentAt: timestamp("sent_at").defaultNow().notNull(),
+  recipientEmails: json("recipient_emails").$type<string[]>().default([]),
+}, (table) => [
+  // Unique constraint to prevent duplicate notifications for same contract/type/days
+  unique().on(table.contractId, table.notificationType, table.daysBefore),
+]);
+
 // Timesheet status enum
 export const timesheetStatusEnum = pgEnum("timesheet_status", ["draft", "submitted", "approved"]);
 
@@ -586,6 +607,7 @@ export const insertContractSchema = createInsertSchema(contracts).omit({ id: tru
 export const insertContractAttachmentSchema = createInsertSchema(contractAttachments).omit({ id: true, createdAt: true });
 export const insertContractOptionSchema = createInsertSchema(contractOptions).omit({ id: true, createdAt: true });
 export const insertContractOptionInspectorSchema = createInsertSchema(contractOptionInspectors).omit({ id: true, createdAt: true });
+export const insertContractNotificationSchema = createInsertSchema(contractNotifications).omit({ id: true, sentAt: true });
 export const insertTimesheetSchema = createInsertSchema(timesheets).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertInvoiceSchema = createInsertSchema(invoices).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertMonthlyReportBundleSchema = createInsertSchema(monthlyReportBundles).omit({ id: true, createdAt: true });
@@ -625,6 +647,8 @@ export type ContractOption = typeof contractOptions.$inferSelect;
 export type InsertContractOption = z.infer<typeof insertContractOptionSchema>;
 export type ContractOptionInspector = typeof contractOptionInspectors.$inferSelect;
 export type InsertContractOptionInspector = z.infer<typeof insertContractOptionInspectorSchema>;
+export type ContractNotification = typeof contractNotifications.$inferSelect;
+export type InsertContractNotification = z.infer<typeof insertContractNotificationSchema>;
 export type Timesheet = typeof timesheets.$inferSelect;
 export type InsertTimesheet = z.infer<typeof insertTimesheetSchema>;
 export type Invoice = typeof invoices.$inferSelect;

@@ -83,6 +83,57 @@ const isKnowlandMember = async (userId: string): Promise<boolean> => {
   return companies.some(c => (c as any).company?.name === KNOWLAND_COMPANY_NAME);
 };
 
+// Helper to compute contract status based on dates
+// Returns the recommended status based on current date and contract dates
+type ContractStatus = "bid_release" | "bid_received" | "under_review" | "awarded" | "in_execution" | "substantial_completion" | "final_closeout";
+
+const computeContractStatusFromDates = (contract: {
+  startDate?: Date | null;
+  substantialCompletionDate?: Date | null;
+  finalCloseoutDate?: Date | null;
+  status?: string;
+}): ContractStatus | null => {
+  const now = new Date();
+  now.setHours(0, 0, 0, 0); // Normalize to start of day
+  
+  // If final closeout date has passed, status should be final_closeout
+  if (contract.finalCloseoutDate) {
+    const closeout = new Date(contract.finalCloseoutDate);
+    closeout.setHours(0, 0, 0, 0);
+    if (now >= closeout) {
+      return "final_closeout";
+    }
+  }
+  
+  // If substantial completion date has passed, status should be substantial_completion
+  if (contract.substantialCompletionDate) {
+    const substantial = new Date(contract.substantialCompletionDate);
+    substantial.setHours(0, 0, 0, 0);
+    if (now >= substantial) {
+      return "substantial_completion";
+    }
+  }
+  
+  // If start date has passed, status should be in_execution
+  if (contract.startDate) {
+    const start = new Date(contract.startDate);
+    start.setHours(0, 0, 0, 0);
+    if (now >= start) {
+      return "in_execution";
+    }
+  }
+  
+  // No date-based change needed
+  return null;
+};
+
+// Notification intervals for each date type
+const NOTIFICATION_INTERVALS = {
+  start_date: [30, 14, 7],
+  substantial_completion: [120, 90, 60, 30, 14, 3],
+  final_closeout: [10, 3],
+};
+
 // Helper to get Knowland company if exists
 const getKnowlandCompany = async (): Promise<{ id: string; name: string } | null> => {
   const companies = await storage.getCompanies();
@@ -1841,6 +1892,169 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error deleting attachment:", error);
       res.status(500).json({ message: "Failed to delete attachment" });
+    }
+  });
+
+  // ========== CONTRACT NOTIFICATIONS ==========
+  
+  // Process contract notifications and update statuses - can be triggered daily via cron or manually
+  app.post("/api/contracts/process-notifications", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      
+      // Only system admins or company admins can trigger notification processing
+      const isSysAdmin = isEffectiveSystemAdmin(profile);
+      let companyIdFilter: string | null = null;
+      
+      if (!isSysAdmin && profile?.activeCompanyId) {
+        const isCompAdmin = await isEffectiveCompanyAdmin(userId, profile.activeCompanyId, profile);
+        if (!isCompAdmin) {
+          return res.status(403).json({ message: "Admin access required" });
+        }
+        companyIdFilter = profile.activeCompanyId;
+      } else if (!isSysAdmin) {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+      
+      // Import Resend for sending emails
+      const { Resend } = await import('resend');
+      const resend = new Resend(process.env.RESEND_API_KEY);
+      
+      const now = new Date();
+      now.setHours(0, 0, 0, 0);
+      
+      const allContracts = await storage.getAllContractsWithUpcomingDates();
+      const contractsToProcess = companyIdFilter 
+        ? allContracts.filter(c => c.companyId === companyIdFilter)
+        : allContracts;
+      
+      const results = {
+        statusUpdates: [] as { contractId: string; contractName: string; oldStatus: string; newStatus: string }[],
+        notificationsSent: [] as { contractId: string; contractName: string; dateType: string; daysBefore: number; emails: string[] }[],
+        errors: [] as { contractId: string; error: string }[],
+      };
+      
+      for (const contract of contractsToProcess) {
+        try {
+          // 1. Check and update contract status based on dates
+          const computedStatus = computeContractStatusFromDates(contract);
+          if (computedStatus && computedStatus !== contract.status) {
+            await storage.updateContract(contract.id, { status: computedStatus });
+            results.statusUpdates.push({
+              contractId: contract.id,
+              contractName: contract.name,
+              oldStatus: contract.status,
+              newStatus: computedStatus,
+            });
+          }
+          
+          // 2. Check for upcoming date notifications
+          const dateChecks = [
+            { type: 'start_date' as const, date: contract.startDate, label: 'Contract Start Date' },
+            { type: 'substantial_completion' as const, date: contract.substantialCompletionDate, label: 'Substantial Completion Date' },
+            { type: 'final_closeout' as const, date: contract.finalCloseoutDate, label: 'Final Closeout Date' },
+          ];
+          
+          for (const check of dateChecks) {
+            if (!check.date) continue;
+            
+            const targetDate = new Date(check.date);
+            targetDate.setHours(0, 0, 0, 0);
+            
+            // Skip if date is in the past
+            if (targetDate < now) continue;
+            
+            const daysUntil = Math.ceil((targetDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+            const intervals = NOTIFICATION_INTERVALS[check.type];
+            
+            for (const daysBefore of intervals) {
+              if (daysUntil === daysBefore) {
+                // Check if notification was already sent
+                const alreadySent = await storage.hasNotificationBeenSent(contract.id, check.type, daysBefore);
+                if (alreadySent) continue;
+                
+                // Get company admin emails
+                const adminEmails = await storage.getCompanyAdminEmails(contract.companyId);
+                if (adminEmails.length === 0) continue;
+                
+                // Get company info for email
+                const company = await storage.getCompany(contract.companyId);
+                
+                // Send notification email
+                const formattedDate = targetDate.toLocaleDateString('en-US', { 
+                  weekday: 'long', 
+                  year: 'numeric', 
+                  month: 'long', 
+                  day: 'numeric' 
+                });
+                
+                try {
+                  await resend.emails.send({
+                    from: 'Field Daily Reports <noreply@mail.replit.app>',
+                    to: adminEmails,
+                    subject: `Contract Reminder: ${contract.name} - ${check.label} in ${daysBefore} days`,
+                    html: `
+                      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                        <h2 style="color: #1a365d;">Contract Date Reminder</h2>
+                        <p>This is a reminder that the following contract date is approaching:</p>
+                        
+                        <div style="background: #f7fafc; padding: 20px; border-radius: 8px; margin: 20px 0;">
+                          <h3 style="margin: 0 0 10px 0; color: #2d3748;">${contract.name}</h3>
+                          <p style="margin: 5px 0;"><strong>Contract #:</strong> ${contract.contractNumber}</p>
+                          <p style="margin: 5px 0;"><strong>${check.label}:</strong> ${formattedDate}</p>
+                          <p style="margin: 5px 0;"><strong>Days Remaining:</strong> ${daysBefore}</p>
+                          ${contract.client?.name ? `<p style="margin: 5px 0;"><strong>Client:</strong> ${contract.client.name}</p>` : ''}
+                        </div>
+                        
+                        <p style="color: #718096; font-size: 14px;">
+                          This is an automated reminder from ${company?.name || 'Field Daily Reports'}.
+                        </p>
+                      </div>
+                    `,
+                  });
+                  
+                  // Record notification
+                  await storage.createContractNotification({
+                    contractId: contract.id,
+                    companyId: contract.companyId,
+                    notificationType: check.type,
+                    daysBefore,
+                    recipientEmails: adminEmails,
+                  });
+                  
+                  results.notificationsSent.push({
+                    contractId: contract.id,
+                    contractName: contract.name,
+                    dateType: check.type,
+                    daysBefore,
+                    emails: adminEmails,
+                  });
+                } catch (emailError: any) {
+                  results.errors.push({
+                    contractId: contract.id,
+                    error: `Failed to send email: ${emailError.message}`,
+                  });
+                }
+              }
+            }
+          }
+        } catch (err: any) {
+          results.errors.push({
+            contractId: contract.id,
+            error: err.message,
+          });
+        }
+      }
+      
+      res.json({
+        success: true,
+        processed: contractsToProcess.length,
+        ...results,
+      });
+    } catch (error: any) {
+      console.error("Error processing contract notifications:", error);
+      res.status(500).json({ message: "Failed to process notifications", error: error.message });
     }
   });
 
