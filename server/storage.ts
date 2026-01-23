@@ -1,7 +1,7 @@
 import { 
   projects, dailyReports, photos, distributionLogs, appSettings, userProfiles, projectMembers, invites,
   companies, companyMembers, joinRequests, invoices, contracts, clients, contractAttachments, contractOptions, contractOptionInspectors, timesheets, monthlyReportBundles,
-  proposals, proposalOptions, proposalOptionInspectors, iorAgreements, purchaseOrders,
+  proposals, proposalOptions, proposalOptionInspectors, iorAgreements, purchaseOrders, contractNotifications,
   type Project, type InsertProject,
   type DailyReport, type InsertDailyReport,
   type Photo, type InsertPhoto,
@@ -21,6 +21,7 @@ import {
   type ContractAttachment, type InsertContractAttachment,
   type ContractOption, type InsertContractOption, type ContractOptionWithInspectors,
   type ContractOptionInspector, type InsertContractOptionInspector,
+  type ContractNotification, type InsertContractNotification,
   type Timesheet, type InsertTimesheet,
   type MonthlyReportBundle, type InsertMonthlyReportBundle,
   type Proposal, type InsertProposal, type ProposalWithDetails,
@@ -241,6 +242,13 @@ export interface IStorage {
   
   // Contract Option Inspectors
   createContractOptionInspector(data: InsertContractOptionInspector): Promise<ContractOptionInspector>;
+
+  // Contract Notifications
+  getContractNotifications(contractId: string): Promise<ContractNotification[]>;
+  hasNotificationBeenSent(contractId: string, notificationType: string, daysBefore: number): Promise<boolean>;
+  createContractNotification(data: InsertContractNotification): Promise<ContractNotification>;
+  getAllContractsWithUpcomingDates(): Promise<ContractWithProjects[]>;
+  getCompanyAdminEmails(companyId: string): Promise<string[]>;
 
   // Proposals
   getProposals(companyId: string): Promise<ProposalWithDetails[]>;
@@ -1511,6 +1519,118 @@ export class DatabaseStorage implements IStorage {
   async createContractOptionInspector(data: InsertContractOptionInspector): Promise<ContractOptionInspector> {
     const [inspector] = await db.insert(contractOptionInspectors).values(data).returning();
     return inspector;
+  }
+
+  // Contract Notifications
+  async getContractNotifications(contractId: string): Promise<ContractNotification[]> {
+    return await db
+      .select()
+      .from(contractNotifications)
+      .where(eq(contractNotifications.contractId, contractId))
+      .orderBy(desc(contractNotifications.sentAt));
+  }
+
+  async hasNotificationBeenSent(contractId: string, notificationType: string, daysBefore: number): Promise<boolean> {
+    const existing = await db
+      .select()
+      .from(contractNotifications)
+      .where(
+        and(
+          eq(contractNotifications.contractId, contractId),
+          eq(contractNotifications.notificationType, notificationType as any),
+          eq(contractNotifications.daysBefore, daysBefore)
+        )
+      )
+      .limit(1);
+    return existing.length > 0;
+  }
+
+  async createContractNotification(data: InsertContractNotification): Promise<ContractNotification> {
+    const [notification] = await db.insert(contractNotifications).values(data).returning();
+    return notification;
+  }
+
+  async getAllContractsWithUpcomingDates(): Promise<ContractWithProjects[]> {
+    // Get all contracts that have at least one upcoming date
+    const allContracts = await db
+      .select()
+      .from(contracts)
+      .orderBy(desc(contracts.createdAt));
+    
+    const result: ContractWithProjects[] = [];
+    
+    for (const contract of allContracts) {
+      // Get related data
+      const contractProjects = await db
+        .select()
+        .from(projects)
+        .where(eq(projects.contractId, contract.id));
+      
+      let client: Client | undefined;
+      if (contract.clientId) {
+        const [c] = await db.select().from(clients).where(eq(clients.id, contract.clientId));
+        client = c;
+      }
+      
+      let purchaseOrder: PurchaseOrder | undefined;
+      if (contract.purchaseOrderId) {
+        const [po] = await db.select().from(purchaseOrders).where(eq(purchaseOrders.id, contract.purchaseOrderId));
+        purchaseOrder = po;
+      }
+      
+      result.push({
+        ...contract,
+        projects: contractProjects,
+        client,
+        purchaseOrder,
+      });
+    }
+    
+    return result;
+  }
+
+  async getCompanyAdminEmails(companyId: string): Promise<string[]> {
+    // Get all company members with admin role
+    const adminMembers = await db
+      .select({
+        userId: companyMembers.userId,
+      })
+      .from(companyMembers)
+      .where(
+        and(
+          eq(companyMembers.companyId, companyId),
+          or(
+            eq(companyMembers.role, 'admin'),
+            eq(companyMembers.role, 'owner')
+          )
+        )
+      );
+    
+    const emails: string[] = [];
+    
+    for (const member of adminMembers) {
+      // Try to get email from user profile first
+      const [profile] = await db
+        .select()
+        .from(userProfiles)
+        .where(eq(userProfiles.userId, member.userId));
+      
+      if (profile?.email) {
+        emails.push(profile.email);
+      } else {
+        // Fall back to auth user email
+        const [user] = await db
+          .select()
+          .from(users)
+          .where(eq(users.id, member.userId));
+        
+        if (user?.email) {
+          emails.push(user.email);
+        }
+      }
+    }
+    
+    return emails;
   }
 
   // Proposals

@@ -20,6 +20,9 @@ import {
   Trash2,
   Image,
   Loader2,
+  Bell,
+  CheckCircle,
+  RefreshCw,
 } from "lucide-react";
 import { Link } from "wouter";
 import { useState, useEffect, useRef } from "react";
@@ -365,7 +368,137 @@ export default function CompanySettingsPage() {
             </div>
           </CardContent>
         </Card>
+
+        <NotificationsCard />
       </div>
     </PageLayout>
+  );
+}
+
+// Separate component for contract notifications management
+function NotificationsCard() {
+  const { toast } = useToast();
+  const [lastResult, setLastResult] = useState<{
+    processed: number;
+    statusUpdates: { contractName: string; oldStatus: string; newStatus: string }[];
+    notificationsSent: { contractName: string; dateType: string; daysBefore: number }[];
+    errors: { error: string }[];
+  } | null>(null);
+
+  const processNotificationsMutation = useMutation({
+    mutationFn: async () => {
+      const response = await apiRequest("POST", "/api/contracts/process-notifications");
+      return response.json();
+    },
+    onSuccess: (data) => {
+      setLastResult(data);
+      queryClient.invalidateQueries({ queryKey: ["/api/contracts"] });
+      
+      const totalActions = (data.statusUpdates?.length || 0) + (data.notificationsSent?.length || 0);
+      if (totalActions > 0) {
+        toast({
+          title: "Notifications Processed",
+          description: `${data.statusUpdates?.length || 0} status updates, ${data.notificationsSent?.length || 0} notifications sent.`,
+        });
+      } else {
+        toast({
+          title: "Check Complete",
+          description: "No notifications needed at this time.",
+        });
+      }
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to process notifications.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Bell className="w-5 h-5" />
+          Contract Notifications
+        </CardTitle>
+        <CardDescription>
+          Automatically update contract statuses and send email reminders for upcoming dates
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="bg-muted/50 rounded-lg p-4 space-y-2">
+          <p className="text-sm font-medium">Notification Schedule:</p>
+          <ul className="text-sm text-muted-foreground space-y-1">
+            <li>Contract Start Date: 30, 14, 7 days before</li>
+            <li>Substantial Completion: 120, 90, 60, 30, 14, 3 days before</li>
+            <li>Final Closeout: 10, 3 days before</li>
+          </ul>
+        </div>
+        
+        <Button
+          onClick={() => processNotificationsMutation.mutate()}
+          disabled={processNotificationsMutation.isPending}
+          className="w-full"
+          data-testid="button-process-notifications"
+        >
+          {processNotificationsMutation.isPending ? (
+            <>
+              <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+              Processing...
+            </>
+          ) : (
+            <>
+              <CheckCircle className="w-4 h-4 mr-2" />
+              Check & Send Notifications Now
+            </>
+          )}
+        </Button>
+
+        {lastResult && (
+          <div className="text-sm space-y-2 pt-2 border-t">
+            <p className="font-medium">Last Check Results:</p>
+            <p className="text-muted-foreground">
+              Contracts processed: {lastResult.processed}
+            </p>
+            {lastResult.statusUpdates && lastResult.statusUpdates.length > 0 && (
+              <div>
+                <p className="font-medium text-green-600">Status Updates:</p>
+                <ul className="text-muted-foreground">
+                  {lastResult.statusUpdates.map((update, i) => (
+                    <li key={i}>
+                      {update.contractName}: {update.oldStatus} → {update.newStatus}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {lastResult.notificationsSent && lastResult.notificationsSent.length > 0 && (
+              <div>
+                <p className="font-medium text-blue-600">Notifications Sent:</p>
+                <ul className="text-muted-foreground">
+                  {lastResult.notificationsSent.map((notif, i) => (
+                    <li key={i}>
+                      {notif.contractName}: {notif.dateType.replace('_', ' ')} ({notif.daysBefore} days)
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {lastResult.errors && lastResult.errors.length > 0 && (
+              <div>
+                <p className="font-medium text-destructive">Errors:</p>
+                <ul className="text-destructive/80">
+                  {lastResult.errors.map((err, i) => (
+                    <li key={i}>{err.error}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
