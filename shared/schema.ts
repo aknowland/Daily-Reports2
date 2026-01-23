@@ -111,6 +111,7 @@ export const projects = pgTable("projects", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   companyId: varchar("company_id").references(() => companies.id, { onDelete: "cascade" }),
   contractId: varchar("contract_id"), // References contracts - added separately to avoid circular reference
+  contractOptionId: varchar("contract_option_id"), // References contract options for rate/budget tracking
   clientId: varchar("client_id").references(() => clients.id, { onDelete: "set null" }), // Link to client record
   name: text("name").notNull(),
   projectNumber: varchar("project_number").notNull().unique(),
