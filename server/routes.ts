@@ -1381,8 +1381,10 @@ export async function registerRoutes(
         return res.status(403).json({ message: "Only admins can create contracts" });
       }
       
+      const { options, ...bodyWithoutOptions } = req.body;
+      
       // Preprocess data to convert date strings
-      const preprocessed = preprocessContractData(req.body);
+      const preprocessed = preprocessContractData(bodyWithoutOptions);
       
       // Validate request body with Zod schema
       const baseSchema = insertContractSchema.omit({ companyId: true, createdById: true });
@@ -1401,7 +1403,36 @@ export async function registerRoutes(
       };
       
       const contract = await storage.createContract(contractData);
-      res.status(201).json(contract);
+      
+      // Create options and their inspectors
+      if (options && Array.isArray(options)) {
+        for (let i = 0; i < options.length; i++) {
+          const optionData = options[i];
+          const option = await storage.createContractOption({
+            contractId: contract.id,
+            optionNumber: i + 1,
+            name: optionData.name || null,
+          });
+          
+          // Create inspectors for this option
+          if (optionData.inspectors && Array.isArray(optionData.inspectors)) {
+            for (const inspectorData of optionData.inspectors) {
+              await storage.createContractOptionInspector({
+                optionId: option.id,
+                title: inspectorData.title || "Inspector",
+                inspectorName: inspectorData.inspectorName || null,
+                rate: inspectorData.rate || "0",
+                hours: inspectorData.hours || "0",
+                scheduleType: inspectorData.scheduleType || "fullTime",
+              });
+            }
+          }
+        }
+      }
+      
+      // Return contract with options
+      const fullContract = await storage.getContract(contract.id);
+      res.status(201).json(fullContract);
     } catch (error) {
       console.error("Error creating contract:", error);
       res.status(500).json({ message: "Failed to create contract" });
@@ -1426,8 +1457,10 @@ export async function registerRoutes(
         return res.status(403).json({ message: "Only admins can update contracts" });
       }
       
+      const { options, ...bodyWithoutOptions } = req.body;
+      
       // Preprocess data to convert date strings
-      const preprocessed = preprocessContractData(req.body);
+      const preprocessed = preprocessContractData(bodyWithoutOptions);
       
       // Validate request body with partial Zod schema for updates
       const updateSchema = insertContractSchema.omit({ companyId: true, createdById: true }).partial();
@@ -1439,8 +1472,39 @@ export async function registerRoutes(
         });
       }
       
-      const updated = await storage.updateContract(req.params.id, validationResult.data);
-      res.json(updated);
+      await storage.updateContract(req.params.id, validationResult.data);
+      
+      // If options are provided, recreate them
+      if (options && Array.isArray(options)) {
+        await storage.deleteContractOptions(req.params.id);
+        
+        for (let i = 0; i < options.length; i++) {
+          const optionData = options[i];
+          const option = await storage.createContractOption({
+            contractId: req.params.id,
+            optionNumber: i + 1,
+            name: optionData.name || null,
+          });
+          
+          // Create inspectors for this option
+          if (optionData.inspectors && Array.isArray(optionData.inspectors)) {
+            for (const inspectorData of optionData.inspectors) {
+              await storage.createContractOptionInspector({
+                optionId: option.id,
+                title: inspectorData.title || "Inspector",
+                inspectorName: inspectorData.inspectorName || null,
+                rate: inspectorData.rate || "0",
+                hours: inspectorData.hours || "0",
+                scheduleType: inspectorData.scheduleType || "fullTime",
+              });
+            }
+          }
+        }
+      }
+      
+      // Return updated contract with options
+      const fullContract = await storage.getContract(req.params.id);
+      res.json(fullContract);
     } catch (error) {
       console.error("Error updating contract:", error);
       res.status(500).json({ message: "Failed to update contract" });

@@ -307,6 +307,27 @@ export const contractAttachments = pgTable("contract_attachments", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// Contract options table - each contract can have multiple pricing options (matching proposals structure)
+export const contractOptions = pgTable("contract_options", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  contractId: varchar("contract_id").references(() => contracts.id, { onDelete: "cascade" }).notNull(),
+  optionNumber: integer("option_number").notNull(),
+  name: text("name"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Contract option inspectors - each option can have multiple inspectors with rates (matching proposals structure)
+export const contractOptionInspectors = pgTable("contract_option_inspectors", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  optionId: varchar("option_id").references(() => contractOptions.id, { onDelete: "cascade" }).notNull(),
+  title: text("title").notNull(),
+  inspectorName: text("inspector_name"),
+  rate: varchar("rate").notNull(),
+  hours: varchar("hours").notNull(),
+  scheduleType: varchar("schedule_type").default("fullTime"), // fullTime (8 hrs/day) or partTime (4 hrs/day)
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 // Timesheet status enum
 export const timesheetStatusEnum = pgEnum("timesheet_status", ["draft", "submitted", "approved"]);
 
@@ -414,12 +435,28 @@ export const contractsRelations = relations(contracts, ({ one, many }) => ({
   }),
   projects: many(projects),
   attachments: many(contractAttachments),
+  options: many(contractOptions),
 }));
 
 export const contractAttachmentsRelations = relations(contractAttachments, ({ one }) => ({
   contract: one(contracts, {
     fields: [contractAttachments.contractId],
     references: [contracts.id],
+  }),
+}));
+
+export const contractOptionsRelations = relations(contractOptions, ({ one, many }) => ({
+  contract: one(contracts, {
+    fields: [contractOptions.contractId],
+    references: [contracts.id],
+  }),
+  inspectors: many(contractOptionInspectors),
+}));
+
+export const contractOptionInspectorsRelations = relations(contractOptionInspectors, ({ one }) => ({
+  option: one(contractOptions, {
+    fields: [contractOptionInspectors.optionId],
+    references: [contractOptions.id],
   }),
 }));
 
@@ -506,6 +543,8 @@ export const insertJoinRequestSchema = createInsertSchema(joinRequests).omit({ i
 export const insertClientSchema = createInsertSchema(clients).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertContractSchema = createInsertSchema(contracts).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertContractAttachmentSchema = createInsertSchema(contractAttachments).omit({ id: true, createdAt: true });
+export const insertContractOptionSchema = createInsertSchema(contractOptions).omit({ id: true, createdAt: true });
+export const insertContractOptionInspectorSchema = createInsertSchema(contractOptionInspectors).omit({ id: true, createdAt: true });
 export const insertTimesheetSchema = createInsertSchema(timesheets).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertInvoiceSchema = createInsertSchema(invoices).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertMonthlyReportBundleSchema = createInsertSchema(monthlyReportBundles).omit({ id: true, createdAt: true });
@@ -539,6 +578,10 @@ export type Contract = typeof contracts.$inferSelect;
 export type InsertContract = z.infer<typeof insertContractSchema>;
 export type ContractAttachment = typeof contractAttachments.$inferSelect;
 export type InsertContractAttachment = z.infer<typeof insertContractAttachmentSchema>;
+export type ContractOption = typeof contractOptions.$inferSelect;
+export type InsertContractOption = z.infer<typeof insertContractOptionSchema>;
+export type ContractOptionInspector = typeof contractOptionInspectors.$inferSelect;
+export type InsertContractOptionInspector = z.infer<typeof insertContractOptionInspectorSchema>;
 export type Timesheet = typeof timesheets.$inferSelect;
 export type InsertTimesheet = z.infer<typeof insertTimesheetSchema>;
 export type Invoice = typeof invoices.$inferSelect;
@@ -548,10 +591,15 @@ export type InsertMonthlyReportBundle = z.infer<typeof insertMonthlyReportBundle
 
 // Contract with related projects, client, and attachments
 // Note: contracts can have multiple projects
+export type ContractOptionWithInspectors = ContractOption & {
+  inspectors?: ContractOptionInspector[];
+};
+
 export type ContractWithProjects = Contract & {
   projects?: Project[];
   client?: Client;
   attachments?: ContractAttachment[];
+  options?: ContractOptionWithInspectors[];
 };
 
 // Legacy type for backwards compatibility

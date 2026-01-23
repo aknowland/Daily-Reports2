@@ -1,6 +1,6 @@
 import { 
   projects, dailyReports, photos, distributionLogs, appSettings, userProfiles, projectMembers, invites,
-  companies, companyMembers, joinRequests, invoices, contracts, clients, contractAttachments, timesheets, monthlyReportBundles,
+  companies, companyMembers, joinRequests, invoices, contracts, clients, contractAttachments, contractOptions, contractOptionInspectors, timesheets, monthlyReportBundles,
   proposals, proposalOptions, proposalOptionInspectors, iorAgreements,
   type Project, type InsertProject,
   type DailyReport, type InsertDailyReport,
@@ -18,6 +18,8 @@ import {
   type Contract, type InsertContract, type ContractWithProjects,
   type Client, type InsertClient,
   type ContractAttachment, type InsertContractAttachment,
+  type ContractOption, type InsertContractOption, type ContractOptionWithInspectors,
+  type ContractOptionInspector, type InsertContractOptionInspector,
   type Timesheet, type InsertTimesheet,
   type MonthlyReportBundle, type InsertMonthlyReportBundle,
   type Proposal, type InsertProposal, type ProposalWithDetails,
@@ -215,6 +217,14 @@ export interface IStorage {
   getContractAttachment(id: string): Promise<ContractAttachment | undefined>;
   createContractAttachment(data: InsertContractAttachment): Promise<ContractAttachment>;
   deleteContractAttachment(id: string): Promise<boolean>;
+
+  // Contract Options
+  getContractOptions(contractId: string): Promise<ContractOptionWithInspectors[]>;
+  createContractOption(data: InsertContractOption): Promise<ContractOption>;
+  deleteContractOptions(contractId: string): Promise<boolean>;
+  
+  // Contract Option Inspectors
+  createContractOptionInspector(data: InsertContractOptionInspector): Promise<ContractOptionInspector>;
 
   // Proposals
   getProposals(companyId: string): Promise<ProposalWithDetails[]>;
@@ -1208,7 +1218,24 @@ export class DatabaseStorage implements IStorage {
         client = c;
       }
       const attachments = await db.select().from(contractAttachments).where(eq(contractAttachments.contractId, contract.id)).orderBy(desc(contractAttachments.createdAt));
-      contractsWithProjects.push({ ...contract, projects: contractProjects, client, attachments });
+      
+      // Fetch options with inspectors
+      const optionsList = await db
+        .select()
+        .from(contractOptions)
+        .where(eq(contractOptions.contractId, contract.id))
+        .orderBy(contractOptions.optionNumber);
+      
+      const optionsWithInspectors: ContractOptionWithInspectors[] = [];
+      for (const option of optionsList) {
+        const inspectors = await db
+          .select()
+          .from(contractOptionInspectors)
+          .where(eq(contractOptionInspectors.optionId, option.id));
+        optionsWithInspectors.push({ ...option, inspectors });
+      }
+      
+      contractsWithProjects.push({ ...contract, projects: contractProjects, client, attachments, options: optionsWithInspectors });
     }
     return contractsWithProjects;
   }
@@ -1225,7 +1252,24 @@ export class DatabaseStorage implements IStorage {
       client = c;
     }
     const attachments = await db.select().from(contractAttachments).where(eq(contractAttachments.contractId, id)).orderBy(desc(contractAttachments.createdAt));
-    return { ...contract, projects: contractProjects, client, attachments };
+    
+    // Fetch options with inspectors
+    const optionsList = await db
+      .select()
+      .from(contractOptions)
+      .where(eq(contractOptions.contractId, id))
+      .orderBy(contractOptions.optionNumber);
+    
+    const optionsWithInspectors: ContractOptionWithInspectors[] = [];
+    for (const option of optionsList) {
+      const inspectors = await db
+        .select()
+        .from(contractOptionInspectors)
+        .where(eq(contractOptionInspectors.optionId, option.id));
+      optionsWithInspectors.push({ ...option, inspectors });
+    }
+    
+    return { ...contract, projects: contractProjects, client, attachments, options: optionsWithInspectors };
   }
 
   async createContract(data: InsertContract): Promise<Contract> {
@@ -1298,6 +1342,40 @@ export class DatabaseStorage implements IStorage {
   async deleteContractAttachment(id: string): Promise<boolean> {
     const result = await db.delete(contractAttachments).where(eq(contractAttachments.id, id));
     return (result.rowCount ?? 0) > 0;
+  }
+
+  // Contract Options
+  async getContractOptions(contractId: string): Promise<ContractOptionWithInspectors[]> {
+    const optionsList = await db
+      .select()
+      .from(contractOptions)
+      .where(eq(contractOptions.contractId, contractId))
+      .orderBy(contractOptions.optionNumber);
+    
+    const optionsWithInspectors: ContractOptionWithInspectors[] = [];
+    for (const option of optionsList) {
+      const inspectors = await db
+        .select()
+        .from(contractOptionInspectors)
+        .where(eq(contractOptionInspectors.optionId, option.id));
+      optionsWithInspectors.push({ ...option, inspectors });
+    }
+    return optionsWithInspectors;
+  }
+
+  async createContractOption(data: InsertContractOption): Promise<ContractOption> {
+    const [option] = await db.insert(contractOptions).values(data).returning();
+    return option;
+  }
+
+  async deleteContractOptions(contractId: string): Promise<boolean> {
+    const result = await db.delete(contractOptions).where(eq(contractOptions.contractId, contractId));
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  async createContractOptionInspector(data: InsertContractOptionInspector): Promise<ContractOptionInspector> {
+    const [inspector] = await db.insert(contractOptionInspectors).values(data).returning();
+    return inspector;
   }
 
   // Proposals
