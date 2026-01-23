@@ -22,6 +22,8 @@ export const contractStatusEnum = pgEnum("contract_status", [
   "bid_received", 
   "under_review",
   "awarded",
+  "not_awarded",
+  "cancelled",
   "in_execution",
   "substantial_completion",
   "final_closeout"
@@ -33,6 +35,7 @@ export const contractTypeEnum = pgEnum("contract_type", [
   "unit_price",
   "cost_plus",
   "design_build",
+  "hourly_rate",
   "other"
 ]);
 
