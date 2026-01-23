@@ -101,9 +101,10 @@ export const projects = pgTable("projects", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   companyId: varchar("company_id").references(() => companies.id, { onDelete: "cascade" }),
   contractId: varchar("contract_id"), // References contracts - added separately to avoid circular reference
+  clientId: varchar("client_id").references(() => clients.id, { onDelete: "set null" }), // Link to client record
   name: text("name").notNull(),
   projectNumber: varchar("project_number").notNull().unique(),
-  client: text("client"),
+  client: text("client"), // Legacy text field for backwards compatibility
   address: text("address"),
   distributionEmails: json("distribution_emails").$type<string[]>().default([]),
   defaultFolderPath: text("default_folder_path"),
