@@ -2314,18 +2314,10 @@ export async function registerRoutes(
         // Draw text with padding
         doc.font(font).fontSize(fontSize);
         const textWidth = width - (cellPadding * 2);
-        // Check if text will wrap to multiple lines
-        const singleLineWidth = doc.widthOfString(text);
-        const isMultiLine = singleLineWidth > textWidth;
         // Use heightOfString with same lineGap as rendering for accurate measurement
         const textHeight = doc.heightOfString(text, { width: textWidth, lineGap: textLineGap });
-        // Apply baseline offset: multi-line needs 2pt upward shift, single-line needs slightly more
-        const baselineOffset = isMultiLine ? 2 : 2 + fontSize * 0.1; // 2pt base + optical centering for single-line
-        // Center text vertically
-        const calculatedY = y + (height - textHeight) / 2 - baselineOffset;
-        const minY = y + cellPadding;
-        const maxY = y + height - textHeight - cellPadding;
-        const textY = verticalCenter ? Math.max(minY, Math.min(calculatedY, maxY)) : minY;
+        // Simple vertical centering: center the text block in the cell
+        const textY = verticalCenter ? y + (height - textHeight) / 2 : y + cellPadding;
         doc.text(text, x + cellPadding, textY, { width: textWidth, align, lineGap: textLineGap });
       };
       
@@ -2337,18 +2329,10 @@ export async function registerRoutes(
         // Draw text centered vertically
         doc.font(font).fontSize(fontSize);
         const textWidth = width - (cellPadding * 2);
-        // Check if text will wrap to multiple lines
-        const singleLineWidth = doc.widthOfString(text);
-        const isMultiLine = singleLineWidth > textWidth;
         // Use heightOfString with same lineGap as rendering for accurate measurement
         const textHeight = doc.heightOfString(text, { width: textWidth, lineGap: textLineGap });
-        // Apply baseline offset: multi-line needs 2pt upward shift, single-line needs slightly more
-        const baselineOffset = isMultiLine ? 2 : 2 + fontSize * 0.1; // 2pt base + optical centering for single-line
-        // Center text vertically
-        const calculatedY = y + (height - textHeight) / 2 - baselineOffset;
-        const minY = y + cellPadding;
-        const maxY = y + height - textHeight - cellPadding;
-        const textY = Math.max(minY, Math.min(calculatedY, maxY));
+        // Simple vertical centering: center the text block in the cell
+        const textY = y + (height - textHeight) / 2;
         doc.text(text, x + cellPadding, textY, { width: textWidth, align, lineGap: textLineGap });
       };
       
