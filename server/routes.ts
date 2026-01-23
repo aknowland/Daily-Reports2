@@ -953,8 +953,8 @@ export async function registerRoutes(
       let headerY = 50;
       if (logoBuffer) {
         try {
-          doc.image(logoBuffer, startX, headerY, { height: 50 });
-          headerY += 60;
+          doc.image(logoBuffer, startX, headerY, { height: 60 });
+          headerY += 72;
         } catch (e) {
           console.log("Could not render logo in invoice PDF");
         }
@@ -2023,7 +2023,7 @@ export async function registerRoutes(
         try {
           const logoBuffer = await loadImageBuffer(company.logoPath);
           if (logoBuffer) {
-            doc.image(logoBuffer, startX, 15, { width: 168, height: 63, fit: [168, 63] });
+            doc.image(logoBuffer, startX, 15, { width: 202, height: 76, fit: [202, 76] });
           }
         } catch (err) {
           console.error('Error adding company logo to proposal:', err);
@@ -2031,13 +2031,13 @@ export async function registerRoutes(
       }
       
       // Header: "DSA INSPECTORS" right-aligned
-      doc.fontSize(10).font('Helvetica').text('DSA INSPECTORS', startX, 40, { width: pageWidth, align: 'right' });
+      doc.fontSize(10).font('Helvetica').text('DSA INSPECTORS', startX, 48, { width: pageWidth, align: 'right' });
       
-      // Title - positioned half inch (36 points) below logo bottom (15 + 63 + 36 = 114)
-      doc.fontSize(11).font('Helvetica-Bold').text('PROPOSAL FOR PROJECT INSPECTOR SERVICES', startX, 114, { width: pageWidth, align: 'center' });
+      // Title - positioned half inch (36 points) below logo bottom (15 + 76 + 36 = 127)
+      doc.fontSize(11).font('Helvetica-Bold').text('PROPOSAL FOR PROJECT INSPECTOR SERVICES', startX, 127, { width: pageWidth, align: 'center' });
       
       // Half inch (36 points) space after title before SCHOOL DISTRICT
-      doc.y = 165;
+      doc.y = 178;
       
       // Proposal details table
       const labelX = startX + 50;
@@ -2497,17 +2497,17 @@ export async function registerRoutes(
         try {
           const logoBuffer = await loadImageBuffer(company.logoPath);
           if (logoBuffer) {
-            doc.image(logoBuffer, startX, 15, { width: 168, height: 63, fit: [168, 63] });
+            doc.image(logoBuffer, startX, 15, { width: 202, height: 76, fit: [202, 76] });
           }
         } catch (err) {
           console.error('Error adding company logo:', err);
         }
       }
       
-      // Title
-      doc.fontSize(12).font('Helvetica-Bold').text('AGREEMENT FOR PROJECT INSPECTOR SERVICES', startX, 90, { width: pageWidth, align: 'center' });
+      // Title - positioned below logo (15 + 76 + 12 = 103)
+      doc.fontSize(12).font('Helvetica-Bold').text('AGREEMENT FOR PROJECT INSPECTOR SERVICES', startX, 103, { width: pageWidth, align: 'center' });
       
-      let currentY = 140;
+      let currentY = 153;
       
       // Agreement date
       const agreementDate = agreement.agreementDate 
@@ -3270,7 +3270,7 @@ export async function registerRoutes(
         try {
           const logoBuffer = await loadImageBuffer(company.logoPath);
           if (logoBuffer) {
-            doc.image(logoBuffer, startX, 8, { width: 180, height: 60, fit: [180, 60] });
+            doc.image(logoBuffer, startX, 8, { width: 216, height: 72, fit: [216, 72] });
           }
         } catch (err) {
           console.error('Error adding company logo:', err);
