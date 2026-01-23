@@ -70,14 +70,14 @@ export default function CompanyDashboard() {
           </div>
         </div>
 
-        {/* Project Status Summary Cards */}
-        <StatusSummaryCards 
+        {/* Project Status Chart */}
+        <ProjectStatusChart 
           contracts={contractsSummary || []} 
           isLoading={contractsLoading} 
         />
 
-        {/* Project Status Chart */}
-        <ProjectStatusChart 
+        {/* Project Status Summary Cards */}
+        <StatusSummaryCards 
           contracts={contractsSummary || []} 
           isLoading={contractsLoading} 
         />
