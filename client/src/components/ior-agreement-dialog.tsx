@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Loader2 } from "lucide-react";
-import type { Project, IorAgreement, User, UserProfile } from "@shared/schema";
+import type { Project, IorAgreement, User, UserProfile, Contract } from "@shared/schema";
 
 type MemberWithUser = { userId: string; role: string; user?: User };
 type MemberWithProfile = MemberWithUser & { profile?: UserProfile };
@@ -35,6 +35,7 @@ export function IorAgreementDialog({
   const isEditing = !!agreement;
 
   const [formData, setFormData] = useState({
+    contractId: "",
     projectId: "",
     inspectorId: "",
     agreementDate: new Date().toISOString().split("T")[0],
@@ -47,10 +48,20 @@ export function IorAgreementDialog({
     terms: DEFAULT_TERMS,
   });
 
+  const { data: contracts = [] } = useQuery<Contract[]>({
+    queryKey: ["/api/contracts"],
+    enabled: open && !!companyId,
+  });
+
   const { data: projects = [] } = useQuery<Project[]>({
     queryKey: ["/api/companies", companyId, "projects"],
     enabled: open && !!companyId,
   });
+
+  // Filter projects by selected contract (if any)
+  const filteredProjects = formData.contractId
+    ? projects.filter(p => p.contractId === formData.contractId)
+    : projects;
 
   const { data: members = [] } = useQuery<MemberWithUser[]>({
     queryKey: ["/api/companies", companyId, "members"],
@@ -78,6 +89,7 @@ export function IorAgreementDialog({
   useEffect(() => {
     if (agreement) {
       setFormData({
+        contractId: agreement.contractId || "",
         projectId: agreement.projectId || "",
         inspectorId: agreement.inspectorId || "",
         agreementDate: agreement.agreementDate || new Date().toISOString().split("T")[0],
@@ -91,6 +103,7 @@ export function IorAgreementDialog({
       });
     } else {
       setFormData({
+        contractId: "",
         projectId: "",
         inspectorId: "",
         agreementDate: new Date().toISOString().split("T")[0],
@@ -111,6 +124,7 @@ export function IorAgreementDialog({
       if (project) {
         setFormData(prev => ({
           ...prev,
+          contractId: project.contractId || prev.contractId,
           clientName: project.client || prev.clientName,
           projectLocation: project.address || prev.projectLocation,
           dsaAppNumber: project.projectNumber || prev.dsaAppNumber,
@@ -189,7 +203,32 @@ export function IorAgreementDialog({
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+          {/* Contract, Project, and Team Member Selection */}
+          <div className="grid grid-cols-3 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="contractId">Contract</Label>
+              <Select
+                value={formData.contractId}
+                onValueChange={(value) => setFormData(prev => ({ 
+                  ...prev, 
+                  contractId: value,
+                  projectId: value ? "" : prev.projectId // Reset project if contract changes
+                }))}
+              >
+                <SelectTrigger data-testid="select-contract">
+                  <SelectValue placeholder="Select contract (optional)" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">All Projects</SelectItem>
+                  {contracts.map((contract) => (
+                    <SelectItem key={contract.id} value={contract.id}>
+                      {contract.contractNumber} - {contract.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
             <div className="space-y-2">
               <Label htmlFor="projectId">Project *</Label>
               <Select
@@ -200,7 +239,7 @@ export function IorAgreementDialog({
                   <SelectValue placeholder="Select project" />
                 </SelectTrigger>
                 <SelectContent>
-                  {projects.map((project) => (
+                  {filteredProjects.map((project) => (
                     <SelectItem key={project.id} value={project.id}>
                       {project.name}
                     </SelectItem>
@@ -210,13 +249,13 @@ export function IorAgreementDialog({
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="inspectorId">Inspector / Consultant *</Label>
+              <Label htmlFor="inspectorId">Team Member *</Label>
               <Select
                 value={formData.inspectorId}
                 onValueChange={(value) => setFormData(prev => ({ ...prev, inspectorId: value }))}
               >
                 <SelectTrigger data-testid="select-inspector">
-                  <SelectValue placeholder="Select inspector" />
+                  <SelectValue placeholder="Select team member" />
                 </SelectTrigger>
                 <SelectContent>
                   {memberProfiles.map((member) => {
