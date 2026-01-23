@@ -632,11 +632,12 @@ export default function ContractsPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (editingContract) {
-      // Check if status is changing to "awarded" - show award options dialog first
+      // Check if status is changing to "awarded" OR if editing an already-awarded contract with multiple options
       const isChangingToAwarded = formData.status === "awarded" && editingContract.status !== "awarded";
+      const isAlreadyAwarded = formData.status === "awarded" && editingContract.status === "awarded";
       const hasMultipleOptions = contractOptions.length > 1;
       
-      if (isChangingToAwarded && hasMultipleOptions) {
+      if ((isChangingToAwarded || isAlreadyAwarded) && hasMultipleOptions) {
         // Store pending contract data and show award options dialog
         setPendingAwardContract({
           formData: formData,
@@ -644,10 +645,13 @@ export default function ContractsPage() {
           previousStatus: editingContract.status,
           contractId: editingContract.id,
         });
-        // Initialize all options as selected by default
+        // Initialize selections based on current awardStatus (for re-editing) or all selected (for new awards)
         const initialSelections: Record<number, boolean> = {};
-        contractOptions.forEach((_, idx) => {
-          initialSelections[idx] = true;
+        contractOptions.forEach((opt, idx) => {
+          // For already-awarded contracts, use existing awardStatus; for new awards, default to true
+          initialSelections[idx] = isAlreadyAwarded 
+            ? opt.awardStatus === "awarded" 
+            : true;
         });
         setOptionAwardSelections(initialSelections);
         setShowAwardOptionsDialog(true);
@@ -655,10 +659,16 @@ export default function ContractsPage() {
       }
       
       // For single option or non-award status changes, proceed directly
+      // For single-option contracts changing to "awarded", auto-set awardStatus
+      const isChangingToAwardedSingleOption = formData.status === "awarded" && editingContract.status !== "awarded" && contractOptions.length === 1;
+      const optionsWithAwardStatus = isChangingToAwardedSingleOption
+        ? contractOptions.map(opt => ({ ...opt, awardStatus: "awarded" as const }))
+        : contractOptions;
+      
       updateMutation.mutate({ 
         ...formData, 
         id: editingContract.id, 
-        options: contractOptions,
+        options: optionsWithAwardStatus,
         previousStatus: editingContract.status, // Track previous status for award prompt
       }, {
         onSuccess: async () => {
@@ -794,8 +804,10 @@ export default function ContractsPage() {
       const selectedOption = convertingProposal.options?.[selectedOptionIndex];
       
       // Prepare the option data with all inspectors
+      // Set awardStatus to "awarded" since contracts created from proposals are awarded by default
       const optionToAdd = selectedOption ? [{
         name: selectedOption.name || "",
+        awardStatus: "awarded" as const,
         inspectors: (selectedOption.inspectors || []).map(ins => ({
           title: ins.title,
           inspectorName: ins.inspectorName || "",

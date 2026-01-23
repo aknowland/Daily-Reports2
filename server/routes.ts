@@ -3296,7 +3296,7 @@ export async function registerRoutes(
       const allInspectorNames = proposal.options?.flatMap(opt => 
         opt.inspectors?.map(ins => ins.inspectorName).filter(Boolean) || []
       ) || [];
-      const uniqueInspectorNames = [...new Set(allInspectorNames)];
+      const uniqueInspectorNames = Array.from(new Set(allInspectorNames));
       const inspectorsDisplay = uniqueInspectorNames.length > 0 
         ? uniqueInspectorNames.join(' / ') + ' (or other approved IOR/PE as required)'
         : 'TBD';
@@ -3596,7 +3596,7 @@ export async function registerRoutes(
       }
       
       // Fetch PDF from object storage
-      const pdfBuffer = await objectStorage.downloadFile(proposal.pdfPath);
+      const pdfBuffer = await objectStorage.downloadBuffer(proposal.pdfPath);
       
       if (!pdfBuffer) {
         return res.status(404).json({ message: "PDF file not found in storage" });
