@@ -113,6 +113,14 @@ export default function BillingManagementPage() {
     expirationDate: "",
     status: "active",
   });
+  const [showEmailDialog, setShowEmailDialog] = useState(false);
+  const [emailInvoice, setEmailInvoice] = useState<InvoiceWithDetails | null>(null);
+  const [emailFormData, setEmailFormData] = useState({
+    recipientEmail: "",
+    subject: "",
+    message: "",
+  });
+  const [isSendingEmail, setIsSendingEmail] = useState(false);
 
   const { data: projects, isLoading: projectsLoading } = useQuery<Project[]>({
     queryKey: ["/api/projects"],
@@ -505,6 +513,55 @@ export default function BillingManagementPage() {
     });
   };
 
+  const handleOpenEmailDialog = (invoice: InvoiceWithDetails) => {
+    setEmailInvoice(invoice);
+    setEmailFormData({
+      recipientEmail: invoice.client?.email || "",
+      subject: `Invoice INV-${invoice.invoiceNumber}`,
+      message: "",
+    });
+    setShowEmailDialog(true);
+  };
+
+  const handleSendEmail = async () => {
+    if (!emailInvoice || !emailFormData.recipientEmail) {
+      toast({ title: "Recipient email is required", variant: "destructive" });
+      return;
+    }
+    
+    setIsSendingEmail(true);
+    try {
+      const response = await fetch(`/api/invoices/${emailInvoice.id}/send`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          recipientEmail: emailFormData.recipientEmail,
+          subject: emailFormData.subject || undefined,
+          message: emailFormData.message || undefined,
+        }),
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || "Failed to send invoice");
+      }
+      
+      queryClient.invalidateQueries({ queryKey: ["/api/invoices"] });
+      setShowEmailDialog(false);
+      setEmailInvoice(null);
+      toast({ title: "Invoice sent successfully" });
+    } catch (error: any) {
+      toast({ 
+        title: "Failed to send invoice", 
+        description: error.message,
+        variant: "destructive" 
+      });
+    } finally {
+      setIsSendingEmail(false);
+    }
+  };
+
   if (projectsLoading || contractsLoading) {
     return (
       <PageLayout title="Billing">
@@ -718,9 +775,13 @@ export default function BillingManagementPage() {
                                       View PDF
                                     </DropdownMenuItem>
                                   )}
+                                  <DropdownMenuItem onClick={() => handleOpenEmailDialog(invoice)}>
+                                    <Send className="h-4 w-4 mr-2" />
+                                    Send via Email
+                                  </DropdownMenuItem>
                                   {invoice.status === "draft" && (
                                     <DropdownMenuItem onClick={() => handleMarkAsSent(invoice)}>
-                                      <Send className="h-4 w-4 mr-2" />
+                                      <CheckCircle className="h-4 w-4 mr-2" />
                                       Mark as Sent
                                     </DropdownMenuItem>
                                   )}
@@ -1265,6 +1326,79 @@ export default function BillingManagementPage() {
                 "Update"
               ) : (
                 "Create"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showEmailDialog} onOpenChange={setShowEmailDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Send Invoice via Email</DialogTitle>
+            <DialogDescription>
+              Send invoice INV-{emailInvoice?.invoiceNumber} to the client
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="recipientEmail">Recipient Email *</Label>
+              <Input
+                id="recipientEmail"
+                type="email"
+                value={emailFormData.recipientEmail}
+                onChange={(e) => setEmailFormData({ ...emailFormData, recipientEmail: e.target.value })}
+                placeholder="client@example.com"
+                data-testid="input-recipient-email"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="emailSubject">Subject</Label>
+              <Input
+                id="emailSubject"
+                value={emailFormData.subject}
+                onChange={(e) => setEmailFormData({ ...emailFormData, subject: e.target.value })}
+                placeholder="Invoice subject"
+                data-testid="input-email-subject"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="emailMessage">Message (optional)</Label>
+              <textarea
+                id="emailMessage"
+                className="w-full min-h-[100px] p-3 border rounded-md resize-none"
+                value={emailFormData.message}
+                onChange={(e) => setEmailFormData({ ...emailFormData, message: e.target.value })}
+                placeholder="Add a personal message to the email..."
+                data-testid="input-email-message"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowEmailDialog(false);
+                setEmailInvoice(null);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSendEmail}
+              disabled={!emailFormData.recipientEmail || isSendingEmail}
+              data-testid="button-send-invoice-email"
+            >
+              {isSendingEmail ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Sending...
+                </>
+              ) : (
+                <>
+                  <Send className="h-4 w-4 mr-2" />
+                  Send Email
+                </>
               )}
             </Button>
           </DialogFooter>

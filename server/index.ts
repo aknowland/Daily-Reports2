@@ -183,6 +183,50 @@ app.use((req, res, next) => {
     },
     () => {
       log(`serving on port ${port}`);
+      
+      // Start daily notification scheduler
+      startNotificationScheduler();
     },
   );
 })();
+
+// Daily notification scheduler for contract date reminders and budget milestones
+function startNotificationScheduler() {
+  const SCHEDULER_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
+  const INITIAL_DELAY_MS = 60 * 1000; // 1 minute after startup
+  
+  async function runNotificationCheck() {
+    try {
+      log("Running scheduled notification check...", "scheduler");
+      
+      if (!process.env.RESEND_API_KEY) {
+        log("RESEND_API_KEY not configured, skipping notifications", "scheduler");
+        return;
+      }
+      
+      // Import required modules
+      const { Resend } = await import('resend');
+      const { processContractNotifications } = await import('./notification-processor');
+      
+      const resend = new Resend(process.env.RESEND_API_KEY);
+      
+      // Use shared notification processing function (same as API route)
+      const results = await processContractNotifications(resend, {
+        companyIdFilter: null, // Process all companies
+        sendEmails: true,
+      });
+      
+      log(`Notification check complete: ${results.statusUpdates.length} status updates, ${results.notificationsSent.length + results.budgetAlerts.length} emails sent, ${results.errors.length} errors`, "scheduler");
+    } catch (error: any) {
+      log(`Notification scheduler error: ${error.message}`, "scheduler");
+    }
+  }
+  
+  // Schedule first run after initial delay, then repeat daily
+  setTimeout(() => {
+    runNotificationCheck();
+    setInterval(runNotificationCheck, SCHEDULER_INTERVAL_MS);
+  }, INITIAL_DELAY_MS);
+  
+  log("Notification scheduler started (runs daily)", "scheduler");
+}

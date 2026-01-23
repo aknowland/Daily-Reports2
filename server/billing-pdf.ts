@@ -336,14 +336,22 @@ export async function generateTimesheetPdf(data: TimesheetData): Promise<Buffer>
 export function aggregateReportsToTimesheetData(
   reports: DailyReport[],
   projects: Project[],
-  contracts: (Contract & { project?: any; client?: any; attachments?: any[] })[],
+  contracts: (Contract & { projects?: any[]; client?: any; attachments?: any[] })[],
   company: Company | null | undefined,
   inspectorProfile: UserProfile | null | undefined,
   month: number,
   year: number
 ): TimesheetData {
   const projectMap = new Map(projects.map(p => [p.id, p]));
-  const contractMap = new Map(contracts.map(c => [c.projectId, c]));
+  // Build map from project ID to contract (contracts can have multiple projects)
+  const contractMap = new Map<string, typeof contracts[0]>();
+  contracts.forEach(c => {
+    if (c.projects) {
+      c.projects.forEach((p: any) => {
+        if (p.id) contractMap.set(p.id, c);
+      });
+    }
+  });
 
   // Group reports by project
   const projectReports = new Map<string, DailyReport[]>();
@@ -413,6 +421,7 @@ export interface InvoiceData {
   clientAddress?: string;
   projectName: string;
   projectNumber?: string;
+  purchaseOrderNumber?: string;
   invoiceNumber: string;
   invoiceDate: Date;
   dueDate?: Date;
@@ -476,14 +485,21 @@ export async function generateInvoicePdf(data: InvoiceData): Promise<Buffer> {
     const projectY = 180;
     doc.fontSize(10).font('Helvetica-Bold').text('Project:', startX, projectY);
     doc.font('Helvetica').text(data.projectName, startX + 50, projectY);
+    let currentY = projectY + 15;
     if (data.projectNumber) {
-      doc.font('Helvetica-Bold').text('Project #:', startX, projectY + 15);
-      doc.font('Helvetica').text(data.projectNumber, startX + 60, projectY + 15);
+      doc.font('Helvetica-Bold').text('Project #:', startX, currentY);
+      doc.font('Helvetica').text(data.projectNumber, startX + 60, currentY);
+      currentY += 15;
+    }
+    if (data.purchaseOrderNumber) {
+      doc.font('Helvetica-Bold').text('PO #:', startX, currentY);
+      doc.font('Helvetica').text(data.purchaseOrderNumber, startX + 35, currentY);
+      currentY += 15;
     }
 
     const monthName = format(new Date(data.year, data.month - 1), 'MMMM yyyy');
-    doc.font('Helvetica-Bold').text('Period:', startX, projectY + 30);
-    doc.font('Helvetica').text(monthName, startX + 45, projectY + 30);
+    doc.font('Helvetica-Bold').text('Period:', startX, currentY);
+    doc.font('Helvetica').text(monthName, startX + 45, currentY);
 
     // Line items table
     const tableY = 250;

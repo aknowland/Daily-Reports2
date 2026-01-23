@@ -225,6 +225,8 @@ export interface IStorage {
   createPurchaseOrder(data: InsertPurchaseOrder): Promise<PurchaseOrder>;
   updatePurchaseOrder(id: string, data: Partial<InsertPurchaseOrder>): Promise<PurchaseOrder | undefined>;
   deletePurchaseOrder(id: string): Promise<boolean>;
+  getInvoicesByPurchaseOrder(purchaseOrderId: string): Promise<Invoice[]>;
+  getPurchaseOrderBalance(purchaseOrderId: string): Promise<{ totalValue: number; billedAmount: number; remainingBalance: number }>;
 
   // Invoices
   getInvoices(companyId: string): Promise<InvoiceWithDetails[]>;
@@ -1414,6 +1416,57 @@ export class DatabaseStorage implements IStorage {
   async deletePurchaseOrder(id: string): Promise<boolean> {
     const result = await db.delete(purchaseOrders).where(eq(purchaseOrders.id, id));
     return (result.rowCount ?? 0) > 0;
+  }
+
+  async getInvoicesByPurchaseOrder(purchaseOrderId: string): Promise<Invoice[]> {
+    return db
+      .select()
+      .from(invoices)
+      .where(eq(invoices.purchaseOrderId, purchaseOrderId))
+      .orderBy(desc(invoices.createdAt));
+  }
+
+  async getPurchaseOrderBalance(purchaseOrderId: string): Promise<{ totalValue: number; billedAmount: number; remainingBalance: number }> {
+    const po = await this.getPurchaseOrder(purchaseOrderId);
+    if (!po) {
+      return { totalValue: 0, billedAmount: 0, remainingBalance: 0 };
+    }
+    
+    const totalValue = parseFloat(po.totalAmount || '0');
+    
+    // Get all invoices linked to this PO (both directly and via contracts)
+    const directInvoices = await this.getInvoicesByPurchaseOrder(purchaseOrderId);
+    
+    // Also get invoices from contracts linked to this PO
+    const contractsLinkedToPO = po.contracts || [];
+    let contractInvoices: Invoice[] = [];
+    for (const contract of contractsLinkedToPO) {
+      const invs = await db
+        .select()
+        .from(invoices)
+        .where(eq(invoices.contractId, contract.id));
+      contractInvoices.push(...invs);
+    }
+    
+    // Combine and deduplicate invoices
+    const allInvoices = [...directInvoices];
+    const directIds = new Set(directInvoices.map(i => i.id));
+    for (const inv of contractInvoices) {
+      if (!directIds.has(inv.id)) {
+        allInvoices.push(inv);
+      }
+    }
+    
+    // Only count non-cancelled invoices
+    const billedAmount = allInvoices
+      .filter(inv => inv.status !== 'cancelled')
+      .reduce((sum, inv) => sum + parseFloat(inv.totalAmount || '0'), 0);
+    
+    return {
+      totalValue,
+      billedAmount,
+      remainingBalance: totalValue - billedAmount,
+    };
   }
 
   // Invoices
