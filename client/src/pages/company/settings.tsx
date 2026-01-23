@@ -428,13 +428,21 @@ function NotificationsCard() {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="bg-muted/50 rounded-lg p-4 space-y-2">
-          <p className="text-sm font-medium">Notification Schedule:</p>
-          <ul className="text-sm text-muted-foreground space-y-1">
-            <li>Contract Start Date: 30, 14, 7 days before</li>
-            <li>Substantial Completion: 120, 90, 60, 30, 14, 3 days before</li>
-            <li>Final Closeout: 10, 3 days before</li>
-          </ul>
+        <div className="bg-muted/50 rounded-lg p-4 space-y-3">
+          <div>
+            <p className="text-sm font-medium">Contract Date Reminders:</p>
+            <ul className="text-sm text-muted-foreground space-y-1 ml-2">
+              <li>Contract Start: 30, 14, 7 days before</li>
+              <li>Substantial Completion: 120, 90, 60, 30, 14, 3 days before</li>
+              <li>Final Closeout: 10, 3 days before</li>
+            </ul>
+          </div>
+          <div>
+            <p className="text-sm font-medium">Budget Milestone Alerts:</p>
+            <ul className="text-sm text-muted-foreground space-y-1 ml-2">
+              <li>50%, 75%, 90%, and 100% of budget consumed</li>
+            </ul>
+          </div>
         </div>
         
         <Button
@@ -480,7 +488,9 @@ function NotificationsCard() {
                 <ul className="text-muted-foreground">
                   {lastResult.notificationsSent.map((notif, i) => (
                     <li key={i}>
-                      {notif.contractName}: {notif.dateType.replace('_', ' ')} ({notif.daysBefore} days)
+                      {notif.contractName}: {notif.dateType.startsWith('budget_') 
+                        ? `Budget ${notif.daysBefore}% milestone` 
+                        : `${notif.dateType.replace('_', ' ')} (${notif.daysBefore} days)`}
                     </li>
                   ))}
                 </ul>
