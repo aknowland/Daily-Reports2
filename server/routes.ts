@@ -953,7 +953,7 @@ export async function registerRoutes(
       let headerY = 50;
       if (logoBuffer) {
         try {
-          doc.image(logoBuffer, startX, headerY, { height: 53 });
+          doc.image(logoBuffer, startX, headerY, { width: 178, height: 67, fit: [178, 67] });
           headerY += 72;
         } catch (e) {
           console.log("Could not render logo in invoice PDF");
@@ -3498,7 +3498,7 @@ export async function registerRoutes(
         try {
           const logoBuffer = await loadImageBuffer(company.logoPath);
           if (logoBuffer) {
-            doc.image(logoBuffer, startX, 8, { width: 190, height: 63, fit: [190, 63] });
+            doc.image(logoBuffer, startX, 8, { width: 178, height: 67, fit: [178, 67] });
           }
         } catch (err) {
           console.error('Error adding company logo:', err);
