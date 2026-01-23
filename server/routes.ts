@@ -2280,73 +2280,102 @@ export async function registerRoutes(
       doc.fontSize(10).font('Helvetica-Bold').text('RATE:', labelX, currentY);
       currentY += 20;
       
-      // Rate options table - centered on page
-      const colWidths = [45, 80, 75, 45, 50, 45, 65, 70];
+      // Rate options table - centered on page with cell borders
+      const colWidths = [50, 80, 75, 50, 55, 50, 70, 75];
       const tableWidth = colWidths.reduce((a, b) => a + b, 0);
       const tableStartX = startX + (pageWidth - tableWidth) / 2;
       const headers = ['Option', 'Title', 'Inspector', 'Schedule', 'Rate', 'Hours', 'Total', 'Grand Total'];
+      const tableRowHeight = 22;
+      const cellPadding = 4;
+      const optionSpacing = 8; // Vertical spacing between options
       
-      // Table header
+      // Helper function to draw cell with borders
+      const drawCell = (x: number, y: number, width: number, height: number, text: string, options: { align?: 'left' | 'center' | 'right', font?: string, fontSize?: number, verticalCenter?: boolean } = {}) => {
+        const { align = 'center', font = 'Helvetica', fontSize = 9, verticalCenter = true } = options;
+        // Draw cell border
+        doc.rect(x, y, width, height).stroke();
+        // Draw text with padding
+        doc.font(font).fontSize(fontSize);
+        const textY = verticalCenter ? y + (height - fontSize) / 2 : y + cellPadding;
+        doc.text(text, x + cellPadding, textY, { width: width - (cellPadding * 2), align });
+      };
+      
+      // Helper function to draw merged cell spanning multiple rows
+      const drawMergedCell = (x: number, y: number, width: number, height: number, text: string, options: { align?: 'left' | 'center' | 'right', font?: string, fontSize?: number } = {}) => {
+        const { align = 'center', font = 'Helvetica-Bold', fontSize = 9 } = options;
+        // Draw cell border
+        doc.rect(x, y, width, height).stroke();
+        // Draw text centered vertically
+        doc.font(font).fontSize(fontSize);
+        const textY = y + (height - fontSize) / 2;
+        doc.text(text, x + cellPadding, textY, { width: width - (cellPadding * 2), align });
+      };
+      
+      // Table header row
       doc.fontSize(8).font('Helvetica-Bold');
       let colX = tableStartX;
+      const headerY = currentY;
       headers.forEach((header, i) => {
-        doc.text(header, colX, currentY, { width: colWidths[i], align: 'center' });
+        drawCell(colX, headerY, colWidths[i], tableRowHeight, header, { font: 'Helvetica-Bold', fontSize: 8 });
         colX += colWidths[i];
       });
-      currentY += 15;
-      doc.moveTo(tableStartX, currentY).lineTo(tableStartX + tableWidth, currentY).stroke();
-      currentY += 5;
+      currentY += tableRowHeight;
       
-      // Table rows
-      doc.font('Helvetica').fontSize(9);
+      // Table rows by option
       proposal.options?.forEach((option, optIndex) => {
+        const inspectorCount = option.inspectors?.length || 1;
+        const optionBlockHeight = inspectorCount * tableRowHeight;
+        
         const optionTotal = option.inspectors?.reduce((sum, ins) => {
           const rate = parseFloat(ins.rate) || 0;
           const hours = parseFloat(ins.hours) || 0;
           return sum + (rate * hours);
         }, 0) || 0;
         
+        const optionStartY = currentY;
+        
+        // Draw merged Option cell (spans all inspectors in this option)
+        drawMergedCell(tableStartX, optionStartY, colWidths[0], optionBlockHeight, `Option ${optIndex + 1}`, { font: 'Helvetica-Bold', fontSize: 9 });
+        
+        // Draw merged Grand Total cell (spans all inspectors in this option)
+        const grandTotalX = tableStartX + colWidths.slice(0, 7).reduce((a, b) => a + b, 0);
+        drawMergedCell(grandTotalX, optionStartY, colWidths[7], optionBlockHeight, `$ ${optionTotal.toLocaleString('en-US', { minimumFractionDigits: 2 })}`, { font: 'Helvetica-Bold', fontSize: 9, align: 'right' });
+        
+        // Draw individual inspector rows (columns 1-6: Title, Inspector, Schedule, Rate, Hours, Total)
         option.inspectors?.forEach((inspector, insIndex) => {
-          colX = tableStartX;
+          const rowY = optionStartY + (insIndex * tableRowHeight);
+          colX = tableStartX + colWidths[0]; // Skip Option column (already drawn as merged)
+          
           const rate = parseFloat(inspector.rate) || 0;
           const hours = parseFloat(inspector.hours) || 0;
           const total = rate * hours;
           const scheduleLabel = inspector.scheduleType === 'partTime' ? 'PT (4hr)' : 'FT (8hr)';
           
-          // Option number (only on first inspector of each option)
-          if (insIndex === 0) {
-            doc.font('Helvetica-Bold').text(`Option #${optIndex + 1}`, colX, currentY, { width: colWidths[0], align: 'center' });
-          }
-          colX += colWidths[0];
-          
-          doc.font('Helvetica');
-          doc.text(inspector.title || '', colX, currentY, { width: colWidths[1], align: 'center' });
+          // Title
+          drawCell(colX, rowY, colWidths[1], tableRowHeight, inspector.title || '', { align: 'center' });
           colX += colWidths[1];
           
-          doc.text(inspector.inspectorName || '', colX, currentY, { width: colWidths[2], align: 'center' });
+          // Inspector Name
+          drawCell(colX, rowY, colWidths[2], tableRowHeight, inspector.inspectorName || '', { align: 'center' });
           colX += colWidths[2];
           
-          doc.text(scheduleLabel, colX, currentY, { width: colWidths[3], align: 'center' });
+          // Schedule
+          drawCell(colX, rowY, colWidths[3], tableRowHeight, scheduleLabel, { align: 'center' });
           colX += colWidths[3];
           
-          doc.text(`$ ${rate.toFixed(2)}`, colX, currentY, { width: colWidths[4], align: 'right' });
+          // Rate
+          drawCell(colX, rowY, colWidths[4], tableRowHeight, `$ ${rate.toFixed(2)}`, { align: 'right' });
           colX += colWidths[4];
           
-          doc.text(hours.toLocaleString(), colX, currentY, { width: colWidths[5], align: 'right' });
+          // Hours
+          drawCell(colX, rowY, colWidths[5], tableRowHeight, hours.toLocaleString(), { align: 'right' });
           colX += colWidths[5];
           
-          doc.text(`$ ${total.toLocaleString('en-US', { minimumFractionDigits: 2 })}`, colX, currentY, { width: colWidths[6], align: 'right' });
-          colX += colWidths[6];
-          
-          // Grand total (only on first inspector of each option)
-          if (insIndex === 0) {
-            doc.font('Helvetica-Bold').text(`$ ${optionTotal.toLocaleString('en-US', { minimumFractionDigits: 2 })}`, colX, currentY, { width: colWidths[7], align: 'right' });
-          }
-          
-          currentY += 18;
+          // Total
+          drawCell(colX, rowY, colWidths[6], tableRowHeight, `$ ${total.toLocaleString('en-US', { minimumFractionDigits: 2 })}`, { align: 'right' });
         });
         
-        currentY += 5;
+        currentY += optionBlockHeight + optionSpacing; // Add spacing after each option block
       });
       
       currentY += 15;
