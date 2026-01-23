@@ -208,18 +208,18 @@ export function IorAgreementDialog({
             <div className="space-y-2">
               <Label htmlFor="contractId">Contract</Label>
               <Select
-                value={formData.contractId}
+                value={formData.contractId || "__none__"}
                 onValueChange={(value) => setFormData(prev => ({ 
                   ...prev, 
-                  contractId: value,
-                  projectId: value ? "" : prev.projectId // Reset project if contract changes
+                  contractId: value === "__none__" ? "" : value,
+                  projectId: value !== "__none__" ? "" : prev.projectId // Reset project if contract changes
                 }))}
               >
                 <SelectTrigger data-testid="select-contract">
                   <SelectValue placeholder="Select contract (optional)" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All Projects</SelectItem>
+                  <SelectItem value="__none__">All Projects</SelectItem>
                   {contracts.map((contract) => (
                     <SelectItem key={contract.id} value={contract.id}>
                       {contract.contractNumber} - {contract.name}
