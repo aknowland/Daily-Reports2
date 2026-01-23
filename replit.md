@@ -49,8 +49,26 @@ The application is built with a modern web stack, utilizing **React, TypeScript,
   - Attached files (with download links)
   - Daily reports table (showing reports from all linked projects)
 - **Stacking Budget for Mid-Project Onboarding**: When an inspector joins a project mid-way, admins can set a "base budget" representing work done before they joined. This base amount automatically stacks with new daily reports - no manual recalculation needed.
+- **Invoice Tracking with Purchase Order Integration**: Full invoice lifecycle management with PO linking. Features:
+  - PO → Contract → Project billing hierarchy
+  - Invoice creation with PO assignment and balance tracking
+  - PO utilization display showing percentage used vs remaining value
+  - Email invoice sending via Resend with customizable recipient, subject, and message
+  - Invoice status tracking (draft, sent, paid)
+- **Automated Notification System**: Daily scheduler sends email notifications for:
+  - Contract date reminders (start date: 30/14/7 days, substantial completion: 120/90/60/30/14/3 days, final closeout: 10/3 days)
+  - Budget milestone alerts at 50%, 75%, 90%, and 100% utilization (with stacking support)
+  - Color-coded severity levels for budget alerts (green/orange/red)
+  - Automatic contract status updates based on key dates
 
 ## Technical Notes
+
+### Shared Notification Processor
+The file `server/notification-processor.ts` is the single source of truth for notification logic. Both the API route (POST /api/contracts/process-notifications) and the daily scheduler use the shared `processContractNotifications()` function to ensure consistent behavior. Key exports:
+- `NOTIFICATION_INTERVALS`: Date reminder intervals per notification type
+- `BUDGET_MILESTONES`: Budget alert thresholds (50, 75, 90, 100)
+- `computeContractStatusFromDates()`: Auto-compute contract status from dates
+- `processContractNotifications()`: Main processing function for all notifications
 
 ### IOR Agreement Authorization
 All IOR Agreement API routes require company admin authorization. The routes use `isEffectiveCompanyAdmin()` to verify:
