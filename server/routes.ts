@@ -2319,8 +2319,8 @@ export async function registerRoutes(
         const isMultiLine = singleLineWidth > textWidth;
         // Use heightOfString with same lineGap as rendering for accurate measurement
         const textHeight = doc.heightOfString(text, { width: textWidth, lineGap: textLineGap });
-        // Only apply baseline offset for single-line text; multi-line text centers the block
-        const baselineOffset = isMultiLine ? 0 : fontSize * 0.1; // Small offset for single-line optical centering
+        // Apply 1pt upward shift for all text, plus small baseline offset for single-line text
+        const baselineOffset = isMultiLine ? 1 : 1 + fontSize * 0.1; // 1pt base shift + optical centering for single-line
         // Center text vertically
         const calculatedY = y + (height - textHeight) / 2 - baselineOffset;
         const minY = y + cellPadding;
@@ -2342,8 +2342,8 @@ export async function registerRoutes(
         const isMultiLine = singleLineWidth > textWidth;
         // Use heightOfString with same lineGap as rendering for accurate measurement
         const textHeight = doc.heightOfString(text, { width: textWidth, lineGap: textLineGap });
-        // Only apply baseline offset for single-line text; multi-line text centers the block
-        const baselineOffset = isMultiLine ? 0 : fontSize * 0.1; // Small offset for single-line optical centering
+        // Apply 1pt upward shift for all text, plus small baseline offset for single-line text
+        const baselineOffset = isMultiLine ? 1 : 1 + fontSize * 0.1; // 1pt base shift + optical centering for single-line
         // Center text vertically
         const calculatedY = y + (height - textHeight) / 2 - baselineOffset;
         const minY = y + cellPadding;
