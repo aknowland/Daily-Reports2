@@ -2301,25 +2301,31 @@ export async function registerRoutes(
       const tableWidth = colWidths.reduce((a, b) => a + b, 0);
       const tableStartX = startX + (pageWidth - tableWidth) / 2;
       const headers = ['Option', 'Title', 'Inspector', 'Schedule', 'Rate', 'Hours', 'Total', 'Grand Total'];
-      const tableRowHeight = 22;
-      const cellPadding = 4;
+      const tableRowHeight = 24; // Increased from 22pt for better spacing
+      const cellPadding = 5; // Increased from 4pt
       const optionSpacing = 8; // Vertical spacing between options
+      const textLineGap = 1; // Consistent lineGap for both measurement and rendering
       
       // Helper function to draw cell with borders and text wrapping
       const drawCell = (x: number, y: number, width: number, height: number, text: string, options: { align?: 'left' | 'center' | 'right', font?: string, fontSize?: number, verticalCenter?: boolean } = {}) => {
         const { align = 'center', font = 'Helvetica', fontSize = 9, verticalCenter = true } = options;
         // Draw cell border
         doc.rect(x, y, width, height).stroke();
-        // Draw text with padding and wrapping
+        // Draw text with padding
         doc.font(font).fontSize(fontSize);
         const textWidth = width - (cellPadding * 2);
-        // Use heightOfString for accurate text height measurement
-        const textHeight = doc.heightOfString(text, { width: textWidth, lineGap: 1 });
-        // Calculate centered Y position - shift up by 1pt to avoid bottom border crowding
-        const calculatedY = y + (height - textHeight) / 2 - 1;
+        // Use heightOfString with same lineGap as rendering for accurate measurement
+        const textHeight = doc.heightOfString(text, { width: textWidth, lineGap: textLineGap });
+        // Get font metrics for baseline adjustment - ascender is ~80% of font size for Helvetica
+        const ascentRatio = 0.8;
+        const descentRatio = 0.2;
+        const baselineOffset = fontSize * descentRatio / 2; // Shift up to optically center
+        // Center text vertically with baseline adjustment
+        const calculatedY = y + (height - textHeight) / 2 - baselineOffset;
         const minY = y + cellPadding;
-        const textY = verticalCenter ? Math.max(calculatedY, minY) : minY;
-        doc.text(text, x + cellPadding, textY, { width: textWidth, align, lineGap: 1 });
+        const maxY = y + height - textHeight - cellPadding;
+        const textY = verticalCenter ? Math.max(minY, Math.min(calculatedY, maxY)) : minY;
+        doc.text(text, x + cellPadding, textY, { width: textWidth, align, lineGap: textLineGap });
       };
       
       // Helper function to draw merged cell spanning multiple rows with text wrapping
@@ -2327,16 +2333,21 @@ export async function registerRoutes(
         const { align = 'center', font = 'Helvetica-Bold', fontSize = 9 } = options;
         // Draw cell border
         doc.rect(x, y, width, height).stroke();
-        // Draw text centered vertically with wrapping
+        // Draw text centered vertically
         doc.font(font).fontSize(fontSize);
         const textWidth = width - (cellPadding * 2);
-        // Use heightOfString for accurate text height measurement
-        const textHeight = doc.heightOfString(text, { width: textWidth, lineGap: 1 });
-        // Calculate centered Y position - shift up by 1pt to avoid bottom border crowding
-        const calculatedY = y + (height - textHeight) / 2 - 1;
+        // Use heightOfString with same lineGap as rendering for accurate measurement
+        const textHeight = doc.heightOfString(text, { width: textWidth, lineGap: textLineGap });
+        // Get font metrics for baseline adjustment - ascender is ~80% of font size for Helvetica
+        const ascentRatio = 0.8;
+        const descentRatio = 0.2;
+        const baselineOffset = fontSize * descentRatio / 2; // Shift up to optically center
+        // Center text vertically with baseline adjustment
+        const calculatedY = y + (height - textHeight) / 2 - baselineOffset;
         const minY = y + cellPadding;
-        const textY = Math.max(calculatedY, minY);
-        doc.text(text, x + cellPadding, textY, { width: textWidth, align, lineGap: 1 });
+        const maxY = y + height - textHeight - cellPadding;
+        const textY = Math.max(minY, Math.min(calculatedY, maxY));
+        doc.text(text, x + cellPadding, textY, { width: textWidth, align, lineGap: textLineGap });
       };
       
       // Table header row
