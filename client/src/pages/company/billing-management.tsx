@@ -124,6 +124,15 @@ export default function BillingManagementPage() {
     message: "",
   });
   const [isSendingEmail, setIsSendingEmail] = useState(false);
+  const [showInvoiceDialog, setShowInvoiceDialog] = useState(false);
+  const [invoiceFormData, setInvoiceFormData] = useState({
+    projectId: "",
+    contractId: "",
+    purchaseOrderId: "",
+    month: (new Date().getMonth() + 1).toString(),
+    year: new Date().getFullYear().toString(),
+    notes: "",
+  });
 
   const { data: projects, isLoading: projectsLoading } = useQuery<Project[]>({
     queryKey: ["/api/projects"],
@@ -400,8 +409,41 @@ export default function BillingManagementPage() {
     }
   };
 
-  const generateInvoice = async () => {
+  const openInvoiceDialog = () => {
     if (!selectedProject) {
+      toast({
+        title: "Error",
+        description: "Please select a project",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    // Find contract for selected project
+    const selectedProjectData = filteredProjects?.find(p => p.id === selectedProject);
+    const linkedContract = contracts?.find(c => 
+      c.projects?.some((p: any) => p.id === selectedProject)
+    );
+    
+    // Find linked PO from contract
+    const linkedPO = linkedContract?.purchaseOrderId 
+      ? purchaseOrders.find(po => po.id === linkedContract.purchaseOrderId)
+      : null;
+    
+    setInvoiceFormData({
+      projectId: selectedProject,
+      contractId: linkedContract?.id || "",
+      purchaseOrderId: linkedPO?.id || "",
+      month: selectedMonth,
+      year: selectedYear,
+      notes: "",
+    });
+    
+    setShowInvoiceDialog(true);
+  };
+
+  const generateInvoice = async () => {
+    if (!invoiceFormData.projectId) {
       toast({
         title: "Error",
         description: "Please select a project",
@@ -417,9 +459,11 @@ export default function BillingManagementPage() {
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({
-          projectId: selectedProject,
-          month: parseInt(selectedMonth),
-          year: parseInt(selectedYear),
+          projectId: invoiceFormData.projectId,
+          contractId: invoiceFormData.contractId || undefined,
+          purchaseOrderId: invoiceFormData.purchaseOrderId || undefined,
+          month: parseInt(invoiceFormData.month),
+          year: parseInt(invoiceFormData.year),
         }),
       });
 
@@ -432,13 +476,14 @@ export default function BillingManagementPage() {
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `invoice-${selectedYear}-${selectedMonth}.pdf`;
+      a.download = `invoice-${invoiceFormData.year}-${invoiceFormData.month}.pdf`;
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
 
       queryClient.invalidateQueries({ queryKey: ["/api/invoices"] });
+      setShowInvoiceDialog(false);
 
       toast({
         title: "Success",
@@ -810,11 +855,11 @@ export default function BillingManagementPage() {
                                   </DropdownMenuItem>
                                   {invoice.status === "draft" && (
                                     <DropdownMenuItem onClick={() => handleMarkAsSent(invoice)}>
-                                      <CheckCircle className="h-4 w-4 mr-2" />
+                                      <Send className="h-4 w-4 mr-2" />
                                       Mark as Sent
                                     </DropdownMenuItem>
                                   )}
-                                  {(invoice.status === "sent" || invoice.status === "overdue") && (
+                                  {invoice.status !== "paid" && invoice.status !== "cancelled" && (
                                     <DropdownMenuItem onClick={() => handleMarkAsPaid(invoice)}>
                                       <CheckCircle className="h-4 w-4 mr-2" />
                                       Mark as Paid
@@ -926,21 +971,12 @@ export default function BillingManagementPage() {
                 )}
 
                 <Button
-                  onClick={generateInvoice}
-                  disabled={!selectedProject || isGeneratingInvoice}
+                  onClick={openInvoiceDialog}
+                  disabled={!selectedProject}
                   data-testid="button-generate-invoice"
                 >
-                  {isGeneratingInvoice ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Generating...
-                    </>
-                  ) : (
-                    <>
-                      <Download className="h-4 w-4 mr-2" />
-                      Generate Invoice PDF
-                    </>
-                  )}
+                  <Download className="h-4 w-4 mr-2" />
+                  Generate Invoice PDF
                 </Button>
               </CardContent>
             </Card>
@@ -1473,6 +1509,195 @@ export default function BillingManagementPage() {
                 <>
                   <Trash2 className="h-4 w-4 mr-2" />
                   Delete
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showInvoiceDialog} onOpenChange={setShowInvoiceDialog}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Receipt className="h-5 w-5" />
+              Generate Invoice
+            </DialogTitle>
+            <DialogDescription>
+              Review the invoice details before generating the PDF. All information will be included on the invoice.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-4">
+            {(() => {
+              const selectedProjectData = filteredProjects?.find(p => p.id === invoiceFormData.projectId);
+              const linkedContract = contracts?.find(c => c.id === invoiceFormData.contractId);
+              const linkedPO = purchaseOrders.find(po => po.id === invoiceFormData.purchaseOrderId);
+              const linkedClient = linkedContract?.clientId 
+                ? clients.find((c: Client) => c.id === linkedContract.clientId)
+                : null;
+
+              return (
+                <>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label className="text-muted-foreground">Project</Label>
+                      <div className="font-medium">{selectedProjectData?.name || 'Unknown Project'}</div>
+                      {selectedProjectData?.projectNumber && (
+                        <div className="text-sm text-muted-foreground">#{selectedProjectData.projectNumber}</div>
+                      )}
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <Label className="text-muted-foreground">Billing Period</Label>
+                      <div className="flex gap-2">
+                        <Select 
+                          value={invoiceFormData.month} 
+                          onValueChange={(v) => setInvoiceFormData({...invoiceFormData, month: v})}
+                        >
+                          <SelectTrigger className="w-[130px]">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {MONTH_OPTIONS.map((m) => (
+                              <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <Select 
+                          value={invoiceFormData.year} 
+                          onValueChange={(v) => setInvoiceFormData({...invoiceFormData, year: v})}
+                        >
+                          <SelectTrigger className="w-[100px]">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {YEAR_OPTIONS.map((y) => (
+                              <SelectItem key={y.value} value={y.value}>{y.label}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4 border-t pt-4">
+                    <div className="space-y-2">
+                      <Label className="text-muted-foreground">Client (Bill To)</Label>
+                      {linkedClient ? (
+                        <div>
+                          <div className="font-medium">{linkedClient.name}</div>
+                          {linkedClient.contactName && (
+                            <div className="text-sm text-muted-foreground">Attn: {linkedClient.contactName}</div>
+                          )}
+                          {linkedClient.address && (
+                            <div className="text-sm text-muted-foreground">{linkedClient.address}</div>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="text-muted-foreground italic">No client linked</div>
+                      )}
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label className="text-muted-foreground">Contract</Label>
+                      <Select 
+                        value={invoiceFormData.contractId}
+                        onValueChange={(v) => {
+                          const newContract = contracts?.find(c => c.id === v);
+                          setInvoiceFormData({
+                            ...invoiceFormData, 
+                            contractId: v,
+                            purchaseOrderId: newContract?.purchaseOrderId || invoiceFormData.purchaseOrderId
+                          });
+                        }}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select a contract (optional)" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="">No contract</SelectItem>
+                          {contracts?.map((c) => (
+                            <SelectItem key={c.id} value={c.id}>
+                              {c.contractNumber || c.name} {c.regularRate && `($${c.regularRate}/hr)`}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {linkedContract && (
+                        <div className="text-xs text-muted-foreground">
+                          Rates: ${linkedContract.regularRate || '0'}/hr (Reg), 
+                          ${linkedContract.overtimeRate || '0'}/hr (OT)
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4 border-t pt-4">
+                    <div className="space-y-2">
+                      <Label className="text-muted-foreground">Purchase Order</Label>
+                      <Select 
+                        value={invoiceFormData.purchaseOrderId}
+                        onValueChange={(v) => setInvoiceFormData({...invoiceFormData, purchaseOrderId: v})}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select a PO (optional)" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="">No PO</SelectItem>
+                          {purchaseOrders.map((po) => (
+                            <SelectItem key={po.id} value={po.id}>
+                              PO #{po.poNumber} {po.totalAmount && `($${parseFloat(po.totalAmount).toLocaleString()})`}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {linkedPO && linkedPO.remainingAmount && (
+                        <div className="text-xs text-muted-foreground">
+                          Remaining: ${parseFloat(linkedPO.remainingAmount).toLocaleString()}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label className="text-muted-foreground">Company (From)</Label>
+                      <div className="font-medium">{activeCompany?.name || 'Your Company'}</div>
+                    </div>
+                  </div>
+
+                  <div className="border-t pt-4 bg-muted/30 -mx-6 px-6 py-3 rounded-b-lg">
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <FileText className="h-4 w-4" />
+                      <span>The invoice PDF will include daily breakdown with inspector names for each report in the billing period.</span>
+                    </div>
+                  </div>
+                </>
+              );
+            })()}
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowInvoiceDialog(false)}
+              data-testid="button-cancel-invoice"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={generateInvoice}
+              disabled={isGeneratingInvoice}
+              data-testid="button-confirm-generate-invoice"
+            >
+              {isGeneratingInvoice ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Generating...
+                </>
+              ) : (
+                <>
+                  <Download className="h-4 w-4 mr-2" />
+                  Generate Invoice PDF
                 </>
               )}
             </Button>

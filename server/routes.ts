@@ -5171,13 +5171,21 @@ export async function registerRoutes(
         company = await storage.getCompany(project.companyId);
       }
 
-      // Get contract for rates
+      // Get contract for rates - use provided contractId or find from project linkage
       let contract = null;
       if (contractId) {
         contract = await storage.getContract(contractId);
+        // Validate contract belongs to same company
+        if (contract && contract.companyId !== project.companyId) {
+          return res.status(400).json({ message: "Contract does not belong to the same company as the project" });
+        }
+      } else {
+        // Try to find contract linked to this project
+        const allContracts = await storage.getContracts(project.companyId || '');
+        contract = allContracts.find((c: any) => c.projects?.some((p: any) => p.id === projectId)) || null;
       }
 
-      // Get client info
+      // Get client info from contract
       let client = null;
       if (contract?.clientId) {
         client = await storage.getClient(contract.clientId);
@@ -5188,13 +5196,39 @@ export async function registerRoutes(
       const endDate = new Date(year, month, 0);
       const reports = await storage.getReportsForInvoice(projectId, startDate, endDate);
 
-      // Calculate hours
+      // Calculate hours and build report details with inspector names
       let regularHours = 0;
       let overtimeHours = 0;
+      const reportDetails: Array<{
+        date: Date;
+        inspectorName: string;
+        regularHours: number;
+        overtimeHours: number;
+        premiumHours: number;
+      }> = [];
       
       for (const report of reports) {
-        regularHours += parseFloat(report.regularHours || '0') || 0;
-        overtimeHours += parseFloat(report.otHours || '0') || 0;
+        const regHrs = parseFloat(report.regularHours || '0') || 0;
+        const otHrs = parseFloat(report.otHours || '0') || 0;
+        regularHours += regHrs;
+        overtimeHours += otHrs;
+        
+        // Get inspector name
+        const inspectorProfile = await storage.getUserProfile(report.inspectorId);
+        const inspectorUser = await storage.getUserById(report.inspectorId);
+        const inspectorName = inspectorProfile?.firstName && inspectorProfile?.lastName
+          ? `${inspectorProfile.firstName} ${inspectorProfile.lastName}`
+          : inspectorUser?.firstName && inspectorUser?.lastName
+            ? `${inspectorUser.firstName} ${inspectorUser.lastName}`
+            : inspectorUser?.email || 'Unknown';
+        
+        reportDetails.push({
+          date: report.date,
+          inspectorName,
+          regularHours: regHrs,
+          overtimeHours: otHrs,
+          premiumHours: 0,
+        });
       }
 
       // Get rates from contract
@@ -5213,6 +5247,10 @@ export async function registerRoutes(
       const poId = purchaseOrderId || contract?.purchaseOrderId;
       if (poId) {
         purchaseOrder = await storage.getPurchaseOrder(poId);
+        // Validate PO belongs to same company
+        if (purchaseOrder && purchaseOrder.companyId !== project.companyId) {
+          return res.status(400).json({ message: "Purchase order does not belong to the same company as the project" });
+        }
       }
 
       // Get next invoice number and create record
@@ -5220,9 +5258,9 @@ export async function registerRoutes(
       await storage.createInvoice({
         companyId: project.companyId || '',
         projectId,
-        contractId: contractId || undefined,
+        contractId: contract?.id || undefined,
         clientId: contract?.clientId || undefined,
-        purchaseOrderId: poId || undefined,
+        purchaseOrderId: purchaseOrder?.id || undefined,
         invoiceNumber,
         month,
         year,
@@ -5247,9 +5285,12 @@ export async function registerRoutes(
         companyEmail: company?.email || undefined,
         clientName: client?.name,
         clientAddress: client?.address || undefined,
+        clientContactName: client?.contactName || undefined,
         projectName: project.name,
         projectNumber: project.projectNumber || undefined,
+        contractNumber: contract?.contractNumber || undefined,
         purchaseOrderNumber: purchaseOrder?.poNumber || undefined,
+        purchaseOrderValue: purchaseOrder?.totalAmount ? parseFloat(purchaseOrder.totalAmount) : undefined,
         invoiceNumber: `INV-${invoiceNumber}`,
         invoiceDate: new Date(),
         month,
@@ -5260,6 +5301,7 @@ export async function registerRoutes(
         regularRate,
         overtimeRate,
         premiumRate,
+        reportDetails,
       };
 
       const pdfBuffer = await generateInvoicePdf(invoiceData);
