@@ -12,6 +12,29 @@ import {
   ChevronRight
 } from "lucide-react";
 import { Link } from "wouter";
+import { ProjectStatusChart, StatusSummaryCards } from "@/components/project-status-chart";
+
+type ContractDashboardSummary = {
+  id: string;
+  name: string;
+  contractNumber: string;
+  status: string;
+  schedule: {
+    progress: number;
+    status: 'not_started' | 'on_track' | 'warning' | 'overdue' | 'complete';
+    daysRemaining: number | null;
+    daysOverdue: number | null;
+    startDate: string | null;
+    endDate: string | null;
+  };
+  budget: {
+    totalBudget: number;
+    spent: number;
+    remaining: number;
+    progress: number;
+    status: 'under' | 'on_track' | 'warning' | 'over';
+  };
+};
 
 export default function CompanyDashboard() {
   const { activeCompany } = useAuth();
@@ -27,6 +50,10 @@ export default function CompanyDashboard() {
 
   const { data: projects, isLoading: projectsLoading } = useQuery<any[]>({
     queryKey: ["/api/projects"],
+  });
+
+  const { data: contractsSummary, isLoading: contractsLoading } = useQuery<ContractDashboardSummary[]>({
+    queryKey: ["/api/contracts/dashboard-summary"],
   });
 
   return (
@@ -103,6 +130,18 @@ export default function CompanyDashboard() {
             </CardContent>
           </Card>
         </div>
+
+        {/* Project Status Summary Cards */}
+        <StatusSummaryCards 
+          contracts={contractsSummary || []} 
+          isLoading={contractsLoading} 
+        />
+
+        {/* Project Status Chart */}
+        <ProjectStatusChart 
+          contracts={contractsSummary || []} 
+          isLoading={contractsLoading} 
+        />
 
         {/* Quick Links */}
         <div className="grid gap-4 md:grid-cols-3">

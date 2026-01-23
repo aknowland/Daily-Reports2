@@ -1131,6 +1131,126 @@ export async function registerRoutes(
     }
   });
 
+  // Get dashboard summary for all contracts (for company dashboard visualization)
+  app.get("/api/contracts/dashboard-summary", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      
+      if (!profile?.activeCompanyId) {
+        return res.json([]);
+      }
+      
+      const isMember = await storage.isUserMemberOfCompany(profile.activeCompanyId, userId);
+      const isSysAdmin = isEffectiveSystemAdmin(profile);
+      
+      if (!isMember && !isSysAdmin) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      const allContracts = await storage.getContracts(profile.activeCompanyId);
+      const now = new Date();
+      
+      // Filter to active contracts only (awarded, in_progress, active)
+      const contracts = allContracts.filter(c => 
+        c.status === 'awarded' || c.status === 'in_progress' || c.status === 'active'
+      );
+      
+      // Calculate schedule and budget progress for each contract
+      const dashboardData = await Promise.all(contracts.map(async (contract) => {
+        // Calculate schedule progress
+        let scheduleProgress = 0;
+        let daysRemaining: number | null = null;
+        let daysOverdue: number | null = null;
+        let scheduleStatus: 'not_started' | 'on_track' | 'warning' | 'overdue' | 'complete' = 'not_started';
+        
+        if (contract.startDate && contract.substantialCompletionDate) {
+          const startDate = new Date(contract.startDate);
+          const endDate = new Date(contract.substantialCompletionDate);
+          const totalDuration = endDate.getTime() - startDate.getTime();
+          const elapsed = now.getTime() - startDate.getTime();
+          
+          // Guard against invalid date ranges (endDate before startDate)
+          if (totalDuration <= 0) {
+            scheduleProgress = 0;
+            scheduleStatus = 'not_started';
+          } else if (now < startDate) {
+            scheduleProgress = 0;
+            scheduleStatus = 'not_started';
+            daysRemaining = Math.ceil((endDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+          } else if (now > endDate) {
+            scheduleProgress = 100;
+            daysOverdue = Math.ceil((now.getTime() - endDate.getTime()) / (1000 * 60 * 60 * 24));
+            scheduleStatus = contract.status === 'substantial_completion' || contract.status === 'final_closeout' 
+              ? 'complete' 
+              : 'overdue';
+          } else {
+            scheduleProgress = Math.min(100, Math.max(0, (elapsed / totalDuration) * 100));
+            daysRemaining = Math.ceil((endDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+            scheduleStatus = scheduleProgress >= 80 ? 'warning' : 'on_track';
+          }
+        }
+        
+        // Calculate budget progress
+        const budgetSummary = await storage.getContractBudgetSummary(contract.id);
+        const totalBudget = contract.budgetOverride 
+          ? parseFloat(contract.budgetOverride) 
+          : parseFloat(contract.currentValue || contract.originalValue || '0');
+        
+        const baseBudgetSpent = parseFloat(contract.baseBudgetSpent || '0');
+        const calculatedSpent = budgetSummary.totalBilled;
+        const budgetSpent = baseBudgetSpent + calculatedSpent;
+        const budgetRemaining = totalBudget - budgetSpent;
+        
+        // Handle edge cases for budget calculation
+        let budgetProgress = 0;
+        let budgetStatus: 'under' | 'on_track' | 'warning' | 'over' = 'on_track';
+        
+        if (totalBudget <= 0) {
+          // No budget set - if there's spending, mark as warning
+          budgetProgress = budgetSpent > 0 ? 100 : 0;
+          budgetStatus = budgetSpent > 0 ? 'warning' : 'on_track';
+        } else {
+          budgetProgress = (budgetSpent / totalBudget) * 100;
+          if (budgetProgress >= 100) {
+            budgetStatus = 'over';
+          } else if (budgetProgress >= 80) {
+            budgetStatus = 'warning';
+          } else if (budgetProgress < 50) {
+            budgetStatus = 'under';
+          }
+        }
+        
+        return {
+          id: contract.id,
+          name: contract.name,
+          contractNumber: contract.contractNumber,
+          status: contract.status,
+          schedule: {
+            progress: Math.round(scheduleProgress),
+            status: scheduleStatus,
+            daysRemaining,
+            daysOverdue,
+            startDate: contract.startDate,
+            endDate: contract.substantialCompletionDate,
+          },
+          budget: {
+            totalBudget,
+            spent: budgetSpent,
+            remaining: budgetRemaining,
+            progress: Math.round(budgetProgress),
+            status: budgetStatus,
+          },
+        };
+      }));
+      
+      res.json(dashboardData);
+    } catch (error) {
+      console.error("Error fetching contracts dashboard summary:", error);
+      res.status(500).json({ message: "Failed to fetch dashboard summary" });
+    }
+  });
+
   // Get single contract
   app.get("/api/contracts/:id", isAuthenticated, async (req: any, res) => {
     try {
