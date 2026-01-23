@@ -57,6 +57,7 @@ export default function CompanyProjectsPage() {
   const searchString = useSearch();
   const searchParams = new URLSearchParams(searchString);
   const clientIdFilter = searchParams.get("clientId");
+  const projectIdFilter = searchParams.get("projectId");
   
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [projectToDelete, setProjectToDelete] = useState<Project | null>(null);
@@ -96,12 +97,24 @@ export default function CompanyProjectsPage() {
     return clients.find((c) => c.id === clientIdFilter) || null;
   }, [clientIdFilter, clients]);
 
+  const selectedProject = useMemo(() => {
+    if (!projectIdFilter) return null;
+    return projects.find((p) => p.id === projectIdFilter) || null;
+  }, [projectIdFilter, projects]);
+
   const filteredProjects = useMemo(() => {
-    if (!selectedClient) return projects;
-    return projects.filter((p) => 
-      (p as any).clientId === selectedClient.id || p.client?.toLowerCase() === selectedClient.name.toLowerCase()
-    );
-  }, [projects, selectedClient]);
+    // Filter by specific project ID if provided
+    if (projectIdFilter) {
+      return projects.filter((p) => p.id === projectIdFilter);
+    }
+    // Filter by client if provided
+    if (selectedClient) {
+      return projects.filter((p) => 
+        (p as any).clientId === selectedClient.id || p.client?.toLowerCase() === selectedClient.name.toLowerCase()
+      );
+    }
+    return projects;
+  }, [projects, selectedClient, projectIdFilter]);
 
   // Helper to get client name from clientId
   const getClientName = (project: Project): string | null => {
@@ -327,10 +340,17 @@ export default function CompanyProjectsPage() {
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold" data-testid="title-projects">
-              {selectedClient ? `Projects for ${selectedClient.name}` : "Company Projects"}
+              {selectedProject ? selectedProject.name : selectedClient ? `Projects for ${selectedClient.name}` : "Company Projects"}
             </h1>
             <p className="text-muted-foreground">
-              {selectedClient ? (
+              {selectedProject ? (
+                <span className="flex items-center gap-2">
+                  Project #{selectedProject.projectNumber || 'N/A'}
+                  <Link href="/company/projects" className="text-primary hover:underline">
+                    View all projects
+                  </Link>
+                </span>
+              ) : selectedClient ? (
                 <span className="flex items-center gap-2">
                   Showing {filteredProjects.length} project{filteredProjects.length !== 1 ? "s" : ""} for this client
                   <Link href="/company/projects" className="text-primary hover:underline">
