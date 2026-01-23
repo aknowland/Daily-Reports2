@@ -2313,8 +2313,11 @@ export async function registerRoutes(
         // Draw text with padding and wrapping
         doc.font(font).fontSize(fontSize);
         const textWidth = width - (cellPadding * 2);
-        const textHeight = doc.heightOfString(text, { width: textWidth });
-        const textY = verticalCenter ? y + (height - textHeight) / 2 : y + cellPadding;
+        const textHeight = doc.heightOfString(text, { width: textWidth, lineGap: 1 });
+        // Ensure text Y never goes above minimum padding from top
+        const calculatedY = y + (height - textHeight) / 2;
+        const minY = y + cellPadding;
+        const textY = verticalCenter ? Math.max(calculatedY, minY) : minY;
         doc.text(text, x + cellPadding, textY, { width: textWidth, align, lineGap: 1 });
       };
       
@@ -2326,8 +2329,11 @@ export async function registerRoutes(
         // Draw text centered vertically with wrapping
         doc.font(font).fontSize(fontSize);
         const textWidth = width - (cellPadding * 2);
-        const textHeight = doc.heightOfString(text, { width: textWidth });
-        const textY = y + (height - textHeight) / 2;
+        const textHeight = doc.heightOfString(text, { width: textWidth, lineGap: 1 });
+        // Ensure text Y never goes above minimum padding from top
+        const calculatedY = y + (height - textHeight) / 2;
+        const minY = y + cellPadding;
+        const textY = Math.max(calculatedY, minY);
         doc.text(text, x + cellPadding, textY, { width: textWidth, align, lineGap: 1 });
       };
       
