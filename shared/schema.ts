@@ -432,6 +432,7 @@ export const invoices = pgTable("invoices", {
   projectId: varchar("project_id").references(() => projects.id, { onDelete: "cascade" }).notNull(),
   contractId: varchar("contract_id").references(() => contracts.id, { onDelete: "set null" }),
   clientId: varchar("client_id").references(() => clients.id, { onDelete: "set null" }),
+  purchaseOrderId: varchar("purchase_order_id").references(() => purchaseOrders.id, { onDelete: "set null" }),
   invoiceNumber: varchar("invoice_number").notNull(),
   month: integer("month").notNull(),
   year: integer("year").notNull(),

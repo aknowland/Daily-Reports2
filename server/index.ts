@@ -54,8 +54,15 @@ async function initStripe() {
         .then(() => console.log('Stripe data synced'))
         .catch((err: any) => console.error('Error syncing Stripe data:', err));
     } catch (webhookError: any) {
-      console.error('Webhook setup error (non-fatal):', webhookError.message);
-      console.log('Stripe checkout and billing portal will still work.');
+      // Handle missing stripe.accounts table gracefully
+      if (webhookError.message?.includes('stripe.accounts') || 
+          webhookError.message?.includes('relation') && webhookError.message?.includes('does not exist')) {
+        console.log('Stripe tables not fully initialized. Stripe sync features disabled.');
+        console.log('Stripe checkout and billing portal will still work.');
+      } else {
+        console.error('Webhook setup error (non-fatal):', webhookError.message);
+        console.log('Stripe checkout and billing portal will still work.');
+      }
     }
   } catch (error) {
     console.error('Failed to initialize Stripe:', error);
