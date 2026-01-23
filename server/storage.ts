@@ -183,6 +183,7 @@ export interface IStorage {
     projectId: string;
     contractId?: string;
     clientId?: string;
+    purchaseOrderId?: string;
     invoiceNumber: string;
     month: number;
     year: number;
@@ -199,6 +200,8 @@ export interface IStorage {
     totalAmount: string;
     dueDate?: Date;
     notes?: string;
+    pdfPath?: string;
+    status?: "draft" | "sent" | "paid" | "overdue" | "cancelled";
   }): Promise<{ id: string; invoiceNumber: string }>;
 
   // Contracts
@@ -1179,6 +1182,7 @@ export class DatabaseStorage implements IStorage {
     projectId: string;
     contractId?: string;
     clientId?: string;
+    purchaseOrderId?: string;
     invoiceNumber: string;
     month: number;
     year: number;
@@ -1195,6 +1199,8 @@ export class DatabaseStorage implements IStorage {
     totalAmount: string;
     dueDate?: Date;
     notes?: string;
+    pdfPath?: string;
+    status?: "draft" | "sent" | "paid" | "overdue" | "cancelled";
   }): Promise<{ id: string; invoiceNumber: string }> {
     const [invoice] = await db
       .insert(invoices)
@@ -1203,6 +1209,7 @@ export class DatabaseStorage implements IStorage {
         projectId: data.projectId,
         contractId: data.contractId || null,
         clientId: data.clientId || null,
+        purchaseOrderId: data.purchaseOrderId || null,
         invoiceNumber: data.invoiceNumber,
         month: data.month,
         year: data.year,
@@ -1219,7 +1226,8 @@ export class DatabaseStorage implements IStorage {
         totalAmount: data.totalAmount,
         dueDate: data.dueDate || null,
         notes: data.notes || null,
-        status: 'draft',
+        pdfPath: data.pdfPath || null,
+        status: data.status || 'draft',
       })
       .returning();
     return { id: invoice.id, invoiceNumber: invoice.invoiceNumber };

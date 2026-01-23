@@ -2779,6 +2779,86 @@ export async function registerRoutes(
     }
   });
 
+  // Create invoice
+  app.post("/api/invoices", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      
+      if (!profile?.activeCompanyId) {
+        return res.status(400).json({ message: "No active company" });
+      }
+      
+      const isCompAdmin = await isEffectiveCompanyAdmin(userId, profile.activeCompanyId, profile);
+      const isSysAdmin = isEffectiveSystemAdmin(profile);
+      
+      if (!isCompAdmin && !isSysAdmin) {
+        return res.status(403).json({ message: "Only admins can create invoices" });
+      }
+      
+      const {
+        projectId,
+        contractId,
+        clientId,
+        purchaseOrderId,
+        month,
+        year,
+        regularHours,
+        overtimeHours,
+        premiumHours,
+        regularRate,
+        overtimeRate,
+        premiumRate,
+        regularAmount,
+        overtimeAmount,
+        premiumAmount,
+        subtotal,
+        totalAmount,
+        dueDate,
+        notes,
+        pdfPath,
+        status
+      } = req.body;
+      
+      if (!projectId || !month || !year) {
+        return res.status(400).json({ message: "Project, month, and year are required" });
+      }
+      
+      const invoiceNumber = await storage.getNextInvoiceNumber();
+      
+      const invoice = await storage.createInvoice({
+        companyId: profile.activeCompanyId,
+        projectId,
+        contractId: contractId || undefined,
+        clientId: clientId || undefined,
+        purchaseOrderId: purchaseOrderId || undefined,
+        invoiceNumber,
+        month,
+        year,
+        regularHours: regularHours || "0",
+        overtimeHours: overtimeHours || "0",
+        premiumHours: premiumHours || "0",
+        regularRate: regularRate || undefined,
+        overtimeRate: overtimeRate || undefined,
+        premiumRate: premiumRate || undefined,
+        regularAmount: regularAmount || "0",
+        overtimeAmount: overtimeAmount || "0",
+        premiumAmount: premiumAmount || "0",
+        subtotal: subtotal || "0",
+        totalAmount: totalAmount || "0",
+        dueDate: dueDate ? new Date(dueDate) : undefined,
+        notes: notes || undefined,
+        pdfPath: pdfPath || undefined,
+        status: status || undefined,
+      });
+      
+      res.status(201).json(invoice);
+    } catch (error) {
+      console.error("Error creating invoice:", error);
+      res.status(500).json({ message: "Failed to create invoice" });
+    }
+  });
+
   // Get single invoice
   app.get("/api/invoices/:id", isAuthenticated, async (req: any, res) => {
     try {
