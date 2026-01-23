@@ -397,7 +397,7 @@ export default function MyCompaniesPage() {
                           </Badge>
                         )}
                         <Badge variant="secondary" data-testid={`badge-role-${company.id}`}>
-                          {item.role === "admin" ? "Admin" : "Inspector"}
+                          {item.role === "admin" ? "Company Admin" : "Inspector"}
                         </Badge>
                       </div>
                     </div>

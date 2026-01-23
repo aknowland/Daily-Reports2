@@ -30,7 +30,7 @@ export function ModeToggle() {
       />
       <Shield className={`w-4 h-4 transition-colors ${isAdminMode ? "text-primary" : "text-muted-foreground"}`} />
       <Label htmlFor="admin-mode" className="text-xs font-medium cursor-pointer hidden sm:inline">
-        {isAdminMode ? "Admin" : "Inspector"}
+        {isAdminMode ? "Admin Mode" : "Inspector Mode"}
       </Label>
     </div>
   );
