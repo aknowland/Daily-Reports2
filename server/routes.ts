@@ -83,56 +83,12 @@ const isKnowlandMember = async (userId: string): Promise<boolean> => {
   return companies.some(c => (c as any).company?.name === KNOWLAND_COMPANY_NAME);
 };
 
-// Helper to compute contract status based on dates
-// Returns the recommended status based on current date and contract dates
-type ContractStatus = "bid_release" | "bid_received" | "under_review" | "awarded" | "not_awarded" | "cancelled" | "in_execution" | "substantial_completion" | "final_closeout";
-
-const computeContractStatusFromDates = (contract: {
-  startDate?: Date | null;
-  substantialCompletionDate?: Date | null;
-  finalCloseoutDate?: Date | null;
-  status?: string;
-}): ContractStatus | null => {
-  const now = new Date();
-  now.setHours(0, 0, 0, 0); // Normalize to start of day
-  
-  // If final closeout date has passed, status should be final_closeout
-  if (contract.finalCloseoutDate) {
-    const closeout = new Date(contract.finalCloseoutDate);
-    closeout.setHours(0, 0, 0, 0);
-    if (now >= closeout) {
-      return "final_closeout";
-    }
-  }
-  
-  // If substantial completion date has passed, status should be substantial_completion
-  if (contract.substantialCompletionDate) {
-    const substantial = new Date(contract.substantialCompletionDate);
-    substantial.setHours(0, 0, 0, 0);
-    if (now >= substantial) {
-      return "substantial_completion";
-    }
-  }
-  
-  // If start date has passed, status should be in_execution
-  if (contract.startDate) {
-    const start = new Date(contract.startDate);
-    start.setHours(0, 0, 0, 0);
-    if (now >= start) {
-      return "in_execution";
-    }
-  }
-  
-  // No date-based change needed
-  return null;
-};
-
-// Notification intervals for each date type
-const NOTIFICATION_INTERVALS = {
-  start_date: [30, 14, 7],
-  substantial_completion: [120, 90, 60, 30, 14, 3],
-  final_closeout: [10, 3],
-};
+// Import shared notification processing utilities
+import { 
+  computeContractStatusFromDates, 
+  NOTIFICATION_INTERVALS, 
+  processContractNotifications 
+} from './notification-processor';
 
 // Helper to get Knowland company if exists
 const getKnowlandCompany = async (): Promise<{ id: string; name: string } | null> => {
@@ -1971,240 +1927,14 @@ export async function registerRoutes(
       const { Resend } = await import('resend');
       const resend = new Resend(process.env.RESEND_API_KEY);
       
-      const now = new Date();
-      now.setHours(0, 0, 0, 0);
-      
-      const allContracts = await storage.getAllContractsWithUpcomingDates();
-      const contractsToProcess = companyIdFilter 
-        ? allContracts.filter(c => c.companyId === companyIdFilter)
-        : allContracts;
-      
-      const results = {
-        statusUpdates: [] as { contractId: string; contractName: string; oldStatus: string; newStatus: string }[],
-        notificationsSent: [] as { contractId: string; contractName: string; dateType: string; daysBefore: number; emails: string[] }[],
-        errors: [] as { contractId: string; error: string }[],
-      };
-      
-      for (const contract of contractsToProcess) {
-        try {
-          // 1. Check and update contract status based on dates
-          const computedStatus = computeContractStatusFromDates(contract);
-          if (computedStatus && computedStatus !== contract.status) {
-            await storage.updateContract(contract.id, { status: computedStatus });
-            results.statusUpdates.push({
-              contractId: contract.id,
-              contractName: contract.name,
-              oldStatus: contract.status,
-              newStatus: computedStatus,
-            });
-          }
-          
-          // 2. Check for upcoming date notifications
-          const dateChecks = [
-            { type: 'start_date' as const, date: contract.startDate, label: 'Contract Start Date' },
-            { type: 'substantial_completion' as const, date: contract.substantialCompletionDate, label: 'Substantial Completion Date' },
-            { type: 'final_closeout' as const, date: contract.finalCloseoutDate, label: 'Final Closeout Date' },
-          ];
-          
-          for (const check of dateChecks) {
-            if (!check.date) continue;
-            
-            const targetDate = new Date(check.date);
-            targetDate.setHours(0, 0, 0, 0);
-            
-            // Skip if date is in the past
-            if (targetDate < now) continue;
-            
-            const daysUntil = Math.ceil((targetDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-            const intervals = NOTIFICATION_INTERVALS[check.type];
-            
-            for (const daysBefore of intervals) {
-              if (daysUntil === daysBefore) {
-                // Check if notification was already sent
-                const alreadySent = await storage.hasNotificationBeenSent(contract.id, check.type, daysBefore);
-                if (alreadySent) continue;
-                
-                // Get company admin emails
-                const adminEmails = await storage.getCompanyAdminEmails(contract.companyId);
-                if (adminEmails.length === 0) continue;
-                
-                // Get company info for email
-                const company = await storage.getCompany(contract.companyId);
-                
-                // Send notification email
-                const formattedDate = targetDate.toLocaleDateString('en-US', { 
-                  weekday: 'long', 
-                  year: 'numeric', 
-                  month: 'long', 
-                  day: 'numeric' 
-                });
-                
-                try {
-                  await resend.emails.send({
-                    from: 'Field Daily Reports <noreply@mail.replit.app>',
-                    to: adminEmails,
-                    subject: `Contract Reminder: ${contract.name} - ${check.label} in ${daysBefore} days`,
-                    html: `
-                      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-                        <h2 style="color: #1a365d;">Contract Date Reminder</h2>
-                        <p>This is a reminder that the following contract date is approaching:</p>
-                        
-                        <div style="background: #f7fafc; padding: 20px; border-radius: 8px; margin: 20px 0;">
-                          <h3 style="margin: 0 0 10px 0; color: #2d3748;">${contract.name}</h3>
-                          <p style="margin: 5px 0;"><strong>Contract #:</strong> ${contract.contractNumber}</p>
-                          <p style="margin: 5px 0;"><strong>${check.label}:</strong> ${formattedDate}</p>
-                          <p style="margin: 5px 0;"><strong>Days Remaining:</strong> ${daysBefore}</p>
-                          ${contract.client?.name ? `<p style="margin: 5px 0;"><strong>Client:</strong> ${contract.client.name}</p>` : ''}
-                        </div>
-                        
-                        <p style="color: #718096; font-size: 14px;">
-                          This is an automated reminder from ${company?.name || 'Field Daily Reports'}.
-                        </p>
-                      </div>
-                    `,
-                  });
-                  
-                  // Record notification
-                  await storage.createContractNotification({
-                    contractId: contract.id,
-                    companyId: contract.companyId,
-                    notificationType: check.type,
-                    daysBefore,
-                    recipientEmails: adminEmails,
-                  });
-                  
-                  results.notificationsSent.push({
-                    contractId: contract.id,
-                    contractName: contract.name,
-                    dateType: check.type,
-                    daysBefore,
-                    emails: adminEmails,
-                  });
-                } catch (emailError: any) {
-                  results.errors.push({
-                    contractId: contract.id,
-                    error: `Failed to send email: ${emailError.message}`,
-                  });
-                }
-              }
-            }
-          }
-          
-          // 3. Check for budget milestone notifications (50%, 75%, 90%, 100%)
-          const budgetMilestones = [50, 75, 90, 100];
-          
-          // Calculate budget
-          const budgetSummary = await storage.getContractBudgetSummary(contract.id);
-          const totalBudget = contract.budgetOverride 
-            ? parseFloat(contract.budgetOverride) 
-            : parseFloat(contract.currentValue || contract.originalValue || '0');
-          
-          if (totalBudget > 0) {
-            const baseBudgetSpent = parseFloat(contract.baseBudgetSpent || '0');
-            const calculatedSpent = budgetSummary.totalBilled;
-            const budgetSpent = baseBudgetSpent + calculatedSpent;
-            const budgetProgress = (budgetSpent / totalBudget) * 100;
-            
-            for (const milestone of budgetMilestones) {
-              // Check if we've reached or exceeded this milestone
-              if (budgetProgress >= milestone) {
-                // Check if notification was already sent for this milestone
-                const alreadySent = await storage.hasBudgetNotificationBeenSent(contract.id, milestone);
-                if (alreadySent) continue;
-                
-                // Get company admin emails
-                const adminEmails = await storage.getCompanyAdminEmails(contract.companyId);
-                if (adminEmails.length === 0) continue;
-                
-                // Get company info for email
-                const company = await storage.getCompany(contract.companyId);
-                
-                // Format numbers for display
-                const formatCurrency = (amount: number) => 
-                  amount.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
-                
-                const milestoneLabel = milestone >= 100 ? 'Budget Exceeded' : `${milestone}% Budget Used`;
-                const alertLevel = milestone >= 100 ? 'critical' : milestone >= 90 ? 'warning' : 'info';
-                const bgColor = milestone >= 100 ? '#fed7d7' : milestone >= 90 ? '#feebc8' : '#c6f6d5';
-                const borderColor = milestone >= 100 ? '#fc8181' : milestone >= 90 ? '#f6ad55' : '#68d391';
-                
-                try {
-                  await resend.emails.send({
-                    from: 'Field Daily Reports <noreply@mail.replit.app>',
-                    to: adminEmails,
-                    subject: `Budget Alert: ${contract.name} - ${milestoneLabel}`,
-                    html: `
-                      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-                        <h2 style="color: ${milestone >= 100 ? '#c53030' : milestone >= 90 ? '#c05621' : '#2d3748'};">
-                          Budget Milestone Alert
-                        </h2>
-                        <p>A budget milestone has been reached for the following contract:</p>
-                        
-                        <div style="background: ${bgColor}; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid ${borderColor};">
-                          <h3 style="margin: 0 0 10px 0; color: #2d3748;">${contract.name}</h3>
-                          <p style="margin: 5px 0;"><strong>Contract #:</strong> ${contract.contractNumber}</p>
-                          ${contract.client?.name ? `<p style="margin: 5px 0;"><strong>Client:</strong> ${contract.client.name}</p>` : ''}
-                          <hr style="border: none; border-top: 1px solid ${borderColor}; margin: 15px 0;">
-                          <p style="margin: 5px 0; font-size: 18px;"><strong>Budget Progress:</strong> ${budgetProgress.toFixed(1)}%</p>
-                          <p style="margin: 5px 0;"><strong>Total Budget:</strong> ${formatCurrency(totalBudget)}</p>
-                          <p style="margin: 5px 0;"><strong>Amount Spent:</strong> ${formatCurrency(budgetSpent)}</p>
-                          <p style="margin: 5px 0;"><strong>Remaining:</strong> ${formatCurrency(totalBudget - budgetSpent)}</p>
-                        </div>
-                        
-                        ${milestone >= 100 ? `
-                        <p style="color: #c53030; font-weight: bold;">
-                          ALERT: This contract has exceeded its budget. Please review and take appropriate action.
-                        </p>
-                        ` : milestone >= 90 ? `
-                        <p style="color: #c05621;">
-                          This contract is approaching its budget limit. Please monitor closely.
-                        </p>
-                        ` : ''}
-                        
-                        <p style="color: #718096; font-size: 14px;">
-                          This is an automated budget alert from ${company?.name || 'Field Daily Reports'}.
-                        </p>
-                      </div>
-                    `,
-                  });
-                  
-                  // Record budget notification
-                  await storage.createBudgetNotification({
-                    contractId: contract.id,
-                    companyId: contract.companyId,
-                    milestonePercent: milestone,
-                    currentSpend: budgetSpent.toString(),
-                    budgetAmount: totalBudget.toString(),
-                    recipientEmails: adminEmails,
-                  });
-                  
-                  results.notificationsSent.push({
-                    contractId: contract.id,
-                    contractName: contract.name,
-                    dateType: `budget_${milestone}`,
-                    daysBefore: milestone,
-                    emails: adminEmails,
-                  });
-                } catch (emailError: any) {
-                  results.errors.push({
-                    contractId: contract.id,
-                    error: `Failed to send budget email: ${emailError.message}`,
-                  });
-                }
-              }
-            }
-          }
-        } catch (err: any) {
-          results.errors.push({
-            contractId: contract.id,
-            error: err.message,
-          });
-        }
-      }
+      // Use shared notification processing function
+      const results = await processContractNotifications(resend, {
+        companyIdFilter,
+        sendEmails: true,
+      });
       
       res.json({
         success: true,
-        processed: contractsToProcess.length,
         ...results,
       });
     } catch (error: any) {
@@ -2754,6 +2484,39 @@ export async function registerRoutes(
     }
   });
 
+  // Get purchase order balance (usage tracking)
+  app.get("/api/purchase-orders/:id/balance", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const purchaseOrder = await storage.getPurchaseOrder(req.params.id);
+      
+      if (!purchaseOrder) {
+        return res.status(404).json({ message: "Purchase order not found" });
+      }
+      
+      const isMember = await storage.isUserMemberOfCompany(purchaseOrder.companyId, userId);
+      if (!isMember) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      const balance = await storage.getPurchaseOrderBalance(req.params.id);
+      const invoiceList = await storage.getInvoicesByPurchaseOrder(req.params.id);
+      
+      res.json({
+        purchaseOrderId: req.params.id,
+        poNumber: purchaseOrder.poNumber,
+        ...balance,
+        invoiceCount: invoiceList.length,
+        utilizationPercentage: balance.totalValue > 0 
+          ? Math.round((balance.billedAmount / balance.totalValue) * 100) 
+          : 0,
+      });
+    } catch (error) {
+      console.error("Error fetching PO balance:", error);
+      res.status(500).json({ message: "Failed to fetch PO balance" });
+    }
+  });
+
   // ========== INVOICES ==========
 
   // Get invoices for active company
@@ -2930,6 +2693,116 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error deleting invoice:", error);
       res.status(500).json({ message: "Failed to delete invoice" });
+    }
+  });
+
+  // Send invoice via email
+  app.post("/api/invoices/:id/send", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const invoice = await storage.getInvoice(req.params.id);
+      
+      if (!invoice) {
+        return res.status(404).json({ message: "Invoice not found" });
+      }
+      
+      const profile = await storage.getUserProfile(userId);
+      const isCompAdmin = await isEffectiveCompanyAdmin(userId, invoice.companyId, profile);
+      const isSysAdmin = isEffectiveSystemAdmin(profile);
+      
+      if (!isCompAdmin && !isSysAdmin) {
+        return res.status(403).json({ message: "Only admins can send invoices" });
+      }
+      
+      const { recipientEmail, ccEmails, subject, message } = req.body;
+      
+      if (!recipientEmail) {
+        return res.status(400).json({ message: "Recipient email is required" });
+      }
+      
+      // Get related data for invoice
+      const company = await storage.getCompany(invoice.companyId);
+      const project = await storage.getProject(invoice.projectId);
+      let client = null;
+      let purchaseOrder = null;
+      let contract = null;
+      
+      if (invoice.clientId) {
+        client = await storage.getClient(invoice.clientId);
+      }
+      if (invoice.purchaseOrderId) {
+        purchaseOrder = await storage.getPurchaseOrder(invoice.purchaseOrderId);
+      }
+      if (invoice.contractId) {
+        contract = await storage.getContract(invoice.contractId);
+      }
+      
+      // Generate PDF for attachment
+      const invoiceData: InvoiceData = {
+        companyName: company?.name || 'Company',
+        companyAddress: company?.address || undefined,
+        companyPhone: company?.phone || undefined,
+        companyEmail: company?.email || undefined,
+        clientName: client?.name,
+        clientAddress: client?.address || undefined,
+        projectName: project?.name || 'Unknown Project',
+        projectNumber: project?.projectNumber || undefined,
+        purchaseOrderNumber: purchaseOrder?.poNumber || undefined,
+        invoiceNumber: `INV-${invoice.invoiceNumber}`,
+        invoiceDate: invoice.createdAt || new Date(),
+        dueDate: invoice.dueDate || undefined,
+        month: invoice.month,
+        year: invoice.year,
+        regularHours: parseFloat(invoice.regularHours || '0'),
+        overtimeHours: parseFloat(invoice.overtimeHours || '0'),
+        premiumHours: parseFloat(invoice.premiumHours || '0'),
+        regularRate: parseFloat(invoice.regularRate || '0'),
+        overtimeRate: parseFloat(invoice.overtimeRate || '0'),
+        premiumRate: parseFloat(invoice.premiumRate || '0'),
+      };
+      
+      const pdfBuffer = await generateInvoicePdf(invoiceData);
+      
+      // Build email HTML
+      const monthName = format(new Date(invoice.year, invoice.month - 1), 'MMMM yyyy');
+      const emailHtml = `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <h2>Invoice from ${company?.name || 'Company'}</h2>
+          <p>Invoice Number: INV-${invoice.invoiceNumber}</p>
+          <p>Project: ${project?.name || 'Unknown Project'}</p>
+          <p>Period: ${monthName}</p>
+          <p>Total Amount: $${parseFloat(invoice.totalAmount || '0').toLocaleString('en-US', { minimumFractionDigits: 2 })}</p>
+          ${purchaseOrder ? `<p>Purchase Order: ${purchaseOrder.poNumber}</p>` : ''}
+          ${message ? `<p style="margin-top: 20px; padding: 15px; background-color: #f5f5f5; border-radius: 5px;">${message}</p>` : ''}
+          <hr style="margin: 20px 0; border: none; border-top: 1px solid #ddd;" />
+          <p style="color: #666; font-size: 12px;">Please find the invoice attached to this email.</p>
+        </div>
+      `;
+      
+      const { sendEmail } = await import('./replit_integrations/email/client');
+      
+      const emailRecipients = [recipientEmail];
+      if (ccEmails && Array.isArray(ccEmails)) {
+        emailRecipients.push(...ccEmails);
+      }
+      
+      await sendEmail({
+        to: emailRecipients,
+        subject: subject || `Invoice INV-${invoice.invoiceNumber} from ${company?.name || 'Company'}`,
+        html: emailHtml,
+        attachments: [{
+          filename: `Invoice_${invoice.invoiceNumber}_${monthName.replace(' ', '-')}.pdf`,
+          content: pdfBuffer,
+        }],
+      });
+      
+      // Update invoice status to 'sent'
+      await storage.updateInvoice(req.params.id, { status: 'sent' });
+      
+      res.json({ message: "Invoice sent successfully" });
+    } catch (error) {
+      console.error("Error sending invoice:", error);
+      res.status(500).json({ message: "Failed to send invoice" });
     }
   });
 
@@ -5237,7 +5110,7 @@ export async function registerRoutes(
     try {
       const userId = req.user?.claims?.sub;
       const profile = await storage.getUserProfile(userId);
-      const { projectId, month, year, contractId } = req.body;
+      const { projectId, month, year, contractId, purchaseOrderId } = req.body;
 
       if (!projectId || !month || !year) {
         return res.status(400).json({ message: "Project ID, month, and year are required" });
@@ -5297,6 +5170,13 @@ export async function registerRoutes(
       const premiumAmount = 0; // Premium hours from reports if applicable
       const subtotal = regularAmount + overtimeAmount + premiumAmount;
 
+      // Get purchase order if provided, otherwise try to get from contract
+      let purchaseOrder = null;
+      const poId = purchaseOrderId || contract?.purchaseOrderId;
+      if (poId) {
+        purchaseOrder = await storage.getPurchaseOrder(poId);
+      }
+
       // Get next invoice number and create record
       const invoiceNumber = await storage.getNextInvoiceNumber();
       await storage.createInvoice({
@@ -5304,6 +5184,7 @@ export async function registerRoutes(
         projectId,
         contractId: contractId || undefined,
         clientId: contract?.clientId || undefined,
+        purchaseOrderId: poId || undefined,
         invoiceNumber,
         month,
         year,
@@ -5330,6 +5211,7 @@ export async function registerRoutes(
         clientAddress: client?.address || undefined,
         projectName: project.name,
         projectNumber: project.projectNumber || undefined,
+        purchaseOrderNumber: purchaseOrder?.poNumber || undefined,
         invoiceNumber: `INV-${invoiceNumber}`,
         invoiceDate: new Date(),
         month,
