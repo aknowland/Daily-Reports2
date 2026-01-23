@@ -2163,6 +2163,265 @@ export async function registerRoutes(
     }
   });
 
+  // Send test notification emails (for preview purposes) - System Owner only
+  app.post("/api/contracts/send-test-notifications", isAuthenticated, isSystemOwner, async (req: any, res) => {
+    try {
+      const { emails } = req.body;
+      
+      if (!emails || !Array.isArray(emails) || emails.length === 0) {
+        return res.status(400).json({ message: "Please provide an array of email addresses" });
+      }
+      
+      // Import the email helper that uses Replit's Resend integration
+      const { sendEmail: sendResendEmail } = await import('./replit_integrations/email/client');
+      const results: { sent: string[]; errors: string[] } = { sent: [], errors: [] };
+      
+      // Sample contract data for test emails
+      const sampleContract = {
+        name: "Downtown Office Building Renovation",
+        contractNumber: "CON-2025-001",
+        clientName: "Acme Construction Corp",
+        companyName: "Knowland Construction Inspections",
+      };
+      
+      const formatCurrency = (amount: number) => 
+        amount.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+      
+      // Helper to send email
+      const sendEmail = async (subject: string, html: string, type: string) => {
+        try {
+          await sendResendEmail({
+            to: emails,
+            subject,
+            html,
+          });
+          results.sent.push(type);
+        } catch (err: any) {
+          results.errors.push(`${type}: ${err.message}`);
+        }
+      };
+      
+      // 1. Contract Start Date Reminder (7 days)
+      const startDate = new Date();
+      startDate.setDate(startDate.getDate() + 7);
+      const formattedStartDate = startDate.toLocaleDateString('en-US', { 
+        weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' 
+      });
+      
+      await sendEmail(
+        `Contract Reminder: ${sampleContract.name} - Contract Start Date in 7 days`,
+        `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h2 style="color: #1a365d;">Contract Date Reminder</h2>
+            <p>This is a reminder about an upcoming contract milestone:</p>
+            
+            <div style="background: #f7fafc; padding: 20px; border-radius: 8px; margin: 20px 0;">
+              <h3 style="margin: 0 0 10px 0; color: #2d3748;">${sampleContract.name}</h3>
+              <p style="margin: 5px 0;"><strong>Contract #:</strong> ${sampleContract.contractNumber}</p>
+              <p style="margin: 5px 0;"><strong>Client:</strong> ${sampleContract.clientName}</p>
+              <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 15px 0;">
+              <p style="margin: 5px 0;"><strong>Contract Start Date:</strong> ${formattedStartDate}</p>
+              <p style="margin: 5px 0; color: #c05621;"><strong>Days Until:</strong> 7 days</p>
+            </div>
+            
+            <p style="color: #718096; font-size: 14px;">
+              This is an automated reminder from ${sampleContract.companyName}.
+            </p>
+          </div>
+        `,
+        "Contract Start Date (7 days)"
+      );
+      
+      // 2. Substantial Completion Date Reminder (30 days)
+      const substantialDate = new Date();
+      substantialDate.setDate(substantialDate.getDate() + 30);
+      const formattedSubstantialDate = substantialDate.toLocaleDateString('en-US', { 
+        weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' 
+      });
+      
+      await sendEmail(
+        `Contract Reminder: ${sampleContract.name} - Substantial Completion Date in 30 days`,
+        `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h2 style="color: #1a365d;">Contract Date Reminder</h2>
+            <p>This is a reminder about an upcoming contract milestone:</p>
+            
+            <div style="background: #f7fafc; padding: 20px; border-radius: 8px; margin: 20px 0;">
+              <h3 style="margin: 0 0 10px 0; color: #2d3748;">${sampleContract.name}</h3>
+              <p style="margin: 5px 0;"><strong>Contract #:</strong> ${sampleContract.contractNumber}</p>
+              <p style="margin: 5px 0;"><strong>Client:</strong> ${sampleContract.clientName}</p>
+              <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 15px 0;">
+              <p style="margin: 5px 0;"><strong>Substantial Completion Date:</strong> ${formattedSubstantialDate}</p>
+              <p style="margin: 5px 0; color: #c05621;"><strong>Days Until:</strong> 30 days</p>
+            </div>
+            
+            <p style="color: #718096; font-size: 14px;">
+              This is an automated reminder from ${sampleContract.companyName}.
+            </p>
+          </div>
+        `,
+        "Substantial Completion (30 days)"
+      );
+      
+      // 3. Final Closeout Date Reminder (10 days)
+      const closeoutDate = new Date();
+      closeoutDate.setDate(closeoutDate.getDate() + 10);
+      const formattedCloseoutDate = closeoutDate.toLocaleDateString('en-US', { 
+        weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' 
+      });
+      
+      await sendEmail(
+        `Contract Reminder: ${sampleContract.name} - Final Closeout Date in 10 days`,
+        `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h2 style="color: #1a365d;">Contract Date Reminder</h2>
+            <p>This is a reminder about an upcoming contract milestone:</p>
+            
+            <div style="background: #f7fafc; padding: 20px; border-radius: 8px; margin: 20px 0;">
+              <h3 style="margin: 0 0 10px 0; color: #2d3748;">${sampleContract.name}</h3>
+              <p style="margin: 5px 0;"><strong>Contract #:</strong> ${sampleContract.contractNumber}</p>
+              <p style="margin: 5px 0;"><strong>Client:</strong> ${sampleContract.clientName}</p>
+              <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 15px 0;">
+              <p style="margin: 5px 0;"><strong>Final Closeout Date:</strong> ${formattedCloseoutDate}</p>
+              <p style="margin: 5px 0; color: #c05621;"><strong>Days Until:</strong> 10 days</p>
+            </div>
+            
+            <p style="color: #718096; font-size: 14px;">
+              This is an automated reminder from ${sampleContract.companyName}.
+            </p>
+          </div>
+        `,
+        "Final Closeout (10 days)"
+      );
+      
+      // 4. Budget 50% Milestone
+      await sendEmail(
+        `Budget Alert: ${sampleContract.name} - 50% Budget Used`,
+        `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h2 style="color: #2d3748;">Budget Milestone Alert</h2>
+            <p>A budget milestone has been reached for the following contract:</p>
+            
+            <div style="background: #c6f6d5; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #68d391;">
+              <h3 style="margin: 0 0 10px 0; color: #2d3748;">${sampleContract.name}</h3>
+              <p style="margin: 5px 0;"><strong>Contract #:</strong> ${sampleContract.contractNumber}</p>
+              <p style="margin: 5px 0;"><strong>Client:</strong> ${sampleContract.clientName}</p>
+              <hr style="border: none; border-top: 1px solid #68d391; margin: 15px 0;">
+              <p style="margin: 5px 0; font-size: 18px;"><strong>Budget Progress:</strong> 50.0%</p>
+              <p style="margin: 5px 0;"><strong>Total Budget:</strong> ${formatCurrency(250000)}</p>
+              <p style="margin: 5px 0;"><strong>Amount Spent:</strong> ${formatCurrency(125000)}</p>
+              <p style="margin: 5px 0;"><strong>Remaining:</strong> ${formatCurrency(125000)}</p>
+            </div>
+            
+            <p style="color: #718096; font-size: 14px;">
+              This is an automated budget alert from ${sampleContract.companyName}.
+            </p>
+          </div>
+        `,
+        "Budget 50% Milestone"
+      );
+      
+      // 5. Budget 75% Milestone
+      await sendEmail(
+        `Budget Alert: ${sampleContract.name} - 75% Budget Used`,
+        `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h2 style="color: #2d3748;">Budget Milestone Alert</h2>
+            <p>A budget milestone has been reached for the following contract:</p>
+            
+            <div style="background: #c6f6d5; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #68d391;">
+              <h3 style="margin: 0 0 10px 0; color: #2d3748;">${sampleContract.name}</h3>
+              <p style="margin: 5px 0;"><strong>Contract #:</strong> ${sampleContract.contractNumber}</p>
+              <p style="margin: 5px 0;"><strong>Client:</strong> ${sampleContract.clientName}</p>
+              <hr style="border: none; border-top: 1px solid #68d391; margin: 15px 0;">
+              <p style="margin: 5px 0; font-size: 18px;"><strong>Budget Progress:</strong> 75.0%</p>
+              <p style="margin: 5px 0;"><strong>Total Budget:</strong> ${formatCurrency(250000)}</p>
+              <p style="margin: 5px 0;"><strong>Amount Spent:</strong> ${formatCurrency(187500)}</p>
+              <p style="margin: 5px 0;"><strong>Remaining:</strong> ${formatCurrency(62500)}</p>
+            </div>
+            
+            <p style="color: #718096; font-size: 14px;">
+              This is an automated budget alert from ${sampleContract.companyName}.
+            </p>
+          </div>
+        `,
+        "Budget 75% Milestone"
+      );
+      
+      // 6. Budget 90% Milestone (Warning)
+      await sendEmail(
+        `Budget Alert: ${sampleContract.name} - 90% Budget Used`,
+        `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h2 style="color: #c05621;">Budget Milestone Alert</h2>
+            <p>A budget milestone has been reached for the following contract:</p>
+            
+            <div style="background: #feebc8; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #f6ad55;">
+              <h3 style="margin: 0 0 10px 0; color: #2d3748;">${sampleContract.name}</h3>
+              <p style="margin: 5px 0;"><strong>Contract #:</strong> ${sampleContract.contractNumber}</p>
+              <p style="margin: 5px 0;"><strong>Client:</strong> ${sampleContract.clientName}</p>
+              <hr style="border: none; border-top: 1px solid #f6ad55; margin: 15px 0;">
+              <p style="margin: 5px 0; font-size: 18px;"><strong>Budget Progress:</strong> 90.0%</p>
+              <p style="margin: 5px 0;"><strong>Total Budget:</strong> ${formatCurrency(250000)}</p>
+              <p style="margin: 5px 0;"><strong>Amount Spent:</strong> ${formatCurrency(225000)}</p>
+              <p style="margin: 5px 0;"><strong>Remaining:</strong> ${formatCurrency(25000)}</p>
+            </div>
+            
+            <p style="color: #c05621;">
+              This contract is approaching its budget limit. Please monitor closely.
+            </p>
+            
+            <p style="color: #718096; font-size: 14px;">
+              This is an automated budget alert from ${sampleContract.companyName}.
+            </p>
+          </div>
+        `,
+        "Budget 90% Milestone"
+      );
+      
+      // 7. Budget 100% Milestone (Critical)
+      await sendEmail(
+        `Budget Alert: ${sampleContract.name} - Budget Exceeded`,
+        `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h2 style="color: #c53030;">Budget Milestone Alert</h2>
+            <p>A budget milestone has been reached for the following contract:</p>
+            
+            <div style="background: #fed7d7; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #fc8181;">
+              <h3 style="margin: 0 0 10px 0; color: #2d3748;">${sampleContract.name}</h3>
+              <p style="margin: 5px 0;"><strong>Contract #:</strong> ${sampleContract.contractNumber}</p>
+              <p style="margin: 5px 0;"><strong>Client:</strong> ${sampleContract.clientName}</p>
+              <hr style="border: none; border-top: 1px solid #fc8181; margin: 15px 0;">
+              <p style="margin: 5px 0; font-size: 18px;"><strong>Budget Progress:</strong> 105.2%</p>
+              <p style="margin: 5px 0;"><strong>Total Budget:</strong> ${formatCurrency(250000)}</p>
+              <p style="margin: 5px 0;"><strong>Amount Spent:</strong> ${formatCurrency(263000)}</p>
+              <p style="margin: 5px 0;"><strong>Remaining:</strong> ${formatCurrency(-13000)}</p>
+            </div>
+            
+            <p style="color: #c53030; font-weight: bold;">
+              ALERT: This contract has exceeded its budget. Please review and take appropriate action.
+            </p>
+            
+            <p style="color: #718096; font-size: 14px;">
+              This is an automated budget alert from ${sampleContract.companyName}.
+            </p>
+          </div>
+        `,
+        "Budget 100% (Exceeded)"
+      );
+      
+      res.json({
+        success: true,
+        message: `Sent ${results.sent.length} test emails to ${emails.join(', ')}`,
+        sent: results.sent,
+        errors: results.errors,
+      });
+    } catch (error: any) {
+      console.error("Error sending test notifications:", error);
+      res.status(500).json({ message: "Failed to send test notifications", error: error.message });
+    }
+  });
+
   // ========== CLIENTS ==========
   
   // Get clients for active company
