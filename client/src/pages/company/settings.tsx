@@ -30,7 +30,7 @@ import type { Company } from "@shared/schema";
 
 export default function CompanySettingsPage() {
   const { toast } = useToast();
-  const { activeCompany, isCompanyAdmin } = useAuth();
+  const { activeCompany, isCompanyAdmin, isEffectiveCompanyAdmin } = useAuth();
   const logoInputRef = useRef<HTMLInputElement>(null);
   const [formData, setFormData] = useState({
     name: "",
@@ -41,7 +41,7 @@ export default function CompanySettingsPage() {
 
   const { data: company, isLoading, error } = useQuery<Company>({
     queryKey: ["/api/companies", activeCompany?.id],
-    enabled: !!activeCompany?.id && isCompanyAdmin,
+    enabled: !!activeCompany?.id && isEffectiveCompanyAdmin,
   });
 
   useEffect(() => {
@@ -135,7 +135,7 @@ export default function CompanySettingsPage() {
     }
   };
 
-  if (!isCompanyAdmin || !activeCompany) {
+  if (!isEffectiveCompanyAdmin || !activeCompany) {
     return (
       <PageLayout title="Company Settings">
         <div className="container px-4 py-6 mx-auto max-w-screen-lg">
