@@ -2243,13 +2243,21 @@ export async function registerRoutes(
       const addRow = (label: string, value: string, multiLine = false) => {
         doc.fontSize(10).font('Helvetica-Bold').text(label + ':', labelX, currentY);
         doc.font('Helvetica').text(value || 'N/A', valueX, currentY, { width: pageWidth - (valueX - startX), lineGap: 2 });
-        currentY += multiLine ? doc.heightOfString(value || 'N/A', { width: pageWidth - (valueX - startX) }) + 8 : rowHeight;
+        currentY += multiLine ? doc.heightOfString(value || 'N/A', { width: pageWidth - (valueX - startX) }) + 14 : rowHeight;
       };
       
       addRow('SCHOOL DISTRICT', proposal.clientName);
-      addRow('INSPECTORS', proposal.options?.map(opt => 
-        opt.inspectors?.map(ins => ins.inspectorName).filter(Boolean).join(' / ')
-      ).filter(Boolean).join(' / ') || 'TBD');
+      
+      // Collect unique inspector names (deduplicated) and add suffix
+      const allInspectorNames = proposal.options?.flatMap(opt => 
+        opt.inspectors?.map(ins => ins.inspectorName).filter(Boolean) || []
+      ) || [];
+      const uniqueInspectorNames = [...new Set(allInspectorNames)];
+      const inspectorsDisplay = uniqueInspectorNames.length > 0 
+        ? uniqueInspectorNames.join(' / ') + ' (or other approved IOR/PE as required)'
+        : 'TBD';
+      addRow('INSPECTORS', inspectorsDisplay, true); // multiLine for proper spacing
+      
       addRow('PROJECT MANAGER', proposal.projectManager || '');
       addRow('PROJECT', proposal.projectName);
       
