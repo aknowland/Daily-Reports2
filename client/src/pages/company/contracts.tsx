@@ -72,7 +72,7 @@ import { format } from "date-fns";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { calculateTotalHours, calculateWorkingDays, formatHoursDisplay, getHolidaysInRange } from "@/lib/working-days-calculator";
-import { Users, Info } from "lucide-react";
+import { Users, Info, Eye } from "lucide-react";
 
 type ContractInspectorEntry = {
   title: string;
@@ -960,6 +960,17 @@ export default function ContractsPage() {
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
+                              {proposal.pdfPath && (
+                                <DropdownMenuItem
+                                  onClick={() => {
+                                    window.open(`/api/proposals/${proposal.id}/pdf/view`, '_blank');
+                                  }}
+                                  data-testid={`button-view-proposal-${proposal.id}`}
+                                >
+                                  <Eye className="w-4 h-4 mr-2" />
+                                  View PDF
+                                </DropdownMenuItem>
+                              )}
                               <DropdownMenuItem
                                 onClick={async () => {
                                   try {
