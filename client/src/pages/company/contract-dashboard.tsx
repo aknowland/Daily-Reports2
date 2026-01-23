@@ -635,9 +635,14 @@ export default function ContractDashboard() {
               <ListChecks className="h-5 w-5" />
               Bid Schedule
             </CardTitle>
+            {dashboard.projects.length > 1 && (
+              <CardDescription>
+                Contract-level milestones and per-project schedules
+              </CardDescription>
+            )}
           </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-4">
+          <CardContent className="space-y-6">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
               <div>
                 <p className="text-xs text-muted-foreground">Bid Release</p>
                 <p className="font-medium text-sm" data-testid="text-bid-release-date">
@@ -656,25 +661,68 @@ export default function ContractDashboard() {
                   {formatDate(dashboard.bidSchedule.awardDate)}
                 </p>
               </div>
-              <div>
-                <p className="text-xs text-muted-foreground">Start Date</p>
-                <p className="font-medium text-sm" data-testid="text-schedule-start-date">
-                  {formatDate(dashboard.bidSchedule.startDate)}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">Substantial Completion</p>
-                <p className="font-medium text-sm" data-testid="text-substantial-completion-date">
-                  {formatDate(dashboard.bidSchedule.substantialCompletionDate)}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">Final Closeout</p>
-                <p className="font-medium text-sm" data-testid="text-final-closeout-date">
-                  {formatDate(dashboard.bidSchedule.finalCloseoutDate)}
-                </p>
-              </div>
             </div>
+
+            {dashboard.projects.length <= 1 ? (
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                <div>
+                  <p className="text-xs text-muted-foreground">Start Date</p>
+                  <p className="font-medium text-sm" data-testid="text-schedule-start-date">
+                    {formatDate(dashboard.bidSchedule.startDate)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Substantial Completion</p>
+                  <p className="font-medium text-sm" data-testid="text-substantial-completion-date">
+                    {formatDate(dashboard.bidSchedule.substantialCompletionDate)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Final Closeout</p>
+                  <p className="font-medium text-sm" data-testid="text-final-closeout-date">
+                    {formatDate(dashboard.bidSchedule.finalCloseoutDate)}
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <p className="text-sm font-medium text-muted-foreground">Project Schedules</p>
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Project</TableHead>
+                        <TableHead>Start Date</TableHead>
+                        <TableHead>Substantial Completion</TableHead>
+                        <TableHead>Final Closeout</TableHead>
+                        <TableHead>Status</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {dashboard.projects.map((project) => {
+                        const statusConfig = getScheduleStatusConfig(project.scheduleStatus);
+                        return (
+                          <TableRow key={project.id} data-testid={`project-schedule-row-${project.id}`}>
+                            <TableCell className="font-medium">{project.name}</TableCell>
+                            <TableCell>{formatDate(project.startDate)}</TableCell>
+                            <TableCell>{formatDate(project.substantialCompletionDate)}</TableCell>
+                            <TableCell>{formatDate(project.finalCloseoutDate)}</TableCell>
+                            <TableCell>
+                              <Badge 
+                                variant="secondary" 
+                                className={`${statusConfig.color} text-white`}
+                              >
+                                {statusConfig.label}
+                              </Badge>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
 
