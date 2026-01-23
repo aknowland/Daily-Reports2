@@ -189,7 +189,10 @@ export default function BillingManagementPage() {
           expirationDate: data.expirationDate ? new Date(data.expirationDate) : null,
         }),
       });
-      if (!response.ok) throw new Error("Failed to create purchase order");
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || "Failed to create purchase order");
+      }
       return response.json();
     },
     onSuccess: () => {
@@ -198,8 +201,8 @@ export default function BillingManagementPage() {
       resetPOForm();
       toast({ title: "Purchase order created" });
     },
-    onError: () => {
-      toast({ title: "Failed to create purchase order", variant: "destructive" });
+    onError: (error: Error) => {
+      toast({ title: "Failed to create purchase order", description: error.message, variant: "destructive" });
     },
   });
 
