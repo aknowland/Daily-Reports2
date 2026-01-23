@@ -6961,6 +6961,90 @@ export async function registerRoutes(
     }
   });
 
+  // Get pending member assignments for a company
+  app.get("/api/companies/:id/pending-assignments", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const companyId = req.params.id;
+      
+      const profile = await storage.getUserProfile(userId);
+      const hasSystemAdminAccess = isEffectiveSystemAdmin(profile);
+      const hasCompanyAdminAccess = await isEffectiveCompanyAdmin(userId, companyId, profile);
+      
+      if (!hasSystemAdminAccess && !hasCompanyAdminAccess) {
+        return res.status(403).json({ message: "Access denied. Admin rights required." });
+      }
+      
+      const assignments = await storage.getPendingAssignmentsForCompany(companyId);
+      res.json(assignments);
+    } catch (error) {
+      console.error("Error fetching pending assignments:", error);
+      res.status(500).json({ message: "Failed to fetch pending assignments" });
+    }
+  });
+
+  // Create a pending member assignment (pre-assign role before user logs in)
+  app.post("/api/companies/:id/pending-assignments", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const companyId = req.params.id;
+      const { email, role } = req.body;
+      
+      if (!email) {
+        return res.status(400).json({ message: "Email is required" });
+      }
+      
+      const profile = await storage.getUserProfile(userId);
+      const hasSystemAdminAccess = isEffectiveSystemAdmin(profile);
+      const hasCompanyAdminAccess = await isEffectiveCompanyAdmin(userId, companyId, profile);
+      
+      if (!hasSystemAdminAccess && !hasCompanyAdminAccess) {
+        return res.status(403).json({ message: "Access denied. Admin rights required." });
+      }
+      
+      // Check if assignment already exists
+      const existing = await storage.getPendingAssignmentsForCompany(companyId);
+      if (existing.some(a => a.email.toLowerCase() === email.toLowerCase())) {
+        return res.status(400).json({ message: "A pending assignment already exists for this email" });
+      }
+      
+      const assignment = await storage.createPendingAssignment({
+        email,
+        companyId,
+        role: role || "inspector",
+        createdById: userId,
+      });
+      
+      res.status(201).json(assignment);
+    } catch (error) {
+      console.error("Error creating pending assignment:", error);
+      res.status(500).json({ message: "Failed to create pending assignment" });
+    }
+  });
+
+  // Delete a pending member assignment
+  app.delete("/api/companies/:id/pending-assignments/:assignmentId", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const companyId = req.params.id;
+      const assignmentId = req.params.assignmentId;
+      
+      const profile = await storage.getUserProfile(userId);
+      const hasSystemAdminAccess = isEffectiveSystemAdmin(profile);
+      const hasCompanyAdminAccess = await isEffectiveCompanyAdmin(userId, companyId, profile);
+      
+      if (!hasSystemAdminAccess && !hasCompanyAdminAccess) {
+        return res.status(403).json({ message: "Access denied. Admin rights required." });
+      }
+      
+      await storage.deletePendingAssignment(assignmentId);
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting pending assignment:", error);
+      res.status(500).json({ message: "Failed to delete pending assignment" });
+    }
+  });
+
   // Get company projects (system admin or company admin)
   app.get("/api/companies/:id/projects", isAuthenticated, async (req: any, res) => {
     try {
