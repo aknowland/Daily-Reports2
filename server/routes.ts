@@ -164,6 +164,8 @@ const createProjectSchema = z.object({
   startDate: z.string().or(z.date()).transform(val => val ? new Date(val) : null).nullable().optional(),
   substantialCompletionDate: z.string().or(z.date()).transform(val => val ? new Date(val) : null).nullable().optional(),
   finalCloseoutDate: z.string().or(z.date()).transform(val => val ? new Date(val) : null).nullable().optional(),
+  budgetAmount: z.string().or(z.number()).transform(val => val ? String(val) : null).nullable().optional(),
+  baseBudget: z.string().or(z.number()).transform(val => val ? String(val) : null).nullable().optional(),
 });
 
 const updateProjectSchema = createProjectSchema.partial();
@@ -510,6 +512,14 @@ export async function registerRoutes(
         }
       }
       
+      // Normalize empty budget strings to null
+      if (projectData.budgetAmount === '' || projectData.budgetAmount === undefined) {
+        projectData.budgetAmount = null;
+      }
+      if (projectData.baseBudget === '' || projectData.baseBudget === undefined) {
+        projectData.baseBudget = null;
+      }
+      
       const validated = createProjectSchema.parse({ ...projectData, companyId: companyId || null });
       console.log("[POST /api/projects] Validated data:", validated);
       
@@ -565,6 +575,14 @@ export async function registerRoutes(
       // Convert empty contractId to null
       if (updateData.contractId === '' || updateData.contractId === 'none') {
         updateData.contractId = null;
+      }
+      
+      // Normalize empty budget strings to null
+      if (updateData.budgetAmount === '' || updateData.budgetAmount === undefined) {
+        updateData.budgetAmount = null;
+      }
+      if (updateData.baseBudget === '' || updateData.baseBudget === undefined) {
+        updateData.baseBudget = null;
       }
       
       if (newCompanyId !== undefined) {
@@ -1573,13 +1591,36 @@ export async function registerRoutes(
             projectScheduleStatus = 'complete';
           }
           
+          // Project-level budget tracking with stacking
+          const projectBudgetAmount = parseFloat((p as any).budgetAmount || '0');
+          const projectBaseBudget = parseFloat((p as any).baseBudget || '0');
+          const projectTotalSpent = projectBaseBudget + projectBilled;
+          const projectBudgetProgress = projectBudgetAmount > 0 
+            ? Math.round((projectTotalSpent / projectBudgetAmount) * 10000) / 100
+            : 0;
+          
+          let projectBudgetStatus: 'under' | 'on_track' | 'warning' | 'over' = 'on_track';
+          if (projectBudgetProgress >= 100) {
+            projectBudgetStatus = 'over';
+          } else if (projectBudgetProgress >= 80) {
+            projectBudgetStatus = 'warning';
+          } else if (projectBudgetProgress < 50) {
+            projectBudgetStatus = 'under';
+          }
+          
           return {
             id: p.id,
             name: p.name,
             projectNumber: p.projectNumber,
             status: (p as any).status || 'active',
             reportCount,
-            budgetSpent: projectBilled,
+            budgetSpent: projectTotalSpent,
+            budgetAmount: projectBudgetAmount,
+            baseBudget: projectBaseBudget,
+            calculatedSpent: projectBilled,
+            budgetProgress: projectBudgetProgress,
+            budgetStatus: projectBudgetStatus,
+            budgetRemaining: projectBudgetAmount > 0 ? projectBudgetAmount - projectTotalSpent : 0,
             startDate: (p as any).startDate,
             substantialCompletionDate: (p as any).substantialCompletionDate,
             finalCloseoutDate: (p as any).finalCloseoutDate,

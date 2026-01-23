@@ -114,6 +114,9 @@ export const projects = pgTable("projects", {
   startDate: timestamp("start_date"),
   substantialCompletionDate: timestamp("substantial_completion_date"),
   finalCloseoutDate: timestamp("final_closeout_date"),
+  // Project-level budget tracking
+  budgetAmount: numeric("budget_amount"), // Total budget for this project
+  baseBudget: numeric("base_budget"), // Base budget for stacking (work done before current tracking)
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -400,6 +403,20 @@ export const budgetNotifications = pgTable("budget_notifications", {
   unique().on(table.contractId, table.milestonePercent),
 ]);
 
+// Project budget notifications table
+export const projectBudgetNotifications = pgTable("project_budget_notifications", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  projectId: varchar("project_id").references(() => projects.id, { onDelete: "cascade" }).notNull(),
+  companyId: varchar("company_id").references(() => companies.id, { onDelete: "cascade" }).notNull(),
+  milestonePercent: integer("milestone_percent").notNull(), // 50, 75, 90, 100
+  currentSpend: numeric("current_spend", { precision: 12, scale: 2 }).notNull(),
+  budgetAmount: numeric("budget_amount", { precision: 12, scale: 2 }).notNull(),
+  sentAt: timestamp("sent_at").defaultNow().notNull(),
+  recipientEmails: json("recipient_emails").$type<string[]>().default([]),
+}, (table) => [
+  unique().on(table.projectId, table.milestonePercent),
+]);
+
 // Timesheet status enum
 export const timesheetStatusEnum = pgEnum("timesheet_status", ["draft", "submitted", "approved"]);
 
@@ -639,6 +656,7 @@ export const insertContractOptionSchema = createInsertSchema(contractOptions).om
 export const insertContractOptionInspectorSchema = createInsertSchema(contractOptionInspectors).omit({ id: true, createdAt: true });
 export const insertContractNotificationSchema = createInsertSchema(contractNotifications).omit({ id: true, sentAt: true });
 export const insertBudgetNotificationSchema = createInsertSchema(budgetNotifications).omit({ id: true, sentAt: true });
+export const insertProjectBudgetNotificationSchema = createInsertSchema(projectBudgetNotifications).omit({ id: true, sentAt: true });
 export const insertTimesheetSchema = createInsertSchema(timesheets).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertInvoiceSchema = createInsertSchema(invoices).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertMonthlyReportBundleSchema = createInsertSchema(monthlyReportBundles).omit({ id: true, createdAt: true });
@@ -682,6 +700,8 @@ export type ContractNotification = typeof contractNotifications.$inferSelect;
 export type InsertContractNotification = z.infer<typeof insertContractNotificationSchema>;
 export type BudgetNotification = typeof budgetNotifications.$inferSelect;
 export type InsertBudgetNotification = z.infer<typeof insertBudgetNotificationSchema>;
+export type ProjectBudgetNotification = typeof projectBudgetNotifications.$inferSelect;
+export type InsertProjectBudgetNotification = z.infer<typeof insertProjectBudgetNotificationSchema>;
 export type Timesheet = typeof timesheets.$inferSelect;
 export type InsertTimesheet = z.infer<typeof insertTimesheetSchema>;
 export type Invoice = typeof invoices.$inferSelect;

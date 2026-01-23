@@ -1,7 +1,7 @@
 import { 
   projects, dailyReports, photos, distributionLogs, appSettings, userProfiles, projectMembers, invites,
   companies, companyMembers, joinRequests, invoices, contracts, clients, contractAttachments, contractOptions, contractOptionInspectors, timesheets, monthlyReportBundles,
-  proposals, proposalOptions, proposalOptionInspectors, iorAgreements, purchaseOrders, contractNotifications, budgetNotifications,
+  proposals, proposalOptions, proposalOptionInspectors, iorAgreements, purchaseOrders, contractNotifications, budgetNotifications, projectBudgetNotifications,
   type Project, type InsertProject,
   type DailyReport, type InsertDailyReport,
   type Photo, type InsertPhoto,
@@ -23,6 +23,7 @@ import {
   type ContractOptionInspector, type InsertContractOptionInspector,
   type ContractNotification, type InsertContractNotification,
   type BudgetNotification, type InsertBudgetNotification,
+  type ProjectBudgetNotification, type InsertProjectBudgetNotification,
   type Timesheet, type InsertTimesheet,
   type MonthlyReportBundle, type InsertMonthlyReportBundle,
   type Proposal, type InsertProposal, type ProposalWithDetails,
@@ -1721,6 +1722,41 @@ export class DatabaseStorage implements IStorage {
       .from(budgetNotifications)
       .where(eq(budgetNotifications.contractId, contractId))
       .orderBy(desc(budgetNotifications.sentAt));
+  }
+
+  // Project Budget Notifications
+  async hasProjectBudgetNotificationBeenSent(projectId: string, milestonePercent: number): Promise<boolean> {
+    const existing = await db
+      .select()
+      .from(projectBudgetNotifications)
+      .where(
+        and(
+          eq(projectBudgetNotifications.projectId, projectId),
+          eq(projectBudgetNotifications.milestonePercent, milestonePercent)
+        )
+      )
+      .limit(1);
+    return existing.length > 0;
+  }
+
+  async createProjectBudgetNotification(data: InsertProjectBudgetNotification): Promise<ProjectBudgetNotification> {
+    const [notification] = await db.insert(projectBudgetNotifications).values(data).returning();
+    return notification;
+  }
+
+  async getProjectBudgetNotifications(projectId: string): Promise<ProjectBudgetNotification[]> {
+    return db
+      .select()
+      .from(projectBudgetNotifications)
+      .where(eq(projectBudgetNotifications.projectId, projectId))
+      .orderBy(desc(projectBudgetNotifications.sentAt));
+  }
+
+  async getProjectsWithBudgets(): Promise<Project[]> {
+    return db
+      .select()
+      .from(projects)
+      .where(sql`${projects.budgetAmount} IS NOT NULL AND CAST(${projects.budgetAmount} AS NUMERIC) > 0`);
   }
 
   // Proposals
