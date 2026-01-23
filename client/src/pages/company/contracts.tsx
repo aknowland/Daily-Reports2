@@ -172,7 +172,7 @@ const emptyFormData: ContractFormData = {
 
 export default function ContractsPage() {
   const { toast } = useToast();
-  const { activeCompany, isCompanyAdmin } = useAuth();
+  const { activeCompany, isCompanyAdmin, isEffectiveCompanyAdmin } = useAuth();
   const [, setLocation] = useLocation();
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [contractToDelete, setContractToDelete] = useState<ContractWithProjects | null>(null);
@@ -951,7 +951,7 @@ export default function ContractsPage() {
             Back to Dashboard
           </Link>
         </Button>
-        {isCompanyAdmin && (
+        {isEffectiveCompanyAdmin && (
           <div className="flex gap-2">
           <Button 
             variant="outline"
@@ -1019,7 +1019,7 @@ export default function ContractsPage() {
               <CardContent className="p-6 text-center text-muted-foreground">
                 <FileText className="w-12 h-12 mx-auto mb-4 opacity-50" />
                 <p>No contracts found.</p>
-                {isCompanyAdmin && (
+                {isEffectiveCompanyAdmin && (
                   <Button 
                     variant="outline" 
                     className="mt-4"
@@ -1150,7 +1150,7 @@ export default function ContractsPage() {
                         </div>
                       </div>
                       <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-                        {isCompanyAdmin && (
+                        {isEffectiveCompanyAdmin && (
                           <>
                             <Button
                               variant="ghost"
@@ -1191,7 +1191,7 @@ export default function ContractsPage() {
               <CardContent className="p-6 text-center text-muted-foreground">
                 <FileText className="w-12 h-12 mx-auto mb-4 opacity-50" />
                 <p>No proposals found.</p>
-                {isCompanyAdmin && (
+                {isEffectiveCompanyAdmin && (
                   <Button 
                     variant="outline" 
                     className="mt-4"
@@ -1353,7 +1353,7 @@ export default function ContractsPage() {
                               )}
                             </DropdownMenuContent>
                           </DropdownMenu>
-                          {isCompanyAdmin && (
+                          {isEffectiveCompanyAdmin && (
                             <>
                               <Button
                                 variant="default"
