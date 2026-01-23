@@ -71,7 +71,7 @@ import { ClientSelect } from "@/components/client-select";
 import { format } from "date-fns";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { calculateTotalHours, calculateWorkingDays, formatHoursDisplay } from "@/lib/working-days-calculator";
+import { calculateTotalHours, calculateWorkingDays, formatHoursDisplay, getHolidaysInRange } from "@/lib/working-days-calculator";
 import { Users, Info } from "lucide-react";
 
 type ContractInspectorEntry = {
@@ -1318,47 +1318,73 @@ export default function ContractsPage() {
               </div>
             </div>
 
-            <div className="border-t pt-4">
-              <h4 className="text-sm font-medium mb-3">Hourly Rates (for Billing)</h4>
-              <div className="grid grid-cols-3 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="regularRate">Regular Rate ($/hr)</Label>
-                  <Input
-                    id="regularRate"
-                    type="number"
-                    step="0.01"
-                    value={formData.regularRate}
-                    onChange={(e) => setFormData({ ...formData, regularRate: e.target.value })}
-                    placeholder="0.00"
-                    data-testid="input-regular-rate"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="overtimeRate">Overtime Rate ($/hr)</Label>
-                  <Input
-                    id="overtimeRate"
-                    type="number"
-                    step="0.01"
-                    value={formData.overtimeRate}
-                    onChange={(e) => setFormData({ ...formData, overtimeRate: e.target.value })}
-                    placeholder="0.00"
-                    data-testid="input-overtime-rate"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="premiumRate">Premium Rate ($/hr)</Label>
-                  <Input
-                    id="premiumRate"
-                    type="number"
-                    step="0.01"
-                    value={formData.premiumRate}
-                    onChange={(e) => setFormData({ ...formData, premiumRate: e.target.value })}
-                    placeholder="0.00"
-                    data-testid="input-premium-rate"
-                  />
-                </div>
-              </div>
-            </div>
+            {formData.startDate && (formData.substantialCompletionDate || formData.finalCloseoutDate) && (() => {
+              const endDate = formData.substantialCompletionDate || formData.finalCloseoutDate;
+              const workingDays = calculateWorkingDays(formData.startDate, endDate);
+              const holidays = getHolidaysInRange(formData.startDate, endDate);
+              
+              if (workingDays > 0) {
+                return (
+                  <Card className="bg-muted/50">
+                    <CardContent className="pt-4 pb-3">
+                      <div className="flex items-start gap-3">
+                        <Calendar className="h-5 w-5 text-muted-foreground mt-0.5" />
+                        <div className="flex-1 space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm font-medium">Hours Calculation Preview</span>
+                            <span className="text-sm text-muted-foreground">
+                              Based on Start to {formData.substantialCompletionDate ? "Substantial Completion" : "Final Closeout"}
+                            </span>
+                          </div>
+                          <div className="grid grid-cols-3 gap-4 text-sm">
+                            <div>
+                              <span className="text-muted-foreground">Working Days:</span>{" "}
+                              <span className="font-medium">{workingDays}</span>
+                            </div>
+                            <div>
+                              <span className="text-muted-foreground">Full Time (8 hrs):</span>{" "}
+                              <span className="font-medium">{formatHoursDisplay(workingDays * 8)}</span>
+                            </div>
+                            <div>
+                              <span className="text-muted-foreground">Part Time (4 hrs):</span>{" "}
+                              <span className="font-medium">{formatHoursDisplay(workingDays * 4)}</span>
+                            </div>
+                          </div>
+                          {holidays.length > 0 && (
+                            <div className="flex items-center gap-2 text-xs text-muted-foreground pt-1 border-t">
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button 
+                                    type="button" 
+                                    variant="ghost" 
+                                    size="sm"
+                                    className="h-auto p-0 text-xs text-muted-foreground"
+                                    data-testid="button-holiday-info"
+                                  >
+                                    <Info className="h-3 w-3 mr-1" />
+                                    {holidays.length} holiday{holidays.length !== 1 ? 's' : ''} excluded
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent side="bottom" className="max-w-xs">
+                                  <div className="space-y-1">
+                                    {holidays.map(h => (
+                                      <div key={h.date} className="text-xs">
+                                        {h.name} ({new Date(h.date + 'T00:00:00').toLocaleDateString()})
+                                      </div>
+                                    ))}
+                                  </div>
+                                </TooltipContent>
+                              </Tooltip>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              }
+              return null;
+            })()}
 
             <div className="border-t pt-4 space-y-4">
               <div className="flex items-center justify-between">
