@@ -76,6 +76,54 @@ export default function CompanyDashboard() {
           isLoading={contractsLoading} 
         />
 
+        {/* Quick Links */}
+        <div className="grid gap-4 md:grid-cols-3">
+          <Link href="/reports">
+            <Card className="cursor-pointer hover-elevate" data-testid="card-quick-reports">
+              <CardContent className="flex items-center gap-4 p-6">
+                <div className="rounded-lg bg-primary/10 p-3">
+                  <ClipboardList className="h-6 w-6 text-primary" />
+                </div>
+                <div className="flex-1">
+                  <h3 className="font-semibold">View Reports</h3>
+                  <p className="text-sm text-muted-foreground">Manage daily field reports</p>
+                </div>
+                <ChevronRight className="h-5 w-5 text-muted-foreground" />
+              </CardContent>
+            </Card>
+          </Link>
+
+          <Link href="/company/team">
+            <Card className="cursor-pointer hover-elevate" data-testid="card-quick-team">
+              <CardContent className="flex items-center gap-4 p-6">
+                <div className="rounded-lg bg-blue-500/10 p-3">
+                  <Users className="h-6 w-6 text-blue-500" />
+                </div>
+                <div className="flex-1">
+                  <h3 className="font-semibold">Team Members</h3>
+                  <p className="text-sm text-muted-foreground">Manage your team</p>
+                </div>
+                <ChevronRight className="h-5 w-5 text-muted-foreground" />
+              </CardContent>
+            </Card>
+          </Link>
+
+          <Link href="/company/projects">
+            <Card className="cursor-pointer hover-elevate" data-testid="card-quick-projects">
+              <CardContent className="flex items-center gap-4 p-6">
+                <div className="rounded-lg bg-amber-500/10 p-3">
+                  <FolderKanban className="h-6 w-6 text-amber-500" />
+                </div>
+                <div className="flex-1">
+                  <h3 className="font-semibold">Projects</h3>
+                  <p className="text-sm text-muted-foreground">View company projects</p>
+                </div>
+                <ChevronRight className="h-5 w-5 text-muted-foreground" />
+              </CardContent>
+            </Card>
+          </Link>
+        </div>
+
         {/* Project Status Summary Cards */}
         <StatusSummaryCards 
           contracts={contractsSummary || []} 
@@ -141,54 +189,6 @@ export default function CompanyDashboard() {
               )}
             </CardContent>
           </Card>
-        </div>
-
-        {/* Quick Links */}
-        <div className="grid gap-4 md:grid-cols-3">
-          <Link href="/reports">
-            <Card className="cursor-pointer hover-elevate" data-testid="card-quick-reports">
-              <CardContent className="flex items-center gap-4 p-6">
-                <div className="rounded-lg bg-primary/10 p-3">
-                  <ClipboardList className="h-6 w-6 text-primary" />
-                </div>
-                <div className="flex-1">
-                  <h3 className="font-semibold">View Reports</h3>
-                  <p className="text-sm text-muted-foreground">Manage daily field reports</p>
-                </div>
-                <ChevronRight className="h-5 w-5 text-muted-foreground" />
-              </CardContent>
-            </Card>
-          </Link>
-
-          <Link href="/company/team">
-            <Card className="cursor-pointer hover-elevate" data-testid="card-quick-team">
-              <CardContent className="flex items-center gap-4 p-6">
-                <div className="rounded-lg bg-blue-500/10 p-3">
-                  <Users className="h-6 w-6 text-blue-500" />
-                </div>
-                <div className="flex-1">
-                  <h3 className="font-semibold">Team Members</h3>
-                  <p className="text-sm text-muted-foreground">Manage your team</p>
-                </div>
-                <ChevronRight className="h-5 w-5 text-muted-foreground" />
-              </CardContent>
-            </Card>
-          </Link>
-
-          <Link href="/company/projects">
-            <Card className="cursor-pointer hover-elevate" data-testid="card-quick-projects">
-              <CardContent className="flex items-center gap-4 p-6">
-                <div className="rounded-lg bg-amber-500/10 p-3">
-                  <FolderKanban className="h-6 w-6 text-amber-500" />
-                </div>
-                <div className="flex-1">
-                  <h3 className="font-semibold">Projects</h3>
-                  <p className="text-sm text-muted-foreground">View company projects</p>
-                </div>
-                <ChevronRight className="h-5 w-5 text-muted-foreground" />
-              </CardContent>
-            </Card>
-          </Link>
         </div>
       </div>
     </PageLayout>
