@@ -41,7 +41,7 @@ The application is built with a modern web stack, utilizing **React, TypeScript,
 - **Contract Dashboard**: Comprehensive visual dashboard for each contract accessible via "Dashboard" button on contract cards. Displays:
   - Schedule progress (based on start/substantial completion dates with status indicators)
   - Budget tracking with stacking support (base budget + auto-calculated from reports)
-  - Linked Projects section showing all projects under this contract with report counts and budget contributions
+  - Linked Projects section showing all projects under this contract with report counts, per-project budget progress bars, and budget status indicators
   - Bid schedule (all milestone dates from bid release to final closeout)
   - Client billing rates (regular, overtime, premium hourly rates)
   - Inspector billing rates (from IOR agreements linked to contract projects)
@@ -49,6 +49,7 @@ The application is built with a modern web stack, utilizing **React, TypeScript,
   - Attached files (with download links)
   - Daily reports table (showing reports from all linked projects)
 - **Stacking Budget for Mid-Project Onboarding**: When an inspector joins a project mid-way, admins can set a "base budget" representing work done before they joined. This base amount automatically stacks with new daily reports - no manual recalculation needed.
+- **Project-Level Budget Tracking**: Each project can have its own budget amount and base budget (for stacking). The Contract Dashboard displays per-project budget progress with color-coded status indicators (under budget, on track, warning at 80%, over budget). Project budget milestone notifications (50%, 75%, 90%, 100%) are sent independently from contract-level notifications.
 - **Invoice Tracking with Purchase Order Integration**: Full invoice lifecycle management with PO linking. Features:
   - PO → Contract → Project billing hierarchy
   - Invoice creation with PO assignment and balance tracking

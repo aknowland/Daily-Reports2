@@ -48,6 +48,7 @@ export interface ProcessingResults {
   statusUpdates: { contractId: string; contractName: string; oldStatus: string; newStatus: string }[];
   notificationsSent: { contractId: string; contractName: string; dateType: string; daysBefore: number; emails: string[] }[];
   budgetAlerts: { contractId: string; contractName: string; milestone: number; utilization: number; emails: string[] }[];
+  projectBudgetAlerts: { projectId: string; projectName: string; milestone: number; utilization: number; emails: string[] }[];
   errors: { contractId: string; error: string }[];
 }
 
@@ -75,6 +76,7 @@ export async function processContractNotifications(
     statusUpdates: [],
     notificationsSent: [],
     budgetAlerts: [],
+    projectBudgetAlerts: [],
     errors: [],
   };
   
@@ -277,6 +279,135 @@ export async function processContractNotifications(
       results.errors.push({
         contractId: contract.id,
         error: contractError.message,
+      });
+    }
+  }
+  
+  // 4. Check for project-level budget notifications
+  const projectsWithBudgets = await storage.getProjectsWithBudgets();
+  const projectsToProcess = companyIdFilter
+    ? projectsWithBudgets.filter(p => p.companyId === companyIdFilter)
+    : projectsWithBudgets;
+  
+  for (const project of projectsToProcess) {
+    try {
+      if (!project.companyId) continue;
+      
+      const projectBudgetAmount = parseFloat((project as any).budgetAmount || '0');
+      if (projectBudgetAmount <= 0) continue;
+      
+      // Calculate project budget: base + calculated from reports
+      const projectBaseBudget = parseFloat((project as any).baseBudget || '0');
+      
+      // Get reports for this project and calculate billed amount
+      const projectReports = await storage.getReportsByProject(project.id);
+      let calculatedSpent = 0;
+      
+      // Get contract rates if project has a contract
+      let hourlyRate = 75; // Default rate if no contract
+      if (project.contractId) {
+        const contractOptions = await storage.getContractOptions(project.contractId);
+        const firstOption = contractOptions[0];
+        const firstInspector = firstOption?.inspectors?.[0];
+        if (firstInspector?.rate) {
+          hourlyRate = parseFloat(firstInspector.rate);
+        }
+      }
+      
+      for (const report of projectReports) {
+        const regularHours = parseFloat(report.regularHours || '0');
+        const otHours = parseFloat(report.otHours || '0');
+        const premiumHours = parseFloat((report as any).premiumHours || '0');
+        calculatedSpent += (regularHours + otHours * 1.5 + premiumHours * 2) * hourlyRate;
+      }
+      
+      const projectTotalSpent = projectBaseBudget + calculatedSpent;
+      const projectBudgetProgress = (projectTotalSpent / projectBudgetAmount) * 100;
+      
+      for (const milestone of BUDGET_MILESTONES) {
+        if (projectBudgetProgress >= milestone) {
+          const alreadySent = await storage.hasProjectBudgetNotificationBeenSent(project.id, milestone);
+          if (alreadySent) continue;
+          
+          const adminEmails = await storage.getCompanyAdminEmails(project.companyId);
+          if (adminEmails.length === 0) continue;
+          
+          const company = await storage.getCompany(project.companyId);
+          
+          const formatCurrency = (amount: number) => 
+            amount.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+          
+          const milestoneLabel = milestone >= 100 ? 'Budget Exceeded' : `${milestone}% Budget Used`;
+          const bgColor = milestone >= 100 ? '#fed7d7' : milestone >= 90 ? '#feebc8' : '#c6f6d5';
+          const borderColor = milestone >= 100 ? '#fc8181' : milestone >= 90 ? '#f6ad55' : '#68d391';
+          
+          if (sendEmails && resendInstance) {
+            try {
+              await resendInstance.emails.send({
+                from: 'Field Daily Reports <noreply@mail.replit.app>',
+                to: adminEmails,
+                subject: `Project Budget Alert: ${project.name} - ${milestoneLabel}`,
+                html: `
+                  <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                    <h2 style="color: ${milestone >= 100 ? '#c53030' : milestone >= 90 ? '#c05621' : '#2d3748'};">
+                      Project Budget Milestone Alert
+                    </h2>
+                    <p>A budget milestone has been reached for the following project:</p>
+                    <div style="background: ${bgColor}; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid ${borderColor};">
+                      <h3 style="margin: 0 0 10px 0; color: #2d3748;">${project.name}</h3>
+                      <p style="margin: 5px 0;"><strong>Project #:</strong> ${project.projectNumber}</p>
+                      <hr style="border: none; border-top: 1px solid ${borderColor}; margin: 15px 0;">
+                      <p style="margin: 5px 0; font-size: 18px;"><strong>Budget Progress:</strong> ${projectBudgetProgress.toFixed(1)}%</p>
+                      <p style="margin: 5px 0;"><strong>Total Budget:</strong> ${formatCurrency(projectBudgetAmount)}</p>
+                      <p style="margin: 5px 0;"><strong>Amount Spent:</strong> ${formatCurrency(projectTotalSpent)}</p>
+                      <p style="margin: 5px 0;"><strong>Remaining:</strong> ${formatCurrency(projectBudgetAmount - projectTotalSpent)}</p>
+                    </div>
+                    ${milestone >= 100 ? `
+                    <p style="color: #c53030; font-weight: bold;">
+                      ALERT: This project has exceeded its budget. Please review and take appropriate action.
+                    </p>
+                    ` : milestone >= 90 ? `
+                    <p style="color: #c05621;">
+                      This project is approaching its budget limit. Please monitor closely.
+                    </p>
+                    ` : ''}
+                    <p style="color: #718096; font-size: 14px;">
+                      This is an automated project budget alert from ${company?.name || 'Field Daily Reports'}.
+                    </p>
+                  </div>
+                `,
+              });
+            } catch (emailError: any) {
+              results.errors.push({
+                contractId: project.id,
+                error: `Failed to send project budget alert email: ${emailError.message}`,
+              });
+              continue;
+            }
+          }
+          
+          await storage.createProjectBudgetNotification({
+            projectId: project.id,
+            companyId: project.companyId,
+            milestonePercent: milestone,
+            currentSpend: projectTotalSpent.toString(),
+            budgetAmount: projectBudgetAmount.toString(),
+            recipientEmails: adminEmails,
+          });
+          
+          results.projectBudgetAlerts.push({
+            projectId: project.id,
+            projectName: project.name,
+            milestone,
+            utilization: projectBudgetProgress,
+            emails: adminEmails,
+          });
+        }
+      }
+    } catch (projectError: any) {
+      results.errors.push({
+        contractId: project.id,
+        error: `Project budget notification error: ${projectError.message}`,
       });
     }
   }

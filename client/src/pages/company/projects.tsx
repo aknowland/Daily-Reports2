@@ -73,6 +73,8 @@ export default function CompanyProjectsPage() {
     startDate: "",
     substantialCompletionDate: "",
     finalCloseoutDate: "",
+    budgetAmount: "",
+    baseBudget: "",
   });
 
   const { data: projects = [], isLoading, error } = useQuery<Project[]>({
@@ -146,7 +148,7 @@ export default function CompanyProjectsPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
       queryClient.invalidateQueries({ queryKey: ["/api/contracts"] });
       setShowCreateDialog(false);
-      setFormData({ name: "", projectNumber: "", client: "", clientId: "", address: "", distributionEmails: "", contractId: "", startDate: "", substantialCompletionDate: "", finalCloseoutDate: "" });
+      setFormData({ name: "", projectNumber: "", client: "", clientId: "", address: "", distributionEmails: "", contractId: "", startDate: "", substantialCompletionDate: "", finalCloseoutDate: "", budgetAmount: "", baseBudget: "" });
       toast({
         title: "Project Created",
         description: "New project has been created.",
@@ -177,7 +179,7 @@ export default function CompanyProjectsPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
       queryClient.invalidateQueries({ queryKey: ["/api/contracts"] });
       setEditingProject(null);
-      setFormData({ name: "", projectNumber: "", client: "", clientId: "", address: "", distributionEmails: "", contractId: "", startDate: "", substantialCompletionDate: "", finalCloseoutDate: "" });
+      setFormData({ name: "", projectNumber: "", client: "", clientId: "", address: "", distributionEmails: "", contractId: "", startDate: "", substantialCompletionDate: "", finalCloseoutDate: "", budgetAmount: "", baseBudget: "" });
       toast({
         title: "Project Updated",
         description: "Project has been updated.",
@@ -226,6 +228,8 @@ export default function CompanyProjectsPage() {
       startDate: (project as any).startDate ? new Date((project as any).startDate).toISOString().split('T')[0] : "",
       substantialCompletionDate: (project as any).substantialCompletionDate ? new Date((project as any).substantialCompletionDate).toISOString().split('T')[0] : "",
       finalCloseoutDate: (project as any).finalCloseoutDate ? new Date((project as any).finalCloseoutDate).toISOString().split('T')[0] : "",
+      budgetAmount: (project as any).budgetAmount || "",
+      baseBudget: (project as any).baseBudget || "",
     });
     setEditingProject(project);
   };
@@ -477,7 +481,7 @@ export default function CompanyProjectsPage() {
         if (!open) {
           setShowCreateDialog(false);
           setEditingProject(null);
-          setFormData({ name: "", projectNumber: "", client: "", clientId: "", address: "", distributionEmails: "", contractId: "", startDate: "", substantialCompletionDate: "", finalCloseoutDate: "" });
+          setFormData({ name: "", projectNumber: "", client: "", clientId: "", address: "", distributionEmails: "", contractId: "", startDate: "", substantialCompletionDate: "", finalCloseoutDate: "", budgetAmount: "", baseBudget: "" });
         }
       }}>
         <DialogContent>
@@ -604,13 +608,48 @@ export default function CompanyProjectsPage() {
               </div>
             </div>
           </div>
+
+          <div className="space-y-4 pt-2">
+            <h3 className="font-medium text-sm text-muted-foreground">Budget Tracking</h3>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="budgetAmount">Project Budget ($)</Label>
+                <Input
+                  id="budgetAmount"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  placeholder="0.00"
+                  value={formData.budgetAmount}
+                  onChange={(e) => setFormData({ ...formData, budgetAmount: e.target.value })}
+                  data-testid="input-budget-amount"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="baseBudget">Base Budget ($)</Label>
+                <Input
+                  id="baseBudget"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  placeholder="0.00"
+                  value={formData.baseBudget}
+                  onChange={(e) => setFormData({ ...formData, baseBudget: e.target.value })}
+                  data-testid="input-base-budget"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Work done before tracking started (stacks with reports)
+                </p>
+              </div>
+            </div>
+          </div>
           <DialogFooter className="gap-2">
             <Button
               variant="outline"
               onClick={() => {
                 setShowCreateDialog(false);
                 setEditingProject(null);
-                setFormData({ name: "", projectNumber: "", client: "", clientId: "", address: "", distributionEmails: "", contractId: "", startDate: "", substantialCompletionDate: "", finalCloseoutDate: "" });
+                setFormData({ name: "", projectNumber: "", client: "", clientId: "", address: "", distributionEmails: "", contractId: "", startDate: "", substantialCompletionDate: "", finalCloseoutDate: "", budgetAmount: "", baseBudget: "" });
               }}
               data-testid="button-cancel"
             >

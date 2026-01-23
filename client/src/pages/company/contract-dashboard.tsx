@@ -137,6 +137,12 @@ type DashboardData = {
     status: string;
     reportCount: number;
     budgetSpent: number;
+    budgetAmount: number;
+    baseBudget: number;
+    calculatedSpent: number;
+    budgetProgress: number;
+    budgetStatus: 'under' | 'on_track' | 'warning' | 'over';
+    budgetRemaining: number;
     startDate: string | null;
     substantialCompletionDate: string | null;
     finalCloseoutDate: string | null;
@@ -839,37 +845,83 @@ export default function ContractDashboard() {
                       <TableHead>Number</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead className="text-right">Reports</TableHead>
-                      <TableHead className="text-right">Budget Spent</TableHead>
+                      <TableHead className="min-w-[200px]">Budget Progress</TableHead>
+                      <TableHead className="text-right">Spent / Budget</TableHead>
                       <TableHead></TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {dashboard.projects.map((project) => (
-                      <TableRow 
-                        key={project.id} 
-                        data-testid={`project-row-${project.id}`}
-                        className="cursor-pointer hover:bg-muted/50"
-                        onClick={() => setLocation(`/company/projects?projectId=${project.id}`)}
-                      >
-                        <TableCell className="font-medium">{project.name}</TableCell>
-                        <TableCell className="text-muted-foreground">{project.projectNumber || '-'}</TableCell>
-                        <TableCell>
-                          <Badge 
-                            variant={project.status === 'active' ? 'default' : 'secondary'}
-                            className="capitalize"
-                          >
-                            {project.status}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-right">{project.reportCount}</TableCell>
-                        <TableCell className="text-right font-medium">{formatCurrency(project.budgetSpent)}</TableCell>
-                        <TableCell>
-                          <Button variant="ghost" size="icon" data-testid={`view-project-${project.id}`}>
-                            <ExternalLink className="h-4 w-4" />
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                    {dashboard.projects.map((project) => {
+                      const budgetStatusColors = {
+                        under: 'bg-blue-500',
+                        on_track: 'bg-green-500',
+                        warning: 'bg-yellow-500',
+                        over: 'bg-red-500',
+                      };
+                      const hasBudget = project.budgetAmount > 0;
+                      
+                      return (
+                        <TableRow 
+                          key={project.id} 
+                          data-testid={`project-row-${project.id}`}
+                          className="cursor-pointer hover:bg-muted/50"
+                          onClick={() => setLocation(`/company/projects?projectId=${project.id}`)}
+                        >
+                          <TableCell className="font-medium">{project.name}</TableCell>
+                          <TableCell className="text-muted-foreground">{project.projectNumber || '-'}</TableCell>
+                          <TableCell>
+                            <Badge 
+                              variant={project.status === 'active' ? 'default' : 'secondary'}
+                              className="capitalize"
+                            >
+                              {project.status}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-right">{project.reportCount}</TableCell>
+                          <TableCell>
+                            {hasBudget ? (
+                              <div className="space-y-1">
+                                <div className="flex items-center justify-between text-xs">
+                                  <span className={`font-medium ${
+                                    project.budgetStatus === 'over' ? 'text-red-600 dark:text-red-400' :
+                                    project.budgetStatus === 'warning' ? 'text-yellow-600 dark:text-yellow-400' :
+                                    'text-muted-foreground'
+                                  }`}>
+                                    {Math.min(project.budgetProgress, 999).toFixed(1)}%
+                                  </span>
+                                  {project.budgetStatus === 'over' && (
+                                    <Badge variant="destructive" className="text-[10px] px-1 py-0">Over Budget</Badge>
+                                  )}
+                                </div>
+                                <div className="h-2 w-full bg-muted rounded-full overflow-hidden">
+                                  <div 
+                                    className={`h-full rounded-full transition-all ${budgetStatusColors[project.budgetStatus]}`}
+                                    style={{ width: `${Math.min(project.budgetProgress, 100)}%` }}
+                                  />
+                                </div>
+                              </div>
+                            ) : (
+                              <span className="text-xs text-muted-foreground italic">No budget set</span>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <div className="space-y-0.5">
+                              <div className="font-medium">{formatCurrency(project.budgetSpent)}</div>
+                              {hasBudget && (
+                                <div className="text-xs text-muted-foreground">
+                                  of {formatCurrency(project.budgetAmount)}
+                                </div>
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <Button variant="ghost" size="icon" data-testid={`view-project-${project.id}`}>
+                              <ExternalLink className="h-4 w-4" />
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
                   </TableBody>
                 </Table>
                 {dashboard.projects.length > 1 && (
