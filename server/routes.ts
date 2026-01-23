@@ -2103,7 +2103,7 @@ export async function registerRoutes(
                         
                         ${milestone >= 100 ? `
                         <p style="color: #c53030; font-weight: bold;">
-                          ⚠️ This contract has exceeded its budget. Please review and take appropriate action.
+                          ALERT: This contract has exceeded its budget. Please review and take appropriate action.
                         </p>
                         ` : milestone >= 90 ? `
                         <p style="color: #c05621;">
