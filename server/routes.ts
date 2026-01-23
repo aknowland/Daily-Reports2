@@ -2314,13 +2314,14 @@ export async function registerRoutes(
         // Draw text with padding
         doc.font(font).fontSize(fontSize);
         const textWidth = width - (cellPadding * 2);
+        // Check if text will wrap to multiple lines
+        const singleLineWidth = doc.widthOfString(text);
+        const isMultiLine = singleLineWidth > textWidth;
         // Use heightOfString with same lineGap as rendering for accurate measurement
         const textHeight = doc.heightOfString(text, { width: textWidth, lineGap: textLineGap });
-        // Get font metrics for baseline adjustment - ascender is ~80% of font size for Helvetica
-        const ascentRatio = 0.8;
-        const descentRatio = 0.2;
-        const baselineOffset = fontSize * descentRatio / 2; // Shift up to optically center
-        // Center text vertically with baseline adjustment
+        // Only apply baseline offset for single-line text; multi-line text centers the block
+        const baselineOffset = isMultiLine ? 0 : fontSize * 0.1; // Small offset for single-line optical centering
+        // Center text vertically
         const calculatedY = y + (height - textHeight) / 2 - baselineOffset;
         const minY = y + cellPadding;
         const maxY = y + height - textHeight - cellPadding;
@@ -2336,13 +2337,14 @@ export async function registerRoutes(
         // Draw text centered vertically
         doc.font(font).fontSize(fontSize);
         const textWidth = width - (cellPadding * 2);
+        // Check if text will wrap to multiple lines
+        const singleLineWidth = doc.widthOfString(text);
+        const isMultiLine = singleLineWidth > textWidth;
         // Use heightOfString with same lineGap as rendering for accurate measurement
         const textHeight = doc.heightOfString(text, { width: textWidth, lineGap: textLineGap });
-        // Get font metrics for baseline adjustment - ascender is ~80% of font size for Helvetica
-        const ascentRatio = 0.8;
-        const descentRatio = 0.2;
-        const baselineOffset = fontSize * descentRatio / 2; // Shift up to optically center
-        // Center text vertically with baseline adjustment
+        // Only apply baseline offset for single-line text; multi-line text centers the block
+        const baselineOffset = isMultiLine ? 0 : fontSize * 0.1; // Small offset for single-line optical centering
+        // Center text vertically
         const calculatedY = y + (height - textHeight) / 2 - baselineOffset;
         const minY = y + cellPadding;
         const maxY = y + height - textHeight - cellPadding;
