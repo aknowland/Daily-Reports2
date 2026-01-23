@@ -2268,10 +2268,18 @@ export async function registerRoutes(
         scheduleTypeLabel = 'Part Time';
       }
       
-      // Calculate total hours from all inspectors
+      // Calculate total hours - only show if single option with hours entered
+      const optionCount = proposal.options?.length || 0;
       const totalInspectorHours = allInspectors.reduce((sum, ins) => sum + (parseFloat(ins.hours) || 0), 0);
-      const hoursDisplay = totalInspectorHours > 0 ? totalInspectorHours.toLocaleString() : (proposal.totalHours || '');
-      const durationStr = `${startDateStr} – ${endDateStr}${hoursDisplay ? `\n${scheduleTypeLabel}, ${hoursDisplay} hours` : ''}`;
+      
+      // Only display hours if there's exactly one option AND hours are entered
+      // Multiple options = can't know final hours until option is selected
+      let durationStr = `${startDateStr} – ${endDateStr}`;
+      if (optionCount === 1 && totalInspectorHours > 0) {
+        durationStr += `\n${scheduleTypeLabel}, ${totalInspectorHours.toLocaleString()} hours`;
+      } else if (optionCount > 1) {
+        durationStr += `\n${scheduleTypeLabel} – see rate options below`;
+      }
       addRow('DURATION', durationStr, true);
       
       currentY += 10;
