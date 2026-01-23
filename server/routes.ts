@@ -1574,7 +1574,7 @@ export async function registerRoutes(
           for (const report of projectReports) {
             const regularHours = parseFloat(report.regularHours || '0');
             const otHours = parseFloat(report.otHours || '0');
-            const premiumHours = parseFloat(report.premiumHours || '0');
+            const premiumHours = parseFloat((report as any).premiumHours || '0');
             
             // Use first rate option's first inspector rate as base
             const firstOption = contractRateOptions[0];
@@ -1588,7 +1588,7 @@ export async function registerRoutes(
             id: p.id,
             name: p.name,
             projectNumber: p.projectNumber,
-            status: p.status || 'active',
+            status: (p as any).status || 'active',
             reportCount,
             budgetSpent: projectBilled,
           };
