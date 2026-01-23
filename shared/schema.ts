@@ -39,6 +39,13 @@ export const contractTypeEnum = pgEnum("contract_type", [
   "other"
 ]);
 
+// Award status for individual contract options (for partial awards)
+export const optionAwardStatusEnum = pgEnum("option_award_status", [
+  "pending",    // Not yet decided
+  "awarded",    // This option was awarded
+  "not_awarded" // This option was not awarded
+]);
+
 // Companies table
 export const companies = pgTable("companies", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -352,6 +359,7 @@ export const contractOptions = pgTable("contract_options", {
   contractId: varchar("contract_id").references(() => contracts.id, { onDelete: "cascade" }).notNull(),
   optionNumber: integer("option_number").notNull(),
   name: text("name"),
+  awardStatus: optionAwardStatusEnum("award_status").default("pending"), // For partial awards
   createdAt: timestamp("created_at").defaultNow(),
 });
 
