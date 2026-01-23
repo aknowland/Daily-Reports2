@@ -2441,17 +2441,38 @@ export async function registerRoutes(
       // Space after title before terms
       currentY += 36;
       
-      // Parse and render terms - compact formatting to fit on one page
+      // Parse and render terms - compact formatting with smart page breaks
       // Replace placeholder district name with actual client name
       const rawTerms = proposal.terms || '';
       const terms = rawTerms.replace(/Long Beach Unified School District/gi, proposal.clientName || 'Client');
       const termsParagraphs = terms.split(/\n\n+/).filter(p => p.trim());
+      
+      // Page break margin - leave room for footer
+      const pageBreakMargin = 80;
+      const pageBottom = doc.page.height - pageBreakMargin;
       
       doc.fontSize(9).font('Helvetica');
       termsParagraphs.forEach((para, index) => {
         const trimmed = para.trim();
         // Check if it starts with a number
         const numMatch = trimmed.match(/^(\d+)\.\s*/);
+        
+        // Calculate height of this paragraph before rendering
+        let paraHeight: number;
+        if (numMatch) {
+          const text = trimmed.replace(/^\d+\.\s*/, '');
+          paraHeight = doc.heightOfString(text, { width: pageWidth - 18, lineGap: 1 }) + 6;
+        } else {
+          paraHeight = doc.heightOfString(trimmed, { width: pageWidth, lineGap: 1 }) + 6;
+        }
+        
+        // Check if this paragraph will fit on current page
+        if (currentY + paraHeight > pageBottom) {
+          doc.addPage();
+          currentY = 50; // Reset to top of new page with margin
+        }
+        
+        // Render the paragraph
         if (numMatch) {
           const num = numMatch[1];
           const text = trimmed.replace(/^\d+\.\s*/, '');
