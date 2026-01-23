@@ -29,7 +29,6 @@ import MyCompaniesPage from "@/pages/my-companies";
 import MyProjectsPage from "@/pages/my-projects";
 import CompanyTeamPage from "@/pages/company/team";
 import CompanyProjectsPage from "@/pages/company/projects";
-import CompanyRequestsPage from "@/pages/company/requests";
 import CompanySettingsPage from "@/pages/company/settings";
 import CompanyDashboardPage from "@/pages/company/dashboard";
 import CompanyContractsPage from "@/pages/company/contracts";
@@ -71,7 +70,6 @@ function AuthenticatedRoutes() {
       <Route path="/company/contracts" component={CompanyContractsPage} />
       <Route path="/company/contracts/:contractId/dashboard" component={ProjectDashboardPage} />
       <Route path="/company/billing-management" component={CompanyBillingManagementPage} />
-      <Route path="/company/requests" component={CompanyRequestsPage} />
       <Route path="/company/settings" component={CompanySettingsPage} />
       <Route path="/company/dashboard" component={CompanyDashboardPage} />
       <Route path="/company/chat" component={AIChatPage} />

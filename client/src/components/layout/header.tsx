@@ -16,7 +16,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
-import { LogOut, User, Settings, HardHat, Menu, LayoutDashboard, FolderOpen, Users, UserPlus, Building2, ClipboardList, FilePlus, Shield, FileText, Receipt, Briefcase, MessageSquare } from "lucide-react";
+import { LogOut, User, Settings, HardHat, Menu, LayoutDashboard, FolderOpen, Users, UserPlus, Building2, FilePlus, Shield, FileText, Receipt, Briefcase, MessageSquare } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
@@ -71,7 +71,6 @@ export function Header({ title = "Field Daily Reports" }: HeaderProps) {
     { href: "/company/contracts", label: "Contracts", icon: FileText },
     { href: "/company/billing-management", label: "Billing", icon: Receipt },
     { href: "/company/chat", label: "AI Assistant", icon: MessageSquare },
-    { href: "/company/requests", label: "Join Requests", icon: ClipboardList },
     { href: "/company/settings", label: "Company Settings", icon: Settings },
   ];
 
@@ -83,7 +82,7 @@ export function Header({ title = "Field Daily Reports" }: HeaderProps) {
     { href: "/admin/invites", label: "Invites", icon: UserPlus },
   ];
 
-  const renderNavItems = (items: typeof inspectorNavItems, sectionTitle?: string) => (
+  const renderNavItems = (items: typeof inspectorNavItems, sectionTitle?: string, keyPrefix = "") => (
     <>
       {sectionTitle && (
         <div className="px-3 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
@@ -96,7 +95,7 @@ export function Header({ title = "Field Daily Reports" }: HeaderProps) {
           : location.startsWith(item.href);
         const Icon = item.icon;
         return (
-          <Link key={item.href} href={item.href} onClick={() => setSheetOpen(false)}>
+          <Link key={`${keyPrefix}${item.href}`} href={item.href} onClick={() => setSheetOpen(false)}>
             <div
               className={cn(
                 "flex items-center gap-3 px-3 py-2 rounded-md transition-colors",
@@ -136,12 +135,12 @@ export function Header({ title = "Field Daily Reports" }: HeaderProps) {
                   </SheetTitle>
                 </SheetHeader>
                 <nav className="mt-6 space-y-1">
-                  {renderNavItems(inspectorNavItems)}
+                  {renderNavItems(inspectorNavItems, undefined, "inspector-")}
                   
                   {isCompanyAdmin && activeCompany && (
                     <>
                       <Separator className="my-4" />
-                      {renderNavItems(companyAdminNavItems, `${activeCompany.name}`)}
+                      {renderNavItems(companyAdminNavItems, `${activeCompany.name}`, "company-admin-")}
                     </>
                   )}
                   
@@ -283,12 +282,6 @@ export function Header({ title = "Field Daily Reports" }: HeaderProps) {
                       <Link href="/company/contracts" className="cursor-pointer">
                         <FileText className="mr-2 h-4 w-4" />
                         Contracts
-                      </Link>
-                    </DropdownMenuItem>
-                    <DropdownMenuItem asChild>
-                      <Link href="/company/requests" className="cursor-pointer">
-                        <ClipboardList className="mr-2 h-4 w-4" />
-                        Join Requests
                       </Link>
                     </DropdownMenuItem>
                     <DropdownMenuItem asChild>
