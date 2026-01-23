@@ -73,6 +73,18 @@ export const companyMembers = pgTable("company_members", {
   unique().on(table.companyId, table.userId),
 ]);
 
+// Pending Member Assignments - pre-assign company roles to emails before they log in
+export const pendingMemberAssignments = pgTable("pending_member_assignments", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  email: varchar("email").notNull(),
+  companyId: varchar("company_id").references(() => companies.id, { onDelete: "cascade" }).notNull(),
+  role: userRoleEnum("role").default("inspector").notNull(),
+  createdById: varchar("created_by_id"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  unique().on(table.email, table.companyId),
+]);
+
 // Extended User Profile for app-specific fields
 export const userProfiles = pgTable("user_profiles", {
   userId: varchar("user_id").primaryKey(),
@@ -630,6 +642,7 @@ export const distributionLogsRelations = relations(distributionLogs, ({ one }) =
 // Insert schemas
 export const insertCompanySchema = createInsertSchema(companies).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertCompanyMemberSchema = createInsertSchema(companyMembers).omit({ id: true, joinedAt: true });
+export const insertPendingMemberAssignmentSchema = createInsertSchema(pendingMemberAssignments).omit({ id: true, createdAt: true });
 export const insertUserProfileSchema = createInsertSchema(userProfiles);
 
 export const updateUserProfileSchema = createInsertSchema(userProfiles)
@@ -675,6 +688,8 @@ export type Company = typeof companies.$inferSelect;
 export type InsertCompany = z.infer<typeof insertCompanySchema>;
 export type CompanyMember = typeof companyMembers.$inferSelect;
 export type InsertCompanyMember = z.infer<typeof insertCompanyMemberSchema>;
+export type PendingMemberAssignment = typeof pendingMemberAssignments.$inferSelect;
+export type InsertPendingMemberAssignment = z.infer<typeof insertPendingMemberAssignmentSchema>;
 export type UserProfile = typeof userProfiles.$inferSelect;
 export type InsertUserProfile = z.infer<typeof insertUserProfileSchema>;
 export type Project = typeof projects.$inferSelect;
