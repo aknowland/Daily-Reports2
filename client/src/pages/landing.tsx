@@ -56,9 +56,6 @@ export default function LandingPage() {
             <span className="font-semibold text-lg">Field Daily Reports</span>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="ghost" asChild data-testid="button-header-pricing">
-              <a href="/pricing">Pricing</a>
-            </Button>
             <Button asChild data-testid="button-header-login">
               <a href="/api/login">Sign In</a>
             </Button>
