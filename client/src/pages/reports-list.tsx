@@ -51,7 +51,7 @@ import type { DailyReportWithDetails, Project } from "@shared/schema";
 import type { DateRange } from "react-day-picker";
 
 export default function ReportsListPage() {
-  const { user, isAdmin, isCompanyAdmin } = useAuth();
+  const { user, isAdmin, isEffectiveCompanyAdmin } = useAuth();
   const { toast } = useToast();
   const [, setLocation] = useLocation();
   const searchString = useSearch();
@@ -357,7 +357,7 @@ export default function ReportsListPage() {
         onOpenChange={setPanelOpen}
         currentUserId={user?.id}
         isAdmin={isAdmin}
-        isCompanyAdmin={isCompanyAdmin}
+        isCompanyAdmin={isEffectiveCompanyAdmin}
       />
 
       <Dialog open={exportModalOpen} onOpenChange={(open) => {

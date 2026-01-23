@@ -237,7 +237,7 @@ export default function DashboardPage() {
         onOpenChange={setPanelOpen}
         currentUserId={user?.id}
         isAdmin={isAdmin}
-        isCompanyAdmin={isCompanyAdmin}
+        isCompanyAdmin={isEffectiveCompanyAdmin}
       />
 
       <NewUserSetup

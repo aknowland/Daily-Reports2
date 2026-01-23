@@ -34,13 +34,13 @@ interface HeaderProps {
 }
 
 export function Header({ title = "Field Daily Reports" }: HeaderProps) {
-  const { user, isLoading, isAdmin, isCompanyAdmin, activeCompany, logout, profile } = useAuth();
+  const { user, isLoading, isAdmin, isCompanyAdmin, isEffectiveCompanyAdmin, isEffectiveSystemAdmin, activeCompany, logout, profile } = useAuth();
   const [location] = useLocation();
   const [sheetOpen, setSheetOpen] = useState(false);
   const [sysAdminOpen, setSysAdminOpen] = useState(false);
   const { isAdminMode } = useAdminMode();
   
-  const showAdminFeatures = isAdmin && isAdminMode;
+  const showSystemAdminFeatures = isEffectiveSystemAdmin;
 
   const getInitials = (firstName?: string | null, lastName?: string | null) => {
     const first = firstName?.charAt(0) || "";
@@ -137,14 +137,14 @@ export function Header({ title = "Field Daily Reports" }: HeaderProps) {
                 <nav className="mt-6 space-y-1">
                   {renderNavItems(inspectorNavItems, undefined, "inspector-")}
                   
-                  {isCompanyAdmin && activeCompany && (
+                  {isEffectiveCompanyAdmin && activeCompany && (
                     <>
                       <Separator className="my-4" />
                       {renderNavItems(companyAdminNavItems, `${activeCompany.name}`, "company-admin-")}
                     </>
                   )}
                   
-                  {showAdminFeatures && (
+                  {showSystemAdminFeatures && (
                     <>
                       <Separator className="my-4" />
                       <Collapsible open={sysAdminOpen} onOpenChange={setSysAdminOpen}>
@@ -215,7 +215,7 @@ export function Header({ title = "Field Daily Reports" }: HeaderProps) {
         </div>
 
         <div className="flex items-center gap-2">
-          {isAdmin && <ModeToggle />}
+          {(isAdmin || isCompanyAdmin) && <ModeToggle />}
           {user && <CompanySwitcher activeCompanyId={profile?.activeCompanyId} />}
           {user && <ProjectSwitcher activeProjectId={profile?.activeProjectId} />}
           {isLoading ? (
@@ -260,7 +260,7 @@ export function Header({ title = "Field Daily Reports" }: HeaderProps) {
                     Projects
                   </Link>
                 </DropdownMenuItem>
-                {isCompanyAdmin && activeCompany && (
+                {isEffectiveCompanyAdmin && activeCompany && (
                   <>
                     <DropdownMenuSeparator />
                     <DropdownMenuLabel className="text-xs text-muted-foreground">

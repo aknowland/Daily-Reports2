@@ -25,7 +25,7 @@ interface Conversation {
 }
 
 export default function AIChatPage() {
-  const { isCompanyAdmin, isAdmin, activeCompany, isCompaniesLoading } = useAuth();
+  const { isEffectiveCompanyAdmin, isEffectiveSystemAdmin, activeCompany, isCompaniesLoading } = useAuth();
   const { toast } = useToast();
   const [inputValue, setInputValue] = useState("");
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
@@ -39,7 +39,8 @@ export default function AIChatPage() {
 
   // Allow access for Company Admins or any System Admin level (admin, owner, system_owner)
   // Wait for companies to load before determining access
-  const canAccessChat = !isCompaniesLoading && (isCompanyAdmin || isAdmin);
+  // Respects inspector mode toggle - when in inspector mode, chat is hidden
+  const canAccessChat = !isCompaniesLoading && (isEffectiveCompanyAdmin || isEffectiveSystemAdmin);
 
   const { data: conversationData, isLoading: messagesLoading } = useQuery<{
     conversation: Conversation;
