@@ -106,6 +106,8 @@ const CONTRACT_STATUS_OPTIONS = [
   { value: "bid_received", label: "Bid Received", color: "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300" },
   { value: "under_review", label: "Under Review", color: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300" },
   { value: "awarded", label: "Awarded", color: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300" },
+  { value: "not_awarded", label: "Not Awarded", color: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300" },
+  { value: "cancelled", label: "Cancelled", color: "bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-300" },
   { value: "in_execution", label: "In Execution", color: "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-300" },
   { value: "substantial_completion", label: "Substantial Completion", color: "bg-teal-100 text-teal-800 dark:bg-teal-900 dark:text-teal-300" },
   { value: "final_closeout", label: "Final Closeout", color: "bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300" },
@@ -117,6 +119,7 @@ const CONTRACT_TYPE_OPTIONS = [
   { value: "unit_price", label: "Unit Price" },
   { value: "cost_plus", label: "Cost Plus" },
   { value: "design_build", label: "Design Build" },
+  { value: "hourly_rate", label: "Hourly Rate" },
   { value: "other", label: "Other" },
 ];
 

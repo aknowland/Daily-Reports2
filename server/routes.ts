@@ -85,7 +85,7 @@ const isKnowlandMember = async (userId: string): Promise<boolean> => {
 
 // Helper to compute contract status based on dates
 // Returns the recommended status based on current date and contract dates
-type ContractStatus = "bid_release" | "bid_received" | "under_review" | "awarded" | "in_execution" | "substantial_completion" | "final_closeout";
+type ContractStatus = "bid_release" | "bid_received" | "under_review" | "awarded" | "not_awarded" | "cancelled" | "in_execution" | "substantial_completion" | "final_closeout";
 
 const computeContractStatusFromDates = (contract: {
   startDate?: Date | null;
@@ -1177,6 +1177,8 @@ export async function registerRoutes(
     bid_received: "Bid Received",
     under_review: "Under Review",
     awarded: "Awarded",
+    not_awarded: "Not Awarded",
+    cancelled: "Cancelled",
     in_execution: "In Execution",
     substantial_completion: "Substantial Completion",
     final_closeout: "Final Closeout"
@@ -1188,6 +1190,7 @@ export async function registerRoutes(
     unit_price: "Unit Price",
     cost_plus: "Cost Plus",
     design_build: "Design Build",
+    hourly_rate: "Hourly Rate",
     other: "Other"
   };
 
@@ -1239,8 +1242,9 @@ export async function registerRoutes(
       
       // Filter to show all upcoming and active contracts until closeout
       // Includes: bid_release, bid_received, under_review, in_execution, substantial_completion
-      // Excludes: final_closeout (project is complete)
-      const contracts = allContracts.filter(c => c.status !== 'final_closeout');
+      // Excludes: final_closeout (complete), not_awarded (archived), cancelled (archived)
+      const archivedStatuses = ['final_closeout', 'not_awarded', 'cancelled'];
+      const contracts = allContracts.filter(c => !archivedStatuses.includes(c.status));
       
       // Calculate schedule and budget progress for each contract
       const dashboardData = await Promise.all(contracts.map(async (contract) => {
