@@ -134,6 +134,9 @@ type DashboardData = {
     id: string;
     name: string;
     projectNumber: string;
+    status: string;
+    reportCount: number;
+    budgetSpent: number;
   }[];
 };
 
@@ -746,6 +749,75 @@ export default function ContractDashboard() {
                     </Button>
                   </div>
                 ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Projects Summary Section */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <ListChecks className="h-5 w-5" />
+              Linked Projects
+              <Badge variant="secondary" className="ml-2">{dashboard.projects.length}</Badge>
+            </CardTitle>
+            <CardDescription>
+              Projects associated with this contract and their budget contributions
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {dashboard.projects.length === 0 ? (
+              <p className="text-sm text-muted-foreground" data-testid="text-no-projects">
+                No projects linked to this contract
+              </p>
+            ) : (
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Project</TableHead>
+                      <TableHead>Number</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="text-right">Reports</TableHead>
+                      <TableHead className="text-right">Budget Spent</TableHead>
+                      <TableHead></TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {dashboard.projects.map((project) => (
+                      <TableRow key={project.id} data-testid={`project-row-${project.id}`}>
+                        <TableCell className="font-medium">{project.name}</TableCell>
+                        <TableCell className="text-muted-foreground">{project.projectNumber || '-'}</TableCell>
+                        <TableCell>
+                          <Badge 
+                            variant={project.status === 'active' ? 'default' : 'secondary'}
+                            className="capitalize"
+                          >
+                            {project.status}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right">{project.reportCount}</TableCell>
+                        <TableCell className="text-right font-medium">{formatCurrency(project.budgetSpent)}</TableCell>
+                        <TableCell>
+                          <Link href={`/company/projects?filter=${project.id}`}>
+                            <Button variant="ghost" size="icon" data-testid={`view-project-${project.id}`}>
+                              <ExternalLink className="h-4 w-4" />
+                            </Button>
+                          </Link>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+                {dashboard.projects.length > 1 && (
+                  <div className="mt-4 pt-4 border-t flex justify-between items-center">
+                    <span className="text-sm font-medium">Total Across All Projects</span>
+                    <span className="text-sm font-bold" data-testid="text-total-project-budget">
+                      {formatCurrency(dashboard.projects.reduce((sum, p) => sum + p.budgetSpent, 0))}
+                    </span>
+                  </div>
+                )}
               </div>
             )}
           </CardContent>
