@@ -2039,6 +2039,111 @@ export async function registerRoutes(
               }
             }
           }
+          
+          // 3. Check for budget milestone notifications (50%, 75%, 90%, 100%)
+          const budgetMilestones = [50, 75, 90, 100];
+          
+          // Calculate budget
+          const budgetSummary = await storage.getContractBudgetSummary(contract.id);
+          const totalBudget = contract.budgetOverride 
+            ? parseFloat(contract.budgetOverride) 
+            : parseFloat(contract.currentValue || contract.originalValue || '0');
+          
+          if (totalBudget > 0) {
+            const baseBudgetSpent = parseFloat(contract.baseBudgetSpent || '0');
+            const calculatedSpent = budgetSummary.totalBilled;
+            const budgetSpent = baseBudgetSpent + calculatedSpent;
+            const budgetProgress = (budgetSpent / totalBudget) * 100;
+            
+            for (const milestone of budgetMilestones) {
+              // Check if we've reached or exceeded this milestone
+              if (budgetProgress >= milestone) {
+                // Check if notification was already sent for this milestone
+                const alreadySent = await storage.hasBudgetNotificationBeenSent(contract.id, milestone);
+                if (alreadySent) continue;
+                
+                // Get company admin emails
+                const adminEmails = await storage.getCompanyAdminEmails(contract.companyId);
+                if (adminEmails.length === 0) continue;
+                
+                // Get company info for email
+                const company = await storage.getCompany(contract.companyId);
+                
+                // Format numbers for display
+                const formatCurrency = (amount: number) => 
+                  amount.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+                
+                const milestoneLabel = milestone >= 100 ? 'Budget Exceeded' : `${milestone}% Budget Used`;
+                const alertLevel = milestone >= 100 ? 'critical' : milestone >= 90 ? 'warning' : 'info';
+                const bgColor = milestone >= 100 ? '#fed7d7' : milestone >= 90 ? '#feebc8' : '#c6f6d5';
+                const borderColor = milestone >= 100 ? '#fc8181' : milestone >= 90 ? '#f6ad55' : '#68d391';
+                
+                try {
+                  await resend.emails.send({
+                    from: 'Field Daily Reports <noreply@mail.replit.app>',
+                    to: adminEmails,
+                    subject: `Budget Alert: ${contract.name} - ${milestoneLabel}`,
+                    html: `
+                      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                        <h2 style="color: ${milestone >= 100 ? '#c53030' : milestone >= 90 ? '#c05621' : '#2d3748'};">
+                          Budget Milestone Alert
+                        </h2>
+                        <p>A budget milestone has been reached for the following contract:</p>
+                        
+                        <div style="background: ${bgColor}; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid ${borderColor};">
+                          <h3 style="margin: 0 0 10px 0; color: #2d3748;">${contract.name}</h3>
+                          <p style="margin: 5px 0;"><strong>Contract #:</strong> ${contract.contractNumber}</p>
+                          ${contract.client?.name ? `<p style="margin: 5px 0;"><strong>Client:</strong> ${contract.client.name}</p>` : ''}
+                          <hr style="border: none; border-top: 1px solid ${borderColor}; margin: 15px 0;">
+                          <p style="margin: 5px 0; font-size: 18px;"><strong>Budget Progress:</strong> ${budgetProgress.toFixed(1)}%</p>
+                          <p style="margin: 5px 0;"><strong>Total Budget:</strong> ${formatCurrency(totalBudget)}</p>
+                          <p style="margin: 5px 0;"><strong>Amount Spent:</strong> ${formatCurrency(budgetSpent)}</p>
+                          <p style="margin: 5px 0;"><strong>Remaining:</strong> ${formatCurrency(totalBudget - budgetSpent)}</p>
+                        </div>
+                        
+                        ${milestone >= 100 ? `
+                        <p style="color: #c53030; font-weight: bold;">
+                          ⚠️ This contract has exceeded its budget. Please review and take appropriate action.
+                        </p>
+                        ` : milestone >= 90 ? `
+                        <p style="color: #c05621;">
+                          This contract is approaching its budget limit. Please monitor closely.
+                        </p>
+                        ` : ''}
+                        
+                        <p style="color: #718096; font-size: 14px;">
+                          This is an automated budget alert from ${company?.name || 'Field Daily Reports'}.
+                        </p>
+                      </div>
+                    `,
+                  });
+                  
+                  // Record budget notification
+                  await storage.createBudgetNotification({
+                    contractId: contract.id,
+                    companyId: contract.companyId,
+                    milestonePercent: milestone,
+                    currentSpend: budgetSpent.toString(),
+                    budgetAmount: totalBudget.toString(),
+                    recipientEmails: adminEmails,
+                  });
+                  
+                  results.notificationsSent.push({
+                    contractId: contract.id,
+                    contractName: contract.name,
+                    dateType: `budget_${milestone}`,
+                    daysBefore: milestone,
+                    emails: adminEmails,
+                  });
+                } catch (emailError: any) {
+                  results.errors.push({
+                    contractId: contract.id,
+                    error: `Failed to send budget email: ${emailError.message}`,
+                  });
+                }
+              }
+            }
+          }
         } catch (err: any) {
           results.errors.push({
             contractId: contract.id,
