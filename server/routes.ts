@@ -2510,6 +2510,43 @@ export async function registerRoutes(
     }
   });
 
+  // View proposal PDF (opens in browser)
+  app.get("/api/proposals/:id/pdf/view", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const proposal = await storage.getProposal(req.params.id);
+      
+      if (!proposal) {
+        return res.status(404).json({ message: "Proposal not found" });
+      }
+      
+      const profile = await storage.getUserProfile(userId);
+      const isCompAdmin = await isEffectiveCompanyAdmin(userId, proposal.companyId, profile);
+      
+      if (!isCompAdmin) {
+        return res.status(403).json({ message: "Not authorized" });
+      }
+      
+      if (!proposal.pdfPath) {
+        return res.status(404).json({ message: "PDF not found. Please generate it first." });
+      }
+      
+      // Fetch PDF from object storage
+      const pdfBuffer = await objectStorage.downloadFile(proposal.pdfPath);
+      
+      if (!pdfBuffer) {
+        return res.status(404).json({ message: "PDF file not found in storage" });
+      }
+      
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `inline; filename="Proposal-${proposal.proposalNumber}.pdf"`);
+      res.send(pdfBuffer);
+    } catch (error) {
+      console.error("Error viewing proposal PDF:", error);
+      res.status(500).json({ message: "Failed to view proposal PDF" });
+    }
+  });
+
   // Delete proposal PDF
   app.delete("/api/proposals/:id/pdf", isAuthenticated, async (req: any, res) => {
     try {
