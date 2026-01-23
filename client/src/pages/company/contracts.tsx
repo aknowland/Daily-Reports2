@@ -188,6 +188,11 @@ export default function ContractsPage() {
   const [selectedOptionIndex, setSelectedOptionIndex] = useState(0);
   const [createProjectAfterContract, setCreateProjectAfterContract] = useState(true);
   const [isConverting, setIsConverting] = useState(false);
+  const [addToExistingContract, setAddToExistingContract] = useState(false);
+  const [selectedExistingContractId, setSelectedExistingContractId] = useState<string>("");
+  const [showCreatePOPrompt, setShowCreatePOPrompt] = useState(false);
+  const [contractForPO, setContractForPO] = useState<ContractWithProjects | null>(null);
+  const [isCreatingPO, setIsCreatingPO] = useState(false);
   const [contractOptions, setContractOptions] = useState<ContractOptionEntry[]>([{ ...emptyContractOption, inspectors: [{ ...emptyContractInspector }] }]);
 
   const addContractOption = () => {
@@ -243,6 +248,88 @@ export default function ContractsPage() {
     const rate = parseFloat(inspector.rate) || 0;
     const hours = parseFloat(inspector.hours) || 0;
     return rate * hours;
+  };
+  
+  // Calculate total budget from contract's all options
+  const calculateContractTotalBudget = (contract: ContractWithProjects): number => {
+    if (!contract.options || contract.options.length === 0) {
+      return parseFloat(contract.currentValue || contract.originalValue || "0") || 0;
+    }
+    let total = 0;
+    for (const opt of contract.options) {
+      for (const ins of opt.inspectors || []) {
+        total += (parseFloat(ins.rate) || 0) * (parseFloat(ins.hours) || 0);
+      }
+    }
+    return total;
+  };
+  
+  // Handle creating PO from contract
+  const handleCreatePOFromContract = async () => {
+    if (!contractForPO || !activeCompany) return;
+    
+    setIsCreatingPO(true);
+    try {
+      const totalBudget = calculateContractTotalBudget(contractForPO);
+      // Generate unique PO number with timestamp to avoid duplicates
+      const timestamp = Date.now().toString(36).toUpperCase();
+      const poPayload = {
+        poNumber: `PO-${contractForPO.contractNumber}-${timestamp}`,
+        clientId: contractForPO.clientId || null,
+        totalAmount: totalBudget.toFixed(2),
+        description: `Purchase Order for ${contractForPO.name}`,
+        status: "active",
+        issueDate: new Date().toISOString(), // Use ISO string format for proper serialization
+      };
+      
+      const response = await fetch("/api/purchase-orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(poPayload),
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || "Failed to create purchase order");
+      }
+      
+      const newPO = await response.json();
+      
+      // Link the PO to the contract
+      const linkResponse = await apiRequest("PATCH", `/api/contracts/${contractForPO.id}`, {
+        purchaseOrderId: newPO.id,
+      });
+      
+      if (!linkResponse.ok) {
+        // PO was created but linking failed - still notify user
+        toast({
+          title: "Purchase Order Created",
+          description: `PO created but couldn't auto-link to contract. Please link manually.`,
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Purchase Order Created",
+          description: `PO ${newPO.poNumber} created and linked to contract.`,
+        });
+      }
+      
+      queryClient.invalidateQueries({ queryKey: ["/api/contracts"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/purchase-orders"] });
+      
+      setShowCreatePOPrompt(false);
+      setContractForPO(null);
+    } catch (error: any) {
+      console.error("Error creating PO:", error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to create purchase order.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsCreatingPO(false);
+    }
   };
 
   const { data: contracts = [], isLoading } = useQuery<ContractWithProjects[]>({
@@ -309,7 +396,7 @@ export default function ContractsPage() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: async (data: ContractFormData & { id: string; options: ContractOptionEntry[] }) => {
+    mutationFn: async (data: ContractFormData & { id: string; options: ContractOptionEntry[]; previousStatus?: string }) => {
       const payload = {
         ...data,
         clientId: data.clientId || null,
@@ -325,9 +412,12 @@ export default function ContractsPage() {
           inspectors: opt.inspectors.filter(ins => ins.title.trim() || ins.inspectorName.trim() || ins.rate.trim()),
         })),
       };
-      return apiRequest("PATCH", `/api/contracts/${data.id}`, payload);
+      // Return both the response and the data for checking status change
+      const response = await apiRequest("PATCH", `/api/contracts/${data.id}`, payload);
+      const updatedContract = await response.json();
+      return { updatedContract, previousStatus: data.previousStatus, newStatus: data.status };
     },
-    onSuccess: () => {
+    onSuccess: ({ updatedContract, previousStatus, newStatus }) => {
       queryClient.invalidateQueries({ queryKey: ["/api/contracts"] });
       setEditingContract(null);
       setFormData(emptyFormData);
@@ -336,6 +426,12 @@ export default function ContractsPage() {
         title: "Contract Updated",
         description: "Contract has been updated.",
       });
+      
+      // Check if status changed to "awarded" and contract doesn't have a PO yet
+      if (newStatus === "awarded" && previousStatus !== "awarded" && !updatedContract.purchaseOrderId) {
+        setContractForPO(updatedContract);
+        setShowCreatePOPrompt(true);
+      }
     },
     onError: (error: any) => {
       toast({
@@ -463,7 +559,12 @@ export default function ContractsPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (editingContract) {
-      updateMutation.mutate({ ...formData, id: editingContract.id, options: contractOptions }, {
+      updateMutation.mutate({ 
+        ...formData, 
+        id: editingContract.id, 
+        options: contractOptions,
+        previousStatus: editingContract.status, // Track previous status for award prompt
+      }, {
         onSuccess: async () => {
           if (pendingFiles.length > 0) {
             await uploadAttachments(editingContract.id, pendingFiles);
@@ -595,17 +696,8 @@ export default function ContractsPage() {
     try {
       const selectedOption = convertingProposal.options?.[selectedOptionIndex];
       
-      // Get the first inspector's rate as the regular rate (or calculate an average)
-      const firstInspector = selectedOption?.inspectors?.[0];
-      const regularRate = firstInspector?.rate || "";
-      
-      // Calculate total value from all inspectors in the selected option
-      const totalValue = selectedOption?.inspectors?.reduce((sum, ins) => {
-        return sum + (parseFloat(ins.rate) || 0) * (parseFloat(ins.hours) || 0);
-      }, 0) || 0;
-      
-      // Copy the selected option to the contract with all inspectors
-      const contractOptions = selectedOption ? [{
+      // Prepare the option data with all inspectors
+      const optionToAdd = selectedOption ? [{
         name: selectedOption.name || "",
         inspectors: (selectedOption.inspectors || []).map(ins => ({
           title: ins.title,
@@ -616,28 +708,47 @@ export default function ContractsPage() {
         })),
       }] : [];
       
-      // Create the contract
-      const contractPayload = {
-        contractNumber: `C-${convertingProposal.proposalNumber?.replace('PROP-', '') || Date.now()}`,
-        name: convertingProposal.projectName,
-        description: `Contract created from proposal ${convertingProposal.proposalNumber}`,
-        clientId: convertingProposal.clientId || null,
-        purchaseOrderId: null,
-        contractType: "time_and_materials",
-        status: "awarded",
-        originalValue: totalValue.toFixed(2),
-        currentValue: totalValue.toFixed(2),
-        startDate: convertingProposal.startDate ? new Date(convertingProposal.startDate) : null,
-        substantialCompletionDate: convertingProposal.endDate ? new Date(convertingProposal.endDate) : null,
-        regularRate: regularRate,
-        overtimeRate: "",
-        premiumRate: "",
-        notes: `Converted from proposal: ${convertingProposal.proposalNumber}\nClient: ${convertingProposal.clientName}`,
-        options: contractOptions,
-      };
+      let targetContractId: string;
       
-      const contractResponse = await apiRequest("POST", "/api/contracts", contractPayload);
-      const newContract = await contractResponse.json();
+      if (addToExistingContract && selectedExistingContractId) {
+        // Add options to existing contract
+        const addOptionsResponse = await apiRequest("POST", `/api/contracts/${selectedExistingContractId}/add-options`, {
+          options: optionToAdd,
+        });
+        const updatedContract = await addOptionsResponse.json();
+        targetContractId = updatedContract.id;
+      } else {
+        // Create new contract (original behavior)
+        const firstInspector = selectedOption?.inspectors?.[0];
+        const regularRate = firstInspector?.rate || "";
+        
+        const totalValue = selectedOption?.inspectors?.reduce((sum, ins) => {
+          return sum + (parseFloat(ins.rate) || 0) * (parseFloat(ins.hours) || 0);
+        }, 0) || 0;
+        
+        const contractPayload = {
+          contractNumber: `C-${convertingProposal.proposalNumber?.replace('PROP-', '') || Date.now()}`,
+          name: convertingProposal.projectName,
+          description: `Contract created from proposal ${convertingProposal.proposalNumber}`,
+          clientId: convertingProposal.clientId || null,
+          purchaseOrderId: null,
+          contractType: "time_and_materials",
+          status: "awarded",
+          originalValue: totalValue.toFixed(2),
+          currentValue: totalValue.toFixed(2),
+          startDate: convertingProposal.startDate ? new Date(convertingProposal.startDate) : null,
+          substantialCompletionDate: convertingProposal.endDate ? new Date(convertingProposal.endDate) : null,
+          regularRate: regularRate,
+          overtimeRate: "",
+          premiumRate: "",
+          notes: `Converted from proposal: ${convertingProposal.proposalNumber}\nClient: ${convertingProposal.clientName}`,
+          options: optionToAdd,
+        };
+        
+        const contractResponse = await apiRequest("POST", "/api/contracts", contractPayload);
+        const newContract = await contractResponse.json();
+        targetContractId = newContract.id;
+      }
       
       // Update proposal status to accepted
       await apiRequest("PATCH", `/api/proposals/${convertingProposal.id}`, { status: "accepted" });
@@ -645,12 +756,12 @@ export default function ContractsPage() {
       let projectCreated = false;
       
       // Create project if checkbox is checked
-      if (createProjectAfterContract && newContract?.id) {
+      if (createProjectAfterContract && targetContractId) {
         const projectPayload = {
           name: convertingProposal.projectName,
           projectNumber: `PRJ-${convertingProposal.proposalNumber?.replace('PROP-', '') || Date.now()}`,
           client: convertingProposal.clientName,
-          contractId: newContract.id,
+          contractId: targetContractId,
           companyId: activeCompany?.id,
         };
         
@@ -664,13 +775,16 @@ export default function ContractsPage() {
       
       setShowConvertDialog(false);
       setConvertingProposal(null);
+      setAddToExistingContract(false);
+      setSelectedExistingContractId("");
       setActiveTab("list");
       
+      const actionType = addToExistingContract ? "added to existing contract" : "contract created";
       toast({
         title: "Conversion Successful",
         description: projectCreated 
-          ? "Contract and project created from proposal." 
-          : "Contract created from proposal.",
+          ? `Proposal ${actionType} and project created.` 
+          : `Proposal ${actionType}.`,
       });
     } catch (error: any) {
       console.error("Conversion error:", error);
@@ -1802,6 +1916,57 @@ export default function ContractsPage() {
                 <p className="text-xs text-muted-foreground mt-1">#{convertingProposal.proposalNumber}</p>
               </div>
               
+              {/* Contract destination toggle */}
+              <div className="space-y-3">
+                <Label>Contract Destination</Label>
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant={!addToExistingContract ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => {
+                      setAddToExistingContract(false);
+                      setSelectedExistingContractId("");
+                    }}
+                    data-testid="button-create-new-contract"
+                  >
+                    Create New Contract
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={addToExistingContract ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setAddToExistingContract(true)}
+                    disabled={contracts.length === 0}
+                    data-testid="button-add-to-existing"
+                  >
+                    Add to Existing Contract
+                  </Button>
+                </div>
+              </div>
+              
+              {/* Existing contract selector */}
+              {addToExistingContract && (
+                <div className="space-y-2">
+                  <Label>Select Contract</Label>
+                  <Select 
+                    value={selectedExistingContractId} 
+                    onValueChange={setSelectedExistingContractId}
+                  >
+                    <SelectTrigger data-testid="select-existing-contract">
+                      <SelectValue placeholder="Select a contract..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {contracts.map((contract) => (
+                        <SelectItem key={contract.id} value={contract.id}>
+                          {contract.contractNumber} - {contract.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+              
               {convertingProposal.options && convertingProposal.options.length > 1 && (
                 <div className="space-y-2">
                   <Label>Select Pricing Option</Label>
@@ -1874,10 +2039,66 @@ export default function ContractsPage() {
             </Button>
             <Button 
               onClick={handleConvertProposal}
-              disabled={isConverting}
+              disabled={isConverting || (addToExistingContract && !selectedExistingContractId)}
               data-testid="button-confirm-convert"
             >
-              {isConverting ? "Converting..." : "Convert to Contract"}
+              {isConverting ? "Converting..." : addToExistingContract ? "Add to Contract" : "Convert to Contract"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      
+      {/* Create PO Prompt Dialog - shown when contract is awarded */}
+      <Dialog open={showCreatePOPrompt} onOpenChange={(open) => {
+        if (!open) {
+          setShowCreatePOPrompt(false);
+          setContractForPO(null);
+        }
+      }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Create Purchase Order?</DialogTitle>
+            <DialogDescription>
+              This contract has been awarded. Would you like to create a Purchase Order for it now?
+            </DialogDescription>
+          </DialogHeader>
+          
+          {contractForPO && (
+            <div className="space-y-4">
+              <div className="p-4 bg-muted rounded-lg">
+                <h4 className="font-semibold">{contractForPO.name}</h4>
+                <p className="text-sm text-muted-foreground">#{contractForPO.contractNumber}</p>
+                <div className="mt-2 pt-2 border-t">
+                  <p className="text-sm font-medium">
+                    Budget: ${calculateContractTotalBudget(contractForPO).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                  </p>
+                </div>
+              </div>
+              
+              <p className="text-sm text-muted-foreground">
+                A Purchase Order will be created with the contract's budget amount and automatically linked to this contract.
+              </p>
+            </div>
+          )}
+          
+          <DialogFooter>
+            <Button 
+              type="button" 
+              variant="outline" 
+              onClick={() => {
+                setShowCreatePOPrompt(false);
+                setContractForPO(null);
+              }}
+              data-testid="button-skip-po"
+            >
+              Create Later
+            </Button>
+            <Button 
+              onClick={handleCreatePOFromContract}
+              disabled={isCreatingPO}
+              data-testid="button-create-po-now"
+            >
+              {isCreatingPO ? "Creating..." : "Create PO Now"}
             </Button>
           </DialogFooter>
         </DialogContent>
