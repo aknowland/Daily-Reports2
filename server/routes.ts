@@ -2581,19 +2581,23 @@ export async function registerRoutes(
     }
   });
 
-  // Get purchase orders by client
+  // Get purchase orders by client (admin only - contains billing info)
   app.get("/api/purchase-orders/by-client/:clientId", isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
       const client = await storage.getClient(req.params.clientId);
       
       if (!client) {
         return res.status(404).json({ message: "Client not found" });
       }
       
-      const isMember = await storage.isUserMemberOfCompany(client.companyId, userId);
-      if (!isMember) {
-        return res.status(403).json({ message: "Access denied" });
+      // Require admin access for purchase order billing data
+      const isCompAdmin = await isEffectiveCompanyAdmin(userId, client.companyId, profile);
+      const isSysAdmin = isEffectiveSystemAdmin(profile);
+      
+      if (!isCompAdmin && !isSysAdmin) {
+        return res.status(403).json({ message: "Admin access required to view purchase orders" });
       }
       
       const purchaseOrderList = await storage.getPurchaseOrdersByClient(req.params.clientId);
@@ -2815,12 +2819,12 @@ export async function registerRoutes(
       const profile = await storage.getUserProfile(userId);
       
       if (!profile?.activeCompanyId) {
-        return res.json([]);
+        return res.status(400).json({ message: "No active company selected" });
       }
       
       const isMember = await storage.isUserMemberOfCompany(profile.activeCompanyId, userId);
       if (!isMember) {
-        return res.json([]);
+        return res.status(403).json({ message: "Access denied" });
       }
       
       const proposalList = await storage.getProposals(profile.activeCompanyId);
