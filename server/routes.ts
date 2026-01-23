@@ -538,6 +538,8 @@ export async function registerRoutes(
       const profile = await storage.getUserProfile(userId);
       const { companyId, ...projectData } = req.body;
       
+      console.log("[POST /api/projects] Received request:", { companyId, projectData, userId });
+      
       // If companyId is provided, check if user is a member of that company (any role) or system admin
       if (companyId) {
         const isSystemAdmin = isEffectiveSystemAdmin(profile);
@@ -549,7 +551,10 @@ export async function registerRoutes(
       }
       
       const validated = createProjectSchema.parse({ ...projectData, companyId: companyId || null });
+      console.log("[POST /api/projects] Validated data:", validated);
+      
       const project = await storage.createProject(validated);
+      console.log("[POST /api/projects] Created project:", project);
       
       // Automatically assign the creator to the project
       if (userId && project.id) {
@@ -559,9 +564,10 @@ export async function registerRoutes(
       res.status(201).json(project);
     } catch (error) {
       if (error instanceof z.ZodError) {
+        console.error("[POST /api/projects] Validation error:", error.errors);
         return res.status(400).json({ message: "Validation error", errors: error.errors });
       }
-      console.error("Error creating project:", error);
+      console.error("[POST /api/projects] Error creating project:", error);
       res.status(500).json({ message: "Failed to create project" });
     }
   });
