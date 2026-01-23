@@ -200,6 +200,7 @@ const createProjectSchema = z.object({
   projectNumber: z.string().min(1, "Project number is required"),
   companyId: z.string().nullable().optional(),
   contractId: z.string().nullable().optional(),
+  clientId: z.string().nullable().optional(),
   client: z.string().optional(),
   address: z.string().optional(),
   distributionEmails: z.array(z.string().email()).optional().default([]),
