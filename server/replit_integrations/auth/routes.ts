@@ -39,6 +39,7 @@ export function registerAuthRoutes(app: Express): void {
         profile = await storage.createOrUpdateUserProfile({
           userId,
           role: shouldBeAdmin ? "admin" : "inspector",
+          email: userEmail,
         });
       } else if (shouldBeAdmin && profile.role !== "admin") {
         // Upgrade to admin if email is in admin list but profile isn't admin yet
@@ -46,6 +47,27 @@ export function registerAuthRoutes(app: Express): void {
           userId,
           role: "admin",
         });
+      }
+      
+      // Check for pending member assignments and apply them
+      if (userEmail) {
+        const pendingAssignments = await storage.getPendingAssignmentsForEmail(userEmail);
+        for (const assignment of pendingAssignments) {
+          // Check if already a member of this company
+          const isMember = await storage.isUserMemberOfCompany(assignment.companyId, userId);
+          if (!isMember) {
+            // Add user to company with assigned role
+            await storage.addCompanyMember(assignment.companyId, userId, assignment.role as "inspector" | "admin");
+            console.log(`[Auth] Applied pending assignment: ${userEmail} -> company ${assignment.companyId} as ${assignment.role}`);
+            
+            // Set active company if user doesn't have one
+            if (!profile.activeCompanyId) {
+              profile = await storage.setActiveCompany(userId, assignment.companyId) || profile;
+            }
+          }
+          // Remove the pending assignment
+          await storage.deletePendingAssignment(assignment.id);
+        }
       }
       
       res.json(profile);

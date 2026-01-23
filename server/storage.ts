@@ -1,7 +1,7 @@
 import { 
   projects, dailyReports, photos, distributionLogs, appSettings, userProfiles, projectMembers, invites,
   companies, companyMembers, joinRequests, invoices, contracts, clients, contractAttachments, contractOptions, contractOptionInspectors, timesheets, monthlyReportBundles,
-  proposals, proposalOptions, proposalOptionInspectors, iorAgreements, purchaseOrders, contractNotifications, budgetNotifications, projectBudgetNotifications,
+  proposals, proposalOptions, proposalOptionInspectors, iorAgreements, purchaseOrders, contractNotifications, budgetNotifications, projectBudgetNotifications, pendingMemberAssignments,
   type Project, type InsertProject,
   type DailyReport, type InsertDailyReport,
   type Photo, type InsertPhoto,
@@ -30,6 +30,7 @@ import {
   type ProposalOption, type InsertProposalOption,
   type ProposalOptionInspector, type InsertProposalOptionInspector,
   type IorAgreement, type InsertIorAgreement, type IorAgreementWithDetails,
+  type PendingMemberAssignment, type InsertPendingMemberAssignment,
 } from "@shared/schema";
 import { users, type User } from "@shared/models/auth";
 import { db } from "./db";
@@ -156,6 +157,13 @@ export interface IStorage {
   updateCompanyMemberRole(companyId: string, userId: string, role: "inspector" | "admin"): Promise<CompanyMember | undefined>;
   removeCompanyMember(companyId: string, userId: string): Promise<boolean>;
   isUserMemberOfCompany(companyId: string, userId: string): Promise<boolean>;
+
+  // Pending Member Assignments
+  getPendingAssignmentsForEmail(email: string): Promise<PendingMemberAssignment[]>;
+  getPendingAssignmentsForCompany(companyId: string): Promise<PendingMemberAssignment[]>;
+  createPendingAssignment(data: InsertPendingMemberAssignment): Promise<PendingMemberAssignment>;
+  deletePendingAssignment(id: string): Promise<boolean>;
+  deletePendingAssignmentByEmail(email: string, companyId: string): Promise<boolean>;
 
   // Active Company
   setActiveCompany(userId: string, companyId: string | null): Promise<UserProfile | undefined>;
@@ -1072,6 +1080,46 @@ export class DatabaseStorage implements IStorage {
         eq(companyMembers.userId, userId)
       ));
     return !!result;
+  }
+
+  // Pending Member Assignments
+  async getPendingAssignmentsForEmail(email: string): Promise<PendingMemberAssignment[]> {
+    return db
+      .select()
+      .from(pendingMemberAssignments)
+      .where(eq(pendingMemberAssignments.email, email.toLowerCase()));
+  }
+
+  async getPendingAssignmentsForCompany(companyId: string): Promise<PendingMemberAssignment[]> {
+    return db
+      .select()
+      .from(pendingMemberAssignments)
+      .where(eq(pendingMemberAssignments.companyId, companyId));
+  }
+
+  async createPendingAssignment(data: InsertPendingMemberAssignment): Promise<PendingMemberAssignment> {
+    const [assignment] = await db
+      .insert(pendingMemberAssignments)
+      .values({ ...data, email: data.email.toLowerCase() })
+      .returning();
+    return assignment;
+  }
+
+  async deletePendingAssignment(id: string): Promise<boolean> {
+    await db
+      .delete(pendingMemberAssignments)
+      .where(eq(pendingMemberAssignments.id, id));
+    return true;
+  }
+
+  async deletePendingAssignmentByEmail(email: string, companyId: string): Promise<boolean> {
+    await db
+      .delete(pendingMemberAssignments)
+      .where(and(
+        eq(pendingMemberAssignments.email, email.toLowerCase()),
+        eq(pendingMemberAssignments.companyId, companyId)
+      ));
+    return true;
   }
 
   // Active Company
