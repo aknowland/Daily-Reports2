@@ -156,6 +156,7 @@ const createProjectSchema = z.object({
   projectNumber: z.string().min(1, "Project number is required"),
   companyId: z.string().nullable().optional(),
   contractId: z.string().nullable().optional(),
+  contractOptionId: z.string().nullable().optional(),
   clientId: z.string().nullable().optional(),
   client: z.string().optional(),
   address: z.string().optional(),
@@ -1608,6 +1609,11 @@ export async function registerRoutes(
             projectBudgetStatus = 'under';
           }
           
+          // Get linked option name if contractOptionId is set
+          const linkedOption = (p as any).contractOptionId 
+            ? contractRateOptions.find(opt => opt.id === (p as any).contractOptionId)
+            : null;
+          
           return {
             id: p.id,
             name: p.name,
@@ -1626,6 +1632,8 @@ export async function registerRoutes(
             finalCloseoutDate: (p as any).finalCloseoutDate,
             scheduleProgress: Math.round(projectScheduleProgress * 100) / 100,
             scheduleStatus: projectScheduleStatus,
+            contractOptionId: (p as any).contractOptionId || null,
+            contractOptionName: linkedOption ? `Option ${linkedOption.optionNumber}${linkedOption.name ? `: ${linkedOption.name}` : ''}` : null,
           };
         })),
       });

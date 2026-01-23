@@ -48,7 +48,7 @@ import {
 } from "lucide-react";
 import { Link, useSearch } from "wouter";
 import { useState, useMemo } from "react";
-import type { Project, Contract, Client } from "@shared/schema";
+import type { Project, Contract, Client, ContractWithProjects, ContractOption } from "@shared/schema";
 import { ClientSelect } from "@/components/client-select";
 
 export default function CompanyProjectsPage() {
@@ -70,6 +70,7 @@ export default function CompanyProjectsPage() {
     address: "",
     distributionEmails: "",
     contractId: "",
+    contractOptionId: "",
     startDate: "",
     substantialCompletionDate: "",
     finalCloseoutDate: "",
@@ -82,10 +83,21 @@ export default function CompanyProjectsPage() {
     enabled: !!activeCompany?.id && isCompanyAdmin,
   });
 
-  const { data: contracts = [] } = useQuery<Contract[]>({
+  const { data: contracts = [] } = useQuery<ContractWithProjects[]>({
     queryKey: ["/api/contracts"],
     enabled: !!activeCompany?.id && isCompanyAdmin,
   });
+
+  // Get awarded options for the selected contract
+  const selectedContract = useMemo(() => {
+    if (!formData.contractId) return null;
+    return contracts.find((c) => c.id === formData.contractId) || null;
+  }, [formData.contractId, contracts]);
+
+  const awardedOptions = useMemo(() => {
+    if (!selectedContract?.options) return [];
+    return selectedContract.options.filter((opt) => opt.awardStatus === "awarded");
+  }, [selectedContract]);
 
   const { data: clients = [] } = useQuery<Client[]>({
     queryKey: ["/api/clients", activeCompany?.id],
@@ -137,6 +149,7 @@ export default function CompanyProjectsPage() {
         ...data,
         companyId: activeCompany?.id,
         contractId: data.contractId || null,
+        contractOptionId: data.contractOptionId || null,
         clientId: data.clientId || null,
         distributionEmails: data.distributionEmails
           ? data.distributionEmails.split(",").map((e) => e.trim()).filter(Boolean)
@@ -148,7 +161,7 @@ export default function CompanyProjectsPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
       queryClient.invalidateQueries({ queryKey: ["/api/contracts"] });
       setShowCreateDialog(false);
-      setFormData({ name: "", projectNumber: "", client: "", clientId: "", address: "", distributionEmails: "", contractId: "", startDate: "", substantialCompletionDate: "", finalCloseoutDate: "", budgetAmount: "", baseBudget: "" });
+      setFormData({ name: "", projectNumber: "", client: "", clientId: "", address: "", distributionEmails: "", contractId: "", contractOptionId: "", startDate: "", substantialCompletionDate: "", finalCloseoutDate: "", budgetAmount: "", baseBudget: "" });
       toast({
         title: "Project Created",
         description: "New project has been created.",
@@ -168,6 +181,7 @@ export default function CompanyProjectsPage() {
       return apiRequest("PATCH", `/api/projects/${data.id}`, {
         ...data,
         contractId: data.contractId || null,
+        contractOptionId: data.contractOptionId || null,
         clientId: data.clientId || null,
         distributionEmails: data.distributionEmails
           ? data.distributionEmails.split(",").map((e) => e.trim()).filter(Boolean)
@@ -179,7 +193,7 @@ export default function CompanyProjectsPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
       queryClient.invalidateQueries({ queryKey: ["/api/contracts"] });
       setEditingProject(null);
-      setFormData({ name: "", projectNumber: "", client: "", clientId: "", address: "", distributionEmails: "", contractId: "", startDate: "", substantialCompletionDate: "", finalCloseoutDate: "", budgetAmount: "", baseBudget: "" });
+      setFormData({ name: "", projectNumber: "", client: "", clientId: "", address: "", distributionEmails: "", contractId: "", contractOptionId: "", startDate: "", substantialCompletionDate: "", finalCloseoutDate: "", budgetAmount: "", baseBudget: "" });
       toast({
         title: "Project Updated",
         description: "Project has been updated.",
@@ -225,6 +239,7 @@ export default function CompanyProjectsPage() {
       address: project.address || "",
       distributionEmails: (project.distributionEmails as string[])?.join(", ") || "",
       contractId: project.contractId || "",
+      contractOptionId: (project as any).contractOptionId || "",
       startDate: (project as any).startDate ? new Date((project as any).startDate).toISOString().split('T')[0] : "",
       substantialCompletionDate: (project as any).substantialCompletionDate ? new Date((project as any).substantialCompletionDate).toISOString().split('T')[0] : "",
       finalCloseoutDate: (project as any).finalCloseoutDate ? new Date((project as any).finalCloseoutDate).toISOString().split('T')[0] : "",
@@ -481,7 +496,7 @@ export default function CompanyProjectsPage() {
         if (!open) {
           setShowCreateDialog(false);
           setEditingProject(null);
-          setFormData({ name: "", projectNumber: "", client: "", clientId: "", address: "", distributionEmails: "", contractId: "", startDate: "", substantialCompletionDate: "", finalCloseoutDate: "", budgetAmount: "", baseBudget: "" });
+          setFormData({ name: "", projectNumber: "", client: "", clientId: "", address: "", distributionEmails: "", contractId: "", contractOptionId: "", startDate: "", substantialCompletionDate: "", finalCloseoutDate: "", budgetAmount: "", baseBudget: "" });
         }
       }}>
         <DialogContent className="max-h-[90vh] flex flex-col">
@@ -554,7 +569,11 @@ export default function CompanyProjectsPage() {
               <Label htmlFor="contractId">Link to Contract</Label>
               <Select 
                 value={formData.contractId || "none"} 
-                onValueChange={(value) => setFormData({ ...formData, contractId: value === "none" ? "" : value })}
+                onValueChange={(value) => setFormData({ 
+                  ...formData, 
+                  contractId: value === "none" ? "" : value,
+                  contractOptionId: "" 
+                })}
               >
                 <SelectTrigger data-testid="select-contract">
                   <SelectValue placeholder="Select a contract (optional)" />
@@ -575,6 +594,30 @@ export default function CompanyProjectsPage() {
                 Link this project to a contract for billing rates
               </p>
             </div>
+            {formData.contractId && awardedOptions.length > 0 && (
+              <div className="space-y-2">
+                <Label htmlFor="contractOptionId">Awarded Option</Label>
+                <Select 
+                  value={formData.contractOptionId || "none"} 
+                  onValueChange={(value) => setFormData({ ...formData, contractOptionId: value === "none" ? "" : value })}
+                >
+                  <SelectTrigger data-testid="select-contract-option">
+                    <SelectValue placeholder="Select an awarded option (optional)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">No Specific Option</SelectItem>
+                    {awardedOptions.map(option => (
+                      <SelectItem key={option.id} value={option.id}>
+                        Option {option.optionNumber}{option.name ? `: ${option.name}` : ''}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Link to a specific awarded option for rate and budget tracking
+                </p>
+              </div>
+            )}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2 border-t">
               <div className="space-y-2">
                 <Label htmlFor="startDate">Start Date</Label>
@@ -649,7 +692,7 @@ export default function CompanyProjectsPage() {
               onClick={() => {
                 setShowCreateDialog(false);
                 setEditingProject(null);
-                setFormData({ name: "", projectNumber: "", client: "", clientId: "", address: "", distributionEmails: "", contractId: "", startDate: "", substantialCompletionDate: "", finalCloseoutDate: "", budgetAmount: "", baseBudget: "" });
+                setFormData({ name: "", projectNumber: "", client: "", clientId: "", address: "", distributionEmails: "", contractId: "", contractOptionId: "", startDate: "", substantialCompletionDate: "", finalCloseoutDate: "", budgetAmount: "", baseBudget: "" });
               }}
               data-testid="button-cancel"
             >
