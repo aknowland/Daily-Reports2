@@ -75,7 +75,7 @@ export function NewUserSetup({ open, onComplete }: NewUserSetupProps) {
   const createCompanyMutation = useMutation({
     mutationFn: async (data: { name: string; address?: string; phone?: string; email?: string }) => {
       const response = await apiRequest("POST", "/api/my-companies", data);
-      return response;
+      return response.json();
     },
     onSuccess: (data: any) => {
       setCreatedCompanyId(data.id);
@@ -104,7 +104,7 @@ export function NewUserSetup({ open, onComplete }: NewUserSetupProps) {
   const acceptInviteMutation = useMutation({
     mutationFn: async (token: string) => {
       const response = await apiRequest("POST", `/api/invites/${token}/accept`);
-      return response;
+      return response.json();
     },
     onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/my-companies"] });
@@ -140,7 +140,7 @@ export function NewUserSetup({ open, onComplete }: NewUserSetupProps) {
   const joinRequestMutation = useMutation({
     mutationFn: async (data: { companyId: string; message?: string }) => {
       const response = await apiRequest("POST", "/api/join-requests", data);
-      return response;
+      return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/my-join-requests"] });
