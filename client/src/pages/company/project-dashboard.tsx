@@ -91,11 +91,19 @@ type DashboardData = {
     finalCloseoutDate: string | null;
   };
   billingRates: {
-    client: {
-      regular: string | null;
-      overtime: string | null;
-      premium: string | null;
-    };
+    clientRateOptions: {
+      id: string;
+      optionNumber: number;
+      name: string | null;
+      inspectors: {
+        id: string;
+        title: string;
+        inspectorName: string | null;
+        rate: string;
+        hours: string;
+        scheduleType: string | null;
+      }[];
+    }[];
     inspectorAgreements: {
       id: string;
       projectName: string;
@@ -602,38 +610,88 @@ export default function ProjectDashboard() {
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Users className="h-5 w-5" />
-              Inspector Billing Rates
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {dashboard.billingRates.inspectorAgreements.length === 0 ? (
-              <p className="text-sm text-muted-foreground" data-testid="text-no-inspector-rates">
-                No IOR agreements found for this contract's projects
-              </p>
-            ) : (
-              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                {dashboard.billingRates.inspectorAgreements.map((agreement) => (
-                  <div key={agreement.id} className="flex justify-between items-start p-3 rounded-lg border" data-testid={`inspector-rate-${agreement.id}`}>
-                    <div>
-                      <p className="font-medium text-sm">{agreement.inspectorName}</p>
-                      <p className="text-xs text-muted-foreground">{agreement.projectName}</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="font-medium">{agreement.rate ? `${formatCurrency(agreement.rate)}/hr` : '-'}</p>
-                      {agreement.terms && (
-                        <p className="text-xs text-muted-foreground max-w-32 truncate">{agreement.terms}</p>
+        <div className="grid gap-6 md:grid-cols-2">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <DollarSign className="h-5 w-5" />
+                Client Billing Rates
+              </CardTitle>
+              <p className="text-xs text-muted-foreground">Rates charged to client (from contract inspector options)</p>
+            </CardHeader>
+            <CardContent>
+              {dashboard.billingRates.clientRateOptions.length === 0 ? (
+                <p className="text-sm text-muted-foreground" data-testid="text-no-client-rates">
+                  No rate options configured for this contract
+                </p>
+              ) : (
+                <div className="space-y-4">
+                  {dashboard.billingRates.clientRateOptions.map((option) => (
+                    <div key={option.id} className="space-y-2" data-testid={`client-rate-option-${option.id}`}>
+                      {dashboard.billingRates.clientRateOptions.length > 1 && (
+                        <p className="text-sm font-medium text-muted-foreground">
+                          Option {option.optionNumber}{option.name ? `: ${option.name}` : ''}
+                        </p>
                       )}
+                      <div className="space-y-2">
+                        {option.inspectors.map((inspector) => (
+                          <div key={inspector.id} className="flex justify-between items-start p-3 rounded-lg border" data-testid={`client-inspector-rate-${inspector.id}`}>
+                            <div>
+                              <p className="font-medium text-sm">{inspector.title}</p>
+                              {inspector.inspectorName && (
+                                <p className="text-xs text-muted-foreground">{inspector.inspectorName}</p>
+                              )}
+                              <p className="text-xs text-muted-foreground">
+                                {inspector.scheduleType === 'partTime' ? 'Part Time' : 'Full Time'} | {inspector.hours} hrs
+                              </p>
+                            </div>
+                            <div className="text-right">
+                              <p className="font-medium">{formatCurrency(inspector.rate)}/hr</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Users className="h-5 w-5" />
+                Inspector Pay Rates
+              </CardTitle>
+              <p className="text-xs text-muted-foreground">Rates paid to inspectors (from IOR agreements)</p>
+            </CardHeader>
+            <CardContent>
+              {dashboard.billingRates.inspectorAgreements.length === 0 ? (
+                <p className="text-sm text-muted-foreground" data-testid="text-no-inspector-rates">
+                  No IOR agreements found for this contract's projects
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {dashboard.billingRates.inspectorAgreements.map((agreement) => (
+                    <div key={agreement.id} className="flex justify-between items-start p-3 rounded-lg border" data-testid={`inspector-rate-${agreement.id}`}>
+                      <div>
+                        <p className="font-medium text-sm">{agreement.inspectorName}</p>
+                        <p className="text-xs text-muted-foreground">{agreement.projectName}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-medium">{agreement.rate ? `${formatCurrency(agreement.rate)}/hr` : '-'}</p>
+                        {agreement.terms && (
+                          <p className="text-xs text-muted-foreground max-w-32 truncate">{agreement.terms}</p>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
 
         {dashboard.contract.notes && (
           <Card>

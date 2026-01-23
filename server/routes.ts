@@ -1371,6 +1371,9 @@ export async function registerRoutes(
       // Get daily reports for all projects under this contract
       const dailyReports = await storage.getReportsByContractProjects(req.params.id);
       
+      // Get contract rate options for client billing rates
+      const contractRateOptions = await storage.getContractOptions(req.params.id);
+      
       res.json({
         contract: {
           id: contract.id,
@@ -1417,11 +1420,19 @@ export async function registerRoutes(
           finalCloseoutDate: contract.finalCloseoutDate,
         },
         billingRates: {
-          client: {
-            regular: contract.regularRate,
-            overtime: contract.overtimeRate,
-            premium: contract.premiumRate,
-          },
+          clientRateOptions: contractRateOptions.map(option => ({
+            id: option.id,
+            optionNumber: option.optionNumber,
+            name: option.name,
+            inspectors: (option.inspectors || []).map(inspector => ({
+              id: inspector.id,
+              title: inspector.title,
+              inspectorName: inspector.inspectorName,
+              rate: inspector.rate,
+              hours: inspector.hours,
+              scheduleType: inspector.scheduleType,
+            })),
+          })),
           inspectorAgreements: iorAgreements.map(a => ({
             id: a.id,
             projectName: a.projectName,
