@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { PageLayout } from "@/components/layout/page-layout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -23,6 +23,7 @@ import type { DailyReportWithDetails, UserProfile, CompanyMember, Company } from
 
 export default function DashboardPage() {
   const { user, isAdmin, isCompanyAdmin } = useAuth();
+  const [, setLocation] = useLocation();
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [showNewUserSetup, setShowNewUserSetup] = useState(false);
   const [selectedReport, setSelectedReport] = useState<DailyReportWithDetails | null>(null);
@@ -35,6 +36,13 @@ export default function DashboardPage() {
   const { data: myCompanies } = useQuery<(CompanyMember & { company?: Company })[]>({
     queryKey: ["/api/my-companies"],
   });
+
+  // Redirect Company Admins to Company Dashboard by default
+  useEffect(() => {
+    if (isCompanyAdmin && myCompanies && myCompanies.length > 0) {
+      setLocation("/company/dashboard");
+    }
+  }, [isCompanyAdmin, myCompanies, setLocation]);
 
   // Show new user setup if user has no company memberships
   useEffect(() => {
