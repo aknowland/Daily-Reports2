@@ -1707,6 +1707,7 @@ export async function registerRoutes(
             contractId: contract.id,
             optionNumber: i + 1,
             name: optionData.name || null,
+            awardStatus: optionData.awardStatus || "pending", // For partial awards
           });
           
           // Create inspectors for this option
@@ -1779,6 +1780,7 @@ export async function registerRoutes(
             contractId: req.params.id,
             optionNumber: i + 1,
             name: optionData.name || null,
+            awardStatus: optionData.awardStatus || "pending", // For partial awards
           });
           
           // Create inspectors for this option
@@ -1872,6 +1874,7 @@ export async function registerRoutes(
           contractId: contractId,
           optionNumber: maxOptionNumber,
           name: optionData.name || null,
+          awardStatus: optionData.awardStatus || "pending", // For partial awards
         });
         
         // Create inspectors for this option
