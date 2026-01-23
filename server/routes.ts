@@ -224,8 +224,12 @@ export async function registerRoutes(
         try {
           const objectFile = await objectStorage.getObjectEntityFile(objectPath);
           return await objectStorage.downloadObject(objectFile, res);
-        } catch (err) {
-          return next();
+        } catch (err: any) {
+          console.error("Error serving file for admin:", objectPath, err?.message || err);
+          if (err?.name === 'ObjectNotFoundError') {
+            return res.status(404).json({ message: "File not found" });
+          }
+          return res.status(500).json({ message: "Failed to serve file" });
         }
       }
 
@@ -252,8 +256,16 @@ export async function registerRoutes(
         if (photo) {
           const report = await storage.getReport(photo.reportId);
           if (report && await canAccessReportFile(report)) {
-            const objectFile = await objectStorage.getObjectEntityFile(objectPath);
-            return await objectStorage.downloadObject(objectFile, res);
+            try {
+              const objectFile = await objectStorage.getObjectEntityFile(objectPath);
+              return await objectStorage.downloadObject(objectFile, res);
+            } catch (err: any) {
+              console.error("Error serving photo:", objectPath, err?.message || err);
+              if (err?.name === 'ObjectNotFoundError') {
+                return res.status(404).json({ message: "Photo file not found" });
+              }
+              return res.status(500).json({ message: "Failed to serve photo" });
+            }
           }
         }
       } else if (folder === 'signatures' || folder === 'reports') {
@@ -262,10 +274,18 @@ export async function registerRoutes(
         if (reportId) {
           const report = await storage.getReport(reportId);
           if (report && await canAccessReportFile(report)) {
-            const objectFile = await objectStorage.getObjectEntityFile(objectPath);
-            // Disable caching for PDFs to ensure latest version is served
-            const isPdf = filename?.endsWith('.pdf');
-            return await objectStorage.downloadObject(objectFile, res, isPdf ? 0 : 3600);
+            try {
+              const objectFile = await objectStorage.getObjectEntityFile(objectPath);
+              // Disable caching for PDFs to ensure latest version is served
+              const isPdf = filename?.endsWith('.pdf');
+              return await objectStorage.downloadObject(objectFile, res, isPdf ? 0 : 3600);
+            } catch (err: any) {
+              console.error("Error serving signature/PDF:", objectPath, err?.message || err);
+              if (err?.name === 'ObjectNotFoundError') {
+                return res.status(404).json({ message: "File not found. Please regenerate the PDF." });
+              }
+              return res.status(500).json({ message: "Failed to serve file" });
+            }
           }
         }
       } else if (folder === 'logos') {
@@ -276,8 +296,16 @@ export async function registerRoutes(
         if (owningCompany) {
           const isMember = await storage.isUserMemberOfCompany(owningCompany.id, userId);
           if (isMember) {
-            const objectFile = await objectStorage.getObjectEntityFile(objectPath);
-            return await objectStorage.downloadObject(objectFile, res);
+            try {
+              const objectFile = await objectStorage.getObjectEntityFile(objectPath);
+              return await objectStorage.downloadObject(objectFile, res);
+            } catch (err: any) {
+              console.error("Error serving logo:", objectPath, err?.message || err);
+              if (err?.name === 'ObjectNotFoundError') {
+                return res.status(404).json({ message: "Logo file not found" });
+              }
+              return res.status(500).json({ message: "Failed to serve logo" });
+            }
           }
         }
       }
