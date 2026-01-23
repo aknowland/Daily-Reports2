@@ -1832,6 +1832,89 @@ export async function registerRoutes(
     }
   });
 
+  // ========== ADD OPTIONS TO EXISTING CONTRACT ==========
+  
+  // Append new options to an existing contract (for proposal conversion)
+  app.post("/api/contracts/:id/add-options", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const contractId = req.params.id;
+      const contract = await storage.getContract(contractId);
+      
+      if (!contract) {
+        return res.status(404).json({ message: "Contract not found" });
+      }
+      
+      const profile = await storage.getUserProfile(userId);
+      const isCompAdmin = await isEffectiveCompanyAdmin(userId, contract.companyId, profile);
+      const isSysAdmin = isEffectiveSystemAdmin(profile);
+      
+      if (!isCompAdmin && !isSysAdmin) {
+        return res.status(403).json({ message: "Only admins can add options to contracts" });
+      }
+      
+      const { options } = req.body;
+      
+      if (!options || !Array.isArray(options) || options.length === 0) {
+        return res.status(400).json({ message: "Options array is required" });
+      }
+      
+      // Get the current highest option number for this contract
+      const existingOptions = contract.options || [];
+      let maxOptionNumber = existingOptions.reduce((max: number, opt: any) => 
+        Math.max(max, opt.optionNumber || 0), 0);
+      
+      const createdOptions = [];
+      
+      for (const optionData of options) {
+        maxOptionNumber++;
+        const option = await storage.createContractOption({
+          contractId: contractId,
+          optionNumber: maxOptionNumber,
+          name: optionData.name || null,
+        });
+        
+        // Create inspectors for this option
+        if (optionData.inspectors && Array.isArray(optionData.inspectors)) {
+          for (const inspectorData of optionData.inspectors) {
+            await storage.createContractOptionInspector({
+              optionId: option.id,
+              title: inspectorData.title || "Inspector",
+              inspectorName: inspectorData.inspectorName || null,
+              rate: inspectorData.rate || "0",
+              hours: inspectorData.hours || "0",
+              scheduleType: inspectorData.scheduleType || "fullTime",
+            });
+          }
+        }
+        
+        createdOptions.push(option);
+      }
+      
+      // Recalculate and update contract value
+      const fullContract = await storage.getContract(contractId);
+      if (fullContract?.options && fullContract.options.length > 0) {
+        // Calculate total value from all options
+        let totalValue = 0;
+        for (const opt of fullContract.options) {
+          for (const ins of opt.inspectors || []) {
+            totalValue += (parseFloat(ins.rate) || 0) * (parseFloat(ins.hours) || 0);
+          }
+        }
+        await storage.updateContract(contractId, { 
+          currentValue: totalValue.toFixed(2),
+        });
+      }
+      
+      // Return updated contract with all options
+      const updatedContract = await storage.getContract(contractId);
+      res.json(updatedContract);
+    } catch (error) {
+      console.error("Error adding options to contract:", error);
+      res.status(500).json({ message: "Failed to add options to contract" });
+    }
+  });
+
   // ========== CONTRACT ATTACHMENTS ==========
 
   // Upload attachments to a contract
@@ -2499,10 +2582,16 @@ export async function registerRoutes(
         return res.status(403).json({ message: "Only admins can create purchase orders" });
       }
       
-      const purchaseOrder = await storage.createPurchaseOrder({
-        ...req.body,
+      // Preprocess date fields - convert ISO strings to Date objects
+      const { issueDate, expirationDate, ...otherFields } = req.body;
+      const poData = {
+        ...otherFields,
         companyId: profile.activeCompanyId,
-      });
+        issueDate: issueDate ? new Date(issueDate) : null,
+        expirationDate: expirationDate ? new Date(expirationDate) : null,
+      };
+      
+      const purchaseOrder = await storage.createPurchaseOrder(poData);
       
       res.status(201).json(purchaseOrder);
     } catch (error) {
@@ -2529,7 +2618,17 @@ export async function registerRoutes(
         return res.status(403).json({ message: "Only admins can update purchase orders" });
       }
       
-      const updated = await storage.updatePurchaseOrder(req.params.id, req.body);
+      // Preprocess date fields - convert ISO strings to Date objects
+      const { issueDate, expirationDate, ...otherFields } = req.body;
+      const updateData: any = { ...otherFields };
+      if (issueDate !== undefined) {
+        updateData.issueDate = issueDate ? new Date(issueDate) : null;
+      }
+      if (expirationDate !== undefined) {
+        updateData.expirationDate = expirationDate ? new Date(expirationDate) : null;
+      }
+      
+      const updated = await storage.updatePurchaseOrder(req.params.id, updateData);
       res.json(updated);
     } catch (error) {
       console.error("Error updating purchase order:", error);
