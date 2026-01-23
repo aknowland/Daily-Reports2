@@ -49,6 +49,7 @@ import {
 import { Link, useSearch } from "wouter";
 import { useState, useMemo } from "react";
 import type { Project, Contract, Client } from "@shared/schema";
+import { ClientSelect } from "@/components/client-select";
 
 export default function CompanyProjectsPage() {
   const { toast } = useToast();
@@ -64,6 +65,7 @@ export default function CompanyProjectsPage() {
     name: "",
     projectNumber: "",
     client: "",
+    clientId: "",
     address: "",
     distributionEmails: "",
     contractId: "",
@@ -97,9 +99,19 @@ export default function CompanyProjectsPage() {
   const filteredProjects = useMemo(() => {
     if (!selectedClient) return projects;
     return projects.filter((p) => 
-      p.client?.toLowerCase() === selectedClient.name.toLowerCase()
+      (p as any).clientId === selectedClient.id || p.client?.toLowerCase() === selectedClient.name.toLowerCase()
     );
   }, [projects, selectedClient]);
+
+  // Helper to get client name from clientId
+  const getClientName = (project: Project): string | null => {
+    const projectClientId = (project as any).clientId;
+    if (projectClientId) {
+      const client = clients.find(c => c.id === projectClientId);
+      return client?.name || project.client || null;
+    }
+    return project.client || null;
+  };
 
   const createMutation = useMutation({
     mutationFn: async (data: typeof formData) => {
@@ -107,6 +119,7 @@ export default function CompanyProjectsPage() {
         ...data,
         companyId: activeCompany?.id,
         contractId: data.contractId || null,
+        clientId: data.clientId || null,
         distributionEmails: data.distributionEmails
           ? data.distributionEmails.split(",").map((e) => e.trim()).filter(Boolean)
           : [],
@@ -117,7 +130,7 @@ export default function CompanyProjectsPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
       queryClient.invalidateQueries({ queryKey: ["/api/contracts"] });
       setShowCreateDialog(false);
-      setFormData({ name: "", projectNumber: "", client: "", address: "", distributionEmails: "", contractId: "" });
+      setFormData({ name: "", projectNumber: "", client: "", clientId: "", address: "", distributionEmails: "", contractId: "" });
       toast({
         title: "Project Created",
         description: "New project has been created.",
@@ -137,6 +150,7 @@ export default function CompanyProjectsPage() {
       return apiRequest("PATCH", `/api/projects/${data.id}`, {
         ...data,
         contractId: data.contractId || null,
+        clientId: data.clientId || null,
         distributionEmails: data.distributionEmails
           ? data.distributionEmails.split(",").map((e) => e.trim()).filter(Boolean)
           : [],
@@ -147,7 +161,7 @@ export default function CompanyProjectsPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
       queryClient.invalidateQueries({ queryKey: ["/api/contracts"] });
       setEditingProject(null);
-      setFormData({ name: "", projectNumber: "", client: "", address: "", distributionEmails: "", contractId: "" });
+      setFormData({ name: "", projectNumber: "", client: "", clientId: "", address: "", distributionEmails: "", contractId: "" });
       toast({
         title: "Project Updated",
         description: "Project has been updated.",
@@ -189,6 +203,7 @@ export default function CompanyProjectsPage() {
       name: project.name,
       projectNumber: project.projectNumber,
       client: project.client || "",
+      clientId: (project as any).clientId || "",
       address: project.address || "",
       distributionEmails: (project.distributionEmails as string[])?.join(", ") || "",
       contractId: project.contractId || "",
@@ -403,10 +418,10 @@ export default function CompanyProjectsPage() {
                   className="block cursor-pointer"
                 >
                   <CardContent className="space-y-2">
-                    {project.client && (
+                    {getClientName(project) && (
                       <div className="flex items-center gap-2 text-sm text-muted-foreground">
                         <Building2 className="w-4 h-4" />
-                        <span>{project.client}</span>
+                        <span>{getClientName(project)}</span>
                       </div>
                     )}
                     {project.address && (
@@ -436,7 +451,7 @@ export default function CompanyProjectsPage() {
         if (!open) {
           setShowCreateDialog(false);
           setEditingProject(null);
-          setFormData({ name: "", projectNumber: "", client: "", address: "", distributionEmails: "", contractId: "" });
+          setFormData({ name: "", projectNumber: "", client: "", clientId: "", address: "", distributionEmails: "", contractId: "" });
         }
       }}>
         <DialogContent>
@@ -469,13 +484,18 @@ export default function CompanyProjectsPage() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="client">Client</Label>
-              <Input
-                id="client"
-                value={formData.client}
-                onChange={(e) => setFormData({ ...formData, client: e.target.value })}
-                placeholder="Client name"
-                data-testid="input-project-client"
-              />
+              {activeCompany?.id && (
+                <ClientSelect
+                  value={formData.clientId}
+                  onValueChange={(value, clientName) => setFormData({ ...formData, clientId: value, client: clientName || "" })}
+                  companyId={activeCompany.id}
+                  placeholder="Select a client"
+                  data-testid="select-project-client"
+                />
+              )}
+              <p className="text-xs text-muted-foreground">
+                Select an existing client or create a new one
+              </p>
             </div>
             <div className="space-y-2">
               <Label htmlFor="address">Address</Label>
@@ -532,7 +552,7 @@ export default function CompanyProjectsPage() {
               onClick={() => {
                 setShowCreateDialog(false);
                 setEditingProject(null);
-                setFormData({ name: "", projectNumber: "", client: "", address: "", distributionEmails: "", contractId: "" });
+                setFormData({ name: "", projectNumber: "", client: "", clientId: "", address: "", distributionEmails: "", contractId: "" });
               }}
               data-testid="button-cancel"
             >
