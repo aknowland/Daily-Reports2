@@ -53,7 +53,7 @@ import { ClientSelect } from "@/components/client-select";
 
 export default function CompanyProjectsPage() {
   const { toast } = useToast();
-  const { activeCompany, isCompanyAdmin, isCompaniesLoading } = useAuth();
+  const { activeCompany, isCompanyAdmin, isEffectiveCompanyAdmin, isCompaniesLoading } = useAuth();
   const searchString = useSearch();
   const searchParams = new URLSearchParams(searchString);
   const clientIdFilter = searchParams.get("clientId");
@@ -80,12 +80,12 @@ export default function CompanyProjectsPage() {
 
   const { data: projects = [], isLoading, error } = useQuery<Project[]>({
     queryKey: ["/api/companies", activeCompany?.id, "projects"],
-    enabled: !!activeCompany?.id && isCompanyAdmin,
+    enabled: !!activeCompany?.id && isEffectiveCompanyAdmin,
   });
 
   const { data: contracts = [] } = useQuery<ContractWithProjects[]>({
     queryKey: ["/api/contracts"],
-    enabled: !!activeCompany?.id && isCompanyAdmin,
+    enabled: !!activeCompany?.id && isEffectiveCompanyAdmin,
   });
 
   // Get awarded options for the selected contract
@@ -106,7 +106,7 @@ export default function CompanyProjectsPage() {
       if (!response.ok) throw new Error("Failed to fetch clients");
       return response.json();
     },
-    enabled: !!activeCompany?.id && isCompanyAdmin,
+    enabled: !!activeCompany?.id && isEffectiveCompanyAdmin,
   });
 
   const selectedClient = useMemo(() => {
@@ -302,7 +302,7 @@ export default function CompanyProjectsPage() {
     );
   }
 
-  if (!isCompanyAdmin || !activeCompany) {
+  if (!isEffectiveCompanyAdmin || !activeCompany) {
     return (
       <PageLayout title="Company Projects">
         <div className="container px-4 py-6 mx-auto max-w-screen-lg">

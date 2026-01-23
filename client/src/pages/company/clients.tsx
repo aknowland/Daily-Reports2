@@ -66,7 +66,7 @@ const emptyFormData: ClientFormData = {
 
 export default function ClientsPage() {
   const { toast } = useToast();
-  const { activeCompany, isCompanyAdmin } = useAuth();
+  const { activeCompany, isEffectiveCompanyAdmin } = useAuth();
   const [, navigate] = useLocation();
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -210,7 +210,7 @@ export default function ClientsPage() {
     client.email?.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  if (!isCompanyAdmin) {
+  if (!isEffectiveCompanyAdmin) {
     return (
       <PageLayout title="Clients">
         <Card>

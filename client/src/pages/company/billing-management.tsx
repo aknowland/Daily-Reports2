@@ -92,7 +92,7 @@ const STATUS_CONFIG = {
 
 export default function BillingManagementPage() {
   const { toast } = useToast();
-  const { activeCompany, isCompanyAdmin, isAdmin } = useAuth();
+  const { activeCompany, isEffectiveCompanyAdmin, isEffectiveSystemAdmin } = useAuth();
   const [selectedProject, setSelectedProject] = useState<string>("");
   const [selectedMonth, setSelectedMonth] = useState<string>(
     (new Date().getMonth() + 1).toString()
@@ -655,7 +655,7 @@ export default function BillingManagementPage() {
     );
   }
 
-  if (!isCompanyAdmin && !isAdmin) {
+  if (!isEffectiveCompanyAdmin && !isEffectiveSystemAdmin) {
     return (
       <PageLayout title="Billing">
         <div className="p-4">

@@ -22,7 +22,7 @@ import {
 import type { DailyReportWithDetails, UserProfile, CompanyMember, Company } from "@shared/schema";
 
 export default function DashboardPage() {
-  const { user, isAdmin, isCompanyAdmin } = useAuth();
+  const { user, isAdmin, isCompanyAdmin, isEffectiveCompanyAdmin } = useAuth();
   const [, setLocation] = useLocation();
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [showNewUserSetup, setShowNewUserSetup] = useState(false);
@@ -39,10 +39,10 @@ export default function DashboardPage() {
 
   // Redirect Company Admins to Company Dashboard by default
   useEffect(() => {
-    if (isCompanyAdmin && myCompanies && myCompanies.length > 0) {
+    if (isEffectiveCompanyAdmin && myCompanies && myCompanies.length > 0) {
       setLocation("/company/dashboard");
     }
-  }, [isCompanyAdmin, myCompanies, setLocation]);
+  }, [isEffectiveCompanyAdmin, myCompanies, setLocation]);
 
   // Show new user setup if user has no company memberships
   useEffect(() => {
