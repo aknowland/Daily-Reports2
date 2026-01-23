@@ -2448,13 +2448,7 @@ export async function registerRoutes(
       
       const today = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
       
-      doc.fontSize(9).font('Helvetica');
-      doc.text(`Dated: ${today}`, startX, currentY);
-      doc.text(`Dated: ${today}`, centerX + 20, currentY);
-      
-      currentY += 25;
-      
-      // Signature lines
+      // Signature lines first
       doc.moveTo(startX, currentY).lineTo(startX + 180, currentY).stroke();
       doc.moveTo(centerX + 20, currentY).lineTo(centerX + 200, currentY).stroke();
       
@@ -2462,6 +2456,13 @@ export async function registerRoutes(
       doc.fontSize(8);
       doc.text(`${profile?.firstName || ''} ${profile?.lastName || ''} – ${company?.name || 'KCS'}`, startX, currentY);
       doc.text(`Agent – ${proposal.clientName}`, centerX + 20, currentY);
+      
+      currentY += 20;
+      
+      // Date fields below signatures
+      doc.fontSize(9).font('Helvetica');
+      doc.text(`Dated: ${today}`, startX, currentY);
+      doc.text(`Dated: ${today}`, centerX + 20, currentY);
       
       doc.end();
       
