@@ -1,5 +1,5 @@
 import { sql, relations } from "drizzle-orm";
-import { pgTable, text, varchar, boolean, integer, timestamp, json, pgEnum, unique } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, boolean, integer, timestamp, json, pgEnum, unique, numeric } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -371,6 +371,21 @@ export const contractNotifications = pgTable("contract_notifications", {
   unique().on(table.contractId, table.notificationType, table.daysBefore),
 ]);
 
+// Budget notifications table - tracks budget milestone alerts to prevent duplicates
+export const budgetNotifications = pgTable("budget_notifications", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  contractId: varchar("contract_id").references(() => contracts.id, { onDelete: "cascade" }).notNull(),
+  companyId: varchar("company_id").references(() => companies.id, { onDelete: "cascade" }).notNull(),
+  milestonePercent: integer("milestone_percent").notNull(), // 50, 75, 90, 100
+  currentSpend: numeric("current_spend", { precision: 12, scale: 2 }).notNull(),
+  budgetAmount: numeric("budget_amount", { precision: 12, scale: 2 }).notNull(),
+  sentAt: timestamp("sent_at").defaultNow().notNull(),
+  recipientEmails: json("recipient_emails").$type<string[]>().default([]),
+}, (table) => [
+  // Unique constraint to prevent duplicate notifications for same contract/milestone
+  unique().on(table.contractId, table.milestonePercent),
+]);
+
 // Timesheet status enum
 export const timesheetStatusEnum = pgEnum("timesheet_status", ["draft", "submitted", "approved"]);
 
@@ -608,6 +623,7 @@ export const insertContractAttachmentSchema = createInsertSchema(contractAttachm
 export const insertContractOptionSchema = createInsertSchema(contractOptions).omit({ id: true, createdAt: true });
 export const insertContractOptionInspectorSchema = createInsertSchema(contractOptionInspectors).omit({ id: true, createdAt: true });
 export const insertContractNotificationSchema = createInsertSchema(contractNotifications).omit({ id: true, sentAt: true });
+export const insertBudgetNotificationSchema = createInsertSchema(budgetNotifications).omit({ id: true, sentAt: true });
 export const insertTimesheetSchema = createInsertSchema(timesheets).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertInvoiceSchema = createInsertSchema(invoices).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertMonthlyReportBundleSchema = createInsertSchema(monthlyReportBundles).omit({ id: true, createdAt: true });
@@ -649,6 +665,8 @@ export type ContractOptionInspector = typeof contractOptionInspectors.$inferSele
 export type InsertContractOptionInspector = z.infer<typeof insertContractOptionInspectorSchema>;
 export type ContractNotification = typeof contractNotifications.$inferSelect;
 export type InsertContractNotification = z.infer<typeof insertContractNotificationSchema>;
+export type BudgetNotification = typeof budgetNotifications.$inferSelect;
+export type InsertBudgetNotification = z.infer<typeof insertBudgetNotificationSchema>;
 export type Timesheet = typeof timesheets.$inferSelect;
 export type InsertTimesheet = z.infer<typeof insertTimesheetSchema>;
 export type Invoice = typeof invoices.$inferSelect;
