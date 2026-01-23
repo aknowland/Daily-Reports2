@@ -201,7 +201,7 @@ const formatFileSize = (bytes: number | null) => {
   return `${size.toFixed(1)} ${units[unitIndex]}`;
 };
 
-export default function ProjectDashboard() {
+export default function ContractDashboard() {
   const { toast } = useToast();
   const { activeCompany, profile } = useAuth();
   const params = useParams<{ contractId: string }>();
@@ -296,7 +296,7 @@ export default function ProjectDashboard() {
 
   if (isLoading) {
     return (
-      <PageLayout title="Project Dashboard">
+      <PageLayout title="Contract Dashboard">
         <div className="space-y-6">
           <Skeleton className="h-8 w-64" />
           <div className="grid gap-6 md:grid-cols-2">
@@ -312,7 +312,7 @@ export default function ProjectDashboard() {
 
   if (!dashboard) {
     return (
-      <PageLayout title="Project Dashboard">
+      <PageLayout title="Contract Dashboard">
         <div className="flex flex-col items-center justify-center py-12">
           <p className="text-muted-foreground">Contract not found</p>
           <Button
@@ -334,7 +334,7 @@ export default function ProjectDashboard() {
   const ScheduleIcon = scheduleConfig.icon;
 
   return (
-    <PageLayout title="Project Dashboard">
+    <PageLayout title="Contract Dashboard">
       <div className="space-y-6">
         <div className="flex items-center gap-2 mb-4">
           <Link href="/company/contracts">
