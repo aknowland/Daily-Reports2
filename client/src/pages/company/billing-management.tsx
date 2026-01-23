@@ -45,7 +45,18 @@ import {
   Plus,
 } from "lucide-react";
 import { useState } from "react";
-import type { Project, ContractWithProjects, InvoiceWithDetails } from "@shared/schema";
+import type { Project, ContractWithProjects, InvoiceWithDetails, PurchaseOrder, Client } from "@shared/schema";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Receipt, Trash2, Edit, Calendar } from "lucide-react";
 import { format } from "date-fns";
 import { queryClient } from "@/lib/queryClient";
 
@@ -91,9 +102,40 @@ export default function BillingManagementPage() {
   const [isGeneratingInvoice, setIsGeneratingInvoice] = useState(false);
   const [isGeneratingCombined, setIsGeneratingCombined] = useState(false);
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [showPODialog, setShowPODialog] = useState(false);
+  const [editingPO, setEditingPO] = useState<PurchaseOrder | null>(null);
+  const [poFormData, setPOFormData] = useState({
+    poNumber: "",
+    clientId: "",
+    amount: "",
+    description: "",
+    issueDate: "",
+    expirationDate: "",
+    status: "active",
+  });
 
   const { data: projects, isLoading: projectsLoading } = useQuery<Project[]>({
     queryKey: ["/api/projects"],
+  });
+
+  const { data: clients = [] } = useQuery<Client[]>({
+    queryKey: ["/api/clients", activeCompany?.id],
+    queryFn: async () => {
+      const response = await fetch("/api/clients", { credentials: "include" });
+      if (!response.ok) throw new Error("Failed to fetch clients");
+      return response.json();
+    },
+    enabled: !!activeCompany?.id,
+  });
+
+  const { data: purchaseOrders = [], isLoading: purchaseOrdersLoading } = useQuery<PurchaseOrder[]>({
+    queryKey: ["/api/purchase-orders", activeCompany?.id],
+    queryFn: async () => {
+      const response = await fetch("/api/purchase-orders", { credentials: "include" });
+      if (!response.ok) throw new Error("Failed to fetch purchase orders");
+      return response.json();
+    },
+    enabled: !!activeCompany?.id,
   });
 
   const { data: contracts, isLoading: contractsLoading } = useQuery<ContractWithProjects[]>({
@@ -130,6 +172,124 @@ export default function BillingManagementPage() {
       toast({ title: "Failed to update invoice", variant: "destructive" });
     },
   });
+
+  const createPOMutation = useMutation({
+    mutationFn: async (data: typeof poFormData) => {
+      const response = await fetch("/api/purchase-orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          poNumber: data.poNumber,
+          clientId: data.clientId || null,
+          totalAmount: data.amount,
+          description: data.description,
+          status: data.status,
+          issueDate: data.issueDate ? new Date(data.issueDate) : null,
+          expirationDate: data.expirationDate ? new Date(data.expirationDate) : null,
+        }),
+      });
+      if (!response.ok) throw new Error("Failed to create purchase order");
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/purchase-orders"] });
+      setShowPODialog(false);
+      resetPOForm();
+      toast({ title: "Purchase order created" });
+    },
+    onError: () => {
+      toast({ title: "Failed to create purchase order", variant: "destructive" });
+    },
+  });
+
+  const updatePOMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: typeof poFormData }) => {
+      const response = await fetch(`/api/purchase-orders/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          poNumber: data.poNumber,
+          clientId: data.clientId || null,
+          totalAmount: data.amount,
+          description: data.description,
+          status: data.status,
+          issueDate: data.issueDate ? new Date(data.issueDate) : null,
+          expirationDate: data.expirationDate ? new Date(data.expirationDate) : null,
+        }),
+      });
+      if (!response.ok) throw new Error("Failed to update purchase order");
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/purchase-orders"] });
+      setShowPODialog(false);
+      setEditingPO(null);
+      resetPOForm();
+      toast({ title: "Purchase order updated" });
+    },
+    onError: () => {
+      toast({ title: "Failed to update purchase order", variant: "destructive" });
+    },
+  });
+
+  const deletePOMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const response = await fetch(`/api/purchase-orders/${id}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (!response.ok) throw new Error("Failed to delete purchase order");
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/purchase-orders"] });
+      toast({ title: "Purchase order deleted" });
+    },
+    onError: () => {
+      toast({ title: "Failed to delete purchase order", variant: "destructive" });
+    },
+  });
+
+  const resetPOForm = () => {
+    setPOFormData({
+      poNumber: "",
+      clientId: "",
+      amount: "",
+      description: "",
+      issueDate: "",
+      expirationDate: "",
+      status: "active",
+    });
+  };
+
+  const handleEditPO = (po: PurchaseOrder) => {
+    setEditingPO(po);
+    setPOFormData({
+      poNumber: po.poNumber,
+      clientId: po.clientId || "",
+      amount: po.totalAmount || "",
+      description: po.description || "",
+      issueDate: po.issueDate ? format(new Date(po.issueDate), "yyyy-MM-dd") : "",
+      expirationDate: po.expirationDate ? format(new Date(po.expirationDate), "yyyy-MM-dd") : "",
+      status: po.status,
+    });
+    setShowPODialog(true);
+  };
+
+  const handlePOSubmit = () => {
+    if (editingPO) {
+      updatePOMutation.mutate({ id: editingPO.id, data: poFormData });
+    } else {
+      createPOMutation.mutate(poFormData);
+    }
+  };
+
+  const getClientName = (clientId: string) => {
+    const client = clients.find(c => c.id === clientId);
+    return client?.name || "Unknown Client";
+  };
 
   const filteredProjects = projects?.filter(
     (p) => p.companyId === activeCompany?.id
@@ -393,6 +553,10 @@ export default function BillingManagementPage() {
             <TabsTrigger value="invoices" className="gap-2" data-testid="tab-invoices">
               <DollarSign className="h-4 w-4" />
               Invoices
+            </TabsTrigger>
+            <TabsTrigger value="purchase-orders" className="gap-2" data-testid="tab-purchase-orders">
+              <Receipt className="h-4 w-4" />
+              Purchase Orders
             </TabsTrigger>
             <TabsTrigger value="timesheets" className="gap-2" data-testid="tab-timesheets">
               <Clock className="h-4 w-4" />
@@ -681,6 +845,123 @@ export default function BillingManagementPage() {
             </Card>
           </TabsContent>
 
+          <TabsContent value="purchase-orders" className="space-y-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-medium">Purchase Orders</h3>
+                <p className="text-sm text-muted-foreground">
+                  Manage purchase orders from your clients. Link contracts to POs for billing.
+                </p>
+              </div>
+              <Button
+                onClick={() => {
+                  setEditingPO(null);
+                  resetPOForm();
+                  setShowPODialog(true);
+                }}
+                data-testid="button-new-po"
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                New Purchase Order
+              </Button>
+            </div>
+
+            {purchaseOrdersLoading ? (
+              <Skeleton className="h-64 w-full" />
+            ) : purchaseOrders.length === 0 ? (
+              <Card>
+                <CardContent className="py-10">
+                  <div className="text-center">
+                    <Receipt className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                    <p className="text-muted-foreground">No purchase orders yet.</p>
+                    <p className="text-sm text-muted-foreground mb-4">
+                      Create a purchase order to start tracking client POs.
+                    </p>
+                    <Button
+                      onClick={() => {
+                        setEditingPO(null);
+                        resetPOForm();
+                        setShowPODialog(true);
+                      }}
+                    >
+                      <Plus className="h-4 w-4 mr-2" />
+                      Create First PO
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            ) : (
+              <Card>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>PO Number</TableHead>
+                      <TableHead>Client</TableHead>
+                      <TableHead>Amount</TableHead>
+                      <TableHead>Issue Date</TableHead>
+                      <TableHead>Expiration</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="w-[70px]"></TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {purchaseOrders.map((po) => (
+                      <TableRow key={po.id}>
+                        <TableCell className="font-medium">{po.poNumber}</TableCell>
+                        <TableCell>{getClientName(po.clientId || "")}</TableCell>
+                        <TableCell>
+                          {po.totalAmount ? `$${parseFloat(po.totalAmount).toLocaleString()}` : "-"}
+                        </TableCell>
+                        <TableCell>
+                          {po.issueDate ? format(new Date(po.issueDate), "MMM d, yyyy") : "-"}
+                        </TableCell>
+                        <TableCell>
+                          {po.expirationDate ? format(new Date(po.expirationDate), "MMM d, yyyy") : "-"}
+                        </TableCell>
+                        <TableCell>
+                          <Badge
+                            variant={
+                              po.status === "active" ? "default" :
+                              po.status === "closed" ? "secondary" : "outline"
+                            }
+                          >
+                            {po.status.charAt(0).toUpperCase() + po.status.slice(1)}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon">
+                                <MoreHorizontal className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem onClick={() => handleEditPO(po)}>
+                                <Edit className="h-4 w-4 mr-2" />
+                                Edit
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                className="text-destructive"
+                                onClick={() => {
+                                  if (confirm("Are you sure you want to delete this purchase order?")) {
+                                    deletePOMutation.mutate(po.id);
+                                  }
+                                }}
+                              >
+                                <Trash2 className="h-4 w-4 mr-2" />
+                                Delete
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </Card>
+            )}
+          </TabsContent>
+
           <TabsContent value="timesheets">
             <Card>
               <CardHeader>
@@ -850,6 +1131,142 @@ export default function BillingManagementPage() {
           </TabsContent>
         </Tabs>
       </div>
+
+      <Dialog open={showPODialog} onOpenChange={(open) => {
+        setShowPODialog(open);
+        if (!open) {
+          setEditingPO(null);
+          resetPOForm();
+        }
+      }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              {editingPO ? "Edit Purchase Order" : "New Purchase Order"}
+            </DialogTitle>
+            <DialogDescription>
+              {editingPO ? "Update the purchase order details." : "Create a new purchase order from a client."}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="poNumber">PO Number *</Label>
+              <Input
+                id="poNumber"
+                value={poFormData.poNumber}
+                onChange={(e) => setPOFormData({ ...poFormData, poNumber: e.target.value })}
+                placeholder="e.g., PO-2024-001"
+                data-testid="input-po-number"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="clientId">Client *</Label>
+              <Select
+                value={poFormData.clientId}
+                onValueChange={(value) => setPOFormData({ ...poFormData, clientId: value })}
+              >
+                <SelectTrigger data-testid="select-po-client">
+                  <SelectValue placeholder="Select a client" />
+                </SelectTrigger>
+                <SelectContent>
+                  {clients.map((client) => (
+                    <SelectItem key={client.id} value={client.id}>
+                      {client.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="amount">Total Amount</Label>
+              <Input
+                id="amount"
+                type="text"
+                value={poFormData.amount}
+                onChange={(e) => setPOFormData({ ...poFormData, amount: e.target.value })}
+                placeholder="e.g., 50000"
+                data-testid="input-po-amount"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="description">Description</Label>
+              <Input
+                id="description"
+                value={poFormData.description}
+                onChange={(e) => setPOFormData({ ...poFormData, description: e.target.value })}
+                placeholder="Optional description"
+                data-testid="input-po-description"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="issueDate">Issue Date</Label>
+                <Input
+                  id="issueDate"
+                  type="date"
+                  value={poFormData.issueDate}
+                  onChange={(e) => setPOFormData({ ...poFormData, issueDate: e.target.value })}
+                  data-testid="input-po-issue-date"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="expirationDate">Expiration Date</Label>
+                <Input
+                  id="expirationDate"
+                  type="date"
+                  value={poFormData.expirationDate}
+                  onChange={(e) => setPOFormData({ ...poFormData, expirationDate: e.target.value })}
+                  data-testid="input-po-expiration-date"
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="status">Status</Label>
+              <Select
+                value={poFormData.status}
+                onValueChange={(value) => setPOFormData({ ...poFormData, status: value })}
+              >
+                <SelectTrigger data-testid="select-po-status">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="active">Active</SelectItem>
+                  <SelectItem value="closed">Closed</SelectItem>
+                  <SelectItem value="cancelled">Cancelled</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowPODialog(false);
+                setEditingPO(null);
+                resetPOForm();
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handlePOSubmit}
+              disabled={!poFormData.poNumber || !poFormData.clientId || createPOMutation.isPending || updatePOMutation.isPending}
+              data-testid="button-save-po"
+            >
+              {(createPOMutation.isPending || updatePOMutation.isPending) ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Saving...
+                </>
+              ) : editingPO ? (
+                "Update"
+              ) : (
+                "Create"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </PageLayout>
   );
 }
