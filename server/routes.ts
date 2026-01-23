@@ -2313,13 +2313,10 @@ export async function registerRoutes(
         // Draw text with padding and wrapping
         doc.font(font).fontSize(fontSize);
         const textWidth = width - (cellPadding * 2);
-        // For single-line text, use fontSize as text height for more consistent centering
-        // For wrapped text, use heightOfString
-        const singleLineWidth = doc.widthOfString(text);
-        const willWrap = singleLineWidth > textWidth;
-        const textHeight = willWrap ? doc.heightOfString(text, { width: textWidth, lineGap: 1 }) : fontSize;
-        // Calculate centered Y position with bounds
-        const calculatedY = y + (height - textHeight) / 2;
+        // Use heightOfString for accurate text height measurement
+        const textHeight = doc.heightOfString(text, { width: textWidth, lineGap: 1 });
+        // Calculate centered Y position - shift up by 1pt to avoid bottom border crowding
+        const calculatedY = y + (height - textHeight) / 2 - 1;
         const minY = y + cellPadding;
         const textY = verticalCenter ? Math.max(calculatedY, minY) : minY;
         doc.text(text, x + cellPadding, textY, { width: textWidth, align, lineGap: 1 });
@@ -2333,12 +2330,10 @@ export async function registerRoutes(
         // Draw text centered vertically with wrapping
         doc.font(font).fontSize(fontSize);
         const textWidth = width - (cellPadding * 2);
-        // For single-line text, use fontSize as text height for more consistent centering
-        const singleLineWidth = doc.widthOfString(text);
-        const willWrap = singleLineWidth > textWidth;
-        const textHeight = willWrap ? doc.heightOfString(text, { width: textWidth, lineGap: 1 }) : fontSize;
-        // Calculate centered Y position with min bound
-        const calculatedY = y + (height - textHeight) / 2;
+        // Use heightOfString for accurate text height measurement
+        const textHeight = doc.heightOfString(text, { width: textWidth, lineGap: 1 });
+        // Calculate centered Y position - shift up by 1pt to avoid bottom border crowding
+        const calculatedY = y + (height - textHeight) / 2 - 1;
         const minY = y + cellPadding;
         const textY = Math.max(calculatedY, minY);
         doc.text(text, x + cellPadding, textY, { width: textWidth, align, lineGap: 1 });
@@ -2441,7 +2436,7 @@ export async function registerRoutes(
       }
       
       // ===== TERMS & CONDITIONS (same page, reduced spacing) =====
-      currentY += 40; // ~0.56 inch spacing before agreement section (25% reduction from 54pt)
+      currentY += 24; // ~0.33 inch spacing before agreement section (40% reduction from 40pt)
       
       // Agreement title
       doc.fontSize(11).font('Helvetica-Bold').text('PROJECT INSPECTOR AGENCY AGREEMENT AND CONTRACT DUTIES:', startX, currentY, { width: pageWidth, align: 'center' });
