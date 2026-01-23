@@ -24,7 +24,7 @@ interface Conversation {
 }
 
 export function AIChatBubble() {
-  const { isCompanyAdmin, isAdmin, activeCompany, isCompaniesLoading } = useAuth();
+  const { isEffectiveCompanyAdmin, isEffectiveSystemAdmin, activeCompany, isCompaniesLoading } = useAuth();
   const { toast } = useToast();
   const [isOpen, setIsOpen] = useState(false);
   const [inputValue, setInputValue] = useState("");
@@ -35,9 +35,8 @@ export function AIChatBubble() {
   const scrollAreaRef = useRef<HTMLDivElement>(null);
 
   // Allow access for Company Admins or any System Admin level (admin, owner, system_owner)
-  // isAdmin includes system-level admin roles (admin, owner, system_owner)
-  // isCompanyAdmin is true when user is an admin of their active company
-  const canAccessChat = isCompanyAdmin || isAdmin;
+  // Respects inspector mode toggle - when in inspector mode, chat bubble is hidden
+  const canAccessChat = isEffectiveCompanyAdmin || isEffectiveSystemAdmin;
 
   const { data: conversations = [], isLoading: conversationsLoading } = useQuery<Conversation[]>({
     queryKey: ["/api/ai-chat/conversations", activeCompany?.id],
