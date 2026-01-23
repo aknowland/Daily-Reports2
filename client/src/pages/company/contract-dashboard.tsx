@@ -148,6 +148,8 @@ type DashboardData = {
     finalCloseoutDate: string | null;
     scheduleProgress: number;
     scheduleStatus: 'not_started' | 'on_track' | 'warning' | 'overdue' | 'complete';
+    contractOptionId: string | null;
+    contractOptionName: string | null;
   }[];
 };
 
@@ -891,6 +893,7 @@ export default function ContractDashboard() {
                     <TableRow>
                       <TableHead>Project</TableHead>
                       <TableHead>Number</TableHead>
+                      <TableHead>Linked Option</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead className="text-right">Reports</TableHead>
                       <TableHead className="min-w-[200px]">Budget Progress</TableHead>
@@ -917,6 +920,15 @@ export default function ContractDashboard() {
                         >
                           <TableCell className="font-medium">{project.name}</TableCell>
                           <TableCell className="text-muted-foreground">{project.projectNumber || '-'}</TableCell>
+                          <TableCell>
+                            {project.contractOptionName ? (
+                              <Badge variant="outline" className="text-xs">
+                                {project.contractOptionName}
+                              </Badge>
+                            ) : (
+                              <span className="text-muted-foreground text-xs">-</span>
+                            )}
+                          </TableCell>
                           <TableCell>
                             <Badge 
                               variant={project.status === 'active' ? 'default' : 'secondary'}
