@@ -117,6 +117,7 @@ export default function BillingManagementPage() {
   });
   const [showEmailDialog, setShowEmailDialog] = useState(false);
   const [emailInvoice, setEmailInvoice] = useState<InvoiceWithDetails | null>(null);
+  const [invoiceToDelete, setInvoiceToDelete] = useState<InvoiceWithDetails | null>(null);
   const [emailFormData, setEmailFormData] = useState({
     recipientEmail: "",
     subject: "",
@@ -262,6 +263,24 @@ export default function BillingManagementPage() {
     },
     onError: () => {
       toast({ title: "Failed to delete purchase order", variant: "destructive" });
+    },
+  });
+
+  const deleteInvoiceMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const response = await fetch(`/api/invoices/${id}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (!response.ok) throw new Error("Failed to delete invoice");
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/invoices"] });
+      toast({ title: "Invoice deleted successfully" });
+      setInvoiceToDelete(null);
+    },
+    onError: () => {
+      toast({ title: "Failed to delete invoice", variant: "destructive" });
     },
   });
 
@@ -801,6 +820,14 @@ export default function BillingManagementPage() {
                                       Mark as Paid
                                     </DropdownMenuItem>
                                   )}
+                                  <DropdownMenuItem 
+                                    onClick={() => setInvoiceToDelete(invoice)}
+                                    className="text-destructive focus:text-destructive"
+                                    data-testid={`invoice-delete-${invoice.id}`}
+                                  >
+                                    <Trash2 className="h-4 w-4 mr-2" />
+                                    Delete Invoice
+                                  </DropdownMenuItem>
                                 </DropdownMenuContent>
                               </DropdownMenu>
                             </TableCell>
@@ -1408,6 +1435,44 @@ export default function BillingManagementPage() {
                 <>
                   <Send className="h-4 w-4 mr-2" />
                   Send Email
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!invoiceToDelete} onOpenChange={(open) => !open && setInvoiceToDelete(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Invoice</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete invoice INV-{invoiceToDelete?.invoiceNumber}? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setInvoiceToDelete(null)}
+              data-testid="button-cancel-delete-invoice"
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => invoiceToDelete && deleteInvoiceMutation.mutate(invoiceToDelete.id)}
+              disabled={deleteInvoiceMutation.isPending}
+              data-testid="button-confirm-delete-invoice"
+            >
+              {deleteInvoiceMutation.isPending ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                <>
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Delete
                 </>
               )}
             </Button>
