@@ -138,15 +138,25 @@ export function NewUserSetup({ open, onComplete }: NewUserSetupProps) {
   });
 
   const joinRequestMutation = useMutation({
-    mutationFn: async (data: { companyId: string; message?: string }) => {
+    mutationFn: async (data: { 
+      companyId: string; 
+      message?: string;
+      proposedProjectName?: string;
+      proposedProjectNumber?: string;
+      proposedProjectAddress?: string;
+      proposedProjectClient?: string;
+    }) => {
       const response = await apiRequest("POST", "/api/join-requests", data);
       return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/my-join-requests"] });
+      const hasProject = projectName.trim() && projectNumber.trim();
       toast({
         title: "Request Sent!",
-        description: "Your request to join has been sent to the company admin for approval.",
+        description: hasProject 
+          ? "Your request to join with your proposed project has been sent for approval."
+          : "Your request to join has been sent to the company admin for approval.",
       });
       // Complete onboarding - they can create personal reports while waiting
       setStep("done");
@@ -210,7 +220,7 @@ export function NewUserSetup({ open, onComplete }: NewUserSetupProps) {
     acceptInviteMutation.mutate(inviteCode.trim());
   };
 
-  const handleJoinRequest = () => {
+  const handleJoinRequest = (includeProject = false) => {
     if (!selectedCompanyId) {
       toast({
         title: "Company Required",
@@ -219,10 +229,28 @@ export function NewUserSetup({ open, onComplete }: NewUserSetupProps) {
       });
       return;
     }
-    joinRequestMutation.mutate({
+    
+    const requestData: {
+      companyId: string;
+      message?: string;
+      proposedProjectName?: string;
+      proposedProjectNumber?: string;
+      proposedProjectAddress?: string;
+      proposedProjectClient?: string;
+    } = {
       companyId: selectedCompanyId,
       message: requestMessage.trim() || undefined,
-    });
+    };
+    
+    // Include project proposal if provided
+    if (includeProject && projectName.trim() && projectNumber.trim()) {
+      requestData.proposedProjectName = projectName.trim();
+      requestData.proposedProjectNumber = projectNumber.trim();
+      requestData.proposedProjectAddress = projectAddress.trim() || undefined;
+      requestData.proposedProjectClient = projectClient.trim() || undefined;
+    }
+    
+    joinRequestMutation.mutate(requestData);
   };
 
   const handleCreateProject = () => {
@@ -403,7 +431,7 @@ export function NewUserSetup({ open, onComplete }: NewUserSetupProps) {
 
               <TabsContent value="request" className="space-y-4 mt-4">
                 <p className="text-sm text-muted-foreground">
-                  Search for an existing company and request to join. An admin will review your request.
+                  Search for an existing company and request to join. Optionally propose a project to work on.
                 </p>
                 
                 <div className="space-y-2">
@@ -430,7 +458,7 @@ export function NewUserSetup({ open, onComplete }: NewUserSetupProps) {
                     {companySearchQuery ? "No companies found matching your search" : "No companies available"}
                   </div>
                 ) : (
-                  <ScrollArea className="h-[180px] border rounded-md">
+                  <ScrollArea className="h-[140px] border rounded-md">
                     <div className="p-2 space-y-1">
                       {filteredCompanies.map((company) => (
                         <button
@@ -474,9 +502,65 @@ export function NewUserSetup({ open, onComplete }: NewUserSetupProps) {
                   />
                 </div>
 
+                {selectedCompany && (
+                  <div className="border-t pt-4 mt-4 space-y-3">
+                    <div className="flex items-center gap-2">
+                      <FolderOpen className="w-4 h-4 text-primary" />
+                      <span className="text-sm font-medium">Propose a Project (optional)</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      If you have a project to work on, enter the details below. The admin can approve both your membership and project.
+                    </p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="space-y-1">
+                        <Label htmlFor="reqProjectName" className="text-xs">Project Name</Label>
+                        <Input
+                          id="reqProjectName"
+                          placeholder="Project name"
+                          value={projectName}
+                          onChange={(e) => setProjectName(e.target.value)}
+                          data-testid="input-request-project-name"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label htmlFor="reqProjectNumber" className="text-xs">Project Number</Label>
+                        <Input
+                          id="reqProjectNumber"
+                          placeholder="PRJ-001"
+                          value={projectNumber}
+                          onChange={(e) => setProjectNumber(e.target.value)}
+                          data-testid="input-request-project-number"
+                        />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="space-y-1">
+                        <Label htmlFor="reqProjectClient" className="text-xs">Client (optional)</Label>
+                        <Input
+                          id="reqProjectClient"
+                          placeholder="Client name"
+                          value={projectClient}
+                          onChange={(e) => setProjectClient(e.target.value)}
+                          data-testid="input-request-project-client"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label htmlFor="reqProjectAddress" className="text-xs">Address (optional)</Label>
+                        <Input
+                          id="reqProjectAddress"
+                          placeholder="Project address"
+                          value={projectAddress}
+                          onChange={(e) => setProjectAddress(e.target.value)}
+                          data-testid="input-request-project-address"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 <Button
                   className="w-full"
-                  onClick={handleJoinRequest}
+                  onClick={() => handleJoinRequest(projectName.trim() !== '' && projectNumber.trim() !== '')}
                   disabled={joinRequestMutation.isPending || !selectedCompanyId}
                   data-testid="button-request-join"
                 >
@@ -484,6 +568,11 @@ export function NewUserSetup({ open, onComplete }: NewUserSetupProps) {
                     <>
                       <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                       Sending Request...
+                    </>
+                  ) : projectName.trim() && projectNumber.trim() ? (
+                    <>
+                      Request to Join with Project
+                      <ChevronRight className="w-4 h-4 ml-2" />
                     </>
                   ) : (
                     <>

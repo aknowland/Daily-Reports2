@@ -245,10 +245,17 @@ export const invites = pgTable("invites", {
 export const joinRequestStatusEnum = pgEnum("join_request_status", ["pending", "approved", "rejected"]);
 
 // Join Requests table - for users requesting to join existing companies
+// Can include a project proposal when inspector creates a project for an unaffiliated company
 export const joinRequests = pgTable("join_requests", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
   companyId: varchar("company_id").references(() => companies.id, { onDelete: "cascade" }).notNull(),
+  // Optional project details proposed along with the join request
+  projectId: varchar("project_id").references(() => projects.id, { onDelete: "set null" }),
+  proposedProjectName: text("proposed_project_name"),
+  proposedProjectNumber: varchar("proposed_project_number"),
+  proposedProjectAddress: text("proposed_project_address"),
+  proposedProjectClient: text("proposed_project_client"),
   message: text("message"),
   status: joinRequestStatusEnum("status").default("pending").notNull(),
   reviewedBy: varchar("reviewed_by").references(() => users.id),

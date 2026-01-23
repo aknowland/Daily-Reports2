@@ -6886,11 +6886,19 @@ export async function registerRoutes(
     }
   });
 
-  // Create join request
+  // Create join request (optionally with a proposed project)
   app.post("/api/join-requests", isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user?.claims?.sub;
-      const { companyId, message } = req.body;
+      const { 
+        companyId, 
+        message,
+        projectId,
+        proposedProjectName,
+        proposedProjectNumber,
+        proposedProjectAddress,
+        proposedProjectClient
+      } = req.body;
       
       if (!companyId) {
         return res.status(400).json({ message: "Company ID is required" });
@@ -6919,7 +6927,16 @@ export async function registerRoutes(
         }
       }
 
-      const request = await storage.createJoinRequest({ userId, companyId, message });
+      const request = await storage.createJoinRequest({ 
+        userId, 
+        companyId, 
+        message,
+        projectId: projectId || null,
+        proposedProjectName: proposedProjectName || null,
+        proposedProjectNumber: proposedProjectNumber || null,
+        proposedProjectAddress: proposedProjectAddress || null,
+        proposedProjectClient: proposedProjectClient || null
+      });
       res.status(201).json(request);
     } catch (error) {
       console.error("Error creating join request:", error);
@@ -6951,10 +6968,12 @@ export async function registerRoutes(
   });
 
   // Approve join request (system admin or company admins)
+  // If the request includes a proposed project, optionally create it
   app.post("/api/join-requests/:id/approve", isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user?.claims?.sub;
       const requestId = req.params.id;
+      const { approveProject = true } = req.body; // Default: also approve the proposed project
       
       const request = await storage.getJoinRequest(requestId);
       if (!request) {
@@ -6976,7 +6995,45 @@ export async function registerRoutes(
       // Add user as a member with inspector role
       await storage.addCompanyMember(request.companyId, request.userId, "inspector");
       
-      res.json({ message: "Join request approved" });
+      let createdProjectId: string | null = null;
+      
+      // If there's a proposed project, create it and assign the user
+      if (approveProject && (request as any).proposedProjectName && (request as any).proposedProjectNumber) {
+        try {
+          // Check if project number is unique
+          const existingProject = await storage.getProjectByNumber((request as any).proposedProjectNumber);
+          if (!existingProject) {
+            const newProject = await storage.createProject({
+              companyId: request.companyId,
+              name: (request as any).proposedProjectName,
+              projectNumber: (request as any).proposedProjectNumber,
+              address: (request as any).proposedProjectAddress || undefined,
+              client: (request as any).proposedProjectClient || undefined,
+            });
+            createdProjectId = newProject.id;
+            
+            // Assign the requesting user to this project
+            await storage.addProjectMember(newProject.id, request.userId);
+          }
+        } catch (projectError) {
+          console.error("Error creating proposed project:", projectError);
+          // Continue with approval even if project creation fails
+        }
+      }
+      
+      // If there's an existing project ID referenced, assign user to it
+      if ((request as any).projectId) {
+        try {
+          await storage.addProjectMember((request as any).projectId, request.userId);
+        } catch (assignError) {
+          console.error("Error assigning user to project:", assignError);
+        }
+      }
+      
+      res.json({ 
+        message: "Join request approved", 
+        createdProjectId 
+      });
     } catch (error) {
       console.error("Error approving join request:", error);
       res.status(500).json({ message: "Failed to approve join request" });
