@@ -70,6 +70,18 @@ export default function CompanyDashboard() {
           </div>
         </div>
 
+        {/* Project Status Summary Cards */}
+        <StatusSummaryCards 
+          contracts={contractsSummary || []} 
+          isLoading={contractsLoading} 
+        />
+
+        {/* Project Status Chart */}
+        <ProjectStatusChart 
+          contracts={contractsSummary || []} 
+          isLoading={contractsLoading} 
+        />
+
         {/* Stats Overview */}
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           <Card data-testid="card-stat-reports">
@@ -130,18 +142,6 @@ export default function CompanyDashboard() {
             </CardContent>
           </Card>
         </div>
-
-        {/* Project Status Summary Cards */}
-        <StatusSummaryCards 
-          contracts={contractsSummary || []} 
-          isLoading={contractsLoading} 
-        />
-
-        {/* Project Status Chart */}
-        <ProjectStatusChart 
-          contracts={contractsSummary || []} 
-          isLoading={contractsLoading} 
-        />
 
         {/* Quick Links */}
         <div className="grid gap-4 md:grid-cols-3">
