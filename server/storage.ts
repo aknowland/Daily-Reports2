@@ -1505,8 +1505,14 @@ export class DatabaseStorage implements IStorage {
     
     const agreementsWithDetails: IorAgreementWithDetails[] = [];
     for (const agreement of agreements) {
+      let contract: Contract | undefined;
       let project: Project | undefined;
       let inspector: User | undefined;
+      
+      if (agreement.contractId) {
+        const [c] = await db.select().from(contracts).where(eq(contracts.id, agreement.contractId));
+        contract = c;
+      }
       
       if (agreement.projectId) {
         const [p] = await db.select().from(projects).where(eq(projects.id, agreement.projectId));
@@ -1518,7 +1524,7 @@ export class DatabaseStorage implements IStorage {
         inspector = u;
       }
       
-      agreementsWithDetails.push({ ...agreement, project, inspector });
+      agreementsWithDetails.push({ ...agreement, contract, project, inspector });
     }
     
     return agreementsWithDetails;
@@ -1528,8 +1534,14 @@ export class DatabaseStorage implements IStorage {
     const [agreement] = await db.select().from(iorAgreements).where(eq(iorAgreements.id, id));
     if (!agreement) return undefined;
     
+    let contract: Contract | undefined;
     let project: Project | undefined;
     let inspector: User | undefined;
+    
+    if (agreement.contractId) {
+      const [c] = await db.select().from(contracts).where(eq(contracts.id, agreement.contractId));
+      contract = c;
+    }
     
     if (agreement.projectId) {
       const [p] = await db.select().from(projects).where(eq(projects.id, agreement.projectId));
@@ -1541,7 +1553,7 @@ export class DatabaseStorage implements IStorage {
       inspector = u;
     }
     
-    return { ...agreement, project, inspector };
+    return { ...agreement, contract, project, inspector };
   }
 
   async getIorAgreementByProjectAndInspector(projectId: string, inspectorId: string): Promise<IorAgreement | undefined> {
@@ -1652,9 +1664,14 @@ export class DatabaseStorage implements IStorage {
     
     const agreementsWithDetails: IorAgreementWithDetails[] = [];
     for (const agreement of agreements) {
+      let contract: Contract | undefined;
       let project: Project | undefined;
       let inspector: User | undefined;
       
+      if (agreement.contractId) {
+        const [c] = await db.select().from(contracts).where(eq(contracts.id, agreement.contractId));
+        contract = c;
+      }
       if (agreement.projectId) {
         const [p] = await db.select().from(projects).where(eq(projects.id, agreement.projectId));
         project = p;
@@ -1666,6 +1683,7 @@ export class DatabaseStorage implements IStorage {
       
       agreementsWithDetails.push({
         ...agreement,
+        contract,
         project,
         inspector,
       });

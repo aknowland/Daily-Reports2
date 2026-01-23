@@ -902,6 +902,9 @@ export default function CompanyTeamPage() {
                             )}
                           </div>
                           <div className="flex items-center gap-4 text-sm text-muted-foreground mt-1">
+                            {agreement.contract && (
+                              <span className="font-medium">{agreement.contract.contractNumber}</span>
+                            )}
                             <span>{agreement.project?.name || "Unknown Project"}</span>
                             <span>{agreement.clientName}</span>
                           </div>

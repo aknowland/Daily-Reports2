@@ -730,9 +730,11 @@ export type ProposalWithDetails = Proposal & {
 // Chat tables are now in ./models/chat.ts and re-exported above
 
 // IOR (Inspector of Record) Agreements - sets terms for inspector pay
+// Can be linked to Team Members (inspectors), Projects, and Contracts
 export const iorAgreements = pgTable("ior_agreements", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   companyId: varchar("company_id").references(() => companies.id, { onDelete: "cascade" }).notNull(),
+  contractId: varchar("contract_id").references(() => contracts.id, { onDelete: "set null" }),
   projectId: varchar("project_id").references(() => projects.id, { onDelete: "cascade" }).notNull(),
   inspectorId: varchar("inspector_id").references(() => users.id).notNull(),
   agreementNumber: varchar("agreement_number"),
@@ -754,9 +756,17 @@ export const iorAgreementsRelations = relations(iorAgreements, ({ one }) => ({
     fields: [iorAgreements.companyId],
     references: [companies.id],
   }),
+  contract: one(contracts, {
+    fields: [iorAgreements.contractId],
+    references: [contracts.id],
+  }),
   project: one(projects, {
     fields: [iorAgreements.projectId],
     references: [projects.id],
+  }),
+  inspector: one(users, {
+    fields: [iorAgreements.inspectorId],
+    references: [users.id],
   }),
 }));
 
@@ -766,6 +776,7 @@ export type IorAgreement = typeof iorAgreements.$inferSelect;
 export type InsertIorAgreement = z.infer<typeof insertIorAgreementSchema>;
 
 export type IorAgreementWithDetails = IorAgreement & {
+  contract?: Contract;
   project?: Project;
   inspector?: User;
 };
