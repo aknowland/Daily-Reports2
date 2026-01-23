@@ -2700,6 +2700,59 @@ export async function registerRoutes(
 
   // ========== INVOICES ==========
 
+  // Get invoice stats for dashboard
+  app.get("/api/invoices/stats", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      
+      if (!profile?.activeCompanyId) {
+        return res.json({
+          total: 0,
+          draft: 0,
+          sent: 0,
+          paid: 0,
+          overdue: 0,
+          totalAmount: 0,
+          paidAmount: 0,
+          outstandingAmount: 0
+        });
+      }
+      
+      const isMember = await storage.isUserMemberOfCompany(profile.activeCompanyId, userId);
+      if (!isMember) {
+        return res.json({
+          total: 0,
+          draft: 0,
+          sent: 0,
+          paid: 0,
+          overdue: 0,
+          totalAmount: 0,
+          paidAmount: 0,
+          outstandingAmount: 0
+        });
+      }
+      
+      const invoiceList = await storage.getInvoices(profile.activeCompanyId);
+      
+      const stats = {
+        total: invoiceList.length,
+        draft: invoiceList.filter(i => i.status === 'draft').length,
+        sent: invoiceList.filter(i => i.status === 'sent').length,
+        paid: invoiceList.filter(i => i.status === 'paid').length,
+        overdue: invoiceList.filter(i => i.status === 'overdue').length,
+        totalAmount: invoiceList.reduce((sum, i) => sum + parseFloat(i.totalAmount || '0'), 0),
+        paidAmount: invoiceList.filter(i => i.status === 'paid').reduce((sum, i) => sum + parseFloat(i.totalAmount || '0'), 0),
+        outstandingAmount: invoiceList.filter(i => i.status === 'sent' || i.status === 'overdue').reduce((sum, i) => sum + parseFloat(i.totalAmount || '0'), 0)
+      };
+      
+      res.json(stats);
+    } catch (error) {
+      console.error("Error fetching invoice stats:", error);
+      res.status(500).json({ message: "Failed to fetch invoice stats" });
+    }
+  });
+
   // Get invoices for active company
   app.get("/api/invoices", isAuthenticated, async (req: any, res) => {
     try {
