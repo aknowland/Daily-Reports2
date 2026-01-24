@@ -16,6 +16,7 @@ import { format } from "date-fns";
 import { speechToText, openai } from "./replit_integrations/audio/client";
 import { generateTimesheetPdf, aggregateReportsToTimesheetData, generateInvoicePdf, InvoiceData, generateInspectorInvoicePdf, InspectorInvoiceData } from "./billing-pdf";
 import { registerChatRoutes } from "./replit_integrations/chat";
+import { calculateScheduledBudget, calculateBaseBudgetBreakdown, type InspectorRate, type ScheduledBudgetResult, type BaseBudgetBreakdown, type BudgetTrackingMode } from "./budget-utils";
 
 // Initialize object storage service for persistent file storage
 const objectStorage = new ObjectStorageService();
@@ -1455,6 +1456,33 @@ export async function registerRoutes(
       // Get contract rate options for client billing rates
       const contractRateOptions = await storage.getContractOptions(req.params.id);
       
+      // Calculate scheduled budget from contract options (first awarded option or first option)
+      const trackingMode = ((contract as any).budgetTrackingMode || 'daily_reports') as BudgetTrackingMode;
+      const awardedOptions = contractRateOptions.filter(opt => opt.awardStatus === 'awarded');
+      const primaryOption = awardedOptions.length > 0 ? awardedOptions[0] : contractRateOptions[0];
+      
+      // Transform inspectors to the format needed for budget calculation
+      const inspectorsForBudget: InspectorRate[] = primaryOption?.inspectors?.map(i => ({
+        title: i.title,
+        inspectorName: i.inspectorName,
+        rate: i.rate,
+        hours: i.hours,
+        scheduleType: i.scheduleType,
+      })) || [];
+      
+      // Calculate scheduled budget based on contract dates and inspector schedules
+      const scheduledBudget = calculateScheduledBudget(
+        contract.startDate,
+        contract.substantialCompletionDate,
+        inspectorsForBudget
+      );
+      
+      // Calculate base budget hours breakdown
+      const baseBudgetBreakdown = calculateBaseBudgetBreakdown(
+        contract.baseBudgetSpent,
+        inspectorsForBudget
+      );
+      
       res.json({
         contract: {
           id: contract.id,
@@ -1468,6 +1496,7 @@ export async function registerRoutes(
           budgetOverride: contract.budgetOverride,
           baseBudgetSpent: contract.baseBudgetSpent,
           notes: contract.notes,
+          budgetTrackingMode: trackingMode,
         },
         schedule: {
           progress: Math.round(scheduleProgress * 100) / 100,
@@ -1485,12 +1514,25 @@ export async function registerRoutes(
           remaining: budgetRemaining,
           progress: Math.round(budgetProgress * 100) / 100,
           status: budgetStatus,
+          trackingMode,
           hours: {
             regular: budgetSummary.regularHours,
             overtime: budgetSummary.overtimeHours,
             premium: budgetSummary.premiumHours,
             total: budgetSummary.totalHours,
           },
+          scheduled: {
+            amount: scheduledBudget.scheduledAmount,
+            hours: scheduledBudget.scheduledHours,
+            workingDaysElapsed: scheduledBudget.workingDaysElapsed,
+            totalWorkingDays: scheduledBudget.totalWorkingDays,
+            inspectorBreakdowns: scheduledBudget.inspectorBreakdowns,
+          },
+          baseBudgetBreakdown: baseBudgetBreakdown ? {
+            baseHours: baseBudgetBreakdown.baseHours,
+            averageRate: baseBudgetBreakdown.averageRate,
+            inspectorBreakdowns: baseBudgetBreakdown.inspectorBreakdowns,
+          } : null,
         },
         bidSchedule: {
           bidReleaseDate: contract.bidReleaseDate,
