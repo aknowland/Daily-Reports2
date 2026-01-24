@@ -10,6 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Loader2 } from "lucide-react";
 import type { Project, IorAgreement, User, UserProfile, Contract } from "@shared/schema";
+import { InspectorSelector, parseInspectorId } from "@/components/inspector-selector";
 
 type MemberWithUser = { userId: string; role: string; user?: User };
 type MemberWithProfile = MemberWithUser & { profile?: UserProfile };
@@ -251,27 +252,25 @@ export function IorAgreementDialog({
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="inspectorId">Team Member *</Label>
-              <Select
-                value={formData.inspectorId}
-                onValueChange={(value) => setFormData(prev => ({ ...prev, inspectorId: value }))}
-              >
-                <SelectTrigger data-testid="select-inspector">
-                  <SelectValue placeholder="Select team member" />
-                </SelectTrigger>
-                <SelectContent>
-                  {memberProfiles.map((member) => {
-                    const name = member.profile 
-                      ? `${member.profile.firstName || ""} ${member.profile.lastName || ""}`.trim() 
-                      : member.user?.email || member.userId;
-                    return (
-                      <SelectItem key={member.userId} value={member.userId}>
-                        {name}
-                      </SelectItem>
-                    );
-                  })}
-                </SelectContent>
-              </Select>
+              <Label htmlFor="inspectorId">Inspector *</Label>
+              <InspectorSelector
+                value={formData.inspectorId.startsWith("member:") || formData.inspectorId.startsWith("team-inspector:") 
+                  ? formData.inspectorId 
+                  : formData.inspectorId ? `member:${formData.inspectorId}` : ""}
+                onValueChange={(value) => {
+                  const parsed = parseInspectorId(value);
+                  if (parsed?.type === "member") {
+                    setFormData(prev => ({ ...prev, inspectorId: parsed.id }));
+                  } else if (parsed?.type === "team-inspector") {
+                    setFormData(prev => ({ ...prev, inspectorId: value }));
+                  } else {
+                    setFormData(prev => ({ ...prev, inspectorId: value }));
+                  }
+                }}
+                placeholder="Select inspector"
+                allowCreate
+                data-testid="select-inspector"
+              />
             </div>
           </div>
 

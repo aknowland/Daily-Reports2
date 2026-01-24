@@ -21,6 +21,7 @@ import { useAuth } from "@/hooks/use-auth";
 import type { ProposalWithDetails } from "@shared/schema";
 import { calculateTotalHours, calculateWorkingDays, getHolidaysInRange, formatHoursDisplay } from "@/lib/working-days-calculator";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { InspectorSelector } from "@/components/inspector-selector";
 
 type InspectorEntry = {
   title: string;
@@ -547,11 +548,24 @@ export function ProposalDialog({ open, onOpenChange, editingProposal }: Proposal
                           </div>
                           <div className="space-y-1">
                             <Label className="text-xs">Inspector Name</Label>
-                            <Input
+                            <InspectorSelector
+                              value=""
+                              onValueChange={(_, option) => {
+                                if (option) {
+                                  updateInspector(optionIndex, inspectorIndex, "inspectorName", option.displayName);
+                                }
+                              }}
+                              placeholder={inspector.inspectorName || "Select or type..."}
+                              allowEmpty
+                              allowCreate
                               className="h-9"
+                              data-testid={`select-inspector-${optionIndex}-${inspectorIndex}`}
+                            />
+                            <Input
+                              className="h-9 mt-1"
                               value={inspector.inspectorName}
                               onChange={(e) => updateInspector(optionIndex, inspectorIndex, "inspectorName", e.target.value)}
-                              placeholder="e.g., John Smith"
+                              placeholder="Or type a name..."
                               data-testid={`input-inspector-name-${optionIndex}-${inspectorIndex}`}
                             />
                           </div>
