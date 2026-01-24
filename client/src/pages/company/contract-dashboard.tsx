@@ -10,6 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
 import { useLocation, useParams, Link } from "wouter";
+import { IorAgreementDialog } from "@/components/ior-agreement-dialog";
 import {
   Dialog,
   DialogContent,
@@ -41,6 +42,7 @@ import {
   ClipboardList,
   Download,
   ExternalLink,
+  Plus,
 } from "lucide-react";
 import { useState } from "react";
 import { format } from "date-fns";
@@ -261,6 +263,7 @@ export default function ContractDashboard() {
   const [budgetOverrideValue, setBudgetOverrideValue] = useState("");
   const [showBaseBudgetDialog, setShowBaseBudgetDialog] = useState(false);
   const [baseBudgetValue, setBaseBudgetValue] = useState("");
+  const [showIorDialog, setShowIorDialog] = useState(false);
 
   const { data: dashboard, isLoading } = useQuery<DashboardData>({
     queryKey: ["/api/contracts", contractId, "dashboard"],
@@ -873,9 +876,20 @@ export default function ContractDashboard() {
             </CardHeader>
             <CardContent>
               {dashboard.billingRates.inspectorAgreements.length === 0 ? (
-                <p className="text-sm text-muted-foreground" data-testid="text-no-inspector-rates">
-                  No IOR agreements found for this contract's projects
-                </p>
+                <div className="flex flex-col items-center gap-3 py-4">
+                  <p className="text-sm text-muted-foreground text-center" data-testid="text-no-inspector-rates">
+                    No IOR agreements found for this contract's projects
+                  </p>
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => setShowIorDialog(true)}
+                    data-testid="button-generate-ior-agreement"
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    Generate IOR Agreement
+                  </Button>
+                </div>
               ) : (
                 <div className="space-y-2">
                   {dashboard.billingRates.inspectorAgreements.map((agreement) => (
@@ -1269,6 +1283,16 @@ export default function ContractDashboard() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {activeCompany && (
+        <IorAgreementDialog
+          open={showIorDialog}
+          onOpenChange={setShowIorDialog}
+          companyId={activeCompany.id}
+          companyName={activeCompany.name}
+          defaultContractId={contractId}
+        />
+      )}
     </PageLayout>
   );
 }
