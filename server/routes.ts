@@ -1486,6 +1486,52 @@ export async function registerRoutes(
         inspectorsForBudget
       );
       
+      // Calculate Financial Summary (Revenue vs Cost analysis)
+      // Revenue = client billing rates × hours
+      // Cost = inspector pay rates × hours
+      // Profit = Revenue - Cost
+      
+      // Budgeted revenue: sum of all inspectors (rate × hours) from all awarded options
+      let budgetedRevenue = 0;
+      for (const option of awardedOptions.length > 0 ? awardedOptions : (contractRateOptions.length > 0 ? [contractRateOptions[0]] : [])) {
+        if (option?.inspectors) {
+          for (const inspector of option.inspectors) {
+            budgetedRevenue += parseFloat(inspector.rate || '0') * parseFloat(inspector.hours || '0');
+          }
+        }
+      }
+      
+      // Budgeted cost: estimate from IOR agreements using same hours as client billing
+      // We'll calculate an average inspector pay rate and apply it to budgeted hours
+      let budgetedCost = 0;
+      let avgInspectorPayRate = 0;
+      if (iorAgreements.length > 0) {
+        const validRates = iorAgreements.filter(a => a.rate).map(a => parseFloat(a.rate));
+        if (validRates.length > 0) {
+          avgInspectorPayRate = validRates.reduce((sum, r) => sum + r, 0) / validRates.length;
+        }
+        // Apply average pay rate to total budgeted hours
+        const totalBudgetedHours = inspectorsForBudget.reduce((sum, i) => sum + parseFloat(i.hours || '0'), 0);
+        budgetedCost = avgInspectorPayRate * totalBudgetedHours;
+      }
+      
+      // Actual revenue: calculated from daily reports × client rates
+      const actualRevenue = calculatedSpent; // Already calculated from reports × client rates
+      
+      // Actual cost: calculate from daily reports × average inspector pay rate
+      let actualCost = 0;
+      if (avgInspectorPayRate > 0) {
+        // Use total hours from budget summary × average inspector pay rate
+        actualCost = budgetSummary.totalHours * avgInspectorPayRate;
+      }
+      
+      // Calculate profits and margins
+      const budgetedProfit = budgetedRevenue - budgetedCost;
+      const budgetedMargin = budgetedRevenue > 0 ? (budgetedProfit / budgetedRevenue) * 100 : 0;
+      
+      const actualProfit = actualRevenue - actualCost;
+      const actualMargin = actualRevenue > 0 ? (actualProfit / actualRevenue) * 100 : 0;
+      
       res.json({
         contract: {
           id: contract.id,
@@ -1536,6 +1582,22 @@ export async function registerRoutes(
             averageRate: baseBudgetBreakdown.averageRate,
             inspectorBreakdowns: baseBudgetBreakdown.inspectorBreakdowns,
           } : null,
+        },
+        financialSummary: {
+          budgeted: {
+            revenue: Math.round(budgetedRevenue * 100) / 100,
+            cost: Math.round(budgetedCost * 100) / 100,
+            profit: Math.round(budgetedProfit * 100) / 100,
+            margin: Math.round(budgetedMargin * 100) / 100,
+          },
+          actual: {
+            revenue: Math.round(actualRevenue * 100) / 100,
+            cost: Math.round(actualCost * 100) / 100,
+            profit: Math.round(actualProfit * 100) / 100,
+            margin: Math.round(actualMargin * 100) / 100,
+          },
+          hasIorAgreements: iorAgreements.length > 0,
+          avgInspectorPayRate: Math.round(avgInspectorPayRate * 100) / 100,
         },
         bidSchedule: {
           bidReleaseDate: contract.bidReleaseDate,

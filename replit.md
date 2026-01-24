@@ -50,6 +50,7 @@ The application is built with a modern web stack, utilizing **React, TypeScript,
   - Schedule progress (based on start/substantial completion dates with status indicators)
   - Budget tracking with stacking support (base budget + auto-calculated from reports)
   - Linked Projects section showing all projects under this contract with report counts, per-project budget progress bars, and budget status indicators
+  - **Financial Summary**: Revenue, cost, profit, and margin analysis comparing budgeted vs actual. Revenue calculated from client billing rates × hours. Cost estimated from IOR agreement pay rates (when available). Shows % complete for each metric.
   - Bid schedule (all milestone dates from bid release to final closeout)
   - Client billing rates (regular, overtime, premium hourly rates)
   - Inspector billing rates (from IOR agreements linked to contract projects)

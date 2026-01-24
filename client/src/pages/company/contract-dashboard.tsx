@@ -111,6 +111,22 @@ type DashboardData = {
       }[];
     } | null;
   };
+  financialSummary: {
+    budgeted: {
+      revenue: number;
+      cost: number;
+      profit: number;
+      margin: number;
+    };
+    actual: {
+      revenue: number;
+      cost: number;
+      profit: number;
+      margin: number;
+    };
+    hasIorAgreements: boolean;
+    avgInspectorPayRate: number;
+  };
   bidSchedule: {
     bidReleaseDate: string | null;
     bidDueDate: string | null;
@@ -815,6 +831,121 @@ export default function ContractDashboard() {
                 </div>
               </div>
             )}
+          </CardContent>
+        </Card>
+
+        {/* Financial Summary Card */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <TrendingUp className="h-5 w-5" />
+              Financial Summary
+            </CardTitle>
+            <CardDescription>Revenue, cost, and profit margin analysis</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-[140px]">Metric</TableHead>
+                    <TableHead className="text-right">Budgeted</TableHead>
+                    <TableHead className="text-right">Actual</TableHead>
+                    <TableHead className="text-right">% Complete</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  <TableRow>
+                    <TableCell className="font-medium">Revenue</TableCell>
+                    <TableCell className="text-right" data-testid="text-budgeted-revenue">
+                      {formatCurrency(dashboard.financialSummary.budgeted.revenue)}
+                    </TableCell>
+                    <TableCell className="text-right" data-testid="text-actual-revenue">
+                      {formatCurrency(dashboard.financialSummary.actual.revenue)}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {dashboard.financialSummary.budgeted.revenue > 0 
+                        ? `${((dashboard.financialSummary.actual.revenue / dashboard.financialSummary.budgeted.revenue) * 100).toFixed(1)}%`
+                        : '-'}
+                    </TableCell>
+                  </TableRow>
+                  <TableRow>
+                    <TableCell className="font-medium">Cost (Est.)</TableCell>
+                    <TableCell className="text-right" data-testid="text-budgeted-cost">
+                      {dashboard.financialSummary.hasIorAgreements 
+                        ? formatCurrency(dashboard.financialSummary.budgeted.cost)
+                        : <span className="text-muted-foreground">-</span>}
+                    </TableCell>
+                    <TableCell className="text-right" data-testid="text-actual-cost">
+                      {dashboard.financialSummary.hasIorAgreements 
+                        ? formatCurrency(dashboard.financialSummary.actual.cost)
+                        : <span className="text-muted-foreground">-</span>}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {dashboard.financialSummary.hasIorAgreements && dashboard.financialSummary.budgeted.cost > 0 
+                        ? `${((dashboard.financialSummary.actual.cost / dashboard.financialSummary.budgeted.cost) * 100).toFixed(1)}%`
+                        : '-'}
+                    </TableCell>
+                  </TableRow>
+                  <TableRow className="bg-muted/50">
+                    <TableCell className="font-semibold">Gross Profit</TableCell>
+                    <TableCell className="text-right font-semibold" data-testid="text-budgeted-profit">
+                      {dashboard.financialSummary.hasIorAgreements ? (
+                        <span className={dashboard.financialSummary.budgeted.profit >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}>
+                          {formatCurrency(dashboard.financialSummary.budgeted.profit)}
+                        </span>
+                      ) : <span className="text-muted-foreground">-</span>}
+                    </TableCell>
+                    <TableCell className="text-right font-semibold" data-testid="text-actual-profit">
+                      {dashboard.financialSummary.hasIorAgreements ? (
+                        <span className={dashboard.financialSummary.actual.profit >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}>
+                          {formatCurrency(dashboard.financialSummary.actual.profit)}
+                        </span>
+                      ) : <span className="text-muted-foreground">-</span>}
+                    </TableCell>
+                    <TableCell className="text-right font-semibold">
+                      {dashboard.financialSummary.hasIorAgreements && dashboard.financialSummary.budgeted.profit !== 0 
+                        ? `${((dashboard.financialSummary.actual.profit / dashboard.financialSummary.budgeted.profit) * 100).toFixed(1)}%`
+                        : '-'}
+                    </TableCell>
+                  </TableRow>
+                  <TableRow className="bg-muted/50">
+                    <TableCell className="font-semibold">Margin %</TableCell>
+                    <TableCell className="text-right font-semibold" data-testid="text-budgeted-margin">
+                      {dashboard.financialSummary.hasIorAgreements ? (
+                        <Badge variant={dashboard.financialSummary.budgeted.margin >= 20 ? "default" : dashboard.financialSummary.budgeted.margin >= 10 ? "secondary" : "destructive"}>
+                          {dashboard.financialSummary.budgeted.margin.toFixed(1)}%
+                        </Badge>
+                      ) : <span className="text-muted-foreground">-</span>}
+                    </TableCell>
+                    <TableCell className="text-right font-semibold" data-testid="text-actual-margin">
+                      {dashboard.financialSummary.hasIorAgreements ? (
+                        <Badge variant={dashboard.financialSummary.actual.margin >= 20 ? "default" : dashboard.financialSummary.actual.margin >= 10 ? "secondary" : "destructive"}>
+                          {dashboard.financialSummary.actual.margin.toFixed(1)}%
+                        </Badge>
+                      ) : <span className="text-muted-foreground">-</span>}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {dashboard.financialSummary.hasIorAgreements ? (
+                        <span className={dashboard.financialSummary.actual.margin >= dashboard.financialSummary.budgeted.margin ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}>
+                          {(dashboard.financialSummary.actual.margin - dashboard.financialSummary.budgeted.margin) >= 0 ? '+' : ''}
+                          {(dashboard.financialSummary.actual.margin - dashboard.financialSummary.budgeted.margin).toFixed(1)}pp
+                        </span>
+                      ) : '-'}
+                    </TableCell>
+                  </TableRow>
+                </TableBody>
+              </Table>
+              {dashboard.financialSummary.hasIorAgreements ? (
+                <p className="text-xs text-muted-foreground mt-3">
+                  Cost estimate based on avg. inspector pay rate of {formatCurrency(dashboard.financialSummary.avgInspectorPayRate)}/hr from IOR agreements
+                </p>
+              ) : (
+                <p className="text-xs text-muted-foreground mt-3">
+                  Add IOR agreements to see cost and profit margin estimates
+                </p>
+              )}
+            </div>
           </CardContent>
         </Card>
 
