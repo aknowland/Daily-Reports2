@@ -30,7 +30,18 @@ import {
   ArrowUpRight,
   ArrowDownRight,
   ChevronUp,
+  Search,
+  Filter,
+  X,
 } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Link } from "wouter";
 import { useState } from "react";
 import { format, differenceInDays, startOfMonth, endOfMonth, eachDayOfInterval, isWeekend, isSameMonth } from "date-fns";
@@ -151,9 +162,24 @@ const formatDate = (dateStr: string | null) => {
   }
 };
 
+const CONTRACT_STATUS_OPTIONS = [
+  { value: "all", label: "All Statuses" },
+  { value: "bid_release", label: "Bid Release" },
+  { value: "bid_received", label: "Bid Received" },
+  { value: "under_review", label: "Under Review" },
+  { value: "awarded", label: "Awarded" },
+  { value: "in_execution", label: "In Execution" },
+  { value: "substantial_completion", label: "Substantial Completion" },
+  { value: "final_closeout", label: "Final Closeout" },
+  { value: "cancelled", label: "Cancelled" },
+  { value: "not_awarded", label: "Not Awarded" },
+];
+
 export default function CompanyDashboard() {
   const { activeCompany } = useAuth();
-  const [projectsToShow, setProjectsToShow] = useState(10);
+  const [contractsToShow, setContractsToShow] = useState(7);
+  const [contractSearch, setContractSearch] = useState("");
+  const [contractStatusFilter, setContractStatusFilter] = useState("all");
 
   const { data: companyDashboard, isLoading: dashboardLoading } = useQuery<CompanyDashboardData>({
     queryKey: ["/api/company/dashboard"],
@@ -191,7 +217,15 @@ export default function CompanyDashboard() {
     queryKey: ["/api/invoices/stats"],
   });
 
-  const displayedContracts = contractsSummary?.slice(0, projectsToShow);
+  // Filter contracts by search and status
+  const filteredContracts = contractsSummary?.filter(contract => {
+    const matchesSearch = contractSearch === "" || 
+      contract.name.toLowerCase().includes(contractSearch.toLowerCase()) ||
+      contract.contractNumber.toLowerCase().includes(contractSearch.toLowerCase());
+    const matchesStatus = contractStatusFilter === "all" || contract.status === contractStatusFilter;
+    return matchesSearch && matchesStatus;
+  });
+  const displayedContracts = filteredContracts?.slice(0, contractsToShow);
   
   // Calculate completion rates
   const completedContracts = contractsSummary?.filter(c => 
@@ -393,11 +427,62 @@ export default function CompanyDashboard() {
                     </Button>
                   </Link>
                 </div>
-                <CardDescription>
-                  Schedule and budget progress with dates and milestones
+                <CardDescription className="flex items-center justify-between gap-2 flex-wrap">
+                  <span>Schedule and budget progress with dates and milestones</span>
+                  {filteredContracts && (
+                    <Badge variant="secondary" className="text-xs">
+                      {displayedContracts?.length || 0} of {filteredContracts.length}
+                      {contractSearch || contractStatusFilter !== "all" ? " filtered" : " total"}
+                    </Badge>
+                  )}
                 </CardDescription>
               </CardHeader>
               <CardContent>
+                <div className="flex flex-col sm:flex-row gap-2 mb-4">
+                  <div className="relative flex-1">
+                    <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Search contracts..."
+                      value={contractSearch}
+                      onChange={(e) => {
+                        setContractSearch(e.target.value);
+                        setContractsToShow(7);
+                      }}
+                      className="pl-9 pr-8"
+                      data-testid="input-contract-search"
+                    />
+                    {contractSearch && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="absolute right-1 top-1 h-7 w-7"
+                        onClick={() => setContractSearch("")}
+                        data-testid="button-clear-search"
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
+                  <Select
+                    value={contractStatusFilter}
+                    onValueChange={(value) => {
+                      setContractStatusFilter(value);
+                      setContractsToShow(7);
+                    }}
+                  >
+                    <SelectTrigger className="w-full sm:w-[180px]" data-testid="select-contract-status">
+                      <Filter className="h-4 w-4 mr-2 text-muted-foreground" />
+                      <SelectValue placeholder="Filter by status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {CONTRACT_STATUS_OPTIONS.map(option => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
                 {contractsLoading ? (
                   <div className="space-y-3">
                     {[1, 2, 3, 4, 5].map(i => (
@@ -405,7 +490,7 @@ export default function CompanyDashboard() {
                     ))}
                   </div>
                 ) : displayedContracts && displayedContracts.length > 0 ? (
-                  <div className="space-y-3">
+                  <div className="space-y-3 max-h-[600px] overflow-y-auto pr-1">
                     {displayedContracts.map((contract) => {
                       const now = new Date();
                       const start = contract.schedule.startDate ? new Date(contract.schedule.startDate) : null;
@@ -477,23 +562,23 @@ export default function CompanyDashboard() {
                         </Link>
                       );
                     })}
-                    {contractsSummary && contractsSummary.length > projectsToShow && (
+                    {filteredContracts && filteredContracts.length > contractsToShow && (
                       <Button 
                         variant="ghost" 
                         size="sm" 
                         className="w-full"
-                        onClick={() => setProjectsToShow(prev => prev + 10)}
-                        data-testid="button-toggle-contracts"
+                        onClick={() => setContractsToShow(prev => prev + 7)}
+                        data-testid="button-show-more-contracts"
                       >
-                        Show {Math.min(10, contractsSummary.length - projectsToShow)} More <ChevronDown className="h-4 w-4 ml-1" />
+                        Show {Math.min(7, filteredContracts.length - contractsToShow)} More <ChevronDown className="h-4 w-4 ml-1" />
                       </Button>
                     )}
-                    {projectsToShow > 10 && (
+                    {contractsToShow > 7 && (
                       <Button 
                         variant="ghost" 
                         size="sm" 
                         className="w-full"
-                        onClick={() => setProjectsToShow(10)}
+                        onClick={() => setContractsToShow(7)}
                         data-testid="button-collapse-contracts"
                       >
                         Show Less <ChevronUp className="h-4 w-4 ml-1" />
@@ -502,7 +587,9 @@ export default function CompanyDashboard() {
                   </div>
                 ) : (
                   <div className="py-8 text-center text-muted-foreground">
-                    No active contracts found
+                    {contractSearch || contractStatusFilter !== "all" 
+                      ? "No contracts match your search or filter"
+                      : "No contracts found"}
                   </div>
                 )}
               </CardContent>
