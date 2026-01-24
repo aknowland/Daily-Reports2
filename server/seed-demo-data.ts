@@ -14,6 +14,7 @@ import {
   iorAgreements
 } from "@shared/schema";
 import { nanoid } from "nanoid";
+import { eq, inArray } from "drizzle-orm";
 
 const contractStatuses: ("bid_release" | "bid_received" | "under_review" | "awarded" | "not_awarded" | "cancelled" | "in_execution" | "substantial_completion" | "final_closeout")[] = [
   "bid_release", "bid_received", "under_review", "awarded", "in_execution", "in_execution", "substantial_completion", "final_closeout", "cancelled"
@@ -148,6 +149,54 @@ export async function seedDemoData(companyId: string, createdById: string) {
   };
 
   try {
+    // Clean up existing demo data for this company before seeding new data
+    console.log("Cleaning up existing demo data...");
+    
+    // Get existing contracts and projects to clean up related records
+    const existingContracts = await db.select({ id: contracts.id }).from(contracts).where(eq(contracts.companyId, companyId));
+    const existingProjects = await db.select({ id: projects.id }).from(projects).where(eq(projects.companyId, companyId));
+    const existingProposals = await db.select({ id: proposals.id }).from(proposals).where(eq(proposals.companyId, companyId));
+    
+    const contractIds = existingContracts.map(c => c.id);
+    const projectIds = existingProjects.map(p => p.id);
+    const proposalIds = existingProposals.map(p => p.id);
+    
+    // Delete in order of dependencies (children first)
+    if (projectIds.length > 0) {
+      await db.delete(dailyReports).where(inArray(dailyReports.projectId, projectIds));
+    }
+    
+    if (contractIds.length > 0) {
+      // Get contract options to delete their inspectors
+      const existingOptions = await db.select({ id: contractOptions.id }).from(contractOptions).where(inArray(contractOptions.contractId, contractIds));
+      const optionIds = existingOptions.map(o => o.id);
+      if (optionIds.length > 0) {
+        await db.delete(contractOptionInspectors).where(inArray(contractOptionInspectors.optionId, optionIds));
+        await db.delete(contractOptions).where(inArray(contractOptions.id, optionIds));
+      }
+    }
+    
+    if (proposalIds.length > 0) {
+      // Get proposal options to delete their inspectors
+      const existingPropOptions = await db.select({ id: proposalOptions.id }).from(proposalOptions).where(inArray(proposalOptions.proposalId, proposalIds));
+      const propOptionIds = existingPropOptions.map(o => o.id);
+      if (propOptionIds.length > 0) {
+        await db.delete(proposalOptionInspectors).where(inArray(proposalOptionInspectors.optionId, propOptionIds));
+        await db.delete(proposalOptions).where(inArray(proposalOptions.id, propOptionIds));
+      }
+      await db.delete(proposals).where(eq(proposals.companyId, companyId));
+    }
+    
+    // Delete projects, contracts, POs, clients, team inspectors, IORs
+    await db.delete(projects).where(eq(projects.companyId, companyId));
+    await db.delete(contracts).where(eq(contracts.companyId, companyId));
+    await db.delete(purchaseOrders).where(eq(purchaseOrders.companyId, companyId));
+    await db.delete(iorAgreements).where(eq(iorAgreements.companyId, companyId));
+    await db.delete(teamInspectors).where(eq(teamInspectors.companyId, companyId));
+    await db.delete(clients).where(eq(clients.companyId, companyId));
+    
+    console.log("Cleanup complete. Creating new demo data...");
+    
     console.log("Creating clients...");
     for (let i = 0; i < 10; i++) {
       const clientName = clientNames[i % clientNames.length];
