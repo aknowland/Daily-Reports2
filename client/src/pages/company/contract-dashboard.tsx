@@ -6,11 +6,19 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
 import { useLocation, useParams, Link } from "wouter";
 import { IorAgreementDialog } from "@/components/ior-agreement-dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Dialog,
   DialogContent,
@@ -60,10 +68,80 @@ import {
   Mail,
   Zap,
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { format } from "date-fns";
 
 type BudgetTrackingMode = 'daily_reports' | 'scheduled' | 'hybrid';
+
+const CONTRACT_STATUS_OPTIONS = [
+  { value: "bid_release", label: "Bid Release" },
+  { value: "bid_received", label: "Bid Received" },
+  { value: "under_review", label: "Under Review" },
+  { value: "awarded", label: "Awarded" },
+  { value: "not_awarded", label: "Not Awarded" },
+  { value: "cancelled", label: "Cancelled" },
+  { value: "in_execution", label: "In Execution" },
+  { value: "substantial_completion", label: "Substantial Completion" },
+  { value: "final_closeout", label: "Final Closeout" },
+];
+
+const CONTRACT_TYPE_OPTIONS = [
+  { value: "lump_sum", label: "Lump Sum" },
+  { value: "time_and_materials", label: "Time & Materials" },
+  { value: "unit_price", label: "Unit Price" },
+  { value: "cost_plus", label: "Cost Plus" },
+  { value: "design_build", label: "Design Build" },
+  { value: "hourly_rate", label: "Hourly Rate" },
+  { value: "other", label: "Other" },
+];
+
+const BUDGET_TRACKING_MODE_OPTIONS = [
+  { value: "daily_reports", label: "Daily Reports" },
+  { value: "scheduled", label: "Scheduled Hours" },
+  { value: "hybrid", label: "Hybrid" },
+];
+
+type ContractFormData = {
+  contractNumber: string;
+  name: string;
+  description: string;
+  contractType: string;
+  status: string;
+  originalValue: string;
+  currentValue: string;
+  bidReleaseDate: string;
+  bidDueDate: string;
+  awardDate: string;
+  startDate: string;
+  substantialCompletionDate: string;
+  finalCloseoutDate: string;
+  regularRate: string;
+  overtimeRate: string;
+  premiumRate: string;
+  budgetTrackingMode: BudgetTrackingMode;
+  notes: string;
+};
+
+const emptyFormData: ContractFormData = {
+  contractNumber: "",
+  name: "",
+  description: "",
+  contractType: "lump_sum",
+  status: "bid_release",
+  originalValue: "",
+  currentValue: "",
+  bidReleaseDate: "",
+  bidDueDate: "",
+  awardDate: "",
+  startDate: "",
+  substantialCompletionDate: "",
+  finalCloseoutDate: "",
+  regularRate: "",
+  overtimeRate: "",
+  premiumRate: "",
+  budgetTrackingMode: "daily_reports",
+  notes: "",
+};
 
 type DashboardData = {
   contract: {
@@ -361,6 +439,8 @@ export default function ContractDashboard() {
   const [showBaseBudgetDialog, setShowBaseBudgetDialog] = useState(false);
   const [baseBudgetValue, setBaseBudgetValue] = useState("");
   const [showIorDialog, setShowIorDialog] = useState(false);
+  const [showEditDialog, setShowEditDialog] = useState(false);
+  const [editFormData, setEditFormData] = useState<ContractFormData>(emptyFormData);
 
   const { data: dashboard, isLoading } = useQuery<DashboardData>({
     queryKey: ["/api/contracts", contractId, "dashboard"],
@@ -444,6 +524,101 @@ export default function ContractDashboard() {
     setShowBaseBudgetDialog(true);
   };
 
+  // Fetch full contract data for editing
+  const { data: contractDetails } = useQuery<{
+    id: string;
+    contractNumber: string;
+    name: string;
+    description: string | null;
+    contractType: string | null;
+    status: string;
+    originalValue: string | null;
+    currentValue: string | null;
+    bidReleaseDate: string | Date | null;
+    bidDueDate: string | Date | null;
+    awardDate: string | Date | null;
+    startDate: string | Date | null;
+    substantialCompletionDate: string | Date | null;
+    finalCloseoutDate: string | Date | null;
+    regularRate: string | null;
+    overtimeRate: string | null;
+    premiumRate: string | null;
+    budgetTrackingMode: BudgetTrackingMode | null;
+    notes: string | null;
+  }>({
+    queryKey: ["/api/contracts", contractId],
+    enabled: showEditDialog && !!contractId,
+  });
+
+  // Update contract mutation
+  const updateContractMutation = useMutation({
+    mutationFn: async (data: Partial<ContractFormData>) => {
+      const res = await apiRequest("PATCH", `/api/contracts/${contractId}`, data);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/contracts", contractId, "dashboard"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/contracts", contractId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/contracts"] });
+      setShowEditDialog(false);
+      toast({
+        title: "Contract Updated",
+        description: "The contract has been updated successfully.",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Populate form when contract details load
+  useEffect(() => {
+    if (contractDetails && showEditDialog) {
+      const formatDateStr = (d: string | Date | null) => {
+        if (!d) return "";
+        const date = d instanceof Date ? d : new Date(d);
+        return format(date, 'yyyy-MM-dd');
+      };
+      setEditFormData({
+        contractNumber: contractDetails.contractNumber || "",
+        name: contractDetails.name || "",
+        description: contractDetails.description || "",
+        contractType: contractDetails.contractType || "lump_sum",
+        status: contractDetails.status || "bid_release",
+        originalValue: contractDetails.originalValue || "",
+        currentValue: contractDetails.currentValue || "",
+        bidReleaseDate: formatDateStr(contractDetails.bidReleaseDate),
+        bidDueDate: formatDateStr(contractDetails.bidDueDate),
+        awardDate: formatDateStr(contractDetails.awardDate),
+        startDate: formatDateStr(contractDetails.startDate),
+        substantialCompletionDate: formatDateStr(contractDetails.substantialCompletionDate),
+        finalCloseoutDate: formatDateStr(contractDetails.finalCloseoutDate),
+        regularRate: contractDetails.regularRate || "",
+        overtimeRate: contractDetails.overtimeRate || "",
+        premiumRate: contractDetails.premiumRate || "",
+        budgetTrackingMode: contractDetails.budgetTrackingMode || "daily_reports",
+        notes: contractDetails.notes || "",
+      });
+    }
+  }, [contractDetails, showEditDialog]);
+
+  const handleEditSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    updateContractMutation.mutate({
+      ...editFormData,
+      bidReleaseDate: editFormData.bidReleaseDate || undefined,
+      bidDueDate: editFormData.bidDueDate || undefined,
+      awardDate: editFormData.awardDate || undefined,
+      startDate: editFormData.startDate || undefined,
+      substantialCompletionDate: editFormData.substantialCompletionDate || undefined,
+      finalCloseoutDate: editFormData.finalCloseoutDate || undefined,
+    } as any);
+  };
+
   if (isLoading) {
     return (
       <PageLayout title="Contract Dashboard">
@@ -510,12 +685,15 @@ export default function ContractDashboard() {
                 <Badge variant="outline" data-testid="badge-contract-status">
                   {dashboard.contract.status.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
                 </Badge>
-                <Link href="/company/contracts">
-                  <Button variant="outline" size="sm" data-testid="button-edit-contract">
-                    <Pencil className="h-4 w-4 mr-1" />
-                    Edit Contract
-                  </Button>
-                </Link>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={() => setShowEditDialog(true)}
+                  data-testid="button-edit-contract"
+                >
+                  <Pencil className="h-4 w-4 mr-1" />
+                  Edit Contract
+                </Button>
               </div>
             </div>
           </CardHeader>
@@ -1048,12 +1226,15 @@ export default function ContractDashboard() {
           </CardHeader>
           <CardContent>
             <div className="flex flex-wrap gap-2">
-              <Link href="/company/contracts">
-                <Button variant="outline" size="sm" data-testid="button-edit-contract-quick">
-                  <Pencil className="h-4 w-4 mr-1" />
-                  Edit Contract
-                </Button>
-              </Link>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => setShowEditDialog(true)}
+                data-testid="button-edit-contract-quick"
+              >
+                <Pencil className="h-4 w-4 mr-1" />
+                Edit Contract
+              </Button>
               <Link href={`/company/billing?contractId=${dashboard.contract.id}`}>
                 <Button variant="outline" size="sm" data-testid="button-create-invoice">
                   <FileDown className="h-4 w-4 mr-1" />
@@ -1831,6 +2012,267 @@ export default function ContractDashboard() {
           defaultContractId={contractId}
         />
       )}
+
+      {/* Edit Contract Dialog */}
+      <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Edit Contract</DialogTitle>
+            <DialogDescription>
+              Update the contract details below.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleEditSubmit} className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit-contractNumber">Contract Number *</Label>
+                <Input
+                  id="edit-contractNumber"
+                  value={editFormData.contractNumber}
+                  onChange={(e) => setEditFormData({ ...editFormData, contractNumber: e.target.value })}
+                  required
+                  data-testid="input-edit-contract-number"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-name">Contract Name *</Label>
+                <Input
+                  id="edit-name"
+                  value={editFormData.name}
+                  onChange={(e) => setEditFormData({ ...editFormData, name: e.target.value })}
+                  required
+                  data-testid="input-edit-contract-name"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="edit-description">Description</Label>
+              <Textarea
+                id="edit-description"
+                value={editFormData.description}
+                onChange={(e) => setEditFormData({ ...editFormData, description: e.target.value })}
+                rows={2}
+                data-testid="input-edit-description"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit-contractType">Contract Type</Label>
+                <Select 
+                  value={editFormData.contractType} 
+                  onValueChange={(value) => setEditFormData({ ...editFormData, contractType: value })}
+                >
+                  <SelectTrigger data-testid="select-edit-contract-type">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {CONTRACT_TYPE_OPTIONS.map(type => (
+                      <SelectItem key={type.value} value={type.value}>{type.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-status">Status</Label>
+                <Select 
+                  value={editFormData.status} 
+                  onValueChange={(value) => setEditFormData({ ...editFormData, status: value })}
+                >
+                  <SelectTrigger data-testid="select-edit-status">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {CONTRACT_STATUS_OPTIONS.map(status => (
+                      <SelectItem key={status.value} value={status.value}>{status.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit-originalValue">Original Contract Value</Label>
+                <Input
+                  id="edit-originalValue"
+                  type="text"
+                  placeholder="e.g., 500,000"
+                  value={editFormData.originalValue}
+                  onChange={(e) => setEditFormData({ ...editFormData, originalValue: e.target.value })}
+                  data-testid="input-edit-original-value"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-currentValue">Current Contract Value</Label>
+                <Input
+                  id="edit-currentValue"
+                  type="text"
+                  placeholder="e.g., 525,000"
+                  value={editFormData.currentValue}
+                  onChange={(e) => setEditFormData({ ...editFormData, currentValue: e.target.value })}
+                  data-testid="input-edit-current-value"
+                />
+              </div>
+            </div>
+
+            <div className="border-t pt-4">
+              <h4 className="font-medium mb-3">Key Dates</h4>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="edit-bidReleaseDate">Bid Release Date</Label>
+                  <Input
+                    id="edit-bidReleaseDate"
+                    type="date"
+                    value={editFormData.bidReleaseDate}
+                    onChange={(e) => setEditFormData({ ...editFormData, bidReleaseDate: e.target.value })}
+                    data-testid="input-edit-bid-release-date"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-bidDueDate">Bid Due Date</Label>
+                  <Input
+                    id="edit-bidDueDate"
+                    type="date"
+                    value={editFormData.bidDueDate}
+                    onChange={(e) => setEditFormData({ ...editFormData, bidDueDate: e.target.value })}
+                    data-testid="input-edit-bid-due-date"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-awardDate">Award Date</Label>
+                  <Input
+                    id="edit-awardDate"
+                    type="date"
+                    value={editFormData.awardDate}
+                    onChange={(e) => setEditFormData({ ...editFormData, awardDate: e.target.value })}
+                    data-testid="input-edit-award-date"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-startDate">Start Date</Label>
+                  <Input
+                    id="edit-startDate"
+                    type="date"
+                    value={editFormData.startDate}
+                    onChange={(e) => setEditFormData({ ...editFormData, startDate: e.target.value })}
+                    data-testid="input-edit-start-date"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-substantialCompletionDate">Substantial Completion</Label>
+                  <Input
+                    id="edit-substantialCompletionDate"
+                    type="date"
+                    value={editFormData.substantialCompletionDate}
+                    onChange={(e) => setEditFormData({ ...editFormData, substantialCompletionDate: e.target.value })}
+                    data-testid="input-edit-substantial-completion-date"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-finalCloseoutDate">Final Closeout</Label>
+                  <Input
+                    id="edit-finalCloseoutDate"
+                    type="date"
+                    value={editFormData.finalCloseoutDate}
+                    onChange={(e) => setEditFormData({ ...editFormData, finalCloseoutDate: e.target.value })}
+                    data-testid="input-edit-final-closeout-date"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="border-t pt-4">
+              <h4 className="font-medium mb-3">Billing Rates</h4>
+              <div className="grid grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="edit-regularRate">Regular Rate ($/hr)</Label>
+                  <Input
+                    id="edit-regularRate"
+                    type="text"
+                    placeholder="e.g., 85"
+                    value={editFormData.regularRate}
+                    onChange={(e) => setEditFormData({ ...editFormData, regularRate: e.target.value })}
+                    data-testid="input-edit-regular-rate"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-overtimeRate">Overtime Rate ($/hr)</Label>
+                  <Input
+                    id="edit-overtimeRate"
+                    type="text"
+                    placeholder="e.g., 127.50"
+                    value={editFormData.overtimeRate}
+                    onChange={(e) => setEditFormData({ ...editFormData, overtimeRate: e.target.value })}
+                    data-testid="input-edit-overtime-rate"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-premiumRate">Premium Rate ($/hr)</Label>
+                  <Input
+                    id="edit-premiumRate"
+                    type="text"
+                    placeholder="e.g., 170"
+                    value={editFormData.premiumRate}
+                    onChange={(e) => setEditFormData({ ...editFormData, premiumRate: e.target.value })}
+                    data-testid="input-edit-premium-rate"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="border-t pt-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit-budgetTrackingMode">Budget Tracking Mode</Label>
+                <Select 
+                  value={editFormData.budgetTrackingMode} 
+                  onValueChange={(value: BudgetTrackingMode) => setEditFormData({ ...editFormData, budgetTrackingMode: value })}
+                >
+                  <SelectTrigger data-testid="select-edit-budget-tracking-mode">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {BUDGET_TRACKING_MODE_OPTIONS.map(mode => (
+                      <SelectItem key={mode.value} value={mode.value}>{mode.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="edit-notes">Notes</Label>
+              <Textarea
+                id="edit-notes"
+                value={editFormData.notes}
+                onChange={(e) => setEditFormData({ ...editFormData, notes: e.target.value })}
+                rows={3}
+                placeholder="Additional notes about the contract..."
+                data-testid="input-edit-notes"
+              />
+            </div>
+
+            <DialogFooter className="gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setShowEditDialog(false)}
+                data-testid="button-cancel-edit"
+              >
+                Cancel
+              </Button>
+              <Button 
+                type="submit" 
+                disabled={updateContractMutation.isPending}
+                data-testid="button-save-edit"
+              >
+                {updateContractMutation.isPending ? "Saving..." : "Update Contract"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </PageLayout>
   );
 }
