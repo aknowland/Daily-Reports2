@@ -129,10 +129,9 @@ const features = [
   {
     icon: Clock,
     title: "Time Tracking",
-    description: "Track work hours including time in, lunch breaks, and time out. Automatically calculate regular and overtime hours for each report.",
+    description: "Track work hours with time in and time out. Automatically calculate regular and overtime hours for each report.",
     details: [
       "Record time in and time out",
-      "Track lunch break duration",
       "Auto-calculate regular hours",
       "Track overtime hours separately",
       "Monthly hours summary for invoices",
