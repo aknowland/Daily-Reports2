@@ -32,8 +32,12 @@ import {
   ArrowLeft,
   Building2,
   CreditCard,
-  ChevronRight
+  ChevronRight,
+  Moon,
+  Sun
 } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import { useTheme } from "@/hooks/use-theme";
 import { Textarea } from "@/components/ui/textarea";
 import { Link } from "wouter";
 import { updateUserProfileSchema, type UserProfile, type UpdateUserProfile } from "@shared/schema";
@@ -41,6 +45,7 @@ import { updateUserProfileSchema, type UserProfile, type UpdateUserProfile } fro
 export default function ProfilePage() {
   const { user } = useAuth();
   const { toast } = useToast();
+  const { theme, setTheme } = useTheme();
   const [certifications, setCertifications] = useState<string[]>([]);
   const [newCertification, setNewCertification] = useState("");
 
@@ -209,6 +214,35 @@ export default function ProfilePage() {
             </CardHeader>
           </Card>
         </Link>
+
+        <Card data-testid="card-appearance">
+          <CardHeader className="flex-row items-center justify-between gap-2">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+                {theme === "dark" ? (
+                  <Moon className="w-5 h-5 text-foreground" />
+                ) : (
+                  <Sun className="w-5 h-5 text-foreground" />
+                )}
+              </div>
+              <div>
+                <CardTitle className="text-base">Appearance</CardTitle>
+                <CardDescription>
+                  {theme === "dark" ? "Dark mode is enabled" : "Light mode is enabled"}
+                </CardDescription>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Sun className="w-4 h-4 text-muted-foreground" />
+              <Switch
+                checked={theme === "dark"}
+                onCheckedChange={(checked) => setTheme(checked ? "dark" : "light")}
+                data-testid="switch-dark-mode"
+              />
+              <Moon className="w-4 h-4 text-muted-foreground" />
+            </div>
+          </CardHeader>
+        </Card>
 
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">

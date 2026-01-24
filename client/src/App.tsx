@@ -6,6 +6,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useAuth } from "@/hooks/use-auth";
 import { AdminModeProvider } from "@/hooks/use-admin-mode";
+import { ThemeProvider } from "@/hooks/use-theme";
 import { AdminRoute } from "@/components/layout/admin-route";
 import { AIChatBubble } from "@/components/chat/ai-chat-bubble";
 import { Loader2 } from "lucide-react";
@@ -126,12 +127,14 @@ function App() {
   return (
     <HelmetProvider>
       <QueryClientProvider client={queryClient}>
-        <TooltipProvider>
-          <AdminModeProvider>
-            <Toaster />
-            <AppContent />
-          </AdminModeProvider>
-        </TooltipProvider>
+        <ThemeProvider>
+          <TooltipProvider>
+            <AdminModeProvider>
+              <Toaster />
+              <AppContent />
+            </AdminModeProvider>
+          </TooltipProvider>
+        </ThemeProvider>
       </QueryClientProvider>
     </HelmetProvider>
   );
