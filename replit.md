@@ -46,6 +46,14 @@ The application is built with a modern web stack, utilizing **React, TypeScript,
 -   **Budget Tracking Modes**: Contracts and projects support "Daily Reports," "Scheduled," and "Hybrid" modes for budget calculation, with visual indicators.
 -   **Invoice Tracking with Purchase Order Integration**: Manages the full invoice lifecycle, including PO assignment, balance tracking, utilization display, email sending, and status tracking.
 -   **Automated Notification System**: Daily scheduler sends email notifications for contract date reminders and budget milestone alerts (50%, 75%, 90%, 100% utilization).
+-   **Company Dashboard**: Comprehensive analytics dashboard at `/company/dashboard` featuring:
+    - **KPI Cards**: Hours this month, Reports submitted, Active contracts, Revenue billed, Completion rate
+    - **Revenue Trends**: Bar chart showing monthly revenue over last 12 months
+    - **Contract Timeline**: Visual timeline with progress bars, start/end dates, days remaining
+    - **Project Status Overview**: Schedule and budget progress, limited to 10 items with incremental "Show 10 More" pagination
+    - **Notifications Center**: Budget alerts and deadline warnings with severity indicators
+    - **Inspector Workload**: Hours, projects, and reports per inspector
+    - **Recent Activity Feed**: Last 10 daily reports with timestamps
 
 ## External Dependencies
 
