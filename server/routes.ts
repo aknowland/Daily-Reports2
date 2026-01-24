@@ -1261,7 +1261,7 @@ export async function registerRoutes(
           } else if (now < startDate) {
             scheduleProgress = 0;
             scheduleStatus = 'upcoming';
-            daysRemaining = Math.ceil((endDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+            daysRemaining = Math.ceil((startDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
           } else if (now > endDate) {
             scheduleProgress = 100;
             daysOverdue = Math.ceil((now.getTime() - endDate.getTime()) / (1000 * 60 * 60 * 24));
@@ -1392,7 +1392,7 @@ export async function registerRoutes(
         if (now < startDate) {
           scheduleProgress = 0;
           scheduleStatus = 'not_started';
-          daysRemaining = Math.ceil((endDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+          daysRemaining = Math.ceil((startDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
         } else if (now > endDate) {
           scheduleProgress = 100;
           daysOverdue = Math.ceil((now.getTime() - endDate.getTime()) / (1000 * 60 * 60 * 24));
