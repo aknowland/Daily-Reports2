@@ -45,6 +45,7 @@ import {
   Hash,
   Building2,
   FileText,
+  Search,
 } from "lucide-react";
 import { Link, useSearch } from "wouter";
 import { useState, useMemo } from "react";
@@ -62,6 +63,7 @@ export default function CompanyProjectsPage() {
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [projectToDelete, setProjectToDelete] = useState<Project | null>(null);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
   const [formData, setFormData] = useState({
     name: "",
     projectNumber: "",
@@ -151,9 +153,30 @@ export default function CompanyProjectsPage() {
       );
     }
     
+    // Apply text search filter
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      result = result.filter((p) => {
+        // Get client name from clientId if available, falling back to project.client
+        const projectClientId = (p as any).clientId;
+        let clientName = p.client || "";
+        if (projectClientId) {
+          const client = clients.find(c => c.id === projectClientId);
+          clientName = client?.name || p.client || "";
+        }
+        
+        return (
+          p.name.toLowerCase().includes(query) ||
+          p.projectNumber?.toLowerCase().includes(query) ||
+          clientName.toLowerCase().includes(query) ||
+          p.address?.toLowerCase().includes(query)
+        );
+      });
+    }
+    
     // Sort by status priority (upcoming first, then in progress, then completed)
     return result.sort((a, b) => getProjectStatusPriority(a) - getProjectStatusPriority(b));
-  }, [projects, selectedClient, projectIdFilter]);
+  }, [projects, selectedClient, projectIdFilter, searchQuery, clients]);
 
   // Helper to get client name from clientId
   const getClientName = (project: Project): string | null => {
@@ -415,7 +438,20 @@ export default function CompanyProjectsPage() {
           </Button>
         </div>
 
-        {filteredProjects.length === 0 ? (
+        {projects.length > 0 && (
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Input
+              placeholder="Search projects by name, number, client, or address..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-9"
+              data-testid="input-search-projects"
+            />
+          </div>
+        )}
+
+        {projects.length === 0 ? (
           <Card>
             <CardContent className="flex flex-col items-center justify-center py-12">
               <FolderOpen className="w-12 h-12 text-muted-foreground mb-4" />
@@ -426,6 +462,19 @@ export default function CompanyProjectsPage() {
               <Button onClick={() => setShowCreateDialog(true)} data-testid="button-create-first">
                 <Plus className="w-4 h-4 mr-2" />
                 Create Project
+              </Button>
+            </CardContent>
+          </Card>
+        ) : filteredProjects.length === 0 ? (
+          <Card>
+            <CardContent className="flex flex-col items-center justify-center py-12">
+              <FolderOpen className="w-12 h-12 text-muted-foreground mb-4" />
+              <p className="text-lg font-medium">No projects found</p>
+              <p className="text-muted-foreground mb-4">
+                No projects match "{searchQuery}"
+              </p>
+              <Button variant="outline" onClick={() => setSearchQuery("")} data-testid="button-clear-search">
+                Clear Search
               </Button>
             </CardContent>
           </Card>
