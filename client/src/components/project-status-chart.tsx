@@ -243,7 +243,11 @@ export function ProjectStatusChart({ contracts, isLoading }: Props) {
                         Schedule
                       </span>
                       <span className={scheduleConfig.textColor}>
-                        {contract.schedule.status === 'upcoming' ? 'Bid Phase' : `${contract.schedule.progress}%`}
+                        {contract.schedule.status === 'upcoming' 
+                          ? (['bid_release', 'bid_received', 'under_review', 'pending'].includes(contract.status) 
+                              ? 'Bid Phase' 
+                              : 'Pre-Construction')
+                          : `${contract.schedule.progress}%`}
                         {contract.schedule.status === 'upcoming' && contract.schedule.daysRemaining !== null && contract.schedule.daysRemaining > 0 && (
                           <span className="text-purple-500 dark:text-purple-400 ml-1">
                             ({contract.schedule.daysRemaining}d to start)
@@ -338,7 +342,7 @@ export function StatusSummaryCards({ contracts, isLoading }: Props) {
           <div className="text-2xl font-bold text-purple-600 dark:text-purple-400">
             {scheduleStats.upcoming}
           </div>
-          <p className="text-xs text-muted-foreground">projects in bid phase</p>
+          <p className="text-xs text-muted-foreground">not yet started</p>
         </CardContent>
       </Card>
 
