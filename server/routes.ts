@@ -7560,6 +7560,216 @@ export async function registerRoutes(
     }
   });
 
+  // ========== TEAM INSPECTORS (Non-Active Inspector Profiles) ==========
+  // Get all team inspectors for a company
+  app.get("/api/companies/:id/team-inspectors", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const companyId = req.params.id;
+      
+      const profile = await storage.getUserProfile(userId);
+      const hasSystemAdminAccess = isEffectiveSystemAdmin(profile);
+      const hasCompanyAdminAccess = await isEffectiveCompanyAdmin(userId, companyId, profile);
+      const isMember = await storage.isUserMemberOfCompany(companyId, userId);
+      
+      if (!hasSystemAdminAccess && !hasCompanyAdminAccess && !isMember) {
+        return res.status(403).json({ message: "Access denied." });
+      }
+      
+      const teamInspectors = await storage.getTeamInspectors(companyId);
+      res.json(teamInspectors);
+    } catch (error) {
+      console.error("Error fetching team inspectors:", error);
+      res.status(500).json({ message: "Failed to fetch team inspectors" });
+    }
+  });
+
+  // Get a single team inspector by ID
+  app.get("/api/team-inspectors/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const inspectorId = req.params.id;
+      
+      const inspector = await storage.getTeamInspector(inspectorId);
+      if (!inspector) {
+        return res.status(404).json({ message: "Team inspector not found" });
+      }
+      
+      const profile = await storage.getUserProfile(userId);
+      const hasSystemAdminAccess = isEffectiveSystemAdmin(profile);
+      const hasCompanyAdminAccess = await isEffectiveCompanyAdmin(userId, inspector.companyId, profile);
+      const isMember = await storage.isUserMemberOfCompany(inspector.companyId, userId);
+      
+      if (!hasSystemAdminAccess && !hasCompanyAdminAccess && !isMember) {
+        return res.status(403).json({ message: "Access denied." });
+      }
+      
+      res.json(inspector);
+    } catch (error) {
+      console.error("Error fetching team inspector:", error);
+      res.status(500).json({ message: "Failed to fetch team inspector" });
+    }
+  });
+
+  // Create a new team inspector
+  app.post("/api/companies/:id/team-inspectors", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const companyId = req.params.id;
+      
+      const profile = await storage.getUserProfile(userId);
+      const hasSystemAdminAccess = isEffectiveSystemAdmin(profile);
+      const hasCompanyAdminAccess = await isEffectiveCompanyAdmin(userId, companyId, profile);
+      
+      if (!hasSystemAdminAccess && !hasCompanyAdminAccess) {
+        return res.status(403).json({ message: "Access denied. Admin rights required." });
+      }
+      
+      const { firstName, lastName, email, phone, title, licenseNumber, licenseState, certifications, projectHistory, notes, resumePath } = req.body;
+      
+      if (!firstName || !lastName) {
+        return res.status(400).json({ message: "First name and last name are required" });
+      }
+      
+      // Check if email already exists in this company
+      if (email) {
+        const existing = await storage.getTeamInspectorByEmail(companyId, email);
+        if (existing) {
+          return res.status(400).json({ message: "A team inspector with this email already exists" });
+        }
+      }
+      
+      const inspector = await storage.createTeamInspector({
+        companyId,
+        firstName,
+        lastName,
+        email,
+        phone,
+        title,
+        licenseNumber,
+        licenseState,
+        certifications: certifications || [],
+        projectHistory: projectHistory || [],
+        notes,
+        resumePath,
+      });
+      
+      res.status(201).json(inspector);
+    } catch (error) {
+      console.error("Error creating team inspector:", error);
+      res.status(500).json({ message: "Failed to create team inspector" });
+    }
+  });
+
+  // Update a team inspector
+  app.patch("/api/team-inspectors/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const inspectorId = req.params.id;
+      
+      const inspector = await storage.getTeamInspector(inspectorId);
+      if (!inspector) {
+        return res.status(404).json({ message: "Team inspector not found" });
+      }
+      
+      const profile = await storage.getUserProfile(userId);
+      const hasSystemAdminAccess = isEffectiveSystemAdmin(profile);
+      const hasCompanyAdminAccess = await isEffectiveCompanyAdmin(userId, inspector.companyId, profile);
+      
+      if (!hasSystemAdminAccess && !hasCompanyAdminAccess) {
+        return res.status(403).json({ message: "Access denied. Admin rights required." });
+      }
+      
+      const { firstName, lastName, email, phone, title, licenseNumber, licenseState, certifications, projectHistory, notes, resumePath } = req.body;
+      
+      // Check if new email already exists (if changing email)
+      if (email && email !== inspector.email) {
+        const existing = await storage.getTeamInspectorByEmail(inspector.companyId, email);
+        if (existing && existing.id !== inspectorId) {
+          return res.status(400).json({ message: "A team inspector with this email already exists" });
+        }
+      }
+      
+      const updated = await storage.updateTeamInspector(inspectorId, {
+        firstName,
+        lastName,
+        email,
+        phone,
+        title,
+        licenseNumber,
+        licenseState,
+        certifications,
+        projectHistory,
+        notes,
+        resumePath,
+      });
+      
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating team inspector:", error);
+      res.status(500).json({ message: "Failed to update team inspector" });
+    }
+  });
+
+  // Delete a team inspector
+  app.delete("/api/team-inspectors/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const inspectorId = req.params.id;
+      
+      const inspector = await storage.getTeamInspector(inspectorId);
+      if (!inspector) {
+        return res.status(404).json({ message: "Team inspector not found" });
+      }
+      
+      const profile = await storage.getUserProfile(userId);
+      const hasSystemAdminAccess = isEffectiveSystemAdmin(profile);
+      const hasCompanyAdminAccess = await isEffectiveCompanyAdmin(userId, inspector.companyId, profile);
+      
+      if (!hasSystemAdminAccess && !hasCompanyAdminAccess) {
+        return res.status(403).json({ message: "Access denied. Admin rights required." });
+      }
+      
+      await storage.deleteTeamInspector(inspectorId);
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting team inspector:", error);
+      res.status(500).json({ message: "Failed to delete team inspector" });
+    }
+  });
+
+  // Merge team inspector with existing user account
+  app.post("/api/team-inspectors/:id/merge", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const inspectorId = req.params.id;
+      const { targetUserId } = req.body;
+      
+      const inspector = await storage.getTeamInspector(inspectorId);
+      if (!inspector) {
+        return res.status(404).json({ message: "Team inspector not found" });
+      }
+      
+      const profile = await storage.getUserProfile(userId);
+      const hasSystemAdminAccess = isEffectiveSystemAdmin(profile);
+      const hasCompanyAdminAccess = await isEffectiveCompanyAdmin(userId, inspector.companyId, profile);
+      
+      if (!hasSystemAdminAccess && !hasCompanyAdminAccess) {
+        return res.status(403).json({ message: "Access denied. Admin rights required." });
+      }
+      
+      if (!targetUserId) {
+        return res.status(400).json({ message: "Target user ID is required" });
+      }
+      
+      const merged = await storage.mergeTeamInspectorWithUser(inspectorId, targetUserId);
+      res.json(merged);
+    } catch (error) {
+      console.error("Error merging team inspector:", error);
+      res.status(500).json({ message: "Failed to merge team inspector" });
+    }
+  });
+
   // Get company projects (system admin or company admin)
   app.get("/api/companies/:id/projects", isAuthenticated, async (req: any, res) => {
     try {

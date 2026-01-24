@@ -29,6 +29,7 @@ The application is built with a modern web stack, utilizing **React, TypeScript,
 -   **Contract Multi-Option Rate Structure**: Contracts support multiple rate options, each with individual inspector details, rates, hours, and schedule types.
 -   **Per-Option Award Tracking**: Allows partial awards for multi-option contracts, tracking the award status of individual options.
 -   **AI Assistant with Task Execution**: Company and System Admins can use an AI chat assistant for questions and actions, including proposal creation, with voice transcription support.
+-   **Team Inspectors**: Non-active inspector profiles for people who haven't joined the system yet, with resume-style profiles that can be used in proposals and contracts and merged when they create accounts.
 
 **Core Features:**
 
