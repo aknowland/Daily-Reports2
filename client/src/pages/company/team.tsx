@@ -68,7 +68,7 @@ import {
 } from "lucide-react";
 import { Link } from "wouter";
 import { useState, useMemo } from "react";
-import type { CompanyMember, User, Project, Invite, JoinRequest, IorAgreement, IorAgreementWithDetails } from "@shared/schema";
+import type { CompanyMember, User, Project, Invite, JoinRequest, IorAgreement, IorAgreementWithDetails, TeamInspector } from "@shared/schema";
 
 const KNOWLAND_COMPANY_NAME = "Knowland Construction Services";
 
@@ -96,6 +96,10 @@ export default function CompanyTeamPage() {
   const [showIorDialog, setShowIorDialog] = useState(false);
   const [editingIorAgreement, setEditingIorAgreement] = useState<IorAgreementWithDetails | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [showTeamInspectorDialog, setShowTeamInspectorDialog] = useState(false);
+  const [editingTeamInspector, setEditingTeamInspector] = useState<TeamInspector | null>(null);
+  const [teamInspectorToDelete, setTeamInspectorToDelete] = useState<TeamInspector | null>(null);
+  const [teamInspectorSearchQuery, setTeamInspectorSearchQuery] = useState("");
   const [inviteForm, setInviteForm] = useState({
     email: "",
     role: "inspector" as "inspector" | "admin",
@@ -128,7 +132,24 @@ export default function CompanyTeamPage() {
     enabled: !!activeCompany?.id && isEffectiveCompanyAdmin,
   });
 
+  const { data: teamInspectors = [], isLoading: isTeamInspectorsLoading } = useQuery<TeamInspector[]>({
+    queryKey: ["/api/companies", activeCompany?.id, "team-inspectors"],
+    enabled: !!activeCompany?.id && isEffectiveCompanyAdmin,
+  });
+
   const pendingJoinRequests = joinRequests.filter(r => r.status === "pending");
+  
+  // Filter team inspectors based on search query
+  const filteredTeamInspectors = useMemo(() => {
+    if (!teamInspectorSearchQuery.trim()) return teamInspectors;
+    const query = teamInspectorSearchQuery.toLowerCase();
+    return teamInspectors.filter((inspector) => {
+      const displayName = `${inspector.firstName} ${inspector.lastName}`.toLowerCase();
+      const email = inspector.email?.toLowerCase() || "";
+      const title = inspector.title?.toLowerCase() || "";
+      return displayName.includes(query) || email.includes(query) || title.includes(query);
+    });
+  }, [teamInspectors, teamInspectorSearchQuery]);
   
   // Filter members based on search query
   const filteredMembers = useMemo(() => {
@@ -389,6 +410,72 @@ export default function CompanyTeamPage() {
       toast({
         title: "Error",
         description: "Failed to remove member from project.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Team Inspector mutations
+  const createTeamInspectorMutation = useMutation({
+    mutationFn: async (data: {
+      firstName: string;
+      lastName: string;
+      email?: string;
+      phone?: string;
+      title?: string;
+      licenseNumber?: string;
+      licenseState?: string;
+      certifications?: string[];
+      notes?: string;
+    }) => {
+      return apiRequest("POST", `/api/companies/${activeCompany?.id}/team-inspectors`, data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/companies", activeCompany?.id, "team-inspectors"] });
+      setShowTeamInspectorDialog(false);
+      setEditingTeamInspector(null);
+      toast({ title: "Team inspector created successfully" });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Failed to create team inspector",
+        description: error.message || "An error occurred",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const updateTeamInspectorMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: Partial<TeamInspector> }) => {
+      return apiRequest("PATCH", `/api/team-inspectors/${id}`, data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/companies", activeCompany?.id, "team-inspectors"] });
+      setShowTeamInspectorDialog(false);
+      setEditingTeamInspector(null);
+      toast({ title: "Team inspector updated successfully" });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Failed to update team inspector",
+        description: error.message || "An error occurred",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const deleteTeamInspectorMutation = useMutation({
+    mutationFn: async (id: string) => {
+      return apiRequest("DELETE", `/api/team-inspectors/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/companies", activeCompany?.id, "team-inspectors"] });
+      setTeamInspectorToDelete(null);
+      toast({ title: "Team inspector deleted" });
+    },
+    onError: () => {
+      toast({
+        title: "Failed to delete team inspector",
         variant: "destructive",
       });
     },
@@ -658,6 +745,13 @@ export default function CompanyTeamPage() {
               IOR Agreements
               <Badge variant="secondary" className="ml-1 no-default-hover-elevate no-default-active-elevate">
                 {iorAgreements.length}
+              </Badge>
+            </TabsTrigger>
+            <TabsTrigger value="team-inspectors" className="flex items-center gap-2" data-testid="tab-team-inspectors">
+              <HardHat className="w-4 h-4" />
+              Team Inspectors
+              <Badge variant="secondary" className="ml-1 no-default-hover-elevate no-default-active-elevate">
+                {teamInspectors.length}
               </Badge>
             </TabsTrigger>
           </TabsList>
@@ -1055,6 +1149,132 @@ export default function CompanyTeamPage() {
               </div>
             )}
           </TabsContent>
+
+          <TabsContent value="team-inspectors" className="space-y-4">
+            <div className="flex justify-between items-center gap-4 mb-4">
+              {teamInspectors.length > 0 && (
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Search team inspectors by name, email, or title..."
+                    value={teamInspectorSearchQuery}
+                    onChange={(e) => setTeamInspectorSearchQuery(e.target.value)}
+                    className="pl-9"
+                    data-testid="input-search-team-inspectors"
+                  />
+                </div>
+              )}
+              <Button onClick={() => { setEditingTeamInspector(null); setShowTeamInspectorDialog(true); }} data-testid="button-add-team-inspector">
+                <Plus className="w-4 h-4 mr-2" />
+                Add Team Inspector
+              </Button>
+            </div>
+
+            {isTeamInspectorsLoading ? (
+              <div className="space-y-4">
+                {[1, 2, 3].map((i) => (
+                  <Card key={i}>
+                    <CardContent className="p-4">
+                      <Skeleton className="h-20 w-full" />
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            ) : teamInspectors.length === 0 ? (
+              <Card>
+                <CardContent className="flex flex-col items-center justify-center py-12">
+                  <HardHat className="w-12 h-12 text-muted-foreground mb-4" />
+                  <p className="text-lg font-medium">No team inspectors</p>
+                  <p className="text-muted-foreground text-center">
+                    Add inspector profiles for people who haven't joined the system yet.
+                    <br />
+                    You can merge their profiles when they create accounts.
+                  </p>
+                </CardContent>
+              </Card>
+            ) : filteredTeamInspectors.length === 0 ? (
+              <Card>
+                <CardContent className="flex flex-col items-center justify-center py-8">
+                  <Search className="w-8 h-8 text-muted-foreground mb-2" />
+                  <p className="text-muted-foreground">No team inspectors match your search</p>
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="grid gap-4">
+                {filteredTeamInspectors.map((inspector) => (
+                  <Card key={inspector.id} className="hover-elevate" data-testid={`card-team-inspector-${inspector.id}`}>
+                    <CardContent className="p-4">
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <h3 className="font-medium">
+                              {inspector.firstName} {inspector.lastName}
+                            </h3>
+                            <Badge 
+                              variant={inspector.status === "active" ? "default" : "secondary"}
+                              className="no-default-hover-elevate no-default-active-elevate"
+                            >
+                              {inspector.status === "active" ? "Merged" : "Pending"}
+                            </Badge>
+                          </div>
+                          {inspector.title && (
+                            <p className="text-sm text-muted-foreground mt-1">{inspector.title}</p>
+                          )}
+                          <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-sm text-muted-foreground">
+                            {inspector.email && (
+                              <span className="flex items-center gap-1">
+                                <Mail className="w-3 h-3" />
+                                {inspector.email}
+                              </span>
+                            )}
+                            {inspector.licenseNumber && (
+                              <span>
+                                License: {inspector.licenseNumber} ({inspector.licenseState || "N/A"})
+                              </span>
+                            )}
+                          </div>
+                          {inspector.certifications && inspector.certifications.length > 0 && (
+                            <div className="flex flex-wrap gap-1 mt-2">
+                              {inspector.certifications.map((cert, idx) => (
+                                <Badge key={idx} variant="outline" className="text-xs no-default-hover-elevate no-default-active-elevate">
+                                  {cert}
+                                </Badge>
+                              ))}
+                            </div>
+                          )}
+                          {inspector.notes && (
+                            <p className="text-sm text-muted-foreground mt-2 line-clamp-2">{inspector.notes}</p>
+                          )}
+                        </div>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" data-testid={`button-team-inspector-menu-${inspector.id}`}>
+                              <MoreVertical className="w-4 h-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem 
+                              onClick={() => { setEditingTeamInspector(inspector); setShowTeamInspectorDialog(true); }}
+                              data-testid={`button-edit-team-inspector-${inspector.id}`}
+                            >
+                              Edit Profile
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              className="text-destructive"
+                              onClick={() => setTeamInspectorToDelete(inspector)}
+                              data-testid={`button-delete-team-inspector-${inspector.id}`}
+                            >
+                              Delete
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </TabsContent>
         </Tabs>
       </div>
 
@@ -1102,6 +1322,50 @@ export default function CompanyTeamPage() {
         companyId={activeCompany?.id || ""}
         companyName={activeCompany?.name || ""}
       />
+
+      {/* Team Inspector Create/Edit Dialog */}
+      <TeamInspectorDialog
+        open={showTeamInspectorDialog}
+        onOpenChange={(open) => {
+          setShowTeamInspectorDialog(open);
+          if (!open) setEditingTeamInspector(null);
+        }}
+        inspector={editingTeamInspector}
+        onSave={(data) => {
+          if (editingTeamInspector) {
+            updateTeamInspectorMutation.mutate({ id: editingTeamInspector.id, data });
+          } else {
+            createTeamInspectorMutation.mutate(data);
+          }
+        }}
+        isLoading={createTeamInspectorMutation.isPending || updateTeamInspectorMutation.isPending}
+      />
+
+      {/* Team Inspector Delete Confirmation */}
+      <AlertDialog open={!!teamInspectorToDelete} onOpenChange={() => setTeamInspectorToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Team Inspector?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete the profile for {teamInspectorToDelete?.firstName} {teamInspectorToDelete?.lastName}? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-cancel-delete-inspector">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => teamInspectorToDelete && deleteTeamInspectorMutation.mutate(teamInspectorToDelete.id)}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              data-testid="button-confirm-delete-inspector"
+            >
+              {deleteTeamInspectorMutation.isPending ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                "Delete"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </PageLayout>
   );
 }
@@ -1310,6 +1574,241 @@ function ProjectAssignmentDialog({
             Done
           </Button>
         </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// Team Inspector Dialog Component
+function TeamInspectorDialog({
+  open,
+  onOpenChange,
+  inspector,
+  onSave,
+  isLoading,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  inspector: TeamInspector | null;
+  onSave: (data: {
+    firstName: string;
+    lastName: string;
+    email?: string;
+    phone?: string;
+    title?: string;
+    licenseNumber?: string;
+    licenseState?: string;
+    certifications?: string[];
+    notes?: string;
+  }) => void;
+  isLoading: boolean;
+}) {
+  const [formData, setFormData] = useState({
+    firstName: "",
+    lastName: "",
+    email: "",
+    phone: "",
+    title: "",
+    licenseNumber: "",
+    licenseState: "",
+    certifications: "",
+    notes: "",
+  });
+
+  // Reset form when dialog opens or inspector changes
+  useEffect(() => {
+    if (open) {
+      if (inspector) {
+        setFormData({
+          firstName: inspector.firstName || "",
+          lastName: inspector.lastName || "",
+          email: inspector.email || "",
+          phone: inspector.phone || "",
+          title: inspector.title || "",
+          licenseNumber: inspector.licenseNumber || "",
+          licenseState: inspector.licenseState || "",
+          certifications: inspector.certifications?.join(", ") || "",
+          notes: inspector.notes || "",
+        });
+      } else {
+        setFormData({
+          firstName: "",
+          lastName: "",
+          email: "",
+          phone: "",
+          title: "",
+          licenseNumber: "",
+          licenseState: "",
+          certifications: "",
+          notes: "",
+        });
+      }
+    }
+  }, [open, inspector]);
+
+  // Pass through onOpenChange - useEffect handles form data now
+  const handleOpenChange = (isOpen: boolean) => {
+    onOpenChange(isOpen);
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const certArray = formData.certifications
+      .split(",")
+      .map((c) => c.trim())
+      .filter(Boolean);
+    
+    onSave({
+      firstName: formData.firstName,
+      lastName: formData.lastName,
+      email: formData.email || undefined,
+      phone: formData.phone || undefined,
+      title: formData.title || undefined,
+      licenseNumber: formData.licenseNumber || undefined,
+      licenseState: formData.licenseState || undefined,
+      certifications: certArray.length > 0 ? certArray : undefined,
+      notes: formData.notes || undefined,
+    });
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <HardHat className="w-5 h-5" />
+            {inspector ? "Edit Team Inspector" : "Add Team Inspector"}
+          </DialogTitle>
+          <DialogDescription>
+            {inspector
+              ? "Update the inspector's profile information."
+              : "Create a profile for an inspector who hasn't joined the system yet. You can merge their account when they sign up."}
+          </DialogDescription>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="firstName">First Name *</Label>
+              <Input
+                id="firstName"
+                value={formData.firstName}
+                onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
+                placeholder="John"
+                required
+                data-testid="input-inspector-first-name"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="lastName">Last Name *</Label>
+              <Input
+                id="lastName"
+                value={formData.lastName}
+                onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
+                placeholder="Smith"
+                required
+                data-testid="input-inspector-last-name"
+              />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="email">Email</Label>
+            <Input
+              id="email"
+              type="email"
+              value={formData.email}
+              onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+              placeholder="john.smith@example.com"
+              data-testid="input-inspector-email"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="phone">Phone</Label>
+            <Input
+              id="phone"
+              value={formData.phone}
+              onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+              placeholder="(555) 123-4567"
+              data-testid="input-inspector-phone"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="title">Title / Position</Label>
+            <Input
+              id="title"
+              value={formData.title}
+              onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+              placeholder="Project Inspector"
+              data-testid="input-inspector-title"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="licenseNumber">License Number</Label>
+              <Input
+                id="licenseNumber"
+                value={formData.licenseNumber}
+                onChange={(e) => setFormData({ ...formData, licenseNumber: e.target.value })}
+                placeholder="B-123456"
+                data-testid="input-inspector-license"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="licenseState">License State</Label>
+              <Input
+                id="licenseState"
+                value={formData.licenseState}
+                onChange={(e) => setFormData({ ...formData, licenseState: e.target.value })}
+                placeholder="CA"
+                maxLength={2}
+                data-testid="input-inspector-license-state"
+              />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="certifications">Certifications</Label>
+            <Input
+              id="certifications"
+              value={formData.certifications}
+              onChange={(e) => setFormData({ ...formData, certifications: e.target.value })}
+              placeholder="ICC Structural Steel, AWS CWI (comma-separated)"
+              data-testid="input-inspector-certifications"
+            />
+            <p className="text-xs text-muted-foreground">
+              Enter certifications separated by commas
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="notes">Notes</Label>
+            <textarea
+              id="notes"
+              value={formData.notes}
+              onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+              className="w-full min-h-[80px] px-3 py-2 text-sm rounded-md border border-input bg-background"
+              placeholder="Additional notes about this inspector..."
+              data-testid="input-inspector-notes"
+            />
+          </div>
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => handleOpenChange(false)}>
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              disabled={isLoading || !formData.firstName || !formData.lastName}
+              data-testid="button-save-inspector"
+            >
+              {isLoading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              {inspector ? "Update" : "Add Inspector"}
+            </Button>
+          </DialogFooter>
+        </form>
       </DialogContent>
     </Dialog>
   );

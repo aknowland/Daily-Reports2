@@ -1,7 +1,7 @@
 import { 
   projects, dailyReports, photos, distributionLogs, appSettings, userProfiles, projectMembers, invites,
   companies, companyMembers, joinRequests, invoices, contracts, clients, contractAttachments, contractOptions, contractOptionInspectors, timesheets, monthlyReportBundles,
-  proposals, proposalOptions, proposalOptionInspectors, iorAgreements, purchaseOrders, contractNotifications, budgetNotifications, projectBudgetNotifications, pendingMemberAssignments,
+  proposals, proposalOptions, proposalOptionInspectors, iorAgreements, purchaseOrders, contractNotifications, budgetNotifications, projectBudgetNotifications, pendingMemberAssignments, teamInspectors,
   type Project, type InsertProject,
   type DailyReport, type InsertDailyReport,
   type Photo, type InsertPhoto,
@@ -31,6 +31,7 @@ import {
   type ProposalOptionInspector, type InsertProposalOptionInspector,
   type IorAgreement, type InsertIorAgreement, type IorAgreementWithDetails,
   type PendingMemberAssignment, type InsertPendingMemberAssignment,
+  type TeamInspector, type InsertTeamInspector,
 } from "@shared/schema";
 import { users, type User } from "@shared/models/auth";
 import { db } from "./db";
@@ -164,6 +165,15 @@ export interface IStorage {
   createPendingAssignment(data: InsertPendingMemberAssignment): Promise<PendingMemberAssignment>;
   deletePendingAssignment(id: string): Promise<boolean>;
   deletePendingAssignmentByEmail(email: string, companyId: string): Promise<boolean>;
+
+  // Team Inspectors (non-active inspector profiles)
+  getTeamInspectors(companyId: string): Promise<TeamInspector[]>;
+  getTeamInspector(id: string): Promise<TeamInspector | undefined>;
+  getTeamInspectorByEmail(companyId: string, email: string): Promise<TeamInspector | undefined>;
+  createTeamInspector(data: InsertTeamInspector): Promise<TeamInspector>;
+  updateTeamInspector(id: string, data: Partial<InsertTeamInspector>): Promise<TeamInspector | undefined>;
+  deleteTeamInspector(id: string): Promise<boolean>;
+  mergeTeamInspectorWithUser(teamInspectorId: string, userId: string): Promise<TeamInspector | undefined>;
 
   // Active Company
   setActiveCompany(userId: string, companyId: string | null): Promise<UserProfile | undefined>;
@@ -1120,6 +1130,58 @@ export class DatabaseStorage implements IStorage {
         eq(pendingMemberAssignments.companyId, companyId)
       ));
     return true;
+  }
+
+  // Team Inspectors (non-active inspector profiles)
+  async getTeamInspectors(companyId: string): Promise<TeamInspector[]> {
+    return db.select().from(teamInspectors).where(eq(teamInspectors.companyId, companyId)).orderBy(desc(teamInspectors.createdAt));
+  }
+
+  async getTeamInspector(id: string): Promise<TeamInspector | undefined> {
+    const [inspector] = await db.select().from(teamInspectors).where(eq(teamInspectors.id, id));
+    return inspector;
+  }
+
+  async getTeamInspectorByEmail(companyId: string, email: string): Promise<TeamInspector | undefined> {
+    const [inspector] = await db.select().from(teamInspectors).where(
+      and(
+        eq(teamInspectors.companyId, companyId),
+        eq(teamInspectors.email, email.toLowerCase())
+      )
+    );
+    return inspector;
+  }
+
+  async createTeamInspector(data: InsertTeamInspector): Promise<TeamInspector> {
+    const [inspector] = await db.insert(teamInspectors).values({
+      ...data,
+      email: data.email?.toLowerCase(),
+    }).returning();
+    return inspector;
+  }
+
+  async updateTeamInspector(id: string, data: Partial<InsertTeamInspector>): Promise<TeamInspector | undefined> {
+    const updateData = {
+      ...data,
+      email: data.email?.toLowerCase(),
+      updatedAt: new Date(),
+    };
+    const [inspector] = await db.update(teamInspectors).set(updateData).where(eq(teamInspectors.id, id)).returning();
+    return inspector;
+  }
+
+  async deleteTeamInspector(id: string): Promise<boolean> {
+    await db.delete(teamInspectors).where(eq(teamInspectors.id, id));
+    return true;
+  }
+
+  async mergeTeamInspectorWithUser(teamInspectorId: string, userId: string): Promise<TeamInspector | undefined> {
+    const [inspector] = await db.update(teamInspectors).set({
+      linkedUserId: userId,
+      status: "active",
+      updatedAt: new Date(),
+    }).where(eq(teamInspectors.id, teamInspectorId)).returning();
+    return inspector;
   }
 
   // Active Company

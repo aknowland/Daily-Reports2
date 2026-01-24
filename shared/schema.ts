@@ -92,6 +92,35 @@ export const pendingMemberAssignments = pgTable("pending_member_assignments", {
   unique().on(table.email, table.companyId),
 ]);
 
+// Team Inspectors - non-active inspector profiles for people who haven't joined the system yet
+export const teamInspectors = pgTable("team_inspectors", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").references(() => companies.id, { onDelete: "cascade" }).notNull(),
+  // Basic info
+  firstName: varchar("first_name").notNull(),
+  lastName: varchar("last_name").notNull(),
+  email: varchar("email"),
+  phone: varchar("phone"),
+  // Professional info (resume-style)
+  title: varchar("title"),
+  licenseNumber: varchar("license_number"),
+  licenseState: varchar("license_state"),
+  certifications: json("certifications").$type<string[]>().default([]),
+  // Work history - links to projects they've worked on
+  projectHistory: json("project_history").$type<{projectId: string; projectName: string; role?: string; startDate?: string; endDate?: string}[]>().default([]),
+  // Additional profile info
+  notes: text("notes"),
+  resumePath: varchar("resume_path"), // Path to uploaded resume file
+  // Account linking - when they create a real account
+  linkedUserId: varchar("linked_user_id").references(() => users.id, { onDelete: "set null" }),
+  // Status tracking
+  status: varchar("status").default("pending").notNull(), // pending, active (merged with user account)
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  unique().on(table.companyId, table.email),
+]);
+
 // Extended User Profile for app-specific fields
 export const userProfiles = pgTable("user_profiles", {
   userId: varchar("user_id").primaryKey(),
@@ -603,6 +632,17 @@ export const companyMembersRelations = relations(companyMembers, ({ one }) => ({
   }),
 }));
 
+export const teamInspectorsRelations = relations(teamInspectors, ({ one }) => ({
+  company: one(companies, {
+    fields: [teamInspectors.companyId],
+    references: [companies.id],
+  }),
+  linkedUser: one(users, {
+    fields: [teamInspectors.linkedUserId],
+    references: [users.id],
+  }),
+}));
+
 export const projectsRelations = relations(projects, ({ one, many }) => ({
   company: one(companies, {
     fields: [projects.companyId],
@@ -650,6 +690,7 @@ export const distributionLogsRelations = relations(distributionLogs, ({ one }) =
 export const insertCompanySchema = createInsertSchema(companies).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertCompanyMemberSchema = createInsertSchema(companyMembers).omit({ id: true, joinedAt: true });
 export const insertPendingMemberAssignmentSchema = createInsertSchema(pendingMemberAssignments).omit({ id: true, createdAt: true });
+export const insertTeamInspectorSchema = createInsertSchema(teamInspectors).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertUserProfileSchema = createInsertSchema(userProfiles);
 
 export const updateUserProfileSchema = createInsertSchema(userProfiles)
@@ -697,6 +738,8 @@ export type CompanyMember = typeof companyMembers.$inferSelect;
 export type InsertCompanyMember = z.infer<typeof insertCompanyMemberSchema>;
 export type PendingMemberAssignment = typeof pendingMemberAssignments.$inferSelect;
 export type InsertPendingMemberAssignment = z.infer<typeof insertPendingMemberAssignmentSchema>;
+export type TeamInspector = typeof teamInspectors.$inferSelect;
+export type InsertTeamInspector = z.infer<typeof insertTeamInspectorSchema>;
 export type UserProfile = typeof userProfiles.$inferSelect;
 export type InsertUserProfile = z.infer<typeof insertUserProfileSchema>;
 export type Project = typeof projects.$inferSelect;
