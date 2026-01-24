@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
+import { InspectorSelector } from "@/components/inspector-selector";
 import {
   Dialog,
   DialogContent,
@@ -1932,11 +1933,24 @@ export default function ContractsPage() {
                               </div>
                               <div className="space-y-1">
                                 <Label className="text-xs">Inspector Name</Label>
-                                <Input
+                                <InspectorSelector
+                                  value=""
+                                  onValueChange={(_, option) => {
+                                    if (option) {
+                                      updateContractInspector(optionIndex, inspectorIndex, "inspectorName", option.displayName);
+                                    }
+                                  }}
+                                  placeholder={inspector.inspectorName || "Select or type..."}
+                                  allowEmpty
+                                  allowCreate
                                   className="h-9"
+                                  data-testid={`select-contract-inspector-${optionIndex}-${inspectorIndex}`}
+                                />
+                                <Input
+                                  className="h-9 mt-1"
                                   value={inspector.inspectorName}
                                   onChange={(e) => updateContractInspector(optionIndex, inspectorIndex, "inspectorName", e.target.value)}
-                                  placeholder="e.g., John Smith"
+                                  placeholder="Or type a name..."
                                   data-testid={`input-contract-inspector-name-${optionIndex}-${inspectorIndex}`}
                                 />
                               </div>
