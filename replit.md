@@ -58,6 +58,12 @@ The application is built with a modern web stack, utilizing **React, TypeScript,
   - Daily reports table (showing reports from all linked projects)
 - **Stacking Budget for Mid-Project Onboarding**: When an inspector joins a project mid-way, admins can set a "base budget" representing work done before they joined. This base amount automatically stacks with new daily reports - no manual recalculation needed.
 - **Project-Level Budget Tracking**: Each project can have its own budget amount and base budget (for stacking). The Contract Dashboard displays per-project budget progress with color-coded status indicators (under budget, on track, warning at 80%, over budget). Project budget milestone notifications (50%, 75%, 90%, 100%) are sent independently from contract-level notifications.
+- **Budget Tracking Modes**: Contracts and projects support three budget tracking modes:
+  - **Daily Reports**: Tracks actual logged hours from daily reports (default mode)
+  - **Scheduled**: Calculates budget based on inspector schedule (FT=8hrs/day, PT=4hrs/day × working days elapsed)
+  - **Hybrid**: Shows both scheduled and actual hours side-by-side for comparison
+  
+  Projects can inherit tracking mode from their parent contract or override with a project-specific mode. Working days calculation excludes weekends and 11 US federal holidays. The Contract Dashboard and project tables display budget progress based on the selected tracking mode, with visual indicators (S=Scheduled, H=Hybrid) to distinguish from daily reports mode.
 - **Invoice Tracking with Purchase Order Integration**: Full invoice lifecycle management with PO linking. Features:
   - PO → Contract → Project billing hierarchy
   - Invoice creation with PO assignment and balance tracking
