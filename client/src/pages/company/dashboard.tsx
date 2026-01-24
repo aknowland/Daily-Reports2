@@ -154,7 +154,6 @@ const formatDate = (dateStr: string | null) => {
 export default function CompanyDashboard() {
   const { activeCompany } = useAuth();
   const [projectsToShow, setProjectsToShow] = useState(10);
-  const [timelineToShow, setTimelineToShow] = useState(8);
 
   const { data: companyDashboard, isLoading: dashboardLoading } = useQuery<CompanyDashboardData>({
     queryKey: ["/api/company/dashboard"],
@@ -193,7 +192,6 @@ export default function CompanyDashboard() {
   });
 
   const displayedContracts = contractsSummary?.slice(0, projectsToShow);
-  const displayedTimeline = companyDashboard?.contractTimeline?.slice(0, timelineToShow);
   
   // Calculate completion rates
   const completedContracts = contractsSummary?.filter(c => 
@@ -381,13 +379,13 @@ export default function CompanyDashboard() {
               </CardContent>
             </Card>
 
-            {/* Contract Timeline / Gantt View */}
-            <Card data-testid="card-contract-timeline">
+            {/* Combined Contract Status Card */}
+            <Card data-testid="card-contract-status">
               <CardHeader>
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
-                    <Calendar className="h-5 w-5 text-primary" />
-                    <CardTitle>Contract Timeline</CardTitle>
+                    <Target className="h-5 w-5 text-primary" />
+                    <CardTitle>Contract Status</CardTitle>
                   </div>
                   <Link href="/company/contracts">
                     <Button variant="ghost" size="sm" className="h-8 gap-1">
@@ -395,29 +393,26 @@ export default function CompanyDashboard() {
                     </Button>
                   </Link>
                 </div>
+                <CardDescription>
+                  Schedule and budget progress with dates and milestones
+                </CardDescription>
               </CardHeader>
               <CardContent>
-                {dashboardLoading ? (
-                  <div className="space-y-2">
-                    {[1, 2, 3, 4].map(i => (
-                      <Skeleton key={i} className="h-10 w-full" />
+                {contractsLoading ? (
+                  <div className="space-y-3">
+                    {[1, 2, 3, 4, 5].map(i => (
+                      <Skeleton key={i} className="h-24 w-full" />
                     ))}
                   </div>
-                ) : displayedTimeline && displayedTimeline.length > 0 ? (
-                  <div className="space-y-2">
-                    {displayedTimeline.map((contract) => {
+                ) : displayedContracts && displayedContracts.length > 0 ? (
+                  <div className="space-y-3">
+                    {displayedContracts.map((contract) => {
                       const now = new Date();
-                      const start = contract.startDate ? new Date(contract.startDate) : null;
-                      const end = contract.endDate ? new Date(contract.endDate) : null;
+                      const start = contract.schedule.startDate ? new Date(contract.schedule.startDate) : null;
+                      const end = contract.schedule.endDate ? new Date(contract.schedule.endDate) : null;
                       
-                      let progress = 0;
                       let daysInfo = '';
-                      
                       if (start && end) {
-                        const totalDays = differenceInDays(end, start);
-                        const elapsed = differenceInDays(now, start);
-                        progress = totalDays > 0 ? Math.min(Math.max((elapsed / totalDays) * 100, 0), 100) : 0;
-                        
                         if (now < start) {
                           daysInfo = `Starts in ${differenceInDays(start, now)} days`;
                         } else if (now > end) {
@@ -426,12 +421,12 @@ export default function CompanyDashboard() {
                           daysInfo = `${differenceInDays(end, now)} days remaining`;
                         }
                       }
-
+                      
                       return (
                         <Link key={contract.id} href={`/company/contracts/${contract.id}/dashboard`}>
                           <div 
                             className="p-3 rounded-lg border hover-elevate cursor-pointer"
-                            data-testid={`timeline-contract-${contract.id}`}
+                            data-testid={`status-contract-${contract.id}`}
                           >
                             <div className="flex items-center justify-between gap-2 mb-2">
                               <div className="flex items-center gap-2 min-w-0">
@@ -442,118 +437,53 @@ export default function CompanyDashboard() {
                                 {contract.status.replace(/_/g, ' ')}
                               </Badge>
                             </div>
-                            <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
-                              <span>{formatDate(contract.startDate)}</span>
+                            
+                            {/* Dates Row */}
+                            <div className="flex items-center gap-2 text-xs text-muted-foreground mb-3">
+                              <Calendar className="h-3 w-3" />
+                              <span>{formatDate(contract.schedule.startDate)}</span>
                               <span>→</span>
-                              <span>{formatDate(contract.endDate)}</span>
-                              {daysInfo && <span className="ml-auto">{daysInfo}</span>}
+                              <span>{formatDate(contract.schedule.endDate)}</span>
+                              {daysInfo && (
+                                <Badge variant="secondary" className="ml-auto text-xs">
+                                  {daysInfo}
+                                </Badge>
+                              )}
                             </div>
-                            <Progress value={progress} className="h-1.5" />
+                            
+                            {/* Progress Bars */}
+                            <div className="grid grid-cols-2 gap-4">
+                              <div>
+                                <div className="flex items-center justify-between text-xs mb-1">
+                                  <span className="text-muted-foreground">Schedule</span>
+                                  <span>{contract.schedule.progress.toFixed(0)}%</span>
+                                </div>
+                                <Progress value={contract.schedule.progress} className="h-1.5" />
+                              </div>
+                              <div>
+                                <div className="flex items-center justify-between text-xs mb-1">
+                                  <span className="text-muted-foreground">Budget</span>
+                                  <span className={getBudgetStatusColor(contract.budget.status)}>
+                                    {contract.budget.progress.toFixed(0)}%
+                                  </span>
+                                </div>
+                                <Progress 
+                                  value={Math.min(contract.budget.progress, 100)} 
+                                  className={`h-1.5 ${contract.budget.status === 'over' ? '[&>div]:bg-red-500' : ''}`}
+                                />
+                              </div>
+                            </div>
                           </div>
                         </Link>
                       );
                     })}
-                    {companyDashboard?.contractTimeline && companyDashboard.contractTimeline.length > timelineToShow && (
-                      <Button 
-                        variant="ghost" 
-                        size="sm" 
-                        className="w-full"
-                        onClick={() => setTimelineToShow(prev => prev + 8)}
-                        data-testid="button-toggle-timeline"
-                      >
-                        Show {Math.min(8, companyDashboard.contractTimeline.length - timelineToShow)} More <ChevronDown className="h-4 w-4 ml-1" />
-                      </Button>
-                    )}
-                    {timelineToShow > 8 && (
-                      <Button 
-                        variant="ghost" 
-                        size="sm" 
-                        className="w-full"
-                        onClick={() => setTimelineToShow(8)}
-                        data-testid="button-collapse-timeline"
-                      >
-                        Show Less <ChevronUp className="h-4 w-4 ml-1" />
-                      </Button>
-                    )}
-                  </div>
-                ) : (
-                  <div className="py-8 text-center text-muted-foreground">
-                    No contracts with dates found
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* Project Status Overview - Limited to 10 */}
-            <Card data-testid="card-project-status">
-              <CardHeader>
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <Target className="h-5 w-5 text-primary" />
-                    <CardTitle>Project Status Overview</CardTitle>
-                  </div>
-                  <Link href="/company/contracts">
-                    <Button variant="ghost" size="sm" className="h-8 gap-1">
-                      View All <ChevronRight className="h-4 w-4" />
-                    </Button>
-                  </Link>
-                </div>
-                <CardDescription>
-                  Schedule and budget progress for active contracts
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                {contractsLoading ? (
-                  <div className="space-y-3">
-                    {[1, 2, 3, 4, 5].map(i => (
-                      <Skeleton key={i} className="h-16 w-full" />
-                    ))}
-                  </div>
-                ) : displayedContracts && displayedContracts.length > 0 ? (
-                  <div className="space-y-3">
-                    {displayedContracts.map((contract) => (
-                      <Link key={contract.id} href={`/company/contracts/${contract.id}/dashboard`}>
-                        <div 
-                          className="p-3 rounded-lg border hover-elevate cursor-pointer"
-                          data-testid={`status-contract-${contract.id}`}
-                        >
-                          <div className="flex items-center justify-between gap-2 mb-2">
-                            <span className="font-medium truncate">{contract.name}</span>
-                            <Badge variant="outline" className="text-xs shrink-0">
-                              {contract.status.replace(/_/g, ' ')}
-                            </Badge>
-                          </div>
-                          <div className="grid grid-cols-2 gap-4">
-                            <div>
-                              <div className="flex items-center justify-between text-xs mb-1">
-                                <span className="text-muted-foreground">Schedule</span>
-                                <span>{contract.schedule.progress.toFixed(0)}%</span>
-                              </div>
-                              <Progress value={contract.schedule.progress} className="h-1.5" />
-                            </div>
-                            <div>
-                              <div className="flex items-center justify-between text-xs mb-1">
-                                <span className="text-muted-foreground">Budget</span>
-                                <span className={getBudgetStatusColor(contract.budget.status)}>
-                                  {contract.budget.progress.toFixed(0)}%
-                                </span>
-                              </div>
-                              <Progress 
-                                value={Math.min(contract.budget.progress, 100)} 
-                                className={`h-1.5 ${contract.budget.status === 'over' ? '[&>div]:bg-red-500' : ''}`}
-                              />
-                            </div>
-                          </div>
-                        </div>
-                      </Link>
-                    ))}
                     {contractsSummary && contractsSummary.length > projectsToShow && (
                       <Button 
                         variant="ghost" 
                         size="sm" 
                         className="w-full"
                         onClick={() => setProjectsToShow(prev => prev + 10)}
-                        data-testid="button-toggle-projects"
+                        data-testid="button-toggle-contracts"
                       >
                         Show {Math.min(10, contractsSummary.length - projectsToShow)} More <ChevronDown className="h-4 w-4 ml-1" />
                       </Button>
@@ -564,7 +494,7 @@ export default function CompanyDashboard() {
                         size="sm" 
                         className="w-full"
                         onClick={() => setProjectsToShow(10)}
-                        data-testid="button-collapse-projects"
+                        data-testid="button-collapse-contracts"
                       >
                         Show Less <ChevronUp className="h-4 w-4 ml-1" />
                       </Button>
