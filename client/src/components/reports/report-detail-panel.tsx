@@ -38,7 +38,7 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { format } from "date-fns";
+import { formatPacificDate } from "@/lib/timezone";
 import {
   Calendar,
   Cloud,
@@ -394,7 +394,7 @@ export function ReportDetailPanel({
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
                   <p className="text-muted-foreground">Date</p>
-                  <p className="font-medium">{format(new Date(report.date), "MMMM d, yyyy")}</p>
+                  <p className="font-medium">{formatPacificDate(report.date, "MMMM d, yyyy")}</p>
                 </div>
                 <div>
                   <p className="text-muted-foreground">Inspector</p>
@@ -573,7 +573,7 @@ export function ReportDetailPanel({
                 </div>
                 {report.signedAt && (
                   <p className="text-xs text-muted-foreground">
-                    Signed on {format(new Date(report.signedAt), "MMMM d, yyyy 'at' h:mm a")}
+                    Signed on {formatPacificDate(report.signedAt, "MMMM d, yyyy 'at' h:mm a")}
                   </p>
                 )}
               </section>

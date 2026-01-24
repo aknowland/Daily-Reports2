@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation, useParams } from "wouter";
+import { getTodayPacific, formatPacificDate } from "@/lib/timezone";
 import { PageLayout } from "@/components/layout/page-layout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -76,7 +77,7 @@ export default function ReportFormPage() {
   const [formData, setFormData] = useState({
     projectId: "",
     customProjectName: "",
-    date: format(new Date(), "yyyy-MM-dd"),
+    date: getTodayPacific(),
     weatherType: "clear" as const,
     weatherNotes: "",
     typeOfWork: [] as string[],
@@ -233,7 +234,7 @@ export default function ReportFormPage() {
       setFormData({
         projectId: existingReport.projectId || "",
         customProjectName: existingReport.customProjectName || "",
-        date: format(new Date(existingReport.date), "yyyy-MM-dd"),
+        date: formatPacificDate(existingReport.date, "yyyy-MM-dd"),
         weatherType: (existingReport.weatherType || "clear") as typeof formData.weatherType,
         weatherNotes: existingReport.weatherNotes || "",
         typeOfWork: (existingReport.typeOfWork as string[]) || [],

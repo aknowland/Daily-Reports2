@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link, useSearch, useLocation } from "wouter";
 import { format } from "date-fns";
+import { formatPacificDate } from "@/lib/timezone";
 import { PageLayout } from "@/components/layout/page-layout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -446,7 +447,7 @@ export default function ReportsListPage() {
                     {reportsToExport.slice(0, 5).map((report) => (
                       <li key={report.id} className="flex items-center gap-2">
                         <FileText className="w-3 h-3" />
-                        {report.project?.name || report.customProjectName || "Unassigned"} - {format(new Date(report.date), "MMM d, yyyy")}
+                        {report.project?.name || report.customProjectName || "Unassigned"} - {formatPacificDate(report.date, "MMM d, yyyy")}
                       </li>
                     ))}
                     {reportsToExport.length > 5 && (

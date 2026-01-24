@@ -18,7 +18,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { format } from "date-fns";
+import { formatPacificDate } from "@/lib/timezone";
 import {
   ArrowLeft,
   Calendar,
@@ -273,7 +273,7 @@ export default function ReportDetailPage() {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <p className="text-sm text-muted-foreground">Date</p>
-                <p className="font-medium">{format(new Date(report.date), "MMMM d, yyyy")}</p>
+                <p className="font-medium">{formatPacificDate(report.date, "MMMM d, yyyy")}</p>
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Inspector</p>
@@ -485,7 +485,7 @@ export default function ReportDetailPage() {
               </div>
               {report.signedAt && (
                 <p className="text-sm text-muted-foreground mt-2">
-                  Signed on {format(new Date(report.signedAt), "MMMM d, yyyy 'at' h:mm a")}
+                  Signed on {formatPacificDate(report.signedAt, "MMMM d, yyyy 'at' h:mm a")}
                 </p>
               )}
             </CardContent>
