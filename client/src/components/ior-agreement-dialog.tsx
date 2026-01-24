@@ -20,6 +20,7 @@ interface IorAgreementDialogProps {
   agreement?: IorAgreement | null;
   companyId: string;
   companyName: string;
+  defaultContractId?: string;
 }
 
 const DEFAULT_TERMS = `Project is on a part-time basis. To be billed in (4) increments per site visit (includes drive time). IOR to provide a Daily Report for each site visit that is billed. Any project paperwork must be uploaded to the KCS portal and stored by the IOR.`;
@@ -29,7 +30,8 @@ export function IorAgreementDialog({
   onOpenChange, 
   agreement, 
   companyId,
-  companyName 
+  companyName,
+  defaultContractId 
 }: IorAgreementDialogProps) {
   const { toast } = useToast();
   const isEditing = !!agreement;
@@ -103,7 +105,7 @@ export function IorAgreementDialog({
       });
     } else {
       setFormData({
-        contractId: "",
+        contractId: defaultContractId || "",
         projectId: "",
         inspectorId: "",
         agreementDate: new Date().toISOString().split("T")[0],
@@ -116,7 +118,7 @@ export function IorAgreementDialog({
         terms: DEFAULT_TERMS,
       });
     }
-  }, [agreement, open]);
+  }, [agreement, open, defaultContractId]);
 
   useEffect(() => {
     if (formData.projectId) {
