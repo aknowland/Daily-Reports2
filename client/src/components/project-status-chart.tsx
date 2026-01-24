@@ -1,6 +1,9 @@
+import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Link } from "wouter";
 import {
   Calendar,
@@ -10,6 +13,8 @@ import {
   CheckCircle2,
   TrendingUp,
   XCircle,
+  Search,
+  Filter,
 } from "lucide-react";
 
 type ContractDashboardSummary = {
@@ -156,9 +161,27 @@ const getStatusPriority = (status: string): number => {
 const EXCLUDED_STATUSES = ['cancelled', 'not_awarded', 'final_closeout'];
 
 export function ProjectStatusChart({ contracts, isLoading }: Props) {
+  const [searchQuery, setSearchQuery] = useState("");
+  const [scheduleFilter, setScheduleFilter] = useState<string>("all");
+  const [budgetFilter, setBudgetFilter] = useState<string>("all");
+
   // Filter out completed/cancelled and sort by status priority
   const activeContracts = contracts
     .filter(c => !EXCLUDED_STATUSES.includes(c.status))
+    .filter(c => {
+      // Search filter
+      if (searchQuery) {
+        const query = searchQuery.toLowerCase();
+        const matchesName = c.name.toLowerCase().includes(query);
+        const matchesNumber = c.contractNumber?.toLowerCase().includes(query);
+        if (!matchesName && !matchesNumber) return false;
+      }
+      // Schedule status filter
+      if (scheduleFilter !== "all" && c.schedule.status !== scheduleFilter) return false;
+      // Budget status filter
+      if (budgetFilter !== "all" && c.budget.status !== budgetFilter) return false;
+      return true;
+    })
     .sort((a, b) => getStatusPriority(a.status) - getStatusPriority(b.status));
 
   if (isLoading) {
@@ -197,16 +220,70 @@ export function ProjectStatusChart({ contracts, isLoading }: Props) {
     );
   }
 
+  const totalUnfiltered = contracts.filter(c => !EXCLUDED_STATUSES.includes(c.status)).length;
+  const hasFilters = searchQuery || scheduleFilter !== "all" || budgetFilter !== "all";
+
   return (
     <Card data-testid="card-project-status-chart">
-      <CardHeader>
+      <CardHeader className="space-y-4">
         <CardTitle className="flex items-center gap-2">
           <TrendingUp className="h-5 w-5" />
           Project Status Overview
         </CardTitle>
+        <div className="flex flex-col sm:flex-row gap-3">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search contracts..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-9"
+              data-testid="input-search-contracts"
+            />
+          </div>
+          <div className="flex gap-2">
+            <Select value={scheduleFilter} onValueChange={setScheduleFilter}>
+              <SelectTrigger className="w-[140px]" data-testid="select-schedule-filter">
+                <Calendar className="h-4 w-4 mr-2 text-muted-foreground" />
+                <SelectValue placeholder="Schedule" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Schedules</SelectItem>
+                <SelectItem value="upcoming">Upcoming</SelectItem>
+                <SelectItem value="on_track">On Track</SelectItem>
+                <SelectItem value="warning">Near Due</SelectItem>
+                <SelectItem value="overdue">Overdue</SelectItem>
+                <SelectItem value="complete">Complete</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={budgetFilter} onValueChange={setBudgetFilter}>
+              <SelectTrigger className="w-[140px]" data-testid="select-budget-filter">
+                <DollarSign className="h-4 w-4 mr-2 text-muted-foreground" />
+                <SelectValue placeholder="Budget" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Budgets</SelectItem>
+                <SelectItem value="under">Under Budget</SelectItem>
+                <SelectItem value="on_track">On Track</SelectItem>
+                <SelectItem value="warning">Near Budget</SelectItem>
+                <SelectItem value="over">Over Budget</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+        {hasFilters && (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Filter className="h-4 w-4" />
+            Showing {activeContracts.length} of {totalUnfiltered} contracts
+          </div>
+        )}
       </CardHeader>
       <CardContent className="space-y-4">
-        {activeContracts.map((contract) => {
+        {activeContracts.length === 0 && hasFilters ? (
+          <p className="text-muted-foreground text-center py-8">
+            No contracts match your filters. Try adjusting your search criteria.
+          </p>
+        ) : activeContracts.map((contract) => {
           const scheduleConfig = getScheduleStatusConfig(contract.schedule.status);
           const budgetConfig = getBudgetStatusConfig(contract.budget.status);
           const ScheduleIcon = scheduleConfig.icon;
