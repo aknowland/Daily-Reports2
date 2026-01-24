@@ -43,6 +43,7 @@ import {
   Download,
   ExternalLink,
   Plus,
+  Pencil,
 } from "lucide-react";
 import { useState } from "react";
 import { format } from "date-fns";
@@ -425,9 +426,17 @@ export default function ContractDashboard() {
                   {dashboard.contract.contractNumber}
                 </CardDescription>
               </div>
-              <Badge variant="outline" data-testid="badge-contract-status">
-                {dashboard.contract.status.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
-              </Badge>
+              <div className="flex items-center gap-2">
+                <Badge variant="outline" data-testid="badge-contract-status">
+                  {dashboard.contract.status.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                </Badge>
+                <Link href="/company/contracts">
+                  <Button variant="outline" size="sm" data-testid="button-edit-contract">
+                    <Pencil className="h-4 w-4 mr-1" />
+                    Edit Contract
+                  </Button>
+                </Link>
+              </div>
             </div>
           </CardHeader>
         </Card>
