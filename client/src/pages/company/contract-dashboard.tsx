@@ -170,6 +170,13 @@ type DashboardData = {
     budgetProgress: number;
     budgetStatus: 'under' | 'on_track' | 'warning' | 'over';
     budgetRemaining: number;
+    budgetTrackingMode: BudgetTrackingMode;
+    scheduledBudget: {
+      amount: number;
+      hours: number;
+      workingDaysElapsed: number;
+      totalWorkingDays: number;
+    };
     startDate: string | null;
     substantialCompletionDate: string | null;
     finalCloseoutDate: string | null;
@@ -1019,38 +1026,58 @@ export default function ContractDashboard() {
                           </TableCell>
                           <TableCell className="text-right">{project.reportCount}</TableCell>
                           <TableCell>
-                            {hasBudget ? (
-                              <div className="space-y-1">
-                                <div className="flex items-center justify-between text-xs">
-                                  <span className={`font-medium ${
-                                    project.budgetStatus === 'over' ? 'text-red-600 dark:text-red-400' :
-                                    project.budgetStatus === 'warning' ? 'text-yellow-600 dark:text-yellow-400' :
-                                    'text-muted-foreground'
-                                  }`}>
-                                    {Math.min(project.budgetProgress, 999).toFixed(1)}%
-                                  </span>
-                                  {project.budgetStatus === 'over' && (
-                                    <Badge variant="destructive" className="text-[10px] px-1 py-0">Over Budget</Badge>
-                                  )}
+                            {hasBudget ? (() => {
+                              const displayProgress = project.budgetTrackingMode === 'scheduled'
+                                ? project.budgetAmount > 0 
+                                  ? ((project.baseBudget + project.scheduledBudget.amount) / project.budgetAmount) * 100
+                                  : 0
+                                : project.budgetProgress;
+                              const displayStatus = displayProgress >= 100 ? 'over' 
+                                : displayProgress >= 80 ? 'warning' 
+                                : displayProgress >= 50 ? 'on_track' 
+                                : 'under';
+                              return (
+                                <div className="space-y-1">
+                                  <div className="flex items-center justify-between text-xs">
+                                    <span className={`font-medium ${
+                                      displayStatus === 'over' ? 'text-red-600 dark:text-red-400' :
+                                      displayStatus === 'warning' ? 'text-yellow-600 dark:text-yellow-400' :
+                                      'text-muted-foreground'
+                                    }`}>
+                                      {Math.min(displayProgress, 999).toFixed(1)}%
+                                    </span>
+                                    {displayStatus === 'over' && (
+                                      <Badge variant="destructive" className="text-[10px] px-1 py-0">Over Budget</Badge>
+                                    )}
+                                  </div>
+                                  <div className="h-2 w-full bg-muted rounded-full overflow-hidden">
+                                    <div 
+                                      className={`h-full rounded-full transition-all ${budgetStatusColors[displayStatus]}`}
+                                      style={{ width: `${Math.min(displayProgress, 100)}%` }}
+                                    />
+                                  </div>
                                 </div>
-                                <div className="h-2 w-full bg-muted rounded-full overflow-hidden">
-                                  <div 
-                                    className={`h-full rounded-full transition-all ${budgetStatusColors[project.budgetStatus]}`}
-                                    style={{ width: `${Math.min(project.budgetProgress, 100)}%` }}
-                                  />
-                                </div>
-                              </div>
-                            ) : (
+                              );
+                            })() : (
                               <span className="text-xs text-muted-foreground italic">No budget set</span>
                             )}
                           </TableCell>
                           <TableCell className="text-right">
                             <div className="space-y-0.5">
-                              <div className="font-medium">{formatCurrency(project.budgetSpent)}</div>
+                              <div className="font-medium">
+                                {project.budgetTrackingMode === 'scheduled' 
+                                  ? formatCurrency(project.baseBudget + project.scheduledBudget.amount)
+                                  : formatCurrency(project.budgetSpent)}
+                              </div>
                               {hasBudget && (
                                 <div className="text-xs text-muted-foreground">
                                   of {formatCurrency(project.budgetAmount)}
                                 </div>
+                              )}
+                              {project.budgetTrackingMode !== 'daily_reports' && (
+                                <Badge variant="outline" className="text-[10px] px-1 py-0 mt-0.5">
+                                  {project.budgetTrackingMode === 'scheduled' ? 'S' : 'H'}
+                                </Badge>
                               )}
                             </div>
                           </TableCell>

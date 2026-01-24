@@ -1654,6 +1654,26 @@ export async function registerRoutes(
             ? contractRateOptions.find(opt => opt.id === (p as any).contractOptionId)
             : null;
           
+          // Determine project budget tracking mode (inherit from contract if empty)
+          const projectTrackingMode = ((p as any).budgetTrackingMode || trackingMode) as BudgetTrackingMode;
+          
+          // Get inspectors for project-specific scheduled budget (use linked option or primary)
+          const projectOption = linkedOption || primaryOption;
+          const projectInspectors: InspectorRate[] = projectOption?.inspectors?.map((i: any) => ({
+            title: i.title,
+            inspectorName: i.inspectorName,
+            rate: i.rate,
+            hours: i.hours,
+            scheduleType: i.scheduleType,
+          })) || [];
+          
+          // Calculate project-level scheduled budget
+          const projectScheduledBudget = calculateScheduledBudget(
+            (p as any).startDate || contract.startDate,
+            (p as any).substantialCompletionDate || contract.substantialCompletionDate,
+            projectInspectors
+          );
+          
           return {
             id: p.id,
             name: p.name,
@@ -1667,6 +1687,13 @@ export async function registerRoutes(
             budgetProgress: projectBudgetProgress,
             budgetStatus: projectBudgetStatus,
             budgetRemaining: projectBudgetAmount > 0 ? projectBudgetAmount - projectTotalSpent : 0,
+            budgetTrackingMode: projectTrackingMode,
+            scheduledBudget: {
+              amount: projectScheduledBudget.scheduledAmount,
+              hours: projectScheduledBudget.scheduledHours,
+              workingDaysElapsed: projectScheduledBudget.workingDaysElapsed,
+              totalWorkingDays: projectScheduledBudget.totalWorkingDays,
+            },
             startDate: (p as any).startDate,
             substantialCompletionDate: (p as any).substantialCompletionDate,
             finalCloseoutDate: (p as any).finalCloseoutDate,
