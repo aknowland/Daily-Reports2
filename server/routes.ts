@@ -1333,6 +1333,239 @@ export async function registerRoutes(
     }
   });
 
+  // Get comprehensive company dashboard data
+  app.get("/api/company/dashboard", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      
+      if (!profile?.activeCompanyId) {
+        return res.json({ error: 'No active company' });
+      }
+      
+      const companyId = profile.activeCompanyId;
+      const isMember = await storage.isUserMemberOfCompany(companyId, userId);
+      const isSysAdmin = isEffectiveSystemAdmin(profile);
+      
+      if (!isMember && !isSysAdmin) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      const now = new Date();
+      
+      // Fetch all needed data in parallel
+      const [contracts, projects, companyMembers, allReports] = await Promise.all([
+        storage.getContracts(companyId),
+        storage.getProjectsByCompany(companyId),
+        storage.getCompanyMembers(companyId),
+        storage.getReports({ companyId }),
+      ]);
+      
+      // 1. Inspector Workload - hours per inspector
+      const inspectorWorkload: Record<string, { userId: string; name: string; regularHours: number; overtimeHours: number; reportCount: number; projectIds: Set<string> }> = {};
+      
+      for (const report of allReports) {
+        const inspectorId = report.inspectorId;
+        if (!inspectorWorkload[inspectorId]) {
+          inspectorWorkload[inspectorId] = { 
+            userId: inspectorId, 
+            name: '', 
+            regularHours: 0, 
+            overtimeHours: 0, 
+            reportCount: 0, 
+            projectIds: new Set() 
+          };
+        }
+        inspectorWorkload[inspectorId].regularHours += parseFloat(report.regularHours || '0');
+        inspectorWorkload[inspectorId].overtimeHours += parseFloat(report.otHours || '0');
+        inspectorWorkload[inspectorId].reportCount += 1;
+        if (report.projectId) {
+          inspectorWorkload[inspectorId].projectIds.add(report.projectId);
+        }
+      }
+      
+      // Fetch inspector names
+      const inspectorIds = Object.keys(inspectorWorkload);
+      const inspectorProfiles = await Promise.all(inspectorIds.map(id => storage.getUserProfile(id)));
+      for (const profile of inspectorProfiles) {
+        if (profile && inspectorWorkload[profile.userId]) {
+          inspectorWorkload[profile.userId].name = `${profile.firstName || ''} ${profile.lastName || ''}`.trim() || 'Inspector';
+        }
+      }
+      
+      const inspectorWorkloadList = Object.values(inspectorWorkload)
+        .map(i => ({
+          userId: i.userId,
+          name: i.name || 'Unknown',
+          regularHours: Math.round(i.regularHours * 10) / 10,
+          overtimeHours: Math.round(i.overtimeHours * 10) / 10,
+          totalHours: Math.round((i.regularHours + i.overtimeHours) * 10) / 10,
+          reportCount: i.reportCount,
+          projectCount: i.projectIds.size,
+        }))
+        .sort((a, b) => b.totalHours - a.totalHours);
+      
+      // 2. Contract Timeline - for calendar view
+      const contractTimeline = contracts
+        .filter(c => c.startDate || c.substantialCompletionDate)
+        .map(c => ({
+          id: c.id,
+          name: c.name,
+          contractNumber: c.contractNumber,
+          status: c.status,
+          startDate: c.startDate,
+          endDate: c.substantialCompletionDate,
+          color: c.status === 'in_execution' ? 'blue' : 
+                 c.status === 'awarded' ? 'green' :
+                 c.status === 'substantial_completion' ? 'gray' :
+                 ['bid_release', 'bid_received', 'under_review'].includes(c.status) ? 'yellow' : 'gray',
+        }))
+        .sort((a, b) => {
+          const aDate = a.startDate ? new Date(a.startDate).getTime() : Infinity;
+          const bDate = b.startDate ? new Date(b.startDate).getTime() : Infinity;
+          return aDate - bDate;
+        });
+      
+      // 3. Notifications/Alerts - upcoming deadlines and budget alerts
+      const alerts: { id: string; type: string; severity: 'info' | 'warning' | 'critical'; title: string; message: string; date: string; contractId?: string }[] = [];
+      
+      for (const contract of contracts) {
+        // Check for upcoming milestone dates
+        if (contract.substantialCompletionDate) {
+          const completionDate = new Date(contract.substantialCompletionDate);
+          const daysUntil = Math.ceil((completionDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+          
+          if (daysUntil >= 0 && daysUntil <= 30 && !['substantial_completion', 'final_closeout'].includes(contract.status)) {
+            alerts.push({
+              id: `completion-${contract.id}`,
+              type: 'deadline',
+              severity: daysUntil <= 7 ? 'critical' : daysUntil <= 14 ? 'warning' : 'info',
+              title: 'Completion Approaching',
+              message: `${contract.name} - ${daysUntil === 0 ? 'Due today' : `${daysUntil} days remaining`}`,
+              date: contract.substantialCompletionDate instanceof Date 
+                ? contract.substantialCompletionDate.toISOString() 
+                : String(contract.substantialCompletionDate),
+              contractId: contract.id,
+            });
+          }
+        }
+        
+        // Check budget status
+        const budgetSummary = await storage.getContractBudgetSummary(contract.id);
+        const totalBudget = contract.budgetOverride 
+          ? parseFloat(contract.budgetOverride) 
+          : parseFloat(contract.currentValue || contract.originalValue || '0');
+        
+        if (totalBudget > 0) {
+          const spent = parseFloat(contract.baseBudgetSpent || '0') + budgetSummary.totalBilled;
+          const budgetProgress = (spent / totalBudget) * 100;
+          
+          if (budgetProgress >= 90) {
+            alerts.push({
+              id: `budget-${contract.id}`,
+              type: 'budget',
+              severity: budgetProgress >= 100 ? 'critical' : 'warning',
+              title: budgetProgress >= 100 ? 'Over Budget' : 'Budget Warning',
+              message: `${contract.name} - ${Math.round(budgetProgress)}% of budget used`,
+              date: now.toISOString(),
+              contractId: contract.id,
+            });
+          }
+        }
+      }
+      
+      // Sort alerts by severity then date
+      alerts.sort((a, b) => {
+        const severityOrder = { critical: 0, warning: 1, info: 2 };
+        if (severityOrder[a.severity] !== severityOrder[b.severity]) {
+          return severityOrder[a.severity] - severityOrder[b.severity];
+        }
+        return new Date(a.date).getTime() - new Date(b.date).getTime();
+      });
+      
+      // 4. Recent Activity - latest reports submitted
+      const recentActivity = allReports
+        .sort((a, b) => new Date(b.createdAt || b.date).getTime() - new Date(a.createdAt || a.date).getTime())
+        .slice(0, 20)
+        .map(r => {
+          const project = projects.find(p => p.id === r.projectId);
+          return {
+            id: r.id,
+            type: 'report' as const,
+            date: r.createdAt?.toISOString() || (r.date instanceof Date ? r.date.toISOString() : r.date),
+            title: `Daily Report - ${project?.name || r.projectId || 'Unknown'}`,
+            status: r.status,
+            inspectorId: r.inspectorId,
+          };
+        });
+      
+      // 5. Revenue Analytics - monthly totals
+      const monthlyRevenue: Record<string, number> = {};
+      const monthlyHours: Record<string, number> = {};
+      
+      for (const report of allReports) {
+        const reportDate = report.date instanceof Date ? report.date : new Date(report.date);
+        const monthKey = `${reportDate.getFullYear()}-${String(reportDate.getMonth() + 1).padStart(2, '0')}`;
+        
+        const regularHours = parseFloat(report.regularHours || '0');
+        const otHours = parseFloat(report.otHours || '0');
+        const totalHours = regularHours + otHours;
+        
+        monthlyHours[monthKey] = (monthlyHours[monthKey] || 0) + totalHours;
+        
+        // Estimate revenue using average rate (simplified)
+        // In production, this would use actual billing rates
+        const estimatedRate = 75; // Average hourly rate
+        monthlyRevenue[monthKey] = (monthlyRevenue[monthKey] || 0) + (regularHours * estimatedRate) + (otHours * estimatedRate * 1.5);
+      }
+      
+      // Convert to array sorted by month
+      const revenueAnalytics = Object.entries(monthlyRevenue)
+        .map(([month, revenue]) => ({
+          month,
+          revenue: Math.round(revenue),
+          hours: Math.round((monthlyHours[month] || 0) * 10) / 10,
+        }))
+        .sort((a, b) => a.month.localeCompare(b.month))
+        .slice(-12); // Last 12 months
+      
+      // 6. Summary Stats
+      const activeContracts = contracts.filter(c => c.status === 'in_execution').length;
+      const upcomingContracts = contracts.filter(c => ['bid_release', 'bid_received', 'under_review', 'awarded'].includes(c.status)).length;
+      const completedContracts = contracts.filter(c => ['substantial_completion', 'final_closeout'].includes(c.status)).length;
+      const activeProjects = projects.filter(p => (p as any).status === 'active').length;
+      
+      const totalHoursThisMonth = allReports
+        .filter(r => {
+          const reportDate = r.date instanceof Date ? r.date : new Date(r.date);
+          return reportDate.getMonth() === now.getMonth() && reportDate.getFullYear() === now.getFullYear();
+        })
+        .reduce((sum, r) => sum + parseFloat(r.regularHours || '0') + parseFloat(r.otHours || '0'), 0);
+      
+      res.json({
+        summary: {
+          activeContracts,
+          upcomingContracts,
+          completedContracts,
+          totalContracts: contracts.length,
+          activeProjects,
+          totalProjects: projects.length,
+          totalInspectors: inspectorWorkloadList.length,
+          totalReports: allReports.length,
+          hoursThisMonth: Math.round(totalHoursThisMonth * 10) / 10,
+        },
+        inspectorWorkload: inspectorWorkloadList,
+        contractTimeline,
+        alerts: alerts.slice(0, 20),
+        recentActivity,
+        revenueAnalytics,
+      });
+    } catch (error) {
+      console.error("Error fetching company dashboard:", error);
+      res.status(500).json({ message: "Failed to fetch company dashboard" });
+    }
+  });
+
   // Get single contract
   app.get("/api/contracts/:id", isAuthenticated, async (req: any, res) => {
     try {
@@ -1532,6 +1765,145 @@ export async function registerRoutes(
       const actualProfit = actualRevenue - actualCost;
       const actualMargin = actualRevenue > 0 ? (actualProfit / actualRevenue) * 100 : 0;
       
+      // === NEW DASHBOARD FEATURES ===
+      
+      // 1. Activity Timeline - Recent activities from reports
+      const activityTimeline = dailyReports
+        .slice(0, 20)
+        .map(r => ({
+          id: r.id,
+          type: 'report' as const,
+          date: r.createdAt ? r.createdAt.toISOString() : (r.date instanceof Date ? r.date.toISOString() : r.date),
+          title: `Daily Report - ${r.projectName || 'Unknown Project'}`,
+          description: r.date ? `Report for ${r.date instanceof Date ? r.date.toISOString().split('T')[0] : r.date}` : 'New report submitted',
+          status: r.status,
+          inspectorId: r.inspectorId,
+        }))
+        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      
+      // 2. Photo Gallery - Recent photos from reports
+      const allPhotos: { id: string; path: string; caption: string | null; reportDate: string; projectName: string; createdAt: string | null }[] = [];
+      for (const report of dailyReports.slice(0, 30)) {
+        const reportPhotos = await storage.getPhotosByReport(report.id);
+        for (const photo of reportPhotos) {
+          allPhotos.push({
+            id: photo.id,
+            path: photo.filePath,
+            caption: photo.caption,
+            reportDate: report.date instanceof Date ? report.date.toISOString().split('T')[0] : report.date,
+            projectName: report.projectName || 'Unknown Project',
+            createdAt: photo.createdAt ? photo.createdAt.toISOString() : null,
+          });
+        }
+      }
+      const photoGallery = allPhotos
+        .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime())
+        .slice(0, 12);
+      
+      // 3. Issues Summary - Aggregate issues from reports
+      const issuesReports = dailyReports.filter(r => r.issuesFlag);
+      const issuesSummary = {
+        totalCount: issuesReports.length,
+        recentIssues: issuesReports.slice(0, 10).map(r => ({
+          id: r.id,
+          date: r.date,
+          projectName: r.projectName || 'Unknown Project',
+          details: r.issuesDetails,
+        })),
+      };
+      
+      // 4. Safety Incidents - Aggregate safety incidents
+      const safetyReports = dailyReports.filter(r => r.safetyFlag);
+      const safetySummary = {
+        totalCount: safetyReports.length,
+        recentIncidents: safetyReports.slice(0, 10).map(r => ({
+          id: r.id,
+          date: r.date,
+          projectName: r.projectName || 'Unknown Project',
+          details: r.safetyDetails,
+        })),
+      };
+      
+      // 5. Weather Summary - Aggregate weather data
+      const weatherCounts: Record<string, number> = {};
+      for (const report of dailyReports) {
+        const weather = report.weatherType || 'unknown';
+        weatherCounts[weather] = (weatherCounts[weather] || 0) + 1;
+      }
+      const weatherSummary = {
+        totalReports: dailyReports.length,
+        breakdown: Object.entries(weatherCounts).map(([type, count]) => ({
+          type,
+          count,
+          percentage: dailyReports.length > 0 ? Math.round((count / dailyReports.length) * 100) : 0,
+        })).sort((a, b) => b.count - a.count),
+        recentWeather: dailyReports.slice(0, 7).map(r => ({
+          date: r.date,
+          type: r.weatherType,
+          notes: r.weatherNotes,
+        })),
+      };
+      
+      // 6. Team Overview - Inspectors and their hours
+      const inspectorHours: Record<string, { inspectorId: string; regular: number; overtime: number; premium: number; reportCount: number }> = {};
+      for (const report of dailyReports) {
+        const inspectorId = report.inspectorId || 'unknown';
+        if (!inspectorHours[inspectorId]) {
+          inspectorHours[inspectorId] = { inspectorId, regular: 0, overtime: 0, premium: 0, reportCount: 0 };
+        }
+        inspectorHours[inspectorId].regular += parseFloat(report.regularHours || '0');
+        inspectorHours[inspectorId].overtime += parseFloat(report.otHours || '0');
+        inspectorHours[inspectorId].premium += parseFloat((report as any).premiumHours || '0');
+        inspectorHours[inspectorId].reportCount += 1;
+      }
+      
+      // Fetch inspector names
+      const inspectorIds = Object.keys(inspectorHours).filter(id => id !== 'unknown');
+      const inspectorProfiles = await Promise.all(
+        inspectorIds.map(id => storage.getUserProfile(id))
+      );
+      const inspectorNameMap = new Map(
+        inspectorProfiles
+          .filter((p): p is NonNullable<typeof p> => p !== null && p !== undefined)
+          .map(p => [p.userId, `${p.firstName || ''} ${p.lastName || ''}`.trim() || 'Inspector'])
+      );
+      
+      const teamOverview = Object.values(inspectorHours)
+        .map(i => ({
+          ...i,
+          name: inspectorNameMap.get(i.inspectorId) || 'Unknown Inspector',
+          totalHours: i.regular + i.overtime + i.premium,
+        }))
+        .sort((a, b) => b.totalHours - a.totalHours);
+      
+      // 7. Upcoming Milestones - Key dates approaching
+      const milestones: { date: string; label: string; type: string; daysUntil: number; isPast: boolean }[] = [];
+      const milestoneFields = [
+        { field: 'bidReleaseDate', label: 'Bid Release' },
+        { field: 'bidDueDate', label: 'Bid Due' },
+        { field: 'awardDate', label: 'Contract Award' },
+        { field: 'startDate', label: 'Project Start' },
+        { field: 'substantialCompletionDate', label: 'Substantial Completion' },
+        { field: 'finalCloseoutDate', label: 'Final Closeout' },
+      ];
+      for (const m of milestoneFields) {
+        const dateValue = (contract as any)[m.field];
+        if (dateValue) {
+          const date = new Date(dateValue);
+          const daysUntil = Math.ceil((date.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+          milestones.push({
+            date: dateValue,
+            label: m.label,
+            type: m.field,
+            daysUntil,
+            isPast: daysUntil < 0,
+          });
+        }
+      }
+      const upcomingMilestones = milestones
+        .filter(m => m.daysUntil >= -7) // Include recently past (within a week) and future
+        .sort((a, b) => a.daysUntil - b.daysUntil);
+      
       res.json({
         contract: {
           id: contract.id,
@@ -1647,6 +2019,14 @@ export async function registerRoutes(
           otHours: r.otHours,
           signedAt: r.signedAt,
         })),
+        // New dashboard features
+        activityTimeline,
+        photoGallery,
+        issuesSummary,
+        safetySummary,
+        weatherSummary,
+        teamOverview,
+        upcomingMilestones,
         projects: await Promise.all(contractProjects.map(async (p) => {
           // Get report count and budget for this project
           const projectReports = dailyReports.filter(r => r.projectId === p.id);
