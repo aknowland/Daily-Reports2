@@ -44,6 +44,21 @@ import {
   ExternalLink,
   Plus,
   Pencil,
+  Activity,
+  Image,
+  AlertCircle,
+  ShieldAlert,
+  Cloud,
+  Sun,
+  CloudRain,
+  Wind,
+  Thermometer,
+  Snowflake,
+  UserCircle,
+  Flag,
+  FileDown,
+  Mail,
+  Zap,
 } from "lucide-react";
 import { useState } from "react";
 import { format } from "date-fns";
@@ -175,6 +190,71 @@ type DashboardData = {
     regularHours: string | null;
     otHours: string | null;
     signedAt: string | null;
+  }[];
+  // New dashboard features
+  activityTimeline: {
+    id: string;
+    type: 'report';
+    date: string;
+    title: string;
+    description: string;
+    status: string | null;
+    inspectorId: string;
+  }[];
+  photoGallery: {
+    id: string;
+    path: string;
+    caption: string | null;
+    reportDate: string;
+    projectName: string;
+    createdAt: string | null;
+  }[];
+  issuesSummary: {
+    totalCount: number;
+    recentIssues: {
+      id: string;
+      date: string;
+      projectName: string;
+      details: string | null;
+    }[];
+  };
+  safetySummary: {
+    totalCount: number;
+    recentIncidents: {
+      id: string;
+      date: string;
+      projectName: string;
+      details: string | null;
+    }[];
+  };
+  weatherSummary: {
+    totalReports: number;
+    breakdown: {
+      type: string;
+      count: number;
+      percentage: number;
+    }[];
+    recentWeather: {
+      date: string;
+      type: string | null;
+      notes: string | null;
+    }[];
+  };
+  teamOverview: {
+    inspectorId: string;
+    name: string;
+    regular: number;
+    overtime: number;
+    premium: number;
+    reportCount: number;
+    totalHours: number;
+  }[];
+  upcomingMilestones: {
+    date: string;
+    label: string;
+    type: string;
+    daysUntil: number;
+    isPast: boolean;
   }[];
   projects: {
     id: string;
@@ -955,6 +1035,324 @@ export default function ContractDashboard() {
                 </p>
               )}
             </div>
+          </CardContent>
+        </Card>
+
+        {/* Quick Actions Panel */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2">
+              <Zap className="h-5 w-5" />
+              Quick Actions
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-wrap gap-2">
+              <Link href="/company/contracts">
+                <Button variant="outline" size="sm" data-testid="button-edit-contract-quick">
+                  <Pencil className="h-4 w-4 mr-1" />
+                  Edit Contract
+                </Button>
+              </Link>
+              <Link href={`/company/billing?contractId=${dashboard.contract.id}`}>
+                <Button variant="outline" size="sm" data-testid="button-create-invoice">
+                  <FileDown className="h-4 w-4 mr-1" />
+                  Create Invoice
+                </Button>
+              </Link>
+              <Link href={`/company/reports?contractId=${dashboard.contract.id}`}>
+                <Button variant="outline" size="sm" data-testid="button-view-reports">
+                  <FileText className="h-4 w-4 mr-1" />
+                  View Reports
+                </Button>
+              </Link>
+              <Link href="/company/ior-agreements">
+                <Button variant="outline" size="sm" data-testid="button-manage-ior">
+                  <ClipboardList className="h-4 w-4 mr-1" />
+                  IOR Agreements
+                </Button>
+              </Link>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Upcoming Milestones */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Flag className="h-5 w-5" />
+              Upcoming Milestones
+            </CardTitle>
+            <CardDescription>Key dates and deadlines</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {dashboard.upcomingMilestones.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No milestone dates configured</p>
+            ) : (
+              <div className="space-y-3">
+                {dashboard.upcomingMilestones.map((milestone, idx) => (
+                  <div 
+                    key={idx} 
+                    className={`flex items-center justify-between p-3 rounded-lg border ${
+                      milestone.isPast 
+                        ? 'bg-muted/50 border-muted' 
+                        : milestone.daysUntil <= 7 
+                          ? 'bg-yellow-50 dark:bg-yellow-950/20 border-yellow-200 dark:border-yellow-800' 
+                          : 'bg-card border-border'
+                    }`}
+                    data-testid={`milestone-${milestone.type}`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <Calendar className={`h-4 w-4 ${milestone.isPast ? 'text-muted-foreground' : 'text-primary'}`} />
+                      <div>
+                        <p className={`font-medium ${milestone.isPast ? 'text-muted-foreground' : ''}`}>
+                          {milestone.label}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {format(new Date(milestone.date), 'MMM d, yyyy')}
+                        </p>
+                      </div>
+                    </div>
+                    <Badge variant={
+                      milestone.isPast ? 'secondary' : 
+                      milestone.daysUntil <= 7 ? 'destructive' : 
+                      milestone.daysUntil <= 30 ? 'default' : 'outline'
+                    }>
+                      {milestone.isPast 
+                        ? `${Math.abs(milestone.daysUntil)} days ago`
+                        : milestone.daysUntil === 0 
+                          ? 'Today'
+                          : `${milestone.daysUntil} days`
+                      }
+                    </Badge>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Activity Timeline & Team Overview Row */}
+        <div className="grid gap-6 md:grid-cols-2">
+          {/* Activity Timeline */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Activity className="h-5 w-5" />
+                Recent Activity
+              </CardTitle>
+              <CardDescription>Latest report submissions</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {dashboard.activityTimeline.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No recent activity</p>
+              ) : (
+                <div className="space-y-3 max-h-64 overflow-y-auto">
+                  {dashboard.activityTimeline.slice(0, 10).map((activity) => (
+                    <div key={activity.id} className="flex items-start gap-3 p-2 rounded hover-elevate" data-testid={`activity-${activity.id}`}>
+                      <div className="mt-0.5">
+                        <FileText className="h-4 w-4 text-muted-foreground" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{activity.title}</p>
+                        <p className="text-xs text-muted-foreground">{activity.description}</p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {format(new Date(activity.date), 'MMM d, yyyy h:mm a')}
+                        </p>
+                      </div>
+                      {activity.status && (
+                        <Badge variant={activity.status === 'submitted' ? 'default' : 'secondary'} className="text-xs">
+                          {activity.status}
+                        </Badge>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Team Overview */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Users className="h-5 w-5" />
+                Team Overview
+              </CardTitle>
+              <CardDescription>Inspectors and logged hours</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {dashboard.teamOverview.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No inspector data available</p>
+              ) : (
+                <div className="space-y-3 max-h-64 overflow-y-auto">
+                  {dashboard.teamOverview.map((inspector) => (
+                    <div key={inspector.inspectorId} className="flex items-center justify-between p-2 rounded border" data-testid={`team-${inspector.inspectorId}`}>
+                      <div className="flex items-center gap-3">
+                        <UserCircle className="h-8 w-8 text-muted-foreground" />
+                        <div>
+                          <p className="font-medium">{inspector.name}</p>
+                          <p className="text-xs text-muted-foreground">{inspector.reportCount} reports</p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-semibold">{inspector.totalHours.toFixed(1)}h</p>
+                        <p className="text-xs text-muted-foreground">
+                          {inspector.regular.toFixed(1)} reg / {inspector.overtime.toFixed(1)} OT
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Weather Summary & Issues/Safety Row */}
+        <div className="grid gap-6 md:grid-cols-3">
+          {/* Weather Summary */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Cloud className="h-5 w-5" />
+                Weather Summary
+              </CardTitle>
+              <CardDescription>Conditions from {dashboard.weatherSummary.totalReports} reports</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {dashboard.weatherSummary.breakdown.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No weather data</p>
+              ) : (
+                <div className="space-y-2">
+                  {dashboard.weatherSummary.breakdown.map((w) => {
+                    const WeatherIcon = w.type === 'clear' ? Sun : 
+                                        w.type === 'cloudy' ? Cloud :
+                                        w.type === 'rain' ? CloudRain :
+                                        w.type === 'wind' ? Wind :
+                                        w.type === 'heat' ? Thermometer :
+                                        w.type === 'cold' ? Snowflake : Cloud;
+                    return (
+                      <div key={w.type} className="flex items-center justify-between" data-testid={`weather-${w.type}`}>
+                        <div className="flex items-center gap-2">
+                          <WeatherIcon className="h-4 w-4 text-muted-foreground" />
+                          <span className="text-sm capitalize">{w.type}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-medium">{w.count}</span>
+                          <span className="text-xs text-muted-foreground">({w.percentage}%)</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Issues Summary */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <AlertCircle className="h-5 w-5" />
+                Issues Reported
+                {dashboard.issuesSummary.totalCount > 0 && (
+                  <Badge variant="destructive">{dashboard.issuesSummary.totalCount}</Badge>
+                )}
+              </CardTitle>
+              <CardDescription>Problems flagged in reports</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {dashboard.issuesSummary.totalCount === 0 ? (
+                <div className="text-center py-4">
+                  <CheckCircle2 className="h-8 w-8 text-green-500 mx-auto mb-2" />
+                  <p className="text-sm text-muted-foreground">No issues reported</p>
+                </div>
+              ) : (
+                <div className="space-y-2 max-h-48 overflow-y-auto">
+                  {dashboard.issuesSummary.recentIssues.map((issue) => (
+                    <div key={issue.id} className="p-2 rounded border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/20" data-testid={`issue-${issue.id}`}>
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs font-medium">{issue.projectName}</span>
+                        <span className="text-xs text-muted-foreground">{issue.date}</span>
+                      </div>
+                      <p className="text-xs text-muted-foreground line-clamp-2">{issue.details || 'No details provided'}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Safety Incidents */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <ShieldAlert className="h-5 w-5" />
+                Safety Incidents
+                {dashboard.safetySummary.totalCount > 0 && (
+                  <Badge variant="destructive">{dashboard.safetySummary.totalCount}</Badge>
+                )}
+              </CardTitle>
+              <CardDescription>Safety concerns flagged</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {dashboard.safetySummary.totalCount === 0 ? (
+                <div className="text-center py-4">
+                  <CheckCircle2 className="h-8 w-8 text-green-500 mx-auto mb-2" />
+                  <p className="text-sm text-muted-foreground">No safety incidents</p>
+                </div>
+              ) : (
+                <div className="space-y-2 max-h-48 overflow-y-auto">
+                  {dashboard.safetySummary.recentIncidents.map((incident) => (
+                    <div key={incident.id} className="p-2 rounded border border-orange-200 dark:border-orange-800 bg-orange-50 dark:bg-orange-950/20" data-testid={`safety-${incident.id}`}>
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs font-medium">{incident.projectName}</span>
+                        <span className="text-xs text-muted-foreground">{incident.date}</span>
+                      </div>
+                      <p className="text-xs text-muted-foreground line-clamp-2">{incident.details || 'No details provided'}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Photo Gallery */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Image className="h-5 w-5" />
+              Recent Photos
+            </CardTitle>
+            <CardDescription>Latest photos from daily reports</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {dashboard.photoGallery.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No photos uploaded yet</p>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                {dashboard.photoGallery.map((photo) => (
+                  <div key={photo.id} className="relative group" data-testid={`photo-${photo.id}`}>
+                    <div className="aspect-square rounded-lg overflow-hidden border bg-muted">
+                      <img 
+                        src={photo.path} 
+                        alt={photo.caption || 'Site photo'} 
+                        className="w-full h-full object-cover transition-transform group-hover:scale-105"
+                        loading="lazy"
+                      />
+                    </div>
+                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg flex items-end p-2">
+                      <div className="text-white text-xs">
+                        <p className="font-medium truncate">{photo.projectName}</p>
+                        <p className="text-white/80">{photo.reportDate}</p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
 
