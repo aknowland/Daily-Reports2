@@ -206,8 +206,6 @@ export const dailyReports = pgTable("daily_reports", {
   notes: text("notes"),
   // Time tracking fields
   timeIn: varchar("time_in"), // Format: "HH:MM" (24-hour)
-  lunchStart: varchar("lunch_start"), // Format: "HH:MM" (24-hour)
-  lunchEnd: varchar("lunch_end"), // Format: "HH:MM" (24-hour)
   timeOut: varchar("time_out"), // Format: "HH:MM" (24-hour)
   regularHours: varchar("regular_hours"), // Calculated regular hours (decimal)
   otHours: varchar("ot_hours"), // Overtime hours entered manually

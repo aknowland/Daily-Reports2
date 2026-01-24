@@ -92,16 +92,14 @@ export default function ReportFormPage() {
     safetyDetails: "",
     // Time tracking - defaults for new reports
     timeIn: "07:00",
-    lunchStart: "11:00",
-    lunchEnd: "12:00",
-    timeOut: "16:00",
+    timeOut: "15:00",
     regularHours: "",
     otHours: "",
   });
 
   // Calculate regular hours when time fields change
   useEffect(() => {
-    const { timeIn, lunchStart, lunchEnd, timeOut } = formData;
+    const { timeIn, timeOut } = formData;
     
     const parseTime = (t: string): number | null => {
       if (!t) return null;
@@ -129,21 +127,11 @@ export default function ReportFormPage() {
       return;
     }
     
-    let totalMinutes = outMins - inMins;
-    
-    // Subtract lunch if both times provided and valid
-    if (lunchStart && lunchEnd) {
-      const lunchStartMins = parseTime(lunchStart);
-      const lunchEndMins = parseTime(lunchEnd);
-      if (lunchStartMins !== null && lunchEndMins !== null && lunchEndMins > lunchStartMins) {
-        totalMinutes -= (lunchEndMins - lunchStartMins);
-      }
-    }
-    
+    const totalMinutes = outMins - inMins;
     const hours = Math.max(0, totalMinutes / 60);
     const regularHrs = Math.min(hours, 8).toFixed(2);
     setFormData(prev => ({ ...prev, regularHours: regularHrs }));
-  }, [formData.timeIn, formData.lunchStart, formData.lunchEnd, formData.timeOut]);
+  }, [formData.timeIn, formData.timeOut]);
 
   const [photos, setPhotos] = useState<PhotoItem[]>([]);
   const [signature, setSignature] = useState("");
@@ -222,9 +210,7 @@ export default function ReportFormPage() {
           safetyFlag: previousReport.safetyFlag || false,
           safetyDetails: previousReport.safetyDetails || "",
           timeIn: previousReport.timeIn || "07:00",
-          lunchStart: previousReport.lunchStart || "11:00",
-          lunchEnd: previousReport.lunchEnd || "12:00",
-          timeOut: previousReport.timeOut || "16:00",
+          timeOut: previousReport.timeOut || "15:00",
           regularHours: previousReport.regularHours || "",
           otHours: previousReport.otHours || "",
         }));
@@ -262,8 +248,6 @@ export default function ReportFormPage() {
         safetyFlag: existingReport.safetyFlag || false,
         safetyDetails: existingReport.safetyDetails || "",
         timeIn: existingReport.timeIn || "",
-        lunchStart: existingReport.lunchStart || "",
-        lunchEnd: existingReport.lunchEnd || "",
         timeOut: existingReport.timeOut || "",
         regularHours: existingReport.regularHours || "",
         otHours: existingReport.otHours || "",
@@ -619,7 +603,7 @@ export default function ReportFormPage() {
             <p className="text-sm text-muted-foreground">Record your work hours for invoicing</p>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid gap-4 grid-cols-2 sm:grid-cols-4">
+            <div className="grid gap-4 grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="timeIn">Time In</Label>
                 <Input
@@ -629,28 +613,6 @@ export default function ReportFormPage() {
                   onChange={(e) => setFormData(prev => ({ ...prev, timeIn: e.target.value }))}
                   className="h-12"
                   data-testid="input-time-in"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="lunchStart">Lunch Start</Label>
-                <Input
-                  id="lunchStart"
-                  type="time"
-                  value={formData.lunchStart}
-                  onChange={(e) => setFormData(prev => ({ ...prev, lunchStart: e.target.value }))}
-                  className="h-12"
-                  data-testid="input-lunch-start"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="lunchEnd">Lunch End</Label>
-                <Input
-                  id="lunchEnd"
-                  type="time"
-                  value={formData.lunchEnd}
-                  onChange={(e) => setFormData(prev => ({ ...prev, lunchEnd: e.target.value }))}
-                  className="h-12"
-                  data-testid="input-lunch-end"
                 />
               </div>
               <div className="space-y-2">

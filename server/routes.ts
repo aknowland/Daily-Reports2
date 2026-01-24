@@ -197,8 +197,6 @@ const createReportSchema = z.object({
   status: z.enum(["draft", "submitted"]).optional(),
   // Time tracking fields
   timeIn: z.string().optional(),
-  lunchStart: z.string().optional(),
-  lunchEnd: z.string().optional(),
   timeOut: z.string().optional(),
   regularHours: z.string().optional(),
   otHours: z.string().optional(),
