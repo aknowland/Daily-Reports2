@@ -56,6 +56,7 @@ import {
   MoreHorizontal,
   LayoutDashboard,
   ArrowLeft,
+  Search,
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import {
@@ -180,6 +181,7 @@ export default function ContractsPage() {
   const [formData, setFormData] = useState<ContractFormData>(emptyFormData);
   const [activeTab, setActiveTab] = useState("list");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [searchQuery, setSearchQuery] = useState("");
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -797,10 +799,25 @@ export default function ContractsPage() {
     return priorities[status] ?? 10;
   };
 
-  const filteredContracts = (statusFilter === "all" 
-    ? contracts 
-    : contracts.filter(c => c.status === statusFilter)
-  ).sort((a, b) => getStatusPriority(a.status) - getStatusPriority(b.status));
+  const filteredContracts = (() => {
+    let result = statusFilter === "all" 
+      ? contracts 
+      : contracts.filter(c => c.status === statusFilter);
+    
+    // Apply text search filter
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      result = result.filter((c) =>
+        c.name.toLowerCase().includes(query) ||
+        c.contractNumber?.toLowerCase().includes(query) ||
+        c.client?.name?.toLowerCase().includes(query) ||
+        c.description?.toLowerCase().includes(query) ||
+        c.projects?.some(p => p.name.toLowerCase().includes(query))
+      );
+    }
+    
+    return result.sort((a, b) => getStatusPriority(a.status) - getStatusPriority(b.status));
+  })();
 
   const calendarEvents = contracts.flatMap(contract => {
     const events: { date: Date; title: string; type: string; contract: ContractWithProjects }[] = [];
@@ -994,19 +1011,31 @@ export default function ContractsPage() {
         </TabsList>
 
         <TabsContent value="list">
-          <div className="mb-4">
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-[200px]" data-testid="filter-status">
-                <SelectValue placeholder="Filter by status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Statuses</SelectItem>
-                {CONTRACT_STATUS_OPTIONS.map(status => (
-                  <SelectItem key={status.value} value={status.value}>{status.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          {contracts.length > 0 && (
+            <div className="flex flex-col sm:flex-row gap-3 mb-4">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search contracts by name, number, client, or project..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-9"
+                  data-testid="input-search-contracts"
+                />
+              </div>
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger className="w-full sm:w-[200px]" data-testid="filter-status">
+                  <SelectValue placeholder="Filter by status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Statuses</SelectItem>
+                  {CONTRACT_STATUS_OPTIONS.map(status => (
+                    <SelectItem key={status.value} value={status.value}>{status.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
 
           {isLoading ? (
             <div className="space-y-3">
@@ -1018,16 +1047,32 @@ export default function ContractsPage() {
             <Card>
               <CardContent className="p-6 text-center text-muted-foreground">
                 <FileText className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                <p>No contracts found.</p>
-                {isEffectiveCompanyAdmin && (
-                  <Button 
-                    variant="outline" 
-                    className="mt-4"
-                    onClick={() => setShowCreateDialog(true)}
-                  >
-                    <Plus className="w-4 h-4 mr-2" />
-                    Create Your First Contract
-                  </Button>
+                {searchQuery.trim() || statusFilter !== "all" ? (
+                  <>
+                    <p>No contracts found matching your filters.</p>
+                    <Button 
+                      variant="outline" 
+                      className="mt-4"
+                      onClick={() => { setSearchQuery(""); setStatusFilter("all"); }}
+                      data-testid="button-clear-filters"
+                    >
+                      Clear Filters
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <p>No contracts found.</p>
+                    {isEffectiveCompanyAdmin && (
+                      <Button 
+                        variant="outline" 
+                        className="mt-4"
+                        onClick={() => setShowCreateDialog(true)}
+                      >
+                        <Plus className="w-4 h-4 mr-2" />
+                        Create Your First Contract
+                      </Button>
+                    )}
+                  </>
                 )}
               </CardContent>
             </Card>

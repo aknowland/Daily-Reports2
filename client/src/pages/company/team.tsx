@@ -64,9 +64,10 @@ import {
   Plus,
   MoreVertical,
   Download,
+  Search,
 } from "lucide-react";
 import { Link } from "wouter";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import type { CompanyMember, User, Project, Invite, JoinRequest, IorAgreement, IorAgreementWithDetails } from "@shared/schema";
 
 const KNOWLAND_COMPANY_NAME = "Knowland Construction Services";
@@ -94,6 +95,7 @@ export default function CompanyTeamPage() {
   const [expandedMembers, setExpandedMembers] = useState<Set<string>>(new Set());
   const [showIorDialog, setShowIorDialog] = useState(false);
   const [editingIorAgreement, setEditingIorAgreement] = useState<IorAgreementWithDetails | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
   const [inviteForm, setInviteForm] = useState({
     email: "",
     role: "inspector" as "inspector" | "admin",
@@ -127,6 +129,28 @@ export default function CompanyTeamPage() {
   });
 
   const pendingJoinRequests = joinRequests.filter(r => r.status === "pending");
+  
+  // Filter members based on search query
+  const filteredMembers = useMemo(() => {
+    if (!searchQuery.trim()) return members;
+    const query = searchQuery.toLowerCase();
+    return members.filter((member) => {
+      // Build display name with fallbacks for partial names
+      const firstName = member.user?.firstName || "";
+      const lastName = member.user?.lastName || "";
+      const displayName = [firstName, lastName].filter(Boolean).join(" ");
+      const email = member.user?.email || "";
+      const role = member.role || "";
+      
+      return (
+        displayName.toLowerCase().includes(query) ||
+        firstName.toLowerCase().includes(query) ||
+        lastName.toLowerCase().includes(query) ||
+        email.toLowerCase().includes(query) ||
+        role.toLowerCase().includes(query)
+      );
+    });
+  }, [members, searchQuery]);
   
   const generateIorPdfMutation = useMutation({
     mutationFn: async (agreementId: string) => {
@@ -639,6 +663,19 @@ export default function CompanyTeamPage() {
           </TabsList>
 
           <TabsContent value="members" className="space-y-4">
+            {members.length > 0 && (
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search team members by name, email, or role..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-9"
+                  data-testid="input-search-members"
+                />
+              </div>
+            )}
+            
             {members.length === 0 ? (
               <Card>
                 <CardContent className="flex flex-col items-center justify-center py-12">
@@ -649,9 +686,22 @@ export default function CompanyTeamPage() {
                   </p>
                 </CardContent>
               </Card>
+            ) : filteredMembers.length === 0 ? (
+              <Card>
+                <CardContent className="flex flex-col items-center justify-center py-12">
+                  <Users className="w-12 h-12 text-muted-foreground mb-4" />
+                  <p className="text-lg font-medium">No members found</p>
+                  <p className="text-muted-foreground mb-4">
+                    No team members match "{searchQuery}"
+                  </p>
+                  <Button variant="outline" onClick={() => setSearchQuery("")} data-testid="button-clear-search">
+                    Clear Search
+                  </Button>
+                </CardContent>
+              </Card>
             ) : (
               <div className="space-y-4">
-                {members.map((member) => {
+                {filteredMembers.map((member) => {
                   const isCurrentUser = member.userId === profile?.userId;
                   const displayName = member.user?.firstName && member.user?.lastName
                     ? `${member.user.firstName} ${member.user.lastName}`
