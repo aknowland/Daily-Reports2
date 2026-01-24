@@ -164,7 +164,7 @@ export async function seedDemoData(companyId: string, createdById: string) {
     console.log(`Created ${createdData.clients.length} clients`);
 
     console.log("Creating team inspectors...");
-    for (let i = 0; i < 8; i++) {
+    for (let i = 0; i < 10; i++) {
       const firstName = inspectorNames[i].split(" ")[0];
       const lastName = inspectorNames[i].split(" ")[1];
       const [inspector] = await db.insert(teamInspectors).values({
