@@ -78,6 +78,7 @@ export default function CompanyProjectsPage() {
     finalCloseoutDate: "",
     budgetAmount: "",
     baseBudget: "",
+    budgetTrackingMode: "" as "" | "daily_reports" | "scheduled" | "hybrid", // empty = inherit from contract
   });
 
   const { data: projects = [], isLoading, error } = useQuery<Project[]>({
@@ -206,7 +207,7 @@ export default function CompanyProjectsPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
       queryClient.invalidateQueries({ queryKey: ["/api/contracts"] });
       setShowCreateDialog(false);
-      setFormData({ name: "", projectNumber: "", client: "", clientId: "", address: "", distributionEmails: "", contractId: "", contractOptionId: "", startDate: "", substantialCompletionDate: "", finalCloseoutDate: "", budgetAmount: "", baseBudget: "" });
+      setFormData({ name: "", projectNumber: "", client: "", clientId: "", address: "", distributionEmails: "", contractId: "", contractOptionId: "", startDate: "", substantialCompletionDate: "", finalCloseoutDate: "", budgetAmount: "", baseBudget: "", budgetTrackingMode: "" });
       toast({
         title: "Project Created",
         description: "New project has been created.",
@@ -238,7 +239,7 @@ export default function CompanyProjectsPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
       queryClient.invalidateQueries({ queryKey: ["/api/contracts"] });
       setEditingProject(null);
-      setFormData({ name: "", projectNumber: "", client: "", clientId: "", address: "", distributionEmails: "", contractId: "", contractOptionId: "", startDate: "", substantialCompletionDate: "", finalCloseoutDate: "", budgetAmount: "", baseBudget: "" });
+      setFormData({ name: "", projectNumber: "", client: "", clientId: "", address: "", distributionEmails: "", contractId: "", contractOptionId: "", startDate: "", substantialCompletionDate: "", finalCloseoutDate: "", budgetAmount: "", baseBudget: "", budgetTrackingMode: "" });
       toast({
         title: "Project Updated",
         description: "Project has been updated.",
@@ -290,6 +291,7 @@ export default function CompanyProjectsPage() {
       finalCloseoutDate: (project as any).finalCloseoutDate ? new Date((project as any).finalCloseoutDate).toISOString().split('T')[0] : "",
       budgetAmount: (project as any).budgetAmount || "",
       baseBudget: (project as any).baseBudget || "",
+      budgetTrackingMode: (project as any).budgetTrackingMode || "",
     });
     setEditingProject(project);
   };
@@ -567,7 +569,7 @@ export default function CompanyProjectsPage() {
         if (!open) {
           setShowCreateDialog(false);
           setEditingProject(null);
-          setFormData({ name: "", projectNumber: "", client: "", clientId: "", address: "", distributionEmails: "", contractId: "", contractOptionId: "", startDate: "", substantialCompletionDate: "", finalCloseoutDate: "", budgetAmount: "", baseBudget: "" });
+          setFormData({ name: "", projectNumber: "", client: "", clientId: "", address: "", distributionEmails: "", contractId: "", contractOptionId: "", startDate: "", substantialCompletionDate: "", finalCloseoutDate: "", budgetAmount: "", baseBudget: "", budgetTrackingMode: "" });
         }
       }}>
         <DialogContent className="max-h-[90vh] flex flex-col">
@@ -756,6 +758,32 @@ export default function CompanyProjectsPage() {
                 </p>
               </div>
             </div>
+            <div className="space-y-2">
+              <Label htmlFor="budgetTrackingMode">Budget Tracking Mode</Label>
+              <Select 
+                value={formData.budgetTrackingMode} 
+                onValueChange={(value) => setFormData({ ...formData, budgetTrackingMode: value as "" | "daily_reports" | "scheduled" | "hybrid" })}
+              >
+                <SelectTrigger data-testid="select-budget-tracking-mode">
+                  <SelectValue placeholder="Inherit from contract" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">Inherit from Contract</SelectItem>
+                  <SelectItem value="daily_reports">Daily Reports</SelectItem>
+                  <SelectItem value="scheduled">Scheduled Hours</SelectItem>
+                  <SelectItem value="hybrid">Hybrid (Both)</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                {formData.budgetTrackingMode === "" 
+                  ? "Uses the tracking mode set on the linked contract"
+                  : formData.budgetTrackingMode === "daily_reports"
+                  ? "Track based on actual logged daily report hours"
+                  : formData.budgetTrackingMode === "scheduled"
+                  ? "Track based on scheduled hours (FT/PT × working days)"
+                  : "Show both scheduled and actual side-by-side"}
+              </p>
+            </div>
           </div>
           <DialogFooter className="gap-2">
             <Button
@@ -763,7 +791,7 @@ export default function CompanyProjectsPage() {
               onClick={() => {
                 setShowCreateDialog(false);
                 setEditingProject(null);
-                setFormData({ name: "", projectNumber: "", client: "", clientId: "", address: "", distributionEmails: "", contractId: "", contractOptionId: "", startDate: "", substantialCompletionDate: "", finalCloseoutDate: "", budgetAmount: "", baseBudget: "" });
+                setFormData({ name: "", projectNumber: "", client: "", clientId: "", address: "", distributionEmails: "", contractId: "", contractOptionId: "", startDate: "", substantialCompletionDate: "", finalCloseoutDate: "", budgetAmount: "", baseBudget: "", budgetTrackingMode: "" });
               }}
               data-testid="button-cancel"
             >
