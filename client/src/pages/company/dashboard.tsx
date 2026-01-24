@@ -295,7 +295,7 @@ export default function CompanyDashboard() {
 
   return (
     <PageLayout title="Company Dashboard">
-      <div className="space-y-6 p-4">
+      <div className="space-y-6 p-4 overflow-x-hidden">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold" data-testid="title-company-dashboard">
@@ -418,7 +418,7 @@ export default function CompanyDashboard() {
         {/* Main Dashboard Grid */}
         <div className="grid gap-6 lg:grid-cols-3">
           {/* Left Column - 2/3 width */}
-          <div className="lg:col-span-2 space-y-6">
+          <div className="lg:col-span-2 space-y-6 min-w-0">
             {/* Revenue Analytics */}
             <Card data-testid="card-revenue-analytics">
               <CardHeader>
@@ -486,10 +486,10 @@ export default function CompanyDashboard() {
                     </Button>
                   </Link>
                 </div>
-                <CardDescription className="flex items-center justify-between gap-2 flex-wrap">
-                  <span>Schedule and budget progress with dates and milestones</span>
+                <CardDescription className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 sm:gap-2">
+                  <span>Schedule and budget progress</span>
                   {filteredContracts && (
-                    <Badge variant="secondary" className="text-xs">
+                    <Badge variant="secondary" className="text-xs w-fit">
                       {displayedContracts?.length || 0} of {filteredContracts.length}
                       {contractSearch || contractStatusFilter !== "all" ? " filtered" : " total"}
                     </Badge>
@@ -549,7 +549,7 @@ export default function CompanyDashboard() {
                     ))}
                   </div>
                 ) : displayedContracts && displayedContracts.length > 0 ? (
-                  <div className="space-y-3 max-h-[600px] overflow-y-auto pr-1">
+                  <div className="space-y-3 max-h-[600px] overflow-y-auto overflow-x-hidden pr-1">
                     {displayedContracts.map((contract) => {
                       const now = new Date();
                       const start = contract.schedule.startDate ? new Date(contract.schedule.startDate) : null;
@@ -583,13 +583,15 @@ export default function CompanyDashboard() {
                             </div>
                             
                             {/* Dates Row */}
-                            <div className="flex items-center gap-2 text-xs text-muted-foreground mb-3">
-                              <Calendar className="h-3 w-3" />
-                              <span>{formatDate(contract.schedule.startDate)}</span>
-                              <span>→</span>
-                              <span>{formatDate(contract.schedule.endDate)}</span>
+                            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground mb-3">
+                              <div className="flex items-center gap-1 shrink-0">
+                                <Calendar className="h-3 w-3" />
+                                <span>{formatDate(contract.schedule.startDate)}</span>
+                                <span>→</span>
+                                <span>{formatDate(contract.schedule.endDate)}</span>
+                              </div>
                               {daysInfo && (
-                                <Badge variant="secondary" className="ml-auto text-xs">
+                                <Badge variant="secondary" className="text-xs shrink-0">
                                   {daysInfo}
                                 </Badge>
                               )}
@@ -656,7 +658,7 @@ export default function CompanyDashboard() {
           </div>
 
           {/* Right Column - 1/3 width */}
-          <div className="space-y-6">
+          <div className="space-y-6 min-w-0">
             {/* Notifications Center / Alerts */}
             <Card data-testid="card-notifications">
               <CardHeader>
