@@ -1,7 +1,7 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Calendar, MapPin, User, ChevronRight } from "lucide-react";
-import { format } from "date-fns";
+import { formatPacificDate } from "@/lib/timezone";
 import type { DailyReportWithDetails } from "@shared/schema";
 
 interface ReportCardProps {
@@ -31,7 +31,7 @@ export function ReportCard({ report, onClick }: ReportCardProps) {
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
               <div className="flex items-center gap-1">
                 <Calendar className="w-4 h-4" />
-                <span>{format(new Date(report.date), "MMM d, yyyy")}</span>
+                <span>{formatPacificDate(report.date, "MMM d, yyyy")}</span>
               </div>
               {report.project?.projectNumber && (
                 <div className="flex items-center gap-1">

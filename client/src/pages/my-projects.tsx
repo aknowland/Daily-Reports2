@@ -56,6 +56,7 @@ import {
 import { Link } from "wouter";
 import { useState } from "react";
 import { format, startOfMonth, endOfMonth } from "date-fns";
+import { formatPacificDate } from "@/lib/timezone";
 import type { Project, Company } from "@shared/schema";
 import { Calendar as CalendarComponent } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -997,7 +998,7 @@ export default function MyProjectsPage() {
                         <tbody>
                           {invoiceData.reports.map((report) => (
                             <tr key={report.id} className="border-t">
-                              <td className="p-2">{format(new Date(report.date), "MMM d, yyyy")}</td>
+                              <td className="p-2">{formatPacificDate(report.date, "MMM d, yyyy")}</td>
                               <td className="p-2 hidden sm:table-cell">{report.inspectorName}</td>
                               <td className="p-2 text-right">{report.regularHours.toFixed(2)}</td>
                               <td className="p-2 text-right">{report.otHours.toFixed(2)}</td>
