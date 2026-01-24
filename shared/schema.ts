@@ -46,6 +46,13 @@ export const optionAwardStatusEnum = pgEnum("option_award_status", [
   "not_awarded" // This option was not awarded
 ]);
 
+// Budget tracking mode - how budget utilization is calculated
+export const budgetTrackingModeEnum = pgEnum("budget_tracking_mode", [
+  "daily_reports",  // Track based on actual logged daily reports
+  "scheduled",      // Track based on scheduled hours (working days × rate schedule)
+  "hybrid"          // Show both scheduled and actual side-by-side
+]);
+
 // Companies table
 export const companies = pgTable("companies", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -137,6 +144,7 @@ export const projects = pgTable("projects", {
   // Project-level budget tracking
   budgetAmount: numeric("budget_amount"), // Total budget for this project
   baseBudget: numeric("base_budget"), // Base budget for stacking (work done before current tracking)
+  budgetTrackingMode: budgetTrackingModeEnum("budget_tracking_mode"), // null = inherit from contract
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -347,6 +355,7 @@ export const contracts = pgTable("contracts", {
   premiumRate: varchar("premium_rate"),
   budgetOverride: varchar("budget_override"),
   baseBudgetSpent: varchar("base_budget_spent"), // Manual starting point for mid-project onboarding
+  budgetTrackingMode: budgetTrackingModeEnum("budget_tracking_mode").default("daily_reports"), // How budget is calculated
   notes: text("notes"),
   createdById: varchar("created_by_id").references(() => users.id),
   createdAt: timestamp("created_at").defaultNow(),
