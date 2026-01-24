@@ -1308,6 +1308,7 @@ export async function registerRoutes(
           name: contract.name,
           contractNumber: contract.contractNumber,
           status: contract.status,
+          bidDueDate: contract.bidDueDate,
           schedule: {
             progress: Math.round(scheduleProgress),
             status: scheduleStatus,

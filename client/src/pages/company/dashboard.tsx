@@ -51,6 +51,7 @@ type ContractDashboardSummary = {
   name: string;
   contractNumber: string;
   status: string;
+  bidDueDate: string | null;
   schedule: {
     progress: number;
     status: 'not_started' | 'on_track' | 'warning' | 'overdue' | 'complete' | 'upcoming';
@@ -218,7 +219,7 @@ export default function CompanyDashboard() {
   });
 
   // Priority-based sorting for contracts
-  // Order: 1) Upcoming, 2) Over budget, 3) Near budget, 4) In progress, 5) Awarded, 6) Bid phase, 7) Completing, 8) Cancelled
+  // Order: 1) Upcoming bid due dates, 2) Bid accepted (awarded), 3) Bid released, 4) Upcoming awarded/reconstruction, 5) Active projects, 6) Other
   const sortContractsByPriority = (contracts: ContractDashboardSummary[]) => {
     return [...contracts].sort((a, b) => {
       const now = new Date();
@@ -226,24 +227,27 @@ export default function CompanyDashboard() {
       // Calculate priority scores (lower = higher priority)
       const getPriority = (contract: ContractDashboardSummary) => {
         const start = contract.schedule.startDate ? new Date(contract.schedule.startDate) : null;
-        const isUpcoming = start && start > now && contract.status === 'awarded';
-        const isNearBudget = contract.budget.progress >= 75 && contract.budget.progress < 100;
-        const isOverBudget = contract.budget.progress >= 100;
-        const isInProgress = contract.status === 'in_execution';
-        const isActive = ['awarded', 'in_execution'].includes(contract.status);
+        const bidDue = contract.bidDueDate ? new Date(contract.bidDueDate) : null;
+        const isBidPhase = ['bid_release', 'bid_received', 'under_review'].includes(contract.status);
+        const hasUpcomingBidDue = isBidPhase && bidDue && bidDue >= now;
+        const isAwarded = contract.status === 'awarded';
+        const isBidRelease = contract.status === 'bid_release';
+        const isUpcomingAwarded = isAwarded && start && start > now;
+        const isReconstruction = contract.status === 'reconstruction';
+        const isInExecution = contract.status === 'in_execution';
         
-        // Priority 1: Upcoming contracts (awarded, start date in future)
-        if (isUpcoming) return 1;
-        // Priority 2: Over budget (critical attention needed)
-        if (isOverBudget && isActive) return 2;
-        // Priority 3: Near budget (75%+ utilization)
-        if (isNearBudget && isActive) return 3;
-        // Priority 4: In progress
-        if (isInProgress) return 4;
-        // Priority 5: Awarded but started
-        if (contract.status === 'awarded') return 5;
-        // Priority 6: Bid phase
-        if (['bid_release', 'bid_received', 'under_review'].includes(contract.status)) return 6;
+        // Priority 1: Upcoming bid due dates (bid phase with future due date)
+        if (hasUpcomingBidDue) return 1;
+        // Priority 2: Bid accepted (awarded status)
+        if (isAwarded && !isUpcomingAwarded) return 2;
+        // Priority 3: Bid released (but no upcoming due date)
+        if (isBidRelease && !hasUpcomingBidDue) return 3;
+        // Priority 4: Upcoming awarded (start date in future) and reconstruction
+        if (isUpcomingAwarded || isReconstruction) return 4;
+        // Priority 5: Active projects (in_execution)
+        if (isInExecution) return 5;
+        // Priority 6: Other bid phase (bid_received, under_review without due dates)
+        if (isBidPhase) return 6;
         // Priority 7: Completing
         if (['substantial_completion', 'final_closeout'].includes(contract.status)) return 7;
         // Priority 8: Cancelled/Not awarded
@@ -257,14 +261,21 @@ export default function CompanyDashboard() {
       
       // Within same priority, apply appropriate secondary sorting
       if (aPriority === 1) {
-        // Upcoming: sort by start date (soonest first)
+        // Upcoming bid due dates: sort by due date (soonest first)
+        const aDue = a.bidDueDate ? new Date(a.bidDueDate).getTime() : Infinity;
+        const bDue = b.bidDueDate ? new Date(b.bidDueDate).getTime() : Infinity;
+        return aDue - bDue;
+      }
+      
+      if (aPriority === 4) {
+        // Upcoming awarded: sort by start date (soonest first)
         const aStart = a.schedule.startDate ? new Date(a.schedule.startDate).getTime() : Infinity;
         const bStart = b.schedule.startDate ? new Date(b.schedule.startDate).getTime() : Infinity;
         return aStart - bStart;
       }
       
-      if (aPriority >= 2 && aPriority <= 4) {
-        // Over budget, near budget, in progress: sort by budget utilization (highest first)
+      if (aPriority === 5) {
+        // Active projects: sort by budget utilization (highest first for attention)
         return b.budget.progress - a.budget.progress;
       }
       
