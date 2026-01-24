@@ -142,15 +142,28 @@ export interface ScheduledBudgetResult {
   }[];
 }
 
+// January 2, 2026 - first working day after base budget cutoff (Dec 31, 2025)
+// January 1 is New Year's Day holiday
+export const BASE_BUDGET_CUTOFF_START = "2026-01-02";
+
 export function calculateScheduledBudget(
   startDate: Date | string | null | undefined,
   endDate: Date | string | null | undefined,
   inspectors: InspectorRate[],
-  asOfDate?: Date | string
+  asOfDate?: Date | string,
+  hasBaseBudget?: boolean
 ): ScheduledBudgetResult {
-  const startStr = formatDateString(startDate);
+  let startStr = formatDateString(startDate);
   const endStr = formatDateString(endDate);
   const today = asOfDate ? formatDateString(asOfDate) : getTodayString();
+  
+  // If there's a base budget, scheduled hours start from January 2, 2026
+  // (base budget covers all work through December 31, 2025)
+  if (hasBaseBudget) {
+    if (!startStr || startStr < BASE_BUDGET_CUTOFF_START) {
+      startStr = BASE_BUDGET_CUTOFF_START;
+    }
+  }
   
   if (!startStr) {
     return {

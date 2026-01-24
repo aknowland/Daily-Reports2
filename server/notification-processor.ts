@@ -208,10 +208,13 @@ export async function processContractNotifications(
               scheduleType: i.scheduleType,
             }));
             
+            const hasBaseBudget = baseBudgetSpent > 0;
             const scheduledBudget = calculateScheduledBudget(
               contract.startDate,
               contract.substantialCompletionDate,
-              inspectors
+              inspectors,
+              undefined, // asOfDate
+              hasBaseBudget
             );
             budgetSpent = baseBudgetSpent + scheduledBudget.scheduledAmount;
           }
@@ -373,10 +376,13 @@ export async function processContractNotifications(
             scheduleType: i.scheduleType,
           }));
           
+          const hasBaseBudget = projectBaseBudget > 0;
           const scheduledBudget = calculateScheduledBudget(
             (project as any).startDate,
             (project as any).substantialCompletionDate,
-            inspectors
+            inspectors,
+            undefined, // asOfDate
+            hasBaseBudget
           );
           projectTotalSpent += scheduledBudget.scheduledAmount;
         }

@@ -1471,10 +1471,13 @@ export async function registerRoutes(
       })) || [];
       
       // Calculate scheduled budget based on contract dates and inspector schedules
+      const hasBaseBudget = parseFloat(contract.baseBudgetSpent || '0') > 0;
       const scheduledBudget = calculateScheduledBudget(
         contract.startDate,
         contract.substantialCompletionDate,
-        inspectorsForBudget
+        inspectorsForBudget,
+        undefined, // asOfDate
+        hasBaseBudget
       );
       
       // Calculate base budget hours breakdown
@@ -1668,10 +1671,13 @@ export async function registerRoutes(
           })) || [];
           
           // Calculate project-level scheduled budget
+          const projectHasBaseBudget = projectBaseBudget > 0;
           const projectScheduledBudget = calculateScheduledBudget(
             (p as any).startDate || contract.startDate,
             (p as any).substantialCompletionDate || contract.substantialCompletionDate,
-            projectInspectors
+            projectInspectors,
+            undefined, // asOfDate
+            projectHasBaseBudget
           );
           
           return {

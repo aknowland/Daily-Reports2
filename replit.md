@@ -56,7 +56,7 @@ The application is built with a modern web stack, utilizing **React, TypeScript,
   - Project notes
   - Attached files (with download links)
   - Daily reports table (showing reports from all linked projects)
-- **Stacking Budget for Mid-Project Onboarding**: When an inspector joins a project mid-way, admins can set a "base budget" representing work done before they joined. This base amount automatically stacks with new daily reports - no manual recalculation needed.
+- **Stacking Budget for Mid-Project Onboarding**: When an inspector joins a project mid-way, admins can set a "base budget" representing work done before they joined. This base amount automatically stacks with new daily reports - no manual recalculation needed. For hybrid/scheduled tracking modes, the base budget is assumed to represent work completed through December 31, 2025. Scheduled hours are then calculated starting from January 2, 2026 (first working day of 2026 - January 1 is a holiday). This ensures accurate budget tracking for projects with pre-existing work.
 - **Project-Level Budget Tracking**: Each project can have its own budget amount and base budget (for stacking). The Contract Dashboard displays per-project budget progress with color-coded status indicators (under budget, on track, warning at 80%, over budget). Project budget milestone notifications (50%, 75%, 90%, 100%) are sent independently from contract-level notifications.
 - **Budget Tracking Modes**: Contracts and projects support three budget tracking modes:
   - **Daily Reports**: Tracks actual logged hours from daily reports (default mode)
