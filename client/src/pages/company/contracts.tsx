@@ -127,6 +127,14 @@ const CONTRACT_TYPE_OPTIONS = [
   { value: "other", label: "Other" },
 ];
 
+type BudgetTrackingMode = "daily_reports" | "scheduled" | "hybrid";
+
+const BUDGET_TRACKING_MODE_OPTIONS = [
+  { value: "daily_reports", label: "Daily Reports", description: "Track based on actual logged hours" },
+  { value: "scheduled", label: "Scheduled Hours", description: "Track based on rate schedule (FT/PT hours × days)" },
+  { value: "hybrid", label: "Hybrid", description: "Show both scheduled and actual side-by-side" },
+];
+
 type ContractFormData = {
   contractNumber: string;
   name: string;
@@ -146,6 +154,7 @@ type ContractFormData = {
   regularRate: string;
   overtimeRate: string;
   premiumRate: string;
+  budgetTrackingMode: BudgetTrackingMode;
   notes: string;
 };
 
@@ -168,6 +177,7 @@ const emptyFormData: ContractFormData = {
   regularRate: "",
   overtimeRate: "",
   premiumRate: "",
+  budgetTrackingMode: "daily_reports",
   notes: "",
 };
 
@@ -743,6 +753,7 @@ export default function ContractsPage() {
       regularRate: contract.regularRate || "",
       overtimeRate: contract.overtimeRate || "",
       premiumRate: contract.premiumRate || "",
+      budgetTrackingMode: (contract.budgetTrackingMode as BudgetTrackingMode) || "daily_reports",
       notes: contract.notes || "",
     });
     
@@ -1762,6 +1773,33 @@ export default function ContractsPage() {
               }
               return null;
             })()}
+
+            <div className="border-t pt-4">
+              <h4 className="font-medium mb-3">Budget Tracking</h4>
+              <div className="space-y-2">
+                <Label htmlFor="budgetTrackingMode">How should budget be tracked?</Label>
+                <Select 
+                  value={formData.budgetTrackingMode} 
+                  onValueChange={(value) => setFormData({ ...formData, budgetTrackingMode: value as BudgetTrackingMode })}
+                >
+                  <SelectTrigger data-testid="select-budget-tracking-mode">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {BUDGET_TRACKING_MODE_OPTIONS.map(mode => (
+                      <SelectItem key={mode.value} value={mode.value}>
+                        <div className="flex flex-col">
+                          <span>{mode.label}</span>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  {BUDGET_TRACKING_MODE_OPTIONS.find(m => m.value === formData.budgetTrackingMode)?.description}
+                </p>
+              </div>
+            </div>
 
             <div className="border-t pt-4 space-y-4">
               <div className="flex items-center justify-between">
