@@ -1,4 +1,5 @@
 import { storage } from './storage';
+import { calculateScheduledBudget, BudgetTrackingMode, InspectorRate } from './budget-utils';
 
 // Notification intervals for each date type - single source of truth
 export const NOTIFICATION_INTERVALS = {
@@ -187,7 +188,35 @@ export async function processContractNotifications(
         // Include base budget spent + calculated billed amount (for stacking support)
         const baseBudgetSpent = parseFloat(contract.baseBudgetSpent || '0');
         const calculatedSpent = budgetSummary.totalBilled;
-        const budgetSpent = baseBudgetSpent + calculatedSpent;
+        
+        // Determine tracking mode and calculate budget accordingly
+        const trackingMode = ((contract as any).budgetTrackingMode || 'daily_reports') as BudgetTrackingMode;
+        let budgetSpent = baseBudgetSpent + calculatedSpent;
+        
+        // For scheduled mode, use scheduled budget instead of actual reports
+        if (trackingMode === 'scheduled') {
+          const contractRateOptions = await storage.getContractOptions(contract.id);
+          const awardedOptions = contractRateOptions.filter((opt: any) => opt.awardStatus === 'awarded');
+          const primaryOption = awardedOptions.length > 0 ? awardedOptions[0] : contractRateOptions[0];
+          
+          if (primaryOption?.inspectors) {
+            const inspectors: InspectorRate[] = (primaryOption.inspectors as any[]).map(i => ({
+              title: i.title,
+              inspectorName: i.inspectorName,
+              rate: i.rate,
+              hours: i.hours,
+              scheduleType: i.scheduleType,
+            }));
+            
+            const scheduledBudget = calculateScheduledBudget(
+              contract.startDate,
+              contract.substantialCompletionDate,
+              inspectors
+            );
+            budgetSpent = baseBudgetSpent + scheduledBudget.scheduledAmount;
+          }
+        }
+        
         const budgetProgress = (budgetSpent / totalBudget) * 100;
         
         for (const milestone of BUDGET_MILESTONES) {
@@ -299,29 +328,72 @@ export async function processContractNotifications(
       // Calculate project budget: base + calculated from reports
       const projectBaseBudget = parseFloat((project as any).baseBudget || '0');
       
-      // Get reports for this project and calculate billed amount
-      const projectReports = await storage.getReportsByProject(project.id);
-      let calculatedSpent = 0;
+      // Determine project tracking mode (may inherit from contract)
+      let projectTrackingMode: BudgetTrackingMode = (project as any).budgetTrackingMode || '';
+      let contractRateOptions: any[] = [];
       
-      // Get contract rates if project has a contract
+      // Get contract rates and tracking mode if project has a contract
       let hourlyRate = 75; // Default rate if no contract
       if (project.contractId) {
-        const contractOptions = await storage.getContractOptions(project.contractId);
-        const firstOption = contractOptions[0];
+        contractRateOptions = await storage.getContractOptions(project.contractId);
+        const contract = await storage.getContract(project.contractId);
+        
+        // Inherit tracking mode from contract if not set
+        if (!projectTrackingMode && contract?.budgetTrackingMode) {
+          projectTrackingMode = contract.budgetTrackingMode as BudgetTrackingMode;
+        }
+        
+        const firstOption = contractRateOptions[0];
         const firstInspector = firstOption?.inspectors?.[0];
         if (firstInspector?.rate) {
           hourlyRate = parseFloat(firstInspector.rate);
         }
       }
       
-      for (const report of projectReports) {
-        const regularHours = parseFloat(report.regularHours || '0');
-        const otHours = parseFloat(report.otHours || '0');
-        const premiumHours = parseFloat((report as any).premiumHours || '0');
-        calculatedSpent += (regularHours + otHours * 1.5 + premiumHours * 2) * hourlyRate;
+      // Default to daily_reports if no tracking mode set
+      if (!projectTrackingMode) {
+        projectTrackingMode = 'daily_reports';
       }
       
-      const projectTotalSpent = projectBaseBudget + calculatedSpent;
+      // Calculate budget based on tracking mode
+      let projectTotalSpent = projectBaseBudget;
+      
+      if (projectTrackingMode === 'scheduled') {
+        // Use scheduled budget calculation
+        const linkedOption = (project as any).contractOptionId 
+          ? contractRateOptions.find((opt: any) => opt.id === (project as any).contractOptionId)
+          : contractRateOptions[0];
+        
+        if (linkedOption?.inspectors) {
+          const inspectors: InspectorRate[] = (linkedOption.inspectors as any[]).map((i: any) => ({
+            title: i.title,
+            inspectorName: i.inspectorName,
+            rate: i.rate,
+            hours: i.hours,
+            scheduleType: i.scheduleType,
+          }));
+          
+          const scheduledBudget = calculateScheduledBudget(
+            (project as any).startDate,
+            (project as any).substantialCompletionDate,
+            inspectors
+          );
+          projectTotalSpent += scheduledBudget.scheduledAmount;
+        }
+      } else {
+        // Use daily reports for actual calculation (daily_reports or hybrid)
+        const projectReports = await storage.getReportsByProject(project.id);
+        let calculatedSpent = 0;
+        
+        for (const report of projectReports) {
+          const regularHours = parseFloat(report.regularHours || '0');
+          const otHours = parseFloat(report.otHours || '0');
+          const premiumHours = parseFloat((report as any).premiumHours || '0');
+          calculatedSpent += (regularHours + otHours * 1.5 + premiumHours * 2) * hourlyRate;
+        }
+        projectTotalSpent += calculatedSpent;
+      }
+      
       const projectBudgetProgress = (projectTotalSpent / projectBudgetAmount) * 100;
       
       for (const milestone of BUDGET_MILESTONES) {
