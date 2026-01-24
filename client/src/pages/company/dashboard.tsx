@@ -217,6 +217,62 @@ export default function CompanyDashboard() {
     queryKey: ["/api/invoices/stats"],
   });
 
+  // Priority-based sorting for contracts
+  // Order: 1) Upcoming, 2) Over budget, 3) Near budget, 4) In progress, 5) Awarded, 6) Bid phase, 7) Completing, 8) Cancelled
+  const sortContractsByPriority = (contracts: ContractDashboardSummary[]) => {
+    return [...contracts].sort((a, b) => {
+      const now = new Date();
+      
+      // Calculate priority scores (lower = higher priority)
+      const getPriority = (contract: ContractDashboardSummary) => {
+        const start = contract.schedule.startDate ? new Date(contract.schedule.startDate) : null;
+        const isUpcoming = start && start > now && contract.status === 'awarded';
+        const isNearBudget = contract.budget.progress >= 75 && contract.budget.progress < 100;
+        const isOverBudget = contract.budget.progress >= 100;
+        const isInProgress = contract.status === 'in_execution';
+        const isActive = ['awarded', 'in_execution'].includes(contract.status);
+        
+        // Priority 1: Upcoming contracts (awarded, start date in future)
+        if (isUpcoming) return 1;
+        // Priority 2: Over budget (critical attention needed)
+        if (isOverBudget && isActive) return 2;
+        // Priority 3: Near budget (75%+ utilization)
+        if (isNearBudget && isActive) return 3;
+        // Priority 4: In progress
+        if (isInProgress) return 4;
+        // Priority 5: Awarded but started
+        if (contract.status === 'awarded') return 5;
+        // Priority 6: Bid phase
+        if (['bid_release', 'bid_received', 'under_review'].includes(contract.status)) return 6;
+        // Priority 7: Completing
+        if (['substantial_completion', 'final_closeout'].includes(contract.status)) return 7;
+        // Priority 8: Cancelled/Not awarded
+        return 8;
+      };
+      
+      const aPriority = getPriority(a);
+      const bPriority = getPriority(b);
+      
+      if (aPriority !== bPriority) return aPriority - bPriority;
+      
+      // Within same priority, apply appropriate secondary sorting
+      if (aPriority === 1) {
+        // Upcoming: sort by start date (soonest first)
+        const aStart = a.schedule.startDate ? new Date(a.schedule.startDate).getTime() : Infinity;
+        const bStart = b.schedule.startDate ? new Date(b.schedule.startDate).getTime() : Infinity;
+        return aStart - bStart;
+      }
+      
+      if (aPriority >= 2 && aPriority <= 4) {
+        // Over budget, near budget, in progress: sort by budget utilization (highest first)
+        return b.budget.progress - a.budget.progress;
+      }
+      
+      // Default: sort alphabetically
+      return a.name.localeCompare(b.name);
+    });
+  };
+
   // Filter contracts by search and status
   const filteredContracts = contractsSummary?.filter(contract => {
     const matchesSearch = contractSearch === "" || 
@@ -225,7 +281,10 @@ export default function CompanyDashboard() {
     const matchesStatus = contractStatusFilter === "all" || contract.status === contractStatusFilter;
     return matchesSearch && matchesStatus;
   });
-  const displayedContracts = filteredContracts?.slice(0, contractsToShow);
+  
+  // Apply priority sorting and slice for display
+  const sortedContracts = filteredContracts ? sortContractsByPriority(filteredContracts) : [];
+  const displayedContracts = sortedContracts.slice(0, contractsToShow);
   
   // Calculate completion rates
   const completedContracts = contractsSummary?.filter(c => 
