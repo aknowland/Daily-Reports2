@@ -8835,5 +8835,31 @@ Transcript: "${transcript}"`;
     }
   });
 
+  // Seed demo data endpoint (admin only)
+  app.post("/api/admin/seed-demo-data", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      
+      if (!profile?.activeCompanyId) {
+        return res.status(400).json({ message: "No active company selected" });
+      }
+      
+      // Check if user is company admin
+      const isAdmin = await isEffectiveCompanyAdmin(userId, profile.activeCompanyId, profile);
+      if (!isAdmin && !isEffectiveSystemAdmin(profile)) {
+        return res.status(403).json({ message: "Only company admins can seed demo data" });
+      }
+      
+      const { seedDemoData } = await import("./seed-demo-data");
+      const result = await seedDemoData(profile.activeCompanyId, userId);
+      
+      res.json(result);
+    } catch (error) {
+      console.error("Error seeding demo data:", error);
+      res.status(500).json({ message: "Failed to seed demo data", error: String(error) });
+    }
+  });
+
   return httpServer;
 }
