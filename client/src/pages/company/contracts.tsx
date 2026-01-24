@@ -849,28 +849,58 @@ export default function ContractsPage() {
     
     setIsConverting(true);
     try {
-      const selectedOption = convertingProposal.options?.[selectedOptionIndex];
+      const isTBD = selectedOptionIndex === -1;
+      const selectedOption = isTBD ? null : convertingProposal.options?.[selectedOptionIndex];
       
       // Prepare the option data with all inspectors
-      // Set awardStatus to "awarded" since contracts created from proposals are awarded by default
-      const optionToAdd = selectedOption ? [{
-        name: selectedOption.name || "",
-        awardStatus: "awarded" as const,
-        inspectors: (selectedOption.inspectors || []).map(ins => ({
-          title: ins.title,
-          inspectorName: ins.inspectorName || "",
-          rate: ins.rate,
-          hours: ins.hours,
-          scheduleType: ins.scheduleType || "fullTime",
-        })),
-      }] : [];
+      // If TBD is selected, include ALL proposal options with "pending" awardStatus
+      // Otherwise, include only the selected option with "awarded" awardStatus
+      let optionsToAdd: Array<{
+        name: string;
+        awardStatus: "pending" | "awarded" | "not_awarded";
+        inspectors: Array<{
+          title: string;
+          inspectorName: string;
+          rate: string;
+          hours: string;
+          scheduleType: string;
+        }>;
+      }> = [];
+      
+      if (isTBD && convertingProposal.options) {
+        // TBD: Transfer ALL options with pending status
+        optionsToAdd = convertingProposal.options.map(opt => ({
+          name: opt.name || "",
+          awardStatus: "pending" as const,
+          inspectors: (opt.inspectors || []).map(ins => ({
+            title: ins.title,
+            inspectorName: ins.inspectorName || "",
+            rate: ins.rate,
+            hours: ins.hours,
+            scheduleType: ins.scheduleType || "fullTime",
+          })),
+        }));
+      } else if (selectedOption) {
+        // Specific option selected: include only that option with awarded status
+        optionsToAdd = [{
+          name: selectedOption.name || "",
+          awardStatus: "awarded" as const,
+          inspectors: (selectedOption.inspectors || []).map(ins => ({
+            title: ins.title,
+            inspectorName: ins.inspectorName || "",
+            rate: ins.rate,
+            hours: ins.hours,
+            scheduleType: ins.scheduleType || "fullTime",
+          })),
+        }];
+      }
       
       let targetContractId: string;
       
       if (addToExistingContract && selectedExistingContractId) {
         // Add options to existing contract
         const addOptionsResponse = await apiRequest("POST", `/api/contracts/${selectedExistingContractId}/add-options`, {
-          options: optionToAdd,
+          options: optionsToAdd,
         });
         const updatedContract = await addOptionsResponse.json();
         targetContractId = updatedContract.id;
@@ -879,9 +909,15 @@ export default function ContractsPage() {
         const firstInspector = selectedOption?.inspectors?.[0];
         const regularRate = firstInspector?.rate || "";
         
-        const totalValue = selectedOption?.inspectors?.reduce((sum, ins) => {
-          return sum + (parseFloat(ins.rate) || 0) * (parseFloat(ins.hours) || 0);
-        }, 0) || 0;
+        // For TBD, calculate total across all options; otherwise use selected option
+        const totalValue = isTBD
+          ? (convertingProposal.options || []).reduce((total, opt) => {
+              return total + (opt.inspectors || []).reduce((sum, ins) => 
+                sum + (parseFloat(ins.rate) || 0) * (parseFloat(ins.hours) || 0), 0);
+            }, 0)
+          : selectedOption?.inspectors?.reduce((sum, ins) => {
+              return sum + (parseFloat(ins.rate) || 0) * (parseFloat(ins.hours) || 0);
+            }, 0) || 0;
         
         const contractPayload = {
           contractNumber: `C-${convertingProposal.proposalNumber?.replace('PROP-', '') || Date.now()}`,
@@ -890,7 +926,7 @@ export default function ContractsPage() {
           clientId: convertingProposal.clientId || null,
           purchaseOrderId: null,
           contractType: "time_and_materials",
-          status: "awarded",
+          status: isTBD ? "pending" : "awarded",
           originalValue: totalValue.toFixed(2),
           currentValue: totalValue.toFixed(2),
           startDate: convertingProposal.startDate ? new Date(convertingProposal.startDate) : null,
@@ -899,7 +935,7 @@ export default function ContractsPage() {
           overtimeRate: "",
           premiumRate: "",
           notes: `Converted from proposal: ${convertingProposal.proposalNumber}\nClient: ${convertingProposal.clientName}`,
-          options: optionToAdd,
+          options: optionsToAdd,
         };
         
         const contractResponse = await apiRequest("POST", "/api/contracts", contractPayload);
@@ -1416,7 +1452,7 @@ export default function ContractsPage() {
                                 size="sm"
                                 onClick={() => {
                                   setConvertingProposal(proposal);
-                                  setSelectedOptionIndex(0);
+                                  setSelectedOptionIndex(-1);
                                   setShowConvertDialog(true);
                                 }}
                                 data-testid={`button-convert-proposal-${proposal.id}`}
@@ -2217,7 +2253,7 @@ export default function ContractsPage() {
                 </div>
               )}
               
-              {convertingProposal.options && convertingProposal.options.length > 1 && (
+              {convertingProposal.options && convertingProposal.options.length > 0 && (
                 <div className="space-y-2">
                   <Label>Select Pricing Option</Label>
                   <Select 
@@ -2228,6 +2264,7 @@ export default function ContractsPage() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
+                      <SelectItem value="-1">TBD (All options pending award)</SelectItem>
                       {convertingProposal.options.map((opt, idx) => {
                         const optTotal = opt.inspectors?.reduce((s, i) => s + (parseFloat(i.rate) || 0) * (parseFloat(i.hours) || 0), 0) || 0;
                         return (
