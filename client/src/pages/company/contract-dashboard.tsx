@@ -45,6 +45,8 @@ import {
 import { useState } from "react";
 import { format } from "date-fns";
 
+type BudgetTrackingMode = 'daily_reports' | 'scheduled' | 'hybrid';
+
 type DashboardData = {
   contract: {
     id: string;
@@ -58,6 +60,7 @@ type DashboardData = {
     budgetOverride: string | null;
     baseBudgetSpent: string | null;
     notes: string | null;
+    budgetTrackingMode: BudgetTrackingMode;
   };
   schedule: {
     progress: number;
@@ -75,12 +78,36 @@ type DashboardData = {
     remaining: number;
     progress: number;
     status: 'under' | 'on_track' | 'warning' | 'over';
+    trackingMode: BudgetTrackingMode;
     hours: {
       regular: number;
       overtime: number;
       premium: number;
       total: number;
     };
+    scheduled: {
+      amount: number;
+      hours: number;
+      workingDaysElapsed: number;
+      totalWorkingDays: number;
+      inspectorBreakdowns: {
+        title: string;
+        inspectorName?: string | null;
+        rate: number;
+        hoursPerDay: number;
+        scheduledHours: number;
+        scheduledAmount: number;
+      }[];
+    };
+    baseBudgetBreakdown: {
+      baseHours: number;
+      averageRate: number;
+      inspectorBreakdowns: {
+        title: string;
+        estimatedHours: number;
+        rate: number;
+      }[];
+    } | null;
   };
   bidSchedule: {
     bidReleaseDate: string | null;
@@ -486,15 +513,23 @@ export default function ContractDashboard() {
                   <DollarSign className="h-5 w-5" />
                   Budget Status
                 </CardTitle>
-                <Badge className={budgetConfig.textColor} variant="outline" data-testid="badge-budget-status">
-                  {budgetConfig.label}
-                </Badge>
+                <div className="flex items-center gap-2">
+                  <Badge variant="secondary" className="text-xs" data-testid="badge-tracking-mode">
+                    {dashboard.budget.trackingMode === 'daily_reports' ? 'Daily Reports' : 
+                     dashboard.budget.trackingMode === 'scheduled' ? 'Scheduled' : 'Hybrid'}
+                  </Badge>
+                  <Badge className={budgetConfig.textColor} variant="outline" data-testid="badge-budget-status">
+                    {budgetConfig.label}
+                  </Badge>
+                </div>
               </div>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
                 <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">Spent</span>
+                  <span className="text-muted-foreground">
+                    {dashboard.budget.trackingMode === 'scheduled' ? 'Scheduled Progress' : 'Spent'}
+                  </span>
                   <span className="font-medium" data-testid="text-budget-progress">
                     {dashboard.budget.progress.toFixed(1)}%
                   </span>
@@ -516,9 +551,13 @@ export default function ContractDashboard() {
                   </p>
                 </div>
                 <div>
-                  <p className="text-xs text-muted-foreground">Total Spent</p>
+                  <p className="text-xs text-muted-foreground">
+                    {dashboard.budget.trackingMode === 'scheduled' ? 'Scheduled Spent' : 'Total Spent'}
+                  </p>
                   <p className="font-medium text-sm" data-testid="text-budget-spent">
-                    {formatCurrency(dashboard.budget.spent)}
+                    {dashboard.budget.trackingMode === 'scheduled' 
+                      ? formatCurrency(dashboard.budget.baseBudgetSpent + dashboard.budget.scheduled.amount)
+                      : formatCurrency(dashboard.budget.spent)}
                   </p>
                 </div>
                 <div>
@@ -529,7 +568,25 @@ export default function ContractDashboard() {
                 </div>
               </div>
 
-              {(dashboard.budget.baseBudgetSpent > 0 || dashboard.budget.calculatedSpent > 0) && (
+              {dashboard.budget.trackingMode === 'hybrid' && (
+                <div className="pt-3 border-t">
+                  <p className="text-sm text-muted-foreground mb-2">Comparison</p>
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div className="space-y-1">
+                      <p className="text-xs text-muted-foreground font-medium">Scheduled</p>
+                      <p className="font-medium">{formatCurrency(dashboard.budget.baseBudgetSpent + dashboard.budget.scheduled.amount)}</p>
+                      <p className="text-xs text-muted-foreground">{(dashboard.budget.scheduled.hours + (dashboard.budget.baseBudgetBreakdown?.baseHours || 0)).toFixed(0)} hrs</p>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-xs text-muted-foreground font-medium">Actual</p>
+                      <p className="font-medium">{formatCurrency(dashboard.budget.spent)}</p>
+                      <p className="text-xs text-muted-foreground">{dashboard.budget.hours.total.toFixed(0)} hrs</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {(dashboard.budget.baseBudgetSpent > 0 || dashboard.budget.calculatedSpent > 0) && dashboard.budget.trackingMode !== 'scheduled' && (
                 <div className="pt-3 border-t">
                   <p className="text-sm text-muted-foreground mb-2">Spent Breakdown</p>
                   <div className="grid grid-cols-3 gap-2 text-sm">
@@ -555,27 +612,50 @@ export default function ContractDashboard() {
                 </div>
               )}
 
-              <div className="pt-4 border-t">
-                <p className="text-sm text-muted-foreground mb-2">Hours Breakdown</p>
-                <div className="grid grid-cols-3 gap-2 text-sm">
-                  <div>
-                    <p className="text-xs text-muted-foreground">Regular</p>
-                    <p className="font-medium" data-testid="text-regular-hours">{dashboard.budget.hours.regular.toFixed(1)}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground">Overtime</p>
-                    <p className="font-medium" data-testid="text-overtime-hours">{dashboard.budget.hours.overtime.toFixed(1)}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground">Premium</p>
-                    <p className="font-medium" data-testid="text-premium-hours">{dashboard.budget.hours.premium.toFixed(1)}</p>
+              {dashboard.budget.trackingMode === 'scheduled' && dashboard.budget.scheduled.inspectorBreakdowns.length > 0 && (
+                <div className="pt-3 border-t">
+                  <p className="text-sm text-muted-foreground mb-2">
+                    Scheduled Hours ({dashboard.budget.scheduled.workingDaysElapsed} of {dashboard.budget.scheduled.totalWorkingDays} working days)
+                  </p>
+                  <div className="space-y-1">
+                    {dashboard.budget.scheduled.inspectorBreakdowns.map((inspector, idx) => (
+                      <div key={idx} className="flex items-center justify-between text-sm">
+                        <span className="truncate flex-1">
+                          {inspector.title}{inspector.inspectorName ? ` - ${inspector.inspectorName}` : ''}
+                          <span className="text-xs text-muted-foreground ml-1">({inspector.hoursPerDay}h/day)</span>
+                        </span>
+                        <span className="font-medium whitespace-nowrap">
+                          {inspector.scheduledHours.toFixed(0)} hrs ({formatCurrency(inspector.scheduledAmount)})
+                        </span>
+                      </div>
+                    ))}
                   </div>
                 </div>
-                <div className="mt-2">
-                  <p className="text-xs text-muted-foreground">Total Hours</p>
-                  <p className="font-medium" data-testid="text-total-hours">{dashboard.budget.hours.total.toFixed(1)}</p>
+              )}
+
+              {dashboard.budget.trackingMode !== 'scheduled' && (
+                <div className="pt-4 border-t">
+                  <p className="text-sm text-muted-foreground mb-2">Hours Breakdown</p>
+                  <div className="grid grid-cols-3 gap-2 text-sm">
+                    <div>
+                      <p className="text-xs text-muted-foreground">Regular</p>
+                      <p className="font-medium" data-testid="text-regular-hours">{dashboard.budget.hours.regular.toFixed(1)}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Overtime</p>
+                      <p className="font-medium" data-testid="text-overtime-hours">{dashboard.budget.hours.overtime.toFixed(1)}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Premium</p>
+                      <p className="font-medium" data-testid="text-premium-hours">{dashboard.budget.hours.premium.toFixed(1)}</p>
+                    </div>
+                  </div>
+                  <div className="mt-2">
+                    <p className="text-xs text-muted-foreground">Total Hours</p>
+                    <p className="font-medium" data-testid="text-total-hours">{dashboard.budget.hours.total.toFixed(1)}</p>
+                  </div>
                 </div>
-              </div>
+              )}
 
               {dashboard.projects.length > 0 && (
                 <div className="pt-4 border-t">
