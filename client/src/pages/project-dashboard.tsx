@@ -34,8 +34,21 @@ import {
   Download,
   Mail,
   BarChart3,
+  Plus,
+  Receipt,
+  ClipboardList,
 } from "lucide-react";
 import { format } from "date-fns";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 type ProjectDashboardData = {
   project: {
@@ -199,10 +212,34 @@ const getHoursStatusColor = (status: string) => {
   }
 };
 
+const months = [
+  { value: "1", label: "January" },
+  { value: "2", label: "February" },
+  { value: "3", label: "March" },
+  { value: "4", label: "April" },
+  { value: "5", label: "May" },
+  { value: "6", label: "June" },
+  { value: "7", label: "July" },
+  { value: "8", label: "August" },
+  { value: "9", label: "September" },
+  { value: "10", label: "October" },
+  { value: "11", label: "November" },
+  { value: "12", label: "December" },
+];
+
 export default function ProjectDashboardPage() {
   const { id } = useParams<{ id: string }>();
   const { toast } = useToast();
   const [isEmailPending, setIsEmailPending] = useState(false);
+  
+  // Inspector action dialogs
+  const [timesheetDialogOpen, setTimesheetDialogOpen] = useState(false);
+  const [invoiceDialogOpen, setInvoiceDialogOpen] = useState(false);
+  const [selectedMonth, setSelectedMonth] = useState(String(new Date().getMonth() + 1));
+  const [selectedYear, setSelectedYear] = useState(String(new Date().getFullYear()));
+  const [isGenerating, setIsGenerating] = useState(false);
+  
+  const years = Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - i);
 
   const { data, isLoading, error } = useQuery<ProjectDashboardData>({
     queryKey: ['/api/projects', id, 'dashboard'],
@@ -259,6 +296,96 @@ export default function ProjectDashboardPage() {
       });
     } finally {
       setIsEmailPending(false);
+    }
+  };
+
+  const handleGenerateTimesheet = async () => {
+    setIsGenerating(true);
+    try {
+      const response = await fetch('/api/billing/timesheet', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          projectId: id,
+          month: parseInt(selectedMonth),
+          year: parseInt(selectedYear),
+        }),
+        credentials: 'include',
+      });
+      
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || 'Failed to generate timesheet');
+      }
+      
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Timesheet_${months.find(m => m.value === selectedMonth)?.label}_${selectedYear}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      
+      toast({
+        title: "Timesheet Generated",
+        description: "Your timesheet PDF has been downloaded",
+      });
+      setTimesheetDialogOpen(false);
+    } catch (error: any) {
+      toast({
+        title: "Failed to generate timesheet",
+        description: error.message || "Please try again",
+        variant: "destructive",
+      });
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const handleGenerateInvoice = async () => {
+    setIsGenerating(true);
+    try {
+      const response = await fetch('/api/billing/inspector-invoice', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          projectId: id,
+          month: parseInt(selectedMonth),
+          year: parseInt(selectedYear),
+        }),
+        credentials: 'include',
+      });
+      
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || 'Failed to generate invoice');
+      }
+      
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Inspector_Invoice_${months.find(m => m.value === selectedMonth)?.label}_${selectedYear}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      
+      toast({
+        title: "Invoice Generated",
+        description: "Your invoice PDF has been downloaded",
+      });
+      setInvoiceDialogOpen(false);
+    } catch (error: any) {
+      toast({
+        title: "Failed to generate invoice",
+        description: error.message || "Please try again",
+        variant: "destructive",
+      });
+    } finally {
+      setIsGenerating(false);
     }
   };
 
@@ -521,6 +648,48 @@ export default function ProjectDashboardPage() {
               </div>
             </CardContent>
           </Card>
+
+          <Card data-testid="card-inspector-actions">
+            <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Inspector Actions</CardTitle>
+              <ClipboardList className="w-4 h-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-sm text-muted-foreground mb-4">
+                Create reports and generate billing documents
+              </div>
+              <div className="space-y-3">
+                <Link href={`/create-report?projectId=${id}`}>
+                  <Button 
+                    variant="outline" 
+                    className="w-full justify-start"
+                    data-testid="button-new-daily-report"
+                  >
+                    <Plus className="w-4 h-4 mr-2" />
+                    New Daily Report
+                  </Button>
+                </Link>
+                <Button 
+                  variant="outline" 
+                  className="w-full justify-start"
+                  onClick={() => setTimesheetDialogOpen(true)}
+                  data-testid="button-generate-timesheet"
+                >
+                  <ClipboardList className="w-4 h-4 mr-2" />
+                  Generate Timesheet
+                </Button>
+                <Button 
+                  variant="outline" 
+                  className="w-full justify-start"
+                  onClick={() => setInvoiceDialogOpen(true)}
+                  data-testid="button-generate-invoice"
+                >
+                  <Receipt className="w-4 h-4 mr-2" />
+                  Generate Invoice
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
         </div>
 
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
@@ -754,6 +923,120 @@ export default function ProjectDashboardPage() {
           </Card>
         )}
       </div>
+
+      <Dialog open={timesheetDialogOpen} onOpenChange={setTimesheetDialogOpen}>
+        <DialogContent className="sm:max-w-md" data-testid="modal-timesheet">
+          <DialogHeader>
+            <DialogTitle>Generate Timesheet</DialogTitle>
+            <DialogDescription>
+              Generate a timesheet PDF for your work on this project
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Month</Label>
+                <Select value={selectedMonth} onValueChange={setSelectedMonth}>
+                  <SelectTrigger data-testid="select-timesheet-month">
+                    <SelectValue placeholder="Select month" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {months.map((m) => (
+                      <SelectItem key={m.value} value={m.value}>
+                        {m.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Year</Label>
+                <Select value={selectedYear} onValueChange={setSelectedYear}>
+                  <SelectTrigger data-testid="select-timesheet-year">
+                    <SelectValue placeholder="Select year" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {years.map((y) => (
+                      <SelectItem key={y} value={String(y)}>
+                        {y}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setTimesheetDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleGenerateTimesheet} 
+              disabled={isGenerating}
+              data-testid="button-download-timesheet"
+            >
+              {isGenerating ? "Generating..." : "Download Timesheet"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={invoiceDialogOpen} onOpenChange={setInvoiceDialogOpen}>
+        <DialogContent className="sm:max-w-md" data-testid="modal-invoice">
+          <DialogHeader>
+            <DialogTitle>Generate Invoice</DialogTitle>
+            <DialogDescription>
+              Generate an invoice for your work on this project
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Month</Label>
+                <Select value={selectedMonth} onValueChange={setSelectedMonth}>
+                  <SelectTrigger data-testid="select-invoice-month">
+                    <SelectValue placeholder="Select month" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {months.map((m) => (
+                      <SelectItem key={m.value} value={m.value}>
+                        {m.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Year</Label>
+                <Select value={selectedYear} onValueChange={setSelectedYear}>
+                  <SelectTrigger data-testid="select-invoice-year">
+                    <SelectValue placeholder="Select year" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {years.map((y) => (
+                      <SelectItem key={y} value={String(y)}>
+                        {y}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setInvoiceDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleGenerateInvoice} 
+              disabled={isGenerating}
+              data-testid="button-download-invoice"
+            >
+              {isGenerating ? "Generating..." : "Download Invoice"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </PageLayout>
   );
 }
