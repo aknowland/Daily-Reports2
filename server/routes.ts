@@ -14,7 +14,7 @@ import PDFDocument from "pdfkit";
 import { PDFDocument as PDFLibDocument } from "pdf-lib";
 import { format } from "date-fns";
 import { speechToText, openai } from "./replit_integrations/audio/client";
-import { generateTimesheetPdf, aggregateReportsToTimesheetData, generateInvoicePdf, InvoiceData, generateInspectorInvoicePdf, InspectorInvoiceData, generateMonthlySummaryPdf } from "./billing-pdf";
+import { generateTimesheetPdf, aggregateReportsToTimesheetData, generateInvoicePdf, InvoiceData, generateInspectorInvoicePdf, InspectorInvoiceData, generateMonthlySummaryPdf, generateWeeklySummaryPdf, generateCurrentStatusPdf } from "./billing-pdf";
 import { sendEmail } from "./replit_integrations/email/client";
 import { registerChatRoutes } from "./replit_integrations/chat";
 import { calculateScheduledBudget, calculateBaseBudgetBreakdown, type InspectorRate, type ScheduledBudgetResult, type BaseBudgetBreakdown, type BudgetTrackingMode } from "./budget-utils";
@@ -1949,6 +1949,1453 @@ export async function registerRoutes(
     }
   });
 
+  // Weekly summary PDF for a project
+  app.get("/api/projects/:id/weekly-summary", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const projectId = req.params.id;
+      const { weekStart, weekEnd } = req.query;
+      
+      if (!weekStart || !weekEnd) {
+        return res.status(400).json({ message: "Week start and end dates are required" });
+      }
+      
+      const profile = await storage.getUserProfile(userId);
+      const project = await storage.getProject(projectId);
+      
+      if (!project) {
+        return res.status(404).json({ message: "Project not found" });
+      }
+      
+      const isProjectMember = await storage.isUserMemberOfProject(projectId, userId);
+      const hasCompanyAccess = project.companyId && await isEffectiveCompanyAdmin(userId, project.companyId, profile);
+      
+      if (!isEffectiveSystemAdmin(profile) && !hasCompanyAccess && !isProjectMember) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      // Get company info and logo
+      let company = null;
+      let logoBuffer: Buffer | undefined = undefined;
+      if (project.companyId) {
+        company = await storage.getCompany(project.companyId);
+        if (company?.logoPath) {
+          try {
+            logoBuffer = await objectStorage.downloadBuffer(company.logoPath);
+          } catch (e) {
+            console.log("Could not load company logo");
+          }
+        }
+      }
+      
+      const startDate = new Date(weekStart as string);
+      const endDate = new Date(weekEnd as string);
+      
+      // Get daily reports for the week
+      const allReports = await storage.getReportsByProject(projectId);
+      const weeklyReports = allReports.filter((r: any) => {
+        const reportDate = new Date(r.date);
+        return reportDate >= startDate && reportDate <= endDate;
+      });
+      
+      // Get inspector names
+      const inspectorIds = Array.from(new Set(weeklyReports.map((r: any) => r.inspectorId).filter(Boolean))) as string[];
+      const inspectorNameMap = new Map<string, string>();
+      for (const inspId of inspectorIds) {
+        const inspProfile = await storage.getUserProfile(inspId);
+        if (inspProfile) {
+          inspectorNameMap.set(inspId, `${inspProfile.firstName || ''} ${inspProfile.lastName || ''}`.trim() || 'Unknown');
+        }
+      }
+      
+      // Calculate hours
+      let totalRegular = 0, totalOT = 0, totalPremium = 0;
+      for (const r of weeklyReports) {
+        totalRegular += parseFloat((r as any).regularHours || '0');
+        totalOT += parseFloat((r as any).otHours || '0');
+        totalPremium += parseFloat((r as any).premiumHours || '0');
+      }
+      
+      // Build daily reports data
+      const dailyReportsData = weeklyReports.map((r: any) => ({
+        id: r.id,
+        date: r.date instanceof Date ? r.date.toISOString() : String(r.date),
+        inspectorName: inspectorNameMap.get(r.inspectorId || '') || 'Unknown',
+        regularHours: parseFloat(r.regularHours || '0'),
+        otHours: parseFloat(r.otHours || '0'),
+        premiumHours: parseFloat(r.premiumHours || '0'),
+        weatherType: r.weatherType,
+        workDescription: r.workPerformed,
+        notes: r.notes,
+        issues: r.issuesDetails,
+        safetyIncidents: r.safetyDetails,
+      })).sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime());
+      
+      // Weather summary
+      const weatherCounts: Record<string, number> = {};
+      for (const r of weeklyReports) {
+        const weather = (r as any).weatherType || 'unknown';
+        weatherCounts[weather] = (weatherCounts[weather] || 0) + 1;
+      }
+      const weatherSummary = {
+        totalReports: weeklyReports.length,
+        breakdown: Object.entries(weatherCounts).map(([type, count]) => ({
+          type,
+          count,
+          percentage: weeklyReports.length > 0 ? Math.round((count / weeklyReports.length) * 100) : 0,
+        })),
+      };
+      
+      // Issues and safety
+      const issuesSummary = {
+        totalCount: weeklyReports.filter((r: any) => r.issuesFlag).length,
+        issues: weeklyReports.filter((r: any) => r.issuesFlag).map((r: any) => ({
+          date: r.date instanceof Date ? r.date.toISOString() : String(r.date),
+          details: r.issuesDetails || '',
+        })),
+      };
+      
+      const safetySummary = {
+        totalCount: weeklyReports.filter((r: any) => r.safetyFlag).length,
+        incidents: weeklyReports.filter((r: any) => r.safetyFlag).map((r: any) => ({
+          date: r.date instanceof Date ? r.date.toISOString() : String(r.date),
+          details: r.safetyDetails || '',
+        })),
+      };
+      
+      // Team overview
+      const teamHours: Record<string, { regular: number; overtime: number; premium: number; reportCount: number }> = {};
+      for (const r of weeklyReports) {
+        const inspId = r.inspectorId || 'unknown';
+        if (!teamHours[inspId]) teamHours[inspId] = { regular: 0, overtime: 0, premium: 0, reportCount: 0 };
+        teamHours[inspId].regular += parseFloat(r.regularHours || '0');
+        teamHours[inspId].overtime += parseFloat(r.otHours || '0');
+        teamHours[inspId].premium += parseFloat((r as any).premiumHours || '0');
+        teamHours[inspId].reportCount += 1;
+      }
+      
+      const teamOverview = Object.entries(teamHours).map(([inspId, hours]) => ({
+        inspectorName: inspectorNameMap.get(inspId) || 'Unknown',
+        regular: hours.regular,
+        overtime: hours.overtime,
+        premium: hours.premium,
+        reportCount: hours.reportCount,
+      }));
+      
+      // Get client name
+      let clientName = project.client || '';
+      if (project.clientId) {
+        const client = await storage.getClient(project.clientId);
+        if (client) clientName = client.name;
+      }
+      
+      const budgetedHours = project.budgetAmount ? parseFloat(project.budgetAmount) : 0;
+      const baseBudget = project.baseBudget ? parseFloat(project.baseBudget) : 0;
+      
+      // Generate PDF
+      const pdfBuffer = await generateWeeklySummaryPdf({
+        projectName: project.name,
+        projectNumber: project.projectNumber || '',
+        clientName,
+        companyName: company?.name || '',
+        companyLogoBuffer: logoBuffer,
+        weekStart: weekStart as string,
+        weekEnd: weekEnd as string,
+        schedule: {
+          progress: 0,
+          status: 'on_track',
+          startDate: project.startDate ? String(project.startDate) : null,
+          endDate: project.substantialCompletionDate ? String(project.substantialCompletionDate) : null,
+          daysRemaining: null,
+        },
+        hours: {
+          budgeted: budgetedHours,
+          baseBudget,
+          used: totalRegular + totalOT + totalPremium,
+          remaining: Math.max(0, budgetedHours - totalRegular - totalOT - totalPremium - baseBudget),
+          progress: budgetedHours > 0 ? ((totalRegular + totalOT + totalPremium + baseBudget) / budgetedHours) * 100 : 0,
+          breakdown: { regular: totalRegular, overtime: totalOT, premium: totalPremium },
+        },
+        dailyReports: dailyReportsData,
+        weatherSummary,
+        issuesSummary,
+        safetySummary,
+        teamOverview,
+      });
+      
+      const weekLabel = format(startDate, 'MMM_d') + '_to_' + format(endDate, 'MMM_d_yyyy');
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="${project.name.replace(/[^a-z0-9]/gi, '_')}_Weekly_Summary_${weekLabel}.pdf"`);
+      res.send(pdfBuffer);
+    } catch (error) {
+      console.error("Error generating weekly summary PDF:", error);
+      res.status(500).json({ message: "Failed to generate weekly summary" });
+    }
+  });
+
+  // Current status PDF for a project
+  app.get("/api/projects/:id/current-status", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const projectId = req.params.id;
+      
+      const profile = await storage.getUserProfile(userId);
+      const project = await storage.getProject(projectId);
+      
+      if (!project) {
+        return res.status(404).json({ message: "Project not found" });
+      }
+      
+      const isProjectMember = await storage.isUserMemberOfProject(projectId, userId);
+      const hasCompanyAccess = project.companyId && await isEffectiveCompanyAdmin(userId, project.companyId, profile);
+      
+      if (!isEffectiveSystemAdmin(profile) && !hasCompanyAccess && !isProjectMember) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      // Get company info and logo
+      let company = null;
+      let logoBuffer: Buffer | undefined = undefined;
+      if (project.companyId) {
+        company = await storage.getCompany(project.companyId);
+        if (company?.logoPath) {
+          try {
+            logoBuffer = await objectStorage.downloadBuffer(company.logoPath);
+          } catch (e) {
+            console.log("Could not load company logo");
+          }
+        }
+      }
+      
+      // Get all daily reports
+      const allReports = await storage.getReportsByProject(projectId);
+      
+      // Get inspector names
+      const inspectorIds = Array.from(new Set(allReports.map((r: any) => r.inspectorId).filter(Boolean))) as string[];
+      const inspectorNameMap = new Map<string, string>();
+      for (const inspId of inspectorIds) {
+        const inspProfile = await storage.getUserProfile(inspId);
+        if (inspProfile) {
+          inspectorNameMap.set(inspId, `${inspProfile.firstName || ''} ${inspProfile.lastName || ''}`.trim() || 'Unknown');
+        }
+      }
+      
+      // Calculate total hours
+      let totalRegular = 0, totalOT = 0, totalPremium = 0;
+      for (const r of allReports) {
+        totalRegular += parseFloat(r.regularHours || '0');
+        totalOT += parseFloat(r.otHours || '0');
+        totalPremium += parseFloat((r as any).premiumHours || '0');
+      }
+      const totalHoursUsed = totalRegular + totalOT + totalPremium;
+      
+      // Calculate schedule progress
+      const now = new Date();
+      let scheduleProgress = 0;
+      let scheduleStatus = 'not_started';
+      let daysRemaining: number | null = null;
+      let daysOverdue: number | null = null;
+      
+      if (project.startDate && project.substantialCompletionDate) {
+        const start = new Date(project.startDate);
+        const end = new Date(project.substantialCompletionDate);
+        const totalDays = Math.max(1, (end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+        const elapsedDays = (now.getTime() - start.getTime()) / (1000 * 60 * 60 * 24);
+        
+        if (now < start) {
+          scheduleProgress = 0;
+          scheduleStatus = 'not_started';
+        } else if (now > end) {
+          scheduleProgress = 100;
+          daysOverdue = Math.ceil((now.getTime() - end.getTime()) / (1000 * 60 * 60 * 24));
+          scheduleStatus = 'overdue';
+        } else {
+          scheduleProgress = Math.min(100, (elapsedDays / totalDays) * 100);
+          daysRemaining = Math.ceil((end.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+          scheduleStatus = scheduleProgress > 75 ? 'warning' : 'on_track';
+        }
+      }
+      
+      // Budget calculations
+      const budgetedHours = project.budgetAmount ? parseFloat(project.budgetAmount) : 0;
+      const baseBudget = project.baseBudget ? parseFloat(project.baseBudget) : 0;
+      const effectiveTotalHours = totalHoursUsed + baseBudget;
+      const budgetProgress = budgetedHours > 0 ? (effectiveTotalHours / budgetedHours) * 100 : 0;
+      const budgetStatus = budgetProgress >= 100 ? 'over' : budgetProgress >= 75 ? 'warning' : 'on_track';
+      
+      // Calculate milestones
+      const milestones: { date: string; label: string; type: string; daysUntil: number; isPast: boolean }[] = [];
+      const milestoneFields = [
+        { field: 'startDate', label: 'Project Start' },
+        { field: 'substantialCompletionDate', label: 'Substantial Completion' },
+        { field: 'finalCloseoutDate', label: 'Final Closeout' },
+      ];
+      for (const m of milestoneFields) {
+        const dateValue = (project as any)[m.field];
+        if (dateValue) {
+          const date = new Date(dateValue);
+          const daysUntil = Math.ceil((date.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+          milestones.push({
+            date: String(dateValue),
+            label: m.label,
+            type: m.field,
+            daysUntil,
+            isPast: daysUntil < 0,
+          });
+        }
+      }
+      
+      // Team overview
+      const teamHours: Record<string, { regular: number; overtime: number; premium: number; reportCount: number }> = {};
+      for (const r of allReports) {
+        const inspId = r.inspectorId || 'unknown';
+        if (!teamHours[inspId]) teamHours[inspId] = { regular: 0, overtime: 0, premium: 0, reportCount: 0 };
+        teamHours[inspId].regular += parseFloat(r.regularHours || '0');
+        teamHours[inspId].overtime += parseFloat(r.otHours || '0');
+        teamHours[inspId].premium += parseFloat((r as any).premiumHours || '0');
+        teamHours[inspId].reportCount += 1;
+      }
+      
+      const teamOverview = Object.entries(teamHours).map(([inspId, hours]) => ({
+        inspectorName: inspectorNameMap.get(inspId) || 'Unknown',
+        regular: hours.regular,
+        overtime: hours.overtime,
+        premium: hours.premium,
+        reportCount: hours.reportCount,
+      }));
+      
+      // Recent reports
+      const recentReports = allReports
+        .sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime())
+        .slice(0, 5)
+        .map((r: any) => ({
+          date: r.date instanceof Date ? r.date.toISOString() : String(r.date),
+          inspectorName: inspectorNameMap.get(r.inspectorId || '') || 'Unknown',
+          weatherType: r.weatherType,
+          workDescription: r.workPerformed,
+        }));
+      
+      // Get client name
+      let clientName = project.client || '';
+      if (project.clientId) {
+        const client = await storage.getClient(project.clientId);
+        if (client) clientName = client.name;
+      }
+      
+      // Issues and safety counts
+      const issuesCount = allReports.filter((r: any) => r.issuesFlag).length;
+      const safetyCount = allReports.filter((r: any) => r.safetyFlag).length;
+      
+      // Generate PDF
+      const pdfBuffer = await generateCurrentStatusPdf({
+        projectName: project.name,
+        projectNumber: project.projectNumber || '',
+        clientName,
+        companyName: company?.name || '',
+        companyLogoBuffer: logoBuffer,
+        schedule: {
+          progress: scheduleProgress,
+          status: scheduleStatus,
+          startDate: project.startDate ? String(project.startDate) : null,
+          endDate: project.substantialCompletionDate ? String(project.substantialCompletionDate) : null,
+          daysRemaining,
+          daysOverdue,
+        },
+        hours: {
+          budgeted: budgetedHours,
+          baseBudget,
+          used: totalHoursUsed,
+          remaining: Math.max(0, budgetedHours - effectiveTotalHours),
+          progress: budgetProgress,
+          status: budgetStatus,
+          breakdown: { regular: totalRegular, overtime: totalOT, premium: totalPremium },
+        },
+        milestones,
+        teamOverview,
+        recentReports,
+        totalReports: allReports.length,
+        issuesCount,
+        safetyCount,
+      });
+      
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="${project.name.replace(/[^a-z0-9]/gi, '_')}_Current_Status_${format(now, 'MMM_d_yyyy')}.pdf"`);
+      res.send(pdfBuffer);
+    } catch (error) {
+      console.error("Error generating current status PDF:", error);
+      res.status(500).json({ message: "Failed to generate current status" });
+    }
+  });
+
+  // Email weekly summary to distribution list
+  app.post("/api/projects/:id/weekly-summary/email", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const projectId = req.params.id;
+      const { weekStart, weekEnd, additionalEmails } = req.body;
+      
+      if (!weekStart || !weekEnd) {
+        return res.status(400).json({ message: "Week start and end dates are required" });
+      }
+      
+      const profile = await storage.getUserProfile(userId);
+      const project = await storage.getProject(projectId);
+      
+      if (!project) {
+        return res.status(404).json({ message: "Project not found" });
+      }
+      
+      const isProjectMember = await storage.isUserMemberOfProject(projectId, userId);
+      const hasCompanyAccess = project.companyId && await isEffectiveCompanyAdmin(userId, project.companyId, profile);
+      
+      if (!isEffectiveSystemAdmin(profile) && !hasCompanyAccess && !isProjectMember) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      // Collect recipients
+      const recipients: string[] = [];
+      if (project.distributionEmails && Array.isArray(project.distributionEmails)) {
+        recipients.push(...project.distributionEmails);
+      }
+      if (additionalEmails && Array.isArray(additionalEmails)) {
+        recipients.push(...additionalEmails.filter((e: string) => e && e.includes('@')));
+      }
+      const uniqueRecipients = Array.from(new Set(recipients));
+      
+      if (uniqueRecipients.length === 0) {
+        return res.status(400).json({ message: "No recipients specified" });
+      }
+      
+      // Get company info and logo
+      let company = null;
+      let logoBuffer: Buffer | undefined = undefined;
+      if (project.companyId) {
+        company = await storage.getCompany(project.companyId);
+        if (company?.logoPath) {
+          try {
+            logoBuffer = await objectStorage.downloadBuffer(company.logoPath);
+          } catch (e) {
+            console.log("Could not load company logo");
+          }
+        }
+      }
+      
+      const startDate = new Date(weekStart);
+      const endDate = new Date(weekEnd);
+      
+      // Get daily reports for the week
+      const allReports = await storage.getReportsByProject(projectId);
+      const weeklyReports = allReports.filter((r: any) => {
+        const reportDate = new Date(r.date);
+        return reportDate >= startDate && reportDate <= endDate;
+      });
+      
+      // Calculate totals
+      let totalRegular = 0, totalOT = 0, totalPremium = 0;
+      for (const report of weeklyReports) {
+        totalRegular += parseFloat(report.regularHours || '0');
+        totalOT += parseFloat(report.otHours || '0');
+        totalPremium += parseFloat((report as any).premiumHours || '0');
+      }
+      
+      const inspectorIds = Array.from(new Set(weeklyReports.map((r: any) => r.inspectorId).filter(Boolean))) as string[];
+      const inspectorNameMap = new Map<string, string>();
+      for (const inspId of inspectorIds) {
+        const inspProfile = await storage.getUserProfile(inspId);
+        if (inspProfile) {
+          inspectorNameMap.set(inspId, `${inspProfile.firstName || ''} ${inspProfile.lastName || ''}`.trim() || 'Unknown');
+        }
+      }
+      
+      const dailyReportsData = weeklyReports.map((r: any) => ({
+        id: r.id,
+        date: r.date instanceof Date ? r.date.toISOString() : String(r.date),
+        inspectorName: inspectorNameMap.get(r.inspectorId) || 'Unknown',
+        regularHours: parseFloat(r.regularHours || '0'),
+        otHours: parseFloat(r.otHours || '0'),
+        premiumHours: parseFloat((r as any).premiumHours || '0'),
+        weatherType: r.weatherType,
+        workDescription: r.workPerformed,
+        notes: r.notes,
+        issues: r.issuesDetails,
+        safetyIncidents: r.safetyDetails,
+      })).sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime());
+      
+      // Weather summary
+      const weatherCounts: Record<string, number> = {};
+      for (const r of weeklyReports) {
+        weatherCounts[(r as any).weatherType || 'unknown'] = (weatherCounts[(r as any).weatherType || 'unknown'] || 0) + 1;
+      }
+      
+      // Team hours
+      const teamHours: Record<string, { regular: number; overtime: number; premium: number; reportCount: number }> = {};
+      for (const r of weeklyReports) {
+        const inspId = (r as any).inspectorId || 'unknown';
+        if (!teamHours[inspId]) teamHours[inspId] = { regular: 0, overtime: 0, premium: 0, reportCount: 0 };
+        teamHours[inspId].regular += parseFloat(r.regularHours || '0');
+        teamHours[inspId].overtime += parseFloat(r.otHours || '0');
+        teamHours[inspId].premium += parseFloat((r as any).premiumHours || '0');
+        teamHours[inspId].reportCount += 1;
+      }
+      
+      let clientName = project.client || '';
+      if (project.clientId) {
+        const client = await storage.getClient(project.clientId);
+        if (client) clientName = client.name;
+      }
+      
+      const budgetedHours = project.budgetAmount ? parseFloat(project.budgetAmount) : 0;
+      const baseBudget = project.baseBudget ? parseFloat(project.baseBudget) : 0;
+      const totalHoursUsed = totalRegular + totalOT + totalPremium;
+      
+      // Generate PDF
+      const pdfBuffer = await generateWeeklySummaryPdf({
+        projectName: project.name,
+        projectNumber: project.projectNumber || '',
+        clientName,
+        companyName: company?.name || '',
+        companyLogoBuffer: logoBuffer,
+        weekStart,
+        weekEnd,
+        schedule: {
+          progress: 0,
+          status: 'on_track',
+          startDate: project.startDate ? String(project.startDate) : null,
+          endDate: project.substantialCompletionDate ? String(project.substantialCompletionDate) : null,
+          daysRemaining: null,
+        },
+        hours: {
+          budgeted: budgetedHours,
+          baseBudget,
+          used: totalHoursUsed,
+          remaining: Math.max(0, budgetedHours - totalHoursUsed - baseBudget),
+          progress: budgetedHours > 0 ? ((totalHoursUsed + baseBudget) / budgetedHours) * 100 : 0,
+          breakdown: { regular: totalRegular, overtime: totalOT, premium: totalPremium },
+        },
+        dailyReports: dailyReportsData,
+        weatherSummary: {
+          totalReports: weeklyReports.length,
+          breakdown: Object.entries(weatherCounts).map(([type, count]) => ({
+            type, count, percentage: weeklyReports.length > 0 ? Math.round((count / weeklyReports.length) * 100) : 0,
+          })),
+        },
+        issuesSummary: {
+          totalCount: weeklyReports.filter((r: any) => r.issuesFlag).length,
+          issues: weeklyReports.filter((r: any) => r.issuesFlag).map((r: any) => ({
+            date: r.date instanceof Date ? r.date.toISOString() : String(r.date),
+            details: r.issuesDetails || '',
+          })),
+        },
+        safetySummary: {
+          totalCount: weeklyReports.filter((r: any) => r.safetyFlag).length,
+          incidents: weeklyReports.filter((r: any) => r.safetyFlag).map((r: any) => ({
+            date: r.date instanceof Date ? r.date.toISOString() : String(r.date),
+            details: r.safetyDetails || '',
+          })),
+        },
+        teamOverview: Object.entries(teamHours).map(([inspId, hours]) => ({
+          inspectorName: inspectorNameMap.get(inspId) || 'Unknown',
+          ...hours,
+        })),
+      });
+      
+      const weekLabel = format(startDate, 'MMM d') + ' - ' + format(endDate, 'MMM d, yyyy');
+      const fileName = `${project.name.replace(/[^a-z0-9]/gi, '_')}_Weekly_Summary_${format(startDate, 'MMM_d')}_to_${format(endDate, 'MMM_d_yyyy')}.pdf`;
+      
+      // Send email
+      await sendEmail({
+        to: uniqueRecipients,
+        subject: `Weekly Summary: ${project.name} - ${weekLabel}`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h2 style="color: #333;">Weekly Project Summary</h2>
+            <p>Please find attached the weekly summary report for <strong>${project.name}</strong> for <strong>${weekLabel}</strong>.</p>
+            
+            <div style="background: #f5f5f5; padding: 15px; border-radius: 8px; margin: 20px 0;">
+              <h3 style="margin-top: 0;">Quick Summary</h3>
+              <ul style="margin: 0; padding-left: 20px;">
+                <li><strong>Total Reports:</strong> ${weeklyReports.length}</li>
+                <li><strong>Total Hours:</strong> ${totalHoursUsed.toFixed(1)} hours</li>
+                <li><strong>Regular:</strong> ${totalRegular.toFixed(1)} hrs | <strong>OT:</strong> ${totalOT.toFixed(1)} hrs | <strong>Premium:</strong> ${totalPremium.toFixed(1)} hrs</li>
+              </ul>
+            </div>
+            
+            <p style="color: #666; font-size: 14px;">This report was generated automatically from the Field Daily Reports system.</p>
+            <p style="color: #999; font-size: 12px;">${company?.name || ''}</p>
+          </div>
+        `,
+        attachments: [{
+          filename: fileName,
+          content: pdfBuffer,
+        }],
+      });
+      
+      res.json({ 
+        success: true, 
+        message: `Weekly summary sent to ${uniqueRecipients.length} recipient(s)`,
+        recipients: uniqueRecipients,
+      });
+    } catch (error) {
+      console.error("Error emailing weekly summary:", error);
+      res.status(500).json({ message: "Failed to send weekly summary email" });
+    }
+  });
+
+  // Email current status to distribution list
+  app.post("/api/projects/:id/current-status/email", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const projectId = req.params.id;
+      const { additionalEmails } = req.body;
+      
+      const profile = await storage.getUserProfile(userId);
+      const project = await storage.getProject(projectId);
+      
+      if (!project) {
+        return res.status(404).json({ message: "Project not found" });
+      }
+      
+      const isProjectMember = await storage.isUserMemberOfProject(projectId, userId);
+      const hasCompanyAccess = project.companyId && await isEffectiveCompanyAdmin(userId, project.companyId, profile);
+      
+      if (!isEffectiveSystemAdmin(profile) && !hasCompanyAccess && !isProjectMember) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      // Collect recipients
+      const recipients: string[] = [];
+      if (project.distributionEmails && Array.isArray(project.distributionEmails)) {
+        recipients.push(...project.distributionEmails);
+      }
+      if (additionalEmails && Array.isArray(additionalEmails)) {
+        recipients.push(...additionalEmails.filter((e: string) => e && e.includes('@')));
+      }
+      const uniqueRecipients = Array.from(new Set(recipients));
+      
+      if (uniqueRecipients.length === 0) {
+        return res.status(400).json({ message: "No recipients specified" });
+      }
+      
+      // Get company info and logo
+      let company = null;
+      let logoBuffer: Buffer | undefined = undefined;
+      if (project.companyId) {
+        company = await storage.getCompany(project.companyId);
+        if (company?.logoPath) {
+          try {
+            logoBuffer = await objectStorage.downloadBuffer(company.logoPath);
+          } catch (e) {
+            console.log("Could not load company logo");
+          }
+        }
+      }
+      
+      // Get all daily reports
+      const allReports = await storage.getReportsByProject(projectId);
+      
+      // Get inspector names
+      const inspectorIds = Array.from(new Set(allReports.map((r: any) => r.inspectorId).filter(Boolean))) as string[];
+      const inspectorNameMap = new Map<string, string>();
+      for (const inspId of inspectorIds) {
+        const inspProfile = await storage.getUserProfile(inspId);
+        if (inspProfile) {
+          inspectorNameMap.set(inspId, `${inspProfile.firstName || ''} ${inspProfile.lastName || ''}`.trim() || 'Unknown');
+        }
+      }
+      
+      // Calculate total hours
+      let totalRegular = 0, totalOT = 0, totalPremium = 0;
+      for (const r of allReports) {
+        totalRegular += parseFloat(r.regularHours || '0');
+        totalOT += parseFloat(r.otHours || '0');
+        totalPremium += parseFloat((r as any).premiumHours || '0');
+      }
+      const totalHoursUsed = totalRegular + totalOT + totalPremium;
+      
+      // Calculate schedule progress
+      const now = new Date();
+      let scheduleProgress = 0;
+      let scheduleStatus = 'not_started';
+      let daysRemaining: number | null = null;
+      let daysOverdue: number | null = null;
+      
+      if (project.startDate && project.substantialCompletionDate) {
+        const start = new Date(project.startDate);
+        const end = new Date(project.substantialCompletionDate);
+        const totalDays = Math.max(1, (end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+        const elapsedDays = (now.getTime() - start.getTime()) / (1000 * 60 * 60 * 24);
+        
+        if (now < start) {
+          scheduleProgress = 0;
+          scheduleStatus = 'not_started';
+        } else if (now > end) {
+          scheduleProgress = 100;
+          daysOverdue = Math.ceil((now.getTime() - end.getTime()) / (1000 * 60 * 60 * 24));
+          scheduleStatus = 'overdue';
+        } else {
+          scheduleProgress = Math.min(100, (elapsedDays / totalDays) * 100);
+          daysRemaining = Math.ceil((end.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+          scheduleStatus = scheduleProgress > 75 ? 'warning' : 'on_track';
+        }
+      }
+      
+      // Budget calculations
+      const budgetedHours = project.budgetAmount ? parseFloat(project.budgetAmount) : 0;
+      const baseBudget = project.baseBudget ? parseFloat(project.baseBudget) : 0;
+      const effectiveTotalHours = totalHoursUsed + baseBudget;
+      const budgetProgress = budgetedHours > 0 ? (effectiveTotalHours / budgetedHours) * 100 : 0;
+      const budgetStatus = budgetProgress >= 100 ? 'over' : budgetProgress >= 75 ? 'warning' : 'on_track';
+      
+      // Calculate milestones
+      const milestones: { date: string; label: string; type: string; daysUntil: number; isPast: boolean }[] = [];
+      const milestoneFields = [
+        { field: 'startDate', label: 'Project Start' },
+        { field: 'substantialCompletionDate', label: 'Substantial Completion' },
+        { field: 'finalCloseoutDate', label: 'Final Closeout' },
+      ];
+      for (const m of milestoneFields) {
+        const dateValue = (project as any)[m.field];
+        if (dateValue) {
+          const date = new Date(dateValue);
+          const daysUntil = Math.ceil((date.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+          milestones.push({
+            date: String(dateValue),
+            label: m.label,
+            type: m.field,
+            daysUntil,
+            isPast: daysUntil < 0,
+          });
+        }
+      }
+      
+      // Team hours
+      const teamHours: Record<string, { regular: number; overtime: number; premium: number; reportCount: number }> = {};
+      for (const r of allReports) {
+        const inspId = (r as any).inspectorId || 'unknown';
+        if (!teamHours[inspId]) teamHours[inspId] = { regular: 0, overtime: 0, premium: 0, reportCount: 0 };
+        teamHours[inspId].regular += parseFloat(r.regularHours || '0');
+        teamHours[inspId].overtime += parseFloat(r.otHours || '0');
+        teamHours[inspId].premium += parseFloat((r as any).premiumHours || '0');
+        teamHours[inspId].reportCount += 1;
+      }
+      
+      // Recent reports
+      const recentReports = allReports
+        .sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime())
+        .slice(0, 5)
+        .map((r: any) => ({
+          date: r.date instanceof Date ? r.date.toISOString() : String(r.date),
+          inspectorName: inspectorNameMap.get(r.inspectorId || '') || 'Unknown',
+          weatherType: r.weatherType,
+          workDescription: r.workPerformed,
+        }));
+      
+      // Get client name
+      let clientName = project.client || '';
+      if (project.clientId) {
+        const client = await storage.getClient(project.clientId);
+        if (client) clientName = client.name;
+      }
+      
+      // Issues and safety counts
+      const issuesCount = allReports.filter((r: any) => r.issuesFlag).length;
+      const safetyCount = allReports.filter((r: any) => r.safetyFlag).length;
+      
+      // Generate PDF
+      const pdfBuffer = await generateCurrentStatusPdf({
+        projectName: project.name,
+        projectNumber: project.projectNumber || '',
+        clientName,
+        companyName: company?.name || '',
+        companyLogoBuffer: logoBuffer,
+        schedule: {
+          progress: scheduleProgress,
+          status: scheduleStatus,
+          startDate: project.startDate ? String(project.startDate) : null,
+          endDate: project.substantialCompletionDate ? String(project.substantialCompletionDate) : null,
+          daysRemaining,
+          daysOverdue,
+        },
+        hours: {
+          budgeted: budgetedHours,
+          baseBudget,
+          used: totalHoursUsed,
+          remaining: Math.max(0, budgetedHours - effectiveTotalHours),
+          progress: budgetProgress,
+          status: budgetStatus,
+          breakdown: { regular: totalRegular, overtime: totalOT, premium: totalPremium },
+        },
+        milestones,
+        teamOverview: Object.entries(teamHours).map(([inspId, hours]) => ({
+          inspectorName: inspectorNameMap.get(inspId) || 'Unknown',
+          regular: hours.regular,
+          overtime: hours.overtime,
+          premium: hours.premium,
+          reportCount: hours.reportCount,
+        })),
+        recentActivity: recentReports,
+        keyMetrics: {
+          totalReports: allReports.length,
+          totalHours: totalHoursUsed,
+          issuesCount,
+          safetyIncidentsCount: safetyCount,
+        },
+      });
+      
+      const dateLabel = format(now, 'MMM d, yyyy');
+      const fileName = `${project.name.replace(/[^a-z0-9]/gi, '_')}_Current_Status_${format(now, 'MMM_d_yyyy')}.pdf`;
+      
+      // Send email
+      await sendEmail({
+        to: uniqueRecipients,
+        subject: `Current Status: ${project.name} - ${dateLabel}`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h2 style="color: #333;">Project Current Status</h2>
+            <p>Please find attached the current status report for <strong>${project.name}</strong> as of <strong>${dateLabel}</strong>.</p>
+            
+            <div style="background: #f5f5f5; padding: 15px; border-radius: 8px; margin: 20px 0;">
+              <h3 style="margin-top: 0;">Quick Summary</h3>
+              <ul style="margin: 0; padding-left: 20px;">
+                <li><strong>Total Reports:</strong> ${allReports.length}</li>
+                <li><strong>Total Hours:</strong> ${totalHoursUsed.toFixed(1)} hours</li>
+                <li><strong>Budget Used:</strong> ${budgetProgress.toFixed(0)}%</li>
+                <li><strong>Schedule Progress:</strong> ${scheduleProgress.toFixed(0)}%</li>
+              </ul>
+            </div>
+            
+            <p style="color: #666; font-size: 14px;">This report was generated automatically from the Field Daily Reports system.</p>
+            <p style="color: #999; font-size: 12px;">${company?.name || ''}</p>
+          </div>
+        `,
+        attachments: [{
+          filename: fileName,
+          content: pdfBuffer,
+        }],
+      });
+      
+      res.json({ 
+        success: true, 
+        message: `Current status sent to ${uniqueRecipients.length} recipient(s)`,
+        recipients: uniqueRecipients,
+      });
+    } catch (error) {
+      console.error("Error emailing current status:", error);
+      res.status(500).json({ message: "Failed to send current status email" });
+    }
+  });
+
+  // Company Monthly Summary PDF
+  app.get("/api/company/monthly-summary", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const { month, year } = req.query;
+      
+      if (!month || !year) {
+        return res.status(400).json({ message: "Month and year are required" });
+      }
+      
+      const profile = await storage.getUserProfile(userId);
+      if (!profile?.activeCompanyId) {
+        return res.status(400).json({ message: "No active company" });
+      }
+      
+      const companyId = profile.activeCompanyId;
+      const isMember = await storage.isUserMemberOfCompany(companyId, userId);
+      if (!isEffectiveSystemAdmin(profile) && !isMember) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      // Get company info
+      const company = await storage.getCompany(companyId);
+      let logoBuffer: Buffer | undefined = undefined;
+      if (company?.logoPath) {
+        try {
+          logoBuffer = await objectStorage.downloadBuffer(company.logoPath);
+        } catch (e) {
+          console.log("Could not load company logo");
+        }
+      }
+      
+      const monthNum = parseInt(month as string);
+      const yearNum = parseInt(year as string);
+      const startDate = new Date(yearNum, monthNum - 1, 1);
+      const endDate = new Date(yearNum, monthNum, 0);
+      
+      // Get all reports for this company in the month
+      const allReports = await storage.getReports({ companyId });
+      const monthlyReports = allReports.filter((r: any) => {
+        const reportDate = new Date(r.date);
+        return reportDate >= startDate && reportDate <= endDate;
+      });
+      
+      // Calculate totals
+      let totalRegular = 0, totalOT = 0, totalPremium = 0;
+      for (const r of monthlyReports) {
+        totalRegular += parseFloat(r.regularHours || '0');
+        totalOT += parseFloat(r.otHours || '0');
+        totalPremium += parseFloat((r as any).premiumHours || '0');
+      }
+      
+      // Get inspector names
+      const inspectorIds = Array.from(new Set(monthlyReports.map((r: any) => r.inspectorId).filter(Boolean))) as string[];
+      const inspectorNameMap = new Map<string, string>();
+      for (const inspId of inspectorIds) {
+        const inspProfile = await storage.getUserProfile(inspId);
+        if (inspProfile) {
+          inspectorNameMap.set(inspId, `${inspProfile.firstName || ''} ${inspProfile.lastName || ''}`.trim() || 'Unknown');
+        }
+      }
+      
+      const dailyReportsData = monthlyReports.map((r: any) => ({
+        id: r.id,
+        date: r.date instanceof Date ? r.date.toISOString() : String(r.date),
+        inspectorName: inspectorNameMap.get(r.inspectorId) || 'Unknown',
+        regularHours: parseFloat(r.regularHours || '0'),
+        otHours: parseFloat(r.otHours || '0'),
+        premiumHours: parseFloat((r as any).premiumHours || '0'),
+        weatherType: r.weatherType,
+        workDescription: r.workPerformed,
+        notes: r.notes,
+        issues: r.issuesDetails,
+        safetyIncidents: r.safetyDetails,
+      })).sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime());
+      
+      // Weather summary
+      const weatherCounts: Record<string, number> = {};
+      for (const r of monthlyReports) {
+        weatherCounts[(r as any).weatherType || 'unknown'] = (weatherCounts[(r as any).weatherType || 'unknown'] || 0) + 1;
+      }
+      
+      // Team hours
+      const teamHours: Record<string, { regular: number; overtime: number; premium: number; reportCount: number }> = {};
+      for (const r of monthlyReports) {
+        const inspId = (r as any).inspectorId || 'unknown';
+        if (!teamHours[inspId]) teamHours[inspId] = { regular: 0, overtime: 0, premium: 0, reportCount: 0 };
+        teamHours[inspId].regular += parseFloat(r.regularHours || '0');
+        teamHours[inspId].overtime += parseFloat(r.otHours || '0');
+        teamHours[inspId].premium += parseFloat((r as any).premiumHours || '0');
+        teamHours[inspId].reportCount += 1;
+      }
+      
+      const totalHoursUsed = totalRegular + totalOT + totalPremium;
+      
+      const pdfBuffer = await generateMonthlySummaryPdf({
+        projectName: company?.name || 'Company',
+        projectNumber: 'Company-Wide Report',
+        clientName: '',
+        companyName: company?.name || '',
+        companyLogoBuffer: logoBuffer,
+        month: monthNum,
+        year: yearNum,
+        schedule: {
+          progress: 0,
+          status: 'on_track',
+          startDate: null,
+          endDate: null,
+          daysRemaining: null,
+        },
+        hours: {
+          budgeted: 0,
+          baseBudget: 0,
+          used: totalHoursUsed,
+          remaining: 0,
+          progress: 0,
+          breakdown: { regular: totalRegular, overtime: totalOT, premium: totalPremium },
+        },
+        dailyReports: dailyReportsData,
+        weatherSummary: {
+          totalReports: monthlyReports.length,
+          breakdown: Object.entries(weatherCounts).map(([type, count]) => ({
+            type, count, percentage: monthlyReports.length > 0 ? Math.round((count / monthlyReports.length) * 100) : 0,
+          })),
+        },
+        issuesSummary: {
+          totalCount: monthlyReports.filter((r: any) => r.issuesFlag).length,
+          issues: monthlyReports.filter((r: any) => r.issuesFlag).map((r: any) => ({
+            date: r.date instanceof Date ? r.date.toISOString() : String(r.date),
+            details: r.issuesDetails || '',
+          })),
+        },
+        safetySummary: {
+          totalCount: monthlyReports.filter((r: any) => r.safetyFlag).length,
+          incidents: monthlyReports.filter((r: any) => r.safetyFlag).map((r: any) => ({
+            date: r.date instanceof Date ? r.date.toISOString() : String(r.date),
+            details: r.safetyDetails || '',
+          })),
+        },
+        teamOverview: Object.entries(teamHours).map(([inspId, hours]) => ({
+          inspectorName: inspectorNameMap.get(inspId) || 'Unknown',
+          ...hours,
+        })),
+        upcomingMilestones: [],
+      });
+      
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="${(company?.name || 'Company').replace(/[^a-z0-9]/gi, '_')}_Monthly_Summary_${format(startDate, 'MMMM_yyyy')}.pdf"`);
+      res.send(pdfBuffer);
+    } catch (error) {
+      console.error("Error generating company monthly summary:", error);
+      res.status(500).json({ message: "Failed to generate monthly summary" });
+    }
+  });
+
+  // Company Weekly Summary PDF
+  app.get("/api/company/weekly-summary", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const { weekStart, weekEnd } = req.query;
+      
+      if (!weekStart || !weekEnd) {
+        return res.status(400).json({ message: "Week start and end dates are required" });
+      }
+      
+      const profile = await storage.getUserProfile(userId);
+      if (!profile?.activeCompanyId) {
+        return res.status(400).json({ message: "No active company" });
+      }
+      
+      const companyId = profile.activeCompanyId;
+      const isMember = await storage.isUserMemberOfCompany(companyId, userId);
+      if (!isEffectiveSystemAdmin(profile) && !isMember) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      // Get company info
+      const company = await storage.getCompany(companyId);
+      let logoBuffer: Buffer | undefined = undefined;
+      if (company?.logoPath) {
+        try {
+          logoBuffer = await objectStorage.downloadBuffer(company.logoPath);
+        } catch (e) {
+          console.log("Could not load company logo");
+        }
+      }
+      
+      const startDate = new Date(weekStart as string);
+      const endDate = new Date(weekEnd as string);
+      
+      // Get all reports for this company in the week
+      const allReports = await storage.getReports({ companyId });
+      const weeklyReports = allReports.filter((r: any) => {
+        const reportDate = new Date(r.date);
+        return reportDate >= startDate && reportDate <= endDate;
+      });
+      
+      // Calculate totals
+      let totalRegular = 0, totalOT = 0, totalPremium = 0;
+      for (const r of weeklyReports) {
+        totalRegular += parseFloat(r.regularHours || '0');
+        totalOT += parseFloat(r.otHours || '0');
+        totalPremium += parseFloat((r as any).premiumHours || '0');
+      }
+      
+      // Get inspector names
+      const inspectorIds = Array.from(new Set(weeklyReports.map((r: any) => r.inspectorId).filter(Boolean))) as string[];
+      const inspectorNameMap = new Map<string, string>();
+      for (const inspId of inspectorIds) {
+        const inspProfile = await storage.getUserProfile(inspId);
+        if (inspProfile) {
+          inspectorNameMap.set(inspId, `${inspProfile.firstName || ''} ${inspProfile.lastName || ''}`.trim() || 'Unknown');
+        }
+      }
+      
+      const dailyReportsData = weeklyReports.map((r: any) => ({
+        id: r.id,
+        date: r.date instanceof Date ? r.date.toISOString() : String(r.date),
+        inspectorName: inspectorNameMap.get(r.inspectorId) || 'Unknown',
+        regularHours: parseFloat(r.regularHours || '0'),
+        otHours: parseFloat(r.otHours || '0'),
+        premiumHours: parseFloat((r as any).premiumHours || '0'),
+        weatherType: r.weatherType,
+        workDescription: r.workPerformed,
+        notes: r.notes,
+        issues: r.issuesDetails,
+        safetyIncidents: r.safetyDetails,
+      })).sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime());
+      
+      // Weather summary
+      const weatherCounts: Record<string, number> = {};
+      for (const r of weeklyReports) {
+        weatherCounts[(r as any).weatherType || 'unknown'] = (weatherCounts[(r as any).weatherType || 'unknown'] || 0) + 1;
+      }
+      
+      // Team hours
+      const teamHours: Record<string, { regular: number; overtime: number; premium: number; reportCount: number }> = {};
+      for (const r of weeklyReports) {
+        const inspId = (r as any).inspectorId || 'unknown';
+        if (!teamHours[inspId]) teamHours[inspId] = { regular: 0, overtime: 0, premium: 0, reportCount: 0 };
+        teamHours[inspId].regular += parseFloat(r.regularHours || '0');
+        teamHours[inspId].overtime += parseFloat(r.otHours || '0');
+        teamHours[inspId].premium += parseFloat((r as any).premiumHours || '0');
+        teamHours[inspId].reportCount += 1;
+      }
+      
+      const totalHoursUsed = totalRegular + totalOT + totalPremium;
+      
+      const pdfBuffer = await generateWeeklySummaryPdf({
+        projectName: company?.name || 'Company',
+        projectNumber: 'Company-Wide Report',
+        clientName: '',
+        companyName: company?.name || '',
+        companyLogoBuffer: logoBuffer,
+        weekStart: weekStart as string,
+        weekEnd: weekEnd as string,
+        schedule: {
+          progress: 0,
+          status: 'on_track',
+          startDate: null,
+          endDate: null,
+          daysRemaining: null,
+        },
+        hours: {
+          budgeted: 0,
+          baseBudget: 0,
+          used: totalHoursUsed,
+          remaining: 0,
+          progress: 0,
+          breakdown: { regular: totalRegular, overtime: totalOT, premium: totalPremium },
+        },
+        dailyReports: dailyReportsData,
+        weatherSummary: {
+          totalReports: weeklyReports.length,
+          breakdown: Object.entries(weatherCounts).map(([type, count]) => ({
+            type, count, percentage: weeklyReports.length > 0 ? Math.round((count / weeklyReports.length) * 100) : 0,
+          })),
+        },
+        issuesSummary: {
+          totalCount: weeklyReports.filter((r: any) => r.issuesFlag).length,
+          issues: weeklyReports.filter((r: any) => r.issuesFlag).map((r: any) => ({
+            date: r.date instanceof Date ? r.date.toISOString() : String(r.date),
+            details: r.issuesDetails || '',
+          })),
+        },
+        safetySummary: {
+          totalCount: weeklyReports.filter((r: any) => r.safetyFlag).length,
+          incidents: weeklyReports.filter((r: any) => r.safetyFlag).map((r: any) => ({
+            date: r.date instanceof Date ? r.date.toISOString() : String(r.date),
+            details: r.safetyDetails || '',
+          })),
+        },
+        teamOverview: Object.entries(teamHours).map(([inspId, hours]) => ({
+          inspectorName: inspectorNameMap.get(inspId) || 'Unknown',
+          ...hours,
+        })),
+      });
+      
+      const weekLabel = format(startDate, 'MMM_d') + '_to_' + format(endDate, 'MMM_d_yyyy');
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="${(company?.name || 'Company').replace(/[^a-z0-9]/gi, '_')}_Weekly_Summary_${weekLabel}.pdf"`);
+      res.send(pdfBuffer);
+    } catch (error) {
+      console.error("Error generating company weekly summary:", error);
+      res.status(500).json({ message: "Failed to generate weekly summary" });
+    }
+  });
+
+  // Company Current Status PDF
+  app.get("/api/company/current-status", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      
+      if (!profile?.activeCompanyId) {
+        return res.status(400).json({ message: "No active company" });
+      }
+      
+      const companyId = profile.activeCompanyId;
+      const isMember = await storage.isUserMemberOfCompany(companyId, userId);
+      if (!isEffectiveSystemAdmin(profile) && !isMember) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      // Get company info
+      const company = await storage.getCompany(companyId);
+      let logoBuffer: Buffer | undefined = undefined;
+      if (company?.logoPath) {
+        try {
+          logoBuffer = await objectStorage.downloadBuffer(company.logoPath);
+        } catch (e) {
+          console.log("Could not load company logo");
+        }
+      }
+      
+      // Get all reports for this company
+      const allReports = await storage.getReports({ companyId });
+      
+      // Calculate totals
+      let totalRegular = 0, totalOT = 0, totalPremium = 0;
+      for (const r of allReports) {
+        totalRegular += parseFloat(r.regularHours || '0');
+        totalOT += parseFloat(r.otHours || '0');
+        totalPremium += parseFloat((r as any).premiumHours || '0');
+      }
+      const totalHoursUsed = totalRegular + totalOT + totalPremium;
+      
+      // Get inspector names
+      const inspectorIds = Array.from(new Set(allReports.map((r: any) => r.inspectorId).filter(Boolean))) as string[];
+      const inspectorNameMap = new Map<string, string>();
+      for (const inspId of inspectorIds) {
+        const inspProfile = await storage.getUserProfile(inspId);
+        if (inspProfile) {
+          inspectorNameMap.set(inspId, `${inspProfile.firstName || ''} ${inspProfile.lastName || ''}`.trim() || 'Unknown');
+        }
+      }
+      
+      // Team hours
+      const teamHours: Record<string, { regular: number; overtime: number; premium: number; reportCount: number }> = {};
+      for (const r of allReports) {
+        const inspId = (r as any).inspectorId || 'unknown';
+        if (!teamHours[inspId]) teamHours[inspId] = { regular: 0, overtime: 0, premium: 0, reportCount: 0 };
+        teamHours[inspId].regular += parseFloat(r.regularHours || '0');
+        teamHours[inspId].overtime += parseFloat(r.otHours || '0');
+        teamHours[inspId].premium += parseFloat((r as any).premiumHours || '0');
+        teamHours[inspId].reportCount += 1;
+      }
+      
+      // Recent reports
+      const now = new Date();
+      const recentReports = allReports
+        .sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime())
+        .slice(0, 5)
+        .map((r: any) => ({
+          date: r.date instanceof Date ? r.date.toISOString() : String(r.date),
+          inspectorName: inspectorNameMap.get(r.inspectorId || '') || 'Unknown',
+          weatherType: r.weatherType,
+          workDescription: r.workPerformed,
+        }));
+      
+      const pdfBuffer = await generateCurrentStatusPdf({
+        projectName: company?.name || 'Company',
+        projectNumber: 'Company-Wide Report',
+        clientName: '',
+        companyName: company?.name || '',
+        companyLogoBuffer: logoBuffer,
+        schedule: {
+          progress: 0,
+          status: 'on_track',
+          startDate: null,
+          endDate: null,
+          daysRemaining: null,
+          daysOverdue: null,
+        },
+        hours: {
+          budgeted: 0,
+          baseBudget: 0,
+          used: totalHoursUsed,
+          remaining: 0,
+          progress: 0,
+          status: 'on_track',
+          breakdown: { regular: totalRegular, overtime: totalOT, premium: totalPremium },
+        },
+        milestones: [],
+        teamOverview: Object.entries(teamHours).map(([inspId, hours]) => ({
+          inspectorName: inspectorNameMap.get(inspId) || 'Unknown',
+          regular: hours.regular,
+          overtime: hours.overtime,
+          premium: hours.premium,
+          reportCount: hours.reportCount,
+        })),
+        recentActivity: recentReports,
+        keyMetrics: {
+          totalReports: allReports.length,
+          totalHours: totalHoursUsed,
+          issuesCount: allReports.filter((r: any) => r.issuesFlag).length,
+          safetyIncidentsCount: allReports.filter((r: any) => r.safetyFlag).length,
+        },
+      });
+      
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="${(company?.name || 'Company').replace(/[^a-z0-9]/gi, '_')}_Current_Status_${format(now, 'MMM_d_yyyy')}.pdf"`);
+      res.send(pdfBuffer);
+    } catch (error) {
+      console.error("Error generating company current status:", error);
+      res.status(500).json({ message: "Failed to generate current status" });
+    }
+  });
+
+  // Company Weekly Summary Email
+  app.post("/api/company/weekly-summary/email", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const { weekStart, weekEnd, additionalEmails } = req.body;
+      
+      if (!weekStart || !weekEnd) {
+        return res.status(400).json({ message: "Week start and end dates are required" });
+      }
+      
+      const profile = await storage.getUserProfile(userId);
+      if (!profile?.activeCompanyId) {
+        return res.status(400).json({ message: "No active company" });
+      }
+      
+      const isMember = await storage.isUserMemberOfCompany(profile.activeCompanyId, userId);
+      const isCompAdmin = await isEffectiveCompanyAdmin(userId, profile.activeCompanyId, profile);
+      if (!isEffectiveSystemAdmin(profile) && !isMember && !isCompAdmin) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      const recipients: string[] = [];
+      if (additionalEmails && Array.isArray(additionalEmails)) {
+        recipients.push(...additionalEmails.filter((e: string) => e && e.includes('@')));
+      }
+      const uniqueRecipients = Array.from(new Set(recipients));
+      
+      if (uniqueRecipients.length === 0) {
+        return res.status(400).json({ message: "No recipients specified" });
+      }
+      
+      const company = await storage.getCompany(profile.activeCompanyId);
+      const startDate = new Date(weekStart);
+      const endDate = new Date(weekEnd);
+      const allReports = await storage.getCompanyReports(profile.activeCompanyId);
+      const weeklyReports = allReports.filter((r: any) => {
+        const reportDate = new Date(r.date);
+        return reportDate >= startDate && reportDate <= endDate;
+      });
+      
+      let totalRegular = 0, totalOT = 0, totalPremium = 0;
+      for (const r of weeklyReports) {
+        totalRegular += parseFloat(r.regularHours || '0');
+        totalOT += parseFloat(r.otHours || '0');
+        totalPremium += parseFloat((r as any).premiumHours || '0');
+      }
+      const totalHoursUsed = totalRegular + totalOT + totalPremium;
+      
+      const weekLabel = format(startDate, 'MMM d') + ' - ' + format(endDate, 'MMM d, yyyy');
+      
+      await sendEmail({
+        to: uniqueRecipients,
+        subject: `Weekly Company Summary: ${company?.name || 'Company'} - ${weekLabel}`,
+        html: `<div style="font-family: Arial, sans-serif;"><h2>Weekly Company Summary</h2><p>Company: <strong>${company?.name || ''}</strong><br/>Week: ${weekLabel}</p><p>Total Reports: ${weeklyReports.length}<br/>Total Hours: ${totalHoursUsed.toFixed(1)}</p></div>`,
+      });
+      
+      res.json({ success: true, message: `Weekly summary sent to ${uniqueRecipients.length} recipient(s)`, recipients: uniqueRecipients });
+    } catch (error) {
+      console.error("Error emailing company weekly summary:", error);
+      res.status(500).json({ message: "Failed to send weekly summary email" });
+    }
+  });
+
+  // Company Monthly Summary Email
+  app.post("/api/company/monthly-summary/email", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const { month, year, additionalEmails } = req.body;
+      
+      if (!month || !year) {
+        return res.status(400).json({ message: "Month and year are required" });
+      }
+      
+      const profile = await storage.getUserProfile(userId);
+      if (!profile?.activeCompanyId) {
+        return res.status(400).json({ message: "No active company" });
+      }
+      
+      const isMember = await storage.isUserMemberOfCompany(profile.activeCompanyId, userId);
+      const isCompAdmin = await isEffectiveCompanyAdmin(userId, profile.activeCompanyId, profile);
+      if (!isEffectiveSystemAdmin(profile) && !isMember && !isCompAdmin) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      const recipients: string[] = [];
+      if (additionalEmails && Array.isArray(additionalEmails)) {
+        recipients.push(...additionalEmails.filter((e: string) => e && e.includes('@')));
+      }
+      const uniqueRecipients = Array.from(new Set(recipients));
+      
+      if (uniqueRecipients.length === 0) {
+        return res.status(400).json({ message: "No recipients specified" });
+      }
+      
+      const company = await storage.getCompany(profile.activeCompanyId);
+      const monthNum = parseInt(month);
+      const yearNum = parseInt(year);
+      const startDate = new Date(yearNum, monthNum - 1, 1);
+      const endDate = new Date(yearNum, monthNum, 0);
+      
+      const allReports = await storage.getCompanyReports(profile.activeCompanyId);
+      const monthlyReports = allReports.filter((r: any) => {
+        const reportDate = new Date(r.date);
+        return reportDate >= startDate && reportDate <= endDate;
+      });
+      
+      let totalRegular = 0, totalOT = 0, totalPremium = 0;
+      for (const r of monthlyReports) {
+        totalRegular += parseFloat(r.regularHours || '0');
+        totalOT += parseFloat(r.otHours || '0');
+        totalPremium += parseFloat((r as any).premiumHours || '0');
+      }
+      const totalHoursUsed = totalRegular + totalOT + totalPremium;
+      const monthLabel = format(startDate, 'MMMM yyyy');
+      
+      await sendEmail({
+        to: uniqueRecipients,
+        subject: `Monthly Company Summary: ${company?.name || 'Company'} - ${monthLabel}`,
+        html: `<div style="font-family: Arial, sans-serif;"><h2>Monthly Company Summary</h2><p>Company: <strong>${company?.name || ''}</strong><br/>Month: ${monthLabel}</p><p>Total Reports: ${monthlyReports.length}<br/>Total Hours: ${totalHoursUsed.toFixed(1)}</p></div>`,
+      });
+      
+      res.json({ success: true, message: `Monthly summary sent to ${uniqueRecipients.length} recipient(s)`, recipients: uniqueRecipients });
+    } catch (error) {
+      console.error("Error emailing company monthly summary:", error);
+      res.status(500).json({ message: "Failed to send monthly summary email" });
+    }
+  });
+
+  // Company Current Status Email
+  app.post("/api/company/current-status/email", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const { additionalEmails } = req.body;
+      
+      const profile = await storage.getUserProfile(userId);
+      if (!profile?.activeCompanyId) {
+        return res.status(400).json({ message: "No active company" });
+      }
+      
+      const isMember = await storage.isUserMemberOfCompany(profile.activeCompanyId, userId);
+      const isCompAdmin = await isEffectiveCompanyAdmin(userId, profile.activeCompanyId, profile);
+      if (!isEffectiveSystemAdmin(profile) && !isMember && !isCompAdmin) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      const recipients: string[] = [];
+      if (additionalEmails && Array.isArray(additionalEmails)) {
+        recipients.push(...additionalEmails.filter((e: string) => e && e.includes('@')));
+      }
+      const uniqueRecipients = Array.from(new Set(recipients));
+      
+      if (uniqueRecipients.length === 0) {
+        return res.status(400).json({ message: "No recipients specified" });
+      }
+      
+      const company = await storage.getCompany(profile.activeCompanyId);
+      const allReports = await storage.getCompanyReports(profile.activeCompanyId);
+      
+      let totalRegular = 0, totalOT = 0, totalPremium = 0;
+      for (const r of allReports) {
+        totalRegular += parseFloat(r.regularHours || '0');
+        totalOT += parseFloat(r.otHours || '0');
+        totalPremium += parseFloat((r as any).premiumHours || '0');
+      }
+      const totalHoursUsed = totalRegular + totalOT + totalPremium;
+      
+      const now = new Date();
+      const dateLabel = format(now, 'MMM d, yyyy');
+      
+      await sendEmail({
+        to: uniqueRecipients,
+        subject: `Company Current Status: ${company?.name || 'Company'} - ${dateLabel}`,
+        html: `<div style="font-family: Arial, sans-serif;"><h2>Company Current Status</h2><p>Company: <strong>${company?.name || ''}</strong><br/>As of: ${dateLabel}</p><p>Total Reports: ${allReports.length}<br/>Total Hours: ${totalHoursUsed.toFixed(1)}</p></div>`,
+      });
+      
+      res.json({ success: true, message: `Current status sent to ${uniqueRecipients.length} recipient(s)`, recipients: uniqueRecipients });
+    } catch (error) {
+      console.error("Error emailing company current status:", error);
+      res.status(500).json({ message: "Failed to send current status email" });
+    }
+  });
+
   // ========== CONTRACTS ==========
   const contractStatusLabels: Record<string, string> = {
     bid_release: "Bid Release",
@@ -3065,6 +4512,688 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error creating contract:", error);
       res.status(500).json({ message: "Failed to create contract" });
+    }
+  });
+
+  // Contract Monthly Summary PDF
+  app.get("/api/contracts/:id/monthly-summary", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const contractId = req.params.id;
+      const { month, year } = req.query;
+      
+      if (!month || !year) {
+        return res.status(400).json({ message: "Month and year are required" });
+      }
+      
+      const contract = await storage.getContract(contractId);
+      if (!contract) {
+        return res.status(404).json({ message: "Contract not found" });
+      }
+      
+      const profile = await storage.getUserProfile(userId);
+      const isMember = await storage.isUserMemberOfCompany(contract.companyId, userId);
+      if (!isEffectiveSystemAdmin(profile) && !isMember) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      // Get company info
+      let company = null;
+      let logoBuffer: Buffer | undefined = undefined;
+      company = await storage.getCompany(contract.companyId);
+      if (company?.logoPath) {
+        try {
+          logoBuffer = await objectStorage.downloadBuffer(company.logoPath);
+        } catch (e) {
+          console.log("Could not load company logo");
+        }
+      }
+      
+      const monthNum = parseInt(month as string);
+      const yearNum = parseInt(year as string);
+      const startDate = new Date(yearNum, monthNum - 1, 1);
+      const endDate = new Date(yearNum, monthNum, 0);
+      
+      // Get all reports from all projects under this contract
+      const allReports = await storage.getReportsByContractProjects(contractId);
+      const monthlyReports = allReports.filter((r: any) => {
+        const reportDate = new Date(r.date);
+        return reportDate >= startDate && reportDate <= endDate;
+      });
+      
+      // Calculate totals
+      let totalRegular = 0, totalOT = 0, totalPremium = 0;
+      for (const r of monthlyReports) {
+        totalRegular += parseFloat(r.regularHours || '0');
+        totalOT += parseFloat(r.otHours || '0');
+        totalPremium += parseFloat((r as any).premiumHours || '0');
+      }
+      
+      // Get inspector names
+      const inspectorIds = Array.from(new Set(monthlyReports.map((r: any) => r.inspectorId).filter(Boolean))) as string[];
+      const inspectorNameMap = new Map<string, string>();
+      for (const inspId of inspectorIds) {
+        const inspProfile = await storage.getUserProfile(inspId);
+        if (inspProfile) {
+          inspectorNameMap.set(inspId, `${inspProfile.firstName || ''} ${inspProfile.lastName || ''}`.trim() || 'Unknown');
+        }
+      }
+      
+      const dailyReportsData = monthlyReports.map((r: any) => ({
+        id: r.id,
+        date: r.date instanceof Date ? r.date.toISOString() : String(r.date),
+        inspectorName: inspectorNameMap.get(r.inspectorId) || 'Unknown',
+        regularHours: parseFloat(r.regularHours || '0'),
+        otHours: parseFloat(r.otHours || '0'),
+        premiumHours: parseFloat((r as any).premiumHours || '0'),
+        weatherType: r.weatherType,
+        workDescription: r.workPerformed,
+        notes: r.notes,
+        issues: r.issuesDetails,
+        safetyIncidents: r.safetyDetails,
+      })).sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime());
+      
+      // Weather summary
+      const weatherCounts: Record<string, number> = {};
+      for (const r of monthlyReports) {
+        weatherCounts[(r as any).weatherType || 'unknown'] = (weatherCounts[(r as any).weatherType || 'unknown'] || 0) + 1;
+      }
+      
+      // Team hours
+      const teamHours: Record<string, { regular: number; overtime: number; premium: number; reportCount: number }> = {};
+      for (const r of monthlyReports) {
+        const inspId = (r as any).inspectorId || 'unknown';
+        if (!teamHours[inspId]) teamHours[inspId] = { regular: 0, overtime: 0, premium: 0, reportCount: 0 };
+        teamHours[inspId].regular += parseFloat(r.regularHours || '0');
+        teamHours[inspId].overtime += parseFloat(r.otHours || '0');
+        teamHours[inspId].premium += parseFloat((r as any).premiumHours || '0');
+        teamHours[inspId].reportCount += 1;
+      }
+      
+      // Get client name
+      let clientName = '';
+      if (contract.clientId) {
+        const client = await storage.getClient(contract.clientId);
+        if (client) clientName = client.name;
+      }
+      
+      const budgetedHours = parseFloat(contract.budgetOverride || contract.currentValue || '0');
+      const totalHoursUsed = totalRegular + totalOT + totalPremium;
+      
+      const pdfBuffer = await generateMonthlySummaryPdf({
+        projectName: contract.name,
+        projectNumber: contract.contractNumber || '',
+        clientName,
+        companyName: company?.name || '',
+        companyLogoBuffer: logoBuffer,
+        month: monthNum,
+        year: yearNum,
+        schedule: {
+          progress: 0,
+          status: 'on_track',
+          startDate: contract.startDate ? String(contract.startDate) : null,
+          endDate: contract.substantialCompletionDate ? String(contract.substantialCompletionDate) : null,
+          daysRemaining: null,
+        },
+        hours: {
+          budgeted: budgetedHours,
+          baseBudget: 0,
+          used: totalHoursUsed,
+          remaining: Math.max(0, budgetedHours - totalHoursUsed),
+          progress: budgetedHours > 0 ? (totalHoursUsed / budgetedHours) * 100 : 0,
+          breakdown: { regular: totalRegular, overtime: totalOT, premium: totalPremium },
+        },
+        dailyReports: dailyReportsData,
+        weatherSummary: {
+          totalReports: monthlyReports.length,
+          breakdown: Object.entries(weatherCounts).map(([type, count]) => ({
+            type, count, percentage: monthlyReports.length > 0 ? Math.round((count / monthlyReports.length) * 100) : 0,
+          })),
+        },
+        issuesSummary: {
+          totalCount: monthlyReports.filter((r: any) => r.issuesFlag).length,
+          issues: monthlyReports.filter((r: any) => r.issuesFlag).map((r: any) => ({
+            date: r.date instanceof Date ? r.date.toISOString() : String(r.date),
+            details: r.issuesDetails || '',
+          })),
+        },
+        safetySummary: {
+          totalCount: monthlyReports.filter((r: any) => r.safetyFlag).length,
+          incidents: monthlyReports.filter((r: any) => r.safetyFlag).map((r: any) => ({
+            date: r.date instanceof Date ? r.date.toISOString() : String(r.date),
+            details: r.safetyDetails || '',
+          })),
+        },
+        teamOverview: Object.entries(teamHours).map(([inspId, hours]) => ({
+          inspectorName: inspectorNameMap.get(inspId) || 'Unknown',
+          ...hours,
+        })),
+        upcomingMilestones: [],
+      });
+      
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="${contract.name.replace(/[^a-z0-9]/gi, '_')}_Monthly_Summary_${format(startDate, 'MMMM_yyyy')}.pdf"`);
+      res.send(pdfBuffer);
+    } catch (error) {
+      console.error("Error generating contract monthly summary:", error);
+      res.status(500).json({ message: "Failed to generate monthly summary" });
+    }
+  });
+
+  // Contract Weekly Summary PDF
+  app.get("/api/contracts/:id/weekly-summary", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const contractId = req.params.id;
+      const { weekStart, weekEnd } = req.query;
+      
+      if (!weekStart || !weekEnd) {
+        return res.status(400).json({ message: "Week start and end dates are required" });
+      }
+      
+      const contract = await storage.getContract(contractId);
+      if (!contract) {
+        return res.status(404).json({ message: "Contract not found" });
+      }
+      
+      const profile = await storage.getUserProfile(userId);
+      const isMember = await storage.isUserMemberOfCompany(contract.companyId, userId);
+      if (!isEffectiveSystemAdmin(profile) && !isMember) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      // Get company info
+      let company = null;
+      let logoBuffer: Buffer | undefined = undefined;
+      company = await storage.getCompany(contract.companyId);
+      if (company?.logoPath) {
+        try {
+          logoBuffer = await objectStorage.downloadBuffer(company.logoPath);
+        } catch (e) {
+          console.log("Could not load company logo");
+        }
+      }
+      
+      const startDate = new Date(weekStart as string);
+      const endDate = new Date(weekEnd as string);
+      
+      // Get all reports from all projects under this contract
+      const allReports = await storage.getReportsByContractProjects(contractId);
+      const weeklyReports = allReports.filter((r: any) => {
+        const reportDate = new Date(r.date);
+        return reportDate >= startDate && reportDate <= endDate;
+      });
+      
+      // Calculate totals
+      let totalRegular = 0, totalOT = 0, totalPremium = 0;
+      for (const r of weeklyReports) {
+        totalRegular += parseFloat(r.regularHours || '0');
+        totalOT += parseFloat(r.otHours || '0');
+        totalPremium += parseFloat((r as any).premiumHours || '0');
+      }
+      
+      // Get inspector names
+      const inspectorIds = Array.from(new Set(weeklyReports.map((r: any) => r.inspectorId).filter(Boolean))) as string[];
+      const inspectorNameMap = new Map<string, string>();
+      for (const inspId of inspectorIds) {
+        const inspProfile = await storage.getUserProfile(inspId);
+        if (inspProfile) {
+          inspectorNameMap.set(inspId, `${inspProfile.firstName || ''} ${inspProfile.lastName || ''}`.trim() || 'Unknown');
+        }
+      }
+      
+      const dailyReportsData = weeklyReports.map((r: any) => ({
+        id: r.id,
+        date: r.date instanceof Date ? r.date.toISOString() : String(r.date),
+        inspectorName: inspectorNameMap.get(r.inspectorId) || 'Unknown',
+        regularHours: parseFloat(r.regularHours || '0'),
+        otHours: parseFloat(r.otHours || '0'),
+        premiumHours: parseFloat((r as any).premiumHours || '0'),
+        weatherType: r.weatherType,
+        workDescription: r.workPerformed,
+        notes: r.notes,
+        issues: r.issuesDetails,
+        safetyIncidents: r.safetyDetails,
+      })).sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime());
+      
+      // Weather summary
+      const weatherCounts: Record<string, number> = {};
+      for (const r of weeklyReports) {
+        weatherCounts[(r as any).weatherType || 'unknown'] = (weatherCounts[(r as any).weatherType || 'unknown'] || 0) + 1;
+      }
+      
+      // Team hours
+      const teamHours: Record<string, { regular: number; overtime: number; premium: number; reportCount: number }> = {};
+      for (const r of weeklyReports) {
+        const inspId = (r as any).inspectorId || 'unknown';
+        if (!teamHours[inspId]) teamHours[inspId] = { regular: 0, overtime: 0, premium: 0, reportCount: 0 };
+        teamHours[inspId].regular += parseFloat(r.regularHours || '0');
+        teamHours[inspId].overtime += parseFloat(r.otHours || '0');
+        teamHours[inspId].premium += parseFloat((r as any).premiumHours || '0');
+        teamHours[inspId].reportCount += 1;
+      }
+      
+      // Get client name
+      let clientName = '';
+      if (contract.clientId) {
+        const client = await storage.getClient(contract.clientId);
+        if (client) clientName = client.name;
+      }
+      
+      const budgetedHours = parseFloat(contract.budgetOverride || contract.currentValue || '0');
+      const totalHoursUsed = totalRegular + totalOT + totalPremium;
+      
+      const pdfBuffer = await generateWeeklySummaryPdf({
+        projectName: contract.name,
+        projectNumber: contract.contractNumber || '',
+        clientName,
+        companyName: company?.name || '',
+        companyLogoBuffer: logoBuffer,
+        weekStart: weekStart as string,
+        weekEnd: weekEnd as string,
+        schedule: {
+          progress: 0,
+          status: 'on_track',
+          startDate: contract.startDate ? String(contract.startDate) : null,
+          endDate: contract.substantialCompletionDate ? String(contract.substantialCompletionDate) : null,
+          daysRemaining: null,
+        },
+        hours: {
+          budgeted: budgetedHours,
+          baseBudget: 0,
+          used: totalHoursUsed,
+          remaining: Math.max(0, budgetedHours - totalHoursUsed),
+          progress: budgetedHours > 0 ? (totalHoursUsed / budgetedHours) * 100 : 0,
+          breakdown: { regular: totalRegular, overtime: totalOT, premium: totalPremium },
+        },
+        dailyReports: dailyReportsData,
+        weatherSummary: {
+          totalReports: weeklyReports.length,
+          breakdown: Object.entries(weatherCounts).map(([type, count]) => ({
+            type, count, percentage: weeklyReports.length > 0 ? Math.round((count / weeklyReports.length) * 100) : 0,
+          })),
+        },
+        issuesSummary: {
+          totalCount: weeklyReports.filter((r: any) => r.issuesFlag).length,
+          issues: weeklyReports.filter((r: any) => r.issuesFlag).map((r: any) => ({
+            date: r.date instanceof Date ? r.date.toISOString() : String(r.date),
+            details: r.issuesDetails || '',
+          })),
+        },
+        safetySummary: {
+          totalCount: weeklyReports.filter((r: any) => r.safetyFlag).length,
+          incidents: weeklyReports.filter((r: any) => r.safetyFlag).map((r: any) => ({
+            date: r.date instanceof Date ? r.date.toISOString() : String(r.date),
+            details: r.safetyDetails || '',
+          })),
+        },
+        teamOverview: Object.entries(teamHours).map(([inspId, hours]) => ({
+          inspectorName: inspectorNameMap.get(inspId) || 'Unknown',
+          ...hours,
+        })),
+      });
+      
+      const weekLabel = format(startDate, 'MMM_d') + '_to_' + format(endDate, 'MMM_d_yyyy');
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="${contract.name.replace(/[^a-z0-9]/gi, '_')}_Weekly_Summary_${weekLabel}.pdf"`);
+      res.send(pdfBuffer);
+    } catch (error) {
+      console.error("Error generating contract weekly summary:", error);
+      res.status(500).json({ message: "Failed to generate weekly summary" });
+    }
+  });
+
+  // Contract Current Status PDF
+  app.get("/api/contracts/:id/current-status", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const contractId = req.params.id;
+      
+      const contract = await storage.getContract(contractId);
+      if (!contract) {
+        return res.status(404).json({ message: "Contract not found" });
+      }
+      
+      const profile = await storage.getUserProfile(userId);
+      const isMember = await storage.isUserMemberOfCompany(contract.companyId, userId);
+      if (!isEffectiveSystemAdmin(profile) && !isMember) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      // Get company info
+      let company = null;
+      let logoBuffer: Buffer | undefined = undefined;
+      company = await storage.getCompany(contract.companyId);
+      if (company?.logoPath) {
+        try {
+          logoBuffer = await objectStorage.downloadBuffer(company.logoPath);
+        } catch (e) {
+          console.log("Could not load company logo");
+        }
+      }
+      
+      // Get all reports from all projects under this contract
+      const allReports = await storage.getReportsByContractProjects(contractId);
+      
+      // Calculate totals
+      let totalRegular = 0, totalOT = 0, totalPremium = 0;
+      for (const r of allReports) {
+        totalRegular += parseFloat(r.regularHours || '0');
+        totalOT += parseFloat(r.otHours || '0');
+        totalPremium += parseFloat((r as any).premiumHours || '0');
+      }
+      const totalHoursUsed = totalRegular + totalOT + totalPremium;
+      
+      // Get inspector names
+      const inspectorIds = Array.from(new Set(allReports.map((r: any) => r.inspectorId).filter(Boolean))) as string[];
+      const inspectorNameMap = new Map<string, string>();
+      for (const inspId of inspectorIds) {
+        const inspProfile = await storage.getUserProfile(inspId);
+        if (inspProfile) {
+          inspectorNameMap.set(inspId, `${inspProfile.firstName || ''} ${inspProfile.lastName || ''}`.trim() || 'Unknown');
+        }
+      }
+      
+      // Team hours
+      const teamHours: Record<string, { regular: number; overtime: number; premium: number; reportCount: number }> = {};
+      for (const r of allReports) {
+        const inspId = (r as any).inspectorId || 'unknown';
+        if (!teamHours[inspId]) teamHours[inspId] = { regular: 0, overtime: 0, premium: 0, reportCount: 0 };
+        teamHours[inspId].regular += parseFloat(r.regularHours || '0');
+        teamHours[inspId].overtime += parseFloat(r.otHours || '0');
+        teamHours[inspId].premium += parseFloat((r as any).premiumHours || '0');
+        teamHours[inspId].reportCount += 1;
+      }
+      
+      // Calculate schedule progress
+      const now = new Date();
+      let scheduleProgress = 0;
+      let scheduleStatus = 'not_started';
+      let daysRemaining: number | null = null;
+      let daysOverdue: number | null = null;
+      
+      if (contract.startDate && contract.substantialCompletionDate) {
+        const start = new Date(contract.startDate);
+        const end = new Date(contract.substantialCompletionDate);
+        const totalDays = Math.max(1, (end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+        const elapsedDays = (now.getTime() - start.getTime()) / (1000 * 60 * 60 * 24);
+        
+        if (now < start) {
+          scheduleProgress = 0;
+          scheduleStatus = 'not_started';
+        } else if (now > end) {
+          scheduleProgress = 100;
+          daysOverdue = Math.ceil((now.getTime() - end.getTime()) / (1000 * 60 * 60 * 24));
+          scheduleStatus = 'overdue';
+        } else {
+          scheduleProgress = Math.min(100, (elapsedDays / totalDays) * 100);
+          daysRemaining = Math.ceil((end.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+          scheduleStatus = scheduleProgress > 75 ? 'warning' : 'on_track';
+        }
+      }
+      
+      const budgetedHours = parseFloat(contract.budgetOverride || contract.currentValue || '0');
+      const budgetProgress = budgetedHours > 0 ? (totalHoursUsed / budgetedHours) * 100 : 0;
+      const budgetStatus = budgetProgress >= 100 ? 'over' : budgetProgress >= 75 ? 'warning' : 'on_track';
+      
+      // Get client name
+      let clientName = '';
+      if (contract.clientId) {
+        const client = await storage.getClient(contract.clientId);
+        if (client) clientName = client.name;
+      }
+      
+      // Recent reports
+      const recentReports = allReports
+        .sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime())
+        .slice(0, 5)
+        .map((r: any) => ({
+          date: r.date instanceof Date ? r.date.toISOString() : String(r.date),
+          inspectorName: inspectorNameMap.get(r.inspectorId || '') || 'Unknown',
+          weatherType: r.weatherType,
+          workDescription: r.workPerformed,
+        }));
+      
+      const pdfBuffer = await generateCurrentStatusPdf({
+        projectName: contract.name,
+        projectNumber: contract.contractNumber || '',
+        clientName,
+        companyName: company?.name || '',
+        companyLogoBuffer: logoBuffer,
+        schedule: {
+          progress: scheduleProgress,
+          status: scheduleStatus,
+          startDate: contract.startDate ? String(contract.startDate) : null,
+          endDate: contract.substantialCompletionDate ? String(contract.substantialCompletionDate) : null,
+          daysRemaining,
+          daysOverdue,
+        },
+        hours: {
+          budgeted: budgetedHours,
+          baseBudget: 0,
+          used: totalHoursUsed,
+          remaining: Math.max(0, budgetedHours - totalHoursUsed),
+          progress: budgetProgress,
+          status: budgetStatus,
+          breakdown: { regular: totalRegular, overtime: totalOT, premium: totalPremium },
+        },
+        milestones: [],
+        teamOverview: Object.entries(teamHours).map(([inspId, hours]) => ({
+          inspectorName: inspectorNameMap.get(inspId) || 'Unknown',
+          regular: hours.regular,
+          overtime: hours.overtime,
+          premium: hours.premium,
+          reportCount: hours.reportCount,
+        })),
+        recentActivity: recentReports,
+        keyMetrics: {
+          totalReports: allReports.length,
+          totalHours: totalHoursUsed,
+          issuesCount: allReports.filter((r: any) => r.issuesFlag).length,
+          safetyIncidentsCount: allReports.filter((r: any) => r.safetyFlag).length,
+        },
+      });
+      
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="${contract.name.replace(/[^a-z0-9]/gi, '_')}_Current_Status_${format(now, 'MMM_d_yyyy')}.pdf"`);
+      res.send(pdfBuffer);
+    } catch (error) {
+      console.error("Error generating contract current status:", error);
+      res.status(500).json({ message: "Failed to generate current status" });
+    }
+  });
+
+  // Contract Weekly Summary Email
+  app.post("/api/contracts/:id/weekly-summary/email", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const contractId = req.params.id;
+      const { weekStart, weekEnd, additionalEmails } = req.body;
+      
+      if (!weekStart || !weekEnd) {
+        return res.status(400).json({ message: "Week start and end dates are required" });
+      }
+      
+      const contract = await storage.getContract(contractId);
+      if (!contract) {
+        return res.status(404).json({ message: "Contract not found" });
+      }
+      
+      const profile = await storage.getUserProfile(userId);
+      const isMember = await storage.isUserMemberOfCompany(contract.companyId, userId);
+      if (!isEffectiveSystemAdmin(profile) && !isMember) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      // Collect recipients
+      const recipients: string[] = [];
+      if (additionalEmails && Array.isArray(additionalEmails)) {
+        recipients.push(...additionalEmails.filter((e: string) => e && e.includes('@')));
+      }
+      const uniqueRecipients = Array.from(new Set(recipients));
+      
+      if (uniqueRecipients.length === 0) {
+        return res.status(400).json({ message: "No recipients specified" });
+      }
+      
+      // Get company info
+      const company = await storage.getCompany(contract.companyId);
+      let logoBuffer: Buffer | undefined;
+      if (company?.logoPath) {
+        try { logoBuffer = await objectStorage.downloadBuffer(company.logoPath); } catch (e) {}
+      }
+      
+      const startDate = new Date(weekStart);
+      const endDate = new Date(weekEnd);
+      const allReports = await storage.getReportsByContractProjects(contractId);
+      const weeklyReports = allReports.filter((r: any) => {
+        const reportDate = new Date(r.date);
+        return reportDate >= startDate && reportDate <= endDate;
+      });
+      
+      let totalRegular = 0, totalOT = 0, totalPremium = 0;
+      for (const r of weeklyReports) {
+        totalRegular += parseFloat(r.regularHours || '0');
+        totalOT += parseFloat(r.otHours || '0');
+        totalPremium += parseFloat((r as any).premiumHours || '0');
+      }
+      const totalHoursUsed = totalRegular + totalOT + totalPremium;
+      
+      const weekLabel = format(startDate, 'MMM d') + ' - ' + format(endDate, 'MMM d, yyyy');
+      
+      await sendEmail({
+        to: uniqueRecipients,
+        subject: `Weekly Summary: ${contract.name} - ${weekLabel}`,
+        html: `<div style="font-family: Arial, sans-serif;"><h2>Weekly Contract Summary</h2><p>Contract: <strong>${contract.name}</strong><br/>Week: ${weekLabel}</p><p>Total Reports: ${weeklyReports.length}<br/>Total Hours: ${totalHoursUsed.toFixed(1)}</p><p style="color:#999;font-size:12px;">${company?.name || ''}</p></div>`,
+      });
+      
+      res.json({ success: true, message: `Weekly summary sent to ${uniqueRecipients.length} recipient(s)`, recipients: uniqueRecipients });
+    } catch (error) {
+      console.error("Error emailing contract weekly summary:", error);
+      res.status(500).json({ message: "Failed to send weekly summary email" });
+    }
+  });
+
+  // Contract Monthly Summary Email
+  app.post("/api/contracts/:id/monthly-summary/email", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const contractId = req.params.id;
+      const { month, year, additionalEmails } = req.body;
+      
+      if (!month || !year) {
+        return res.status(400).json({ message: "Month and year are required" });
+      }
+      
+      const contract = await storage.getContract(contractId);
+      if (!contract) {
+        return res.status(404).json({ message: "Contract not found" });
+      }
+      
+      const profile = await storage.getUserProfile(userId);
+      const isMember = await storage.isUserMemberOfCompany(contract.companyId, userId);
+      if (!isEffectiveSystemAdmin(profile) && !isMember) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      // Collect recipients
+      const recipients: string[] = [];
+      if (additionalEmails && Array.isArray(additionalEmails)) {
+        recipients.push(...additionalEmails.filter((e: string) => e && e.includes('@')));
+      }
+      const uniqueRecipients = Array.from(new Set(recipients));
+      
+      if (uniqueRecipients.length === 0) {
+        return res.status(400).json({ message: "No recipients specified" });
+      }
+      
+      const company = await storage.getCompany(contract.companyId);
+      const monthNum = parseInt(month);
+      const yearNum = parseInt(year);
+      const startDate = new Date(yearNum, monthNum - 1, 1);
+      const endDate = new Date(yearNum, monthNum, 0);
+      
+      const allReports = await storage.getReportsByContractProjects(contractId);
+      const monthlyReports = allReports.filter((r: any) => {
+        const reportDate = new Date(r.date);
+        return reportDate >= startDate && reportDate <= endDate;
+      });
+      
+      let totalRegular = 0, totalOT = 0, totalPremium = 0;
+      for (const r of monthlyReports) {
+        totalRegular += parseFloat(r.regularHours || '0');
+        totalOT += parseFloat(r.otHours || '0');
+        totalPremium += parseFloat((r as any).premiumHours || '0');
+      }
+      const totalHoursUsed = totalRegular + totalOT + totalPremium;
+      const monthLabel = format(startDate, 'MMMM yyyy');
+      
+      await sendEmail({
+        to: uniqueRecipients,
+        subject: `Monthly Summary: ${contract.name} - ${monthLabel}`,
+        html: `<div style="font-family: Arial, sans-serif;"><h2>Monthly Contract Summary</h2><p>Contract: <strong>${contract.name}</strong><br/>Month: ${monthLabel}</p><p>Total Reports: ${monthlyReports.length}<br/>Total Hours: ${totalHoursUsed.toFixed(1)}</p><p style="color:#999;font-size:12px;">${company?.name || ''}</p></div>`,
+      });
+      
+      res.json({ success: true, message: `Monthly summary sent to ${uniqueRecipients.length} recipient(s)`, recipients: uniqueRecipients });
+    } catch (error) {
+      console.error("Error emailing contract monthly summary:", error);
+      res.status(500).json({ message: "Failed to send monthly summary email" });
+    }
+  });
+
+  // Contract Current Status Email
+  app.post("/api/contracts/:id/current-status/email", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const contractId = req.params.id;
+      const { additionalEmails } = req.body;
+      
+      const contract = await storage.getContract(contractId);
+      if (!contract) {
+        return res.status(404).json({ message: "Contract not found" });
+      }
+      
+      const profile = await storage.getUserProfile(userId);
+      const isMember = await storage.isUserMemberOfCompany(contract.companyId, userId);
+      if (!isEffectiveSystemAdmin(profile) && !isMember) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      // Collect recipients
+      const recipients: string[] = [];
+      if (additionalEmails && Array.isArray(additionalEmails)) {
+        recipients.push(...additionalEmails.filter((e: string) => e && e.includes('@')));
+      }
+      const uniqueRecipients = Array.from(new Set(recipients));
+      
+      if (uniqueRecipients.length === 0) {
+        return res.status(400).json({ message: "No recipients specified" });
+      }
+      
+      const company = await storage.getCompany(contract.companyId);
+      const allReports = await storage.getReportsByContractProjects(contractId);
+      
+      let totalRegular = 0, totalOT = 0, totalPremium = 0;
+      for (const r of allReports) {
+        totalRegular += parseFloat(r.regularHours || '0');
+        totalOT += parseFloat(r.otHours || '0');
+        totalPremium += parseFloat((r as any).premiumHours || '0');
+      }
+      const totalHoursUsed = totalRegular + totalOT + totalPremium;
+      
+      const now = new Date();
+      const dateLabel = format(now, 'MMM d, yyyy');
+      
+      await sendEmail({
+        to: uniqueRecipients,
+        subject: `Current Status: ${contract.name} - ${dateLabel}`,
+        html: `<div style="font-family: Arial, sans-serif;"><h2>Contract Current Status</h2><p>Contract: <strong>${contract.name}</strong><br/>As of: ${dateLabel}</p><p>Total Reports: ${allReports.length}<br/>Total Hours: ${totalHoursUsed.toFixed(1)}</p><p style="color:#999;font-size:12px;">${company?.name || ''}</p></div>`,
+      });
+      
+      res.json({ success: true, message: `Current status sent to ${uniqueRecipients.length} recipient(s)`, recipients: uniqueRecipients });
+    } catch (error) {
+      console.error("Error emailing contract current status:", error);
+      res.status(500).json({ message: "Failed to send current status email" });
     }
   });
 

@@ -12,6 +12,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
 import { useLocation, useParams, Link } from "wouter";
 import { IorAgreementDialog } from "@/components/ior-agreement-dialog";
+import { SummaryReportDropdown, ReportType, ReportParams } from "@/components/summary-report-dropdown";
 import {
   Select,
   SelectContent,
@@ -441,6 +442,60 @@ export default function ContractDashboard() {
   const [showIorDialog, setShowIorDialog] = useState(false);
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [editFormData, setEditFormData] = useState<ContractFormData>(emptyFormData);
+  const [isEmailPending, setIsEmailPending] = useState(false);
+
+  const handleDownloadReport = (type: ReportType, params: ReportParams) => {
+    let url = '';
+    if (type === 'weekly') {
+      url = `/api/contracts/${contractId}/weekly-summary?weekStart=${params.weekStart}&weekEnd=${params.weekEnd}`;
+    } else if (type === 'monthly') {
+      url = `/api/contracts/${contractId}/monthly-summary?month=${params.month}&year=${params.year}`;
+    } else if (type === 'current') {
+      url = `/api/contracts/${contractId}/current-status`;
+    }
+    window.open(url, '_blank');
+  };
+
+  const handleEmailReport = async (type: ReportType, params: ReportParams & { additionalEmails: string }) => {
+    setIsEmailPending(true);
+    try {
+      const emailList = params.additionalEmails
+        .split(',')
+        .map(e => e.trim())
+        .filter(e => e && e.includes('@'));
+      
+      let endpoint = '';
+      let body: any = { additionalEmails: emailList };
+      
+      if (type === 'weekly') {
+        endpoint = `/api/contracts/${contractId}/weekly-summary/email`;
+        body.weekStart = params.weekStart;
+        body.weekEnd = params.weekEnd;
+      } else if (type === 'monthly') {
+        endpoint = `/api/contracts/${contractId}/monthly-summary/email`;
+        body.month = parseInt(params.month || '1');
+        body.year = parseInt(params.year || new Date().getFullYear().toString());
+      } else if (type === 'current') {
+        endpoint = `/api/contracts/${contractId}/current-status/email`;
+      }
+      
+      const response = await apiRequest('POST', endpoint, body);
+      const result = await response.json();
+      
+      toast({
+        title: "Report Sent",
+        description: result.message || "Email sent successfully",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Failed to send email",
+        description: error.message || "Please try again",
+        variant: "destructive",
+      });
+    } finally {
+      setIsEmailPending(false);
+    }
+  };
 
   const { data: dashboard, isLoading } = useQuery<DashboardData>({
     queryKey: ["/api/contracts", contractId, "dashboard"],
@@ -681,10 +736,17 @@ export default function ContractDashboard() {
                   {dashboard.contract.contractNumber}
                 </CardDescription>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <Badge variant="outline" data-testid="badge-contract-status">
                   {dashboard.contract.status.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
                 </Badge>
+                <SummaryReportDropdown
+                  scope="contract"
+                  entityId={contractId || ''}
+                  onDownload={handleDownloadReport}
+                  onEmail={handleEmailReport}
+                  isEmailPending={isEmailPending}
+                />
                 <Button 
                   variant="outline" 
                   size="sm" 

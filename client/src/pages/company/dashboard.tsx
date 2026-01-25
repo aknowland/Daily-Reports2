@@ -1,11 +1,14 @@
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
+import { useToast } from "@/hooks/use-toast";
 import { PageLayout } from "@/components/layout/page-layout";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
+import { SummaryReportDropdown, ReportType, ReportParams } from "@/components/summary-report-dropdown";
+import { apiRequest } from "@/lib/queryClient";
 import { 
   FileText, 
   Users, 
@@ -179,9 +182,64 @@ const CONTRACT_STATUS_OPTIONS = [
 
 export default function CompanyDashboard() {
   const { activeCompany } = useAuth();
+  const { toast } = useToast();
   const [contractsToShow, setContractsToShow] = useState(7);
   const [contractSearch, setContractSearch] = useState("");
   const [contractStatusFilter, setContractStatusFilter] = useState("all");
+  const [isEmailPending, setIsEmailPending] = useState(false);
+
+  const handleDownloadReport = (type: ReportType, params: ReportParams) => {
+    let url = '';
+    if (type === 'weekly') {
+      url = `/api/company/weekly-summary?weekStart=${params.weekStart}&weekEnd=${params.weekEnd}`;
+    } else if (type === 'monthly') {
+      url = `/api/company/monthly-summary?month=${params.month}&year=${params.year}`;
+    } else if (type === 'current') {
+      url = `/api/company/current-status`;
+    }
+    window.open(url, '_blank');
+  };
+
+  const handleEmailReport = async (type: ReportType, params: ReportParams & { additionalEmails: string }) => {
+    setIsEmailPending(true);
+    try {
+      const emailList = params.additionalEmails
+        .split(',')
+        .map(e => e.trim())
+        .filter(e => e && e.includes('@'));
+      
+      let endpoint = '';
+      let body: any = { additionalEmails: emailList };
+      
+      if (type === 'weekly') {
+        endpoint = `/api/company/weekly-summary/email`;
+        body.weekStart = params.weekStart;
+        body.weekEnd = params.weekEnd;
+      } else if (type === 'monthly') {
+        endpoint = `/api/company/monthly-summary/email`;
+        body.month = parseInt(params.month || '1');
+        body.year = parseInt(params.year || new Date().getFullYear().toString());
+      } else if (type === 'current') {
+        endpoint = `/api/company/current-status/email`;
+      }
+      
+      const response = await apiRequest('POST', endpoint, body);
+      const result = await response.json();
+      
+      toast({
+        title: "Report Sent",
+        description: result.message || "Email sent successfully",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Failed to send email",
+        description: error.message || "Please try again",
+        variant: "destructive",
+      });
+    } finally {
+      setIsEmailPending(false);
+    }
+  };
 
   const { data: companyDashboard, isLoading: dashboardLoading } = useQuery<CompanyDashboardData>({
     queryKey: ["/api/company/dashboard"],
@@ -294,6 +352,13 @@ export default function CompanyDashboard() {
               Overview of your company's activity
             </p>
           </div>
+          <SummaryReportDropdown
+            scope="company"
+            entityId={activeCompany?.id || ''}
+            onDownload={handleDownloadReport}
+            onEmail={handleEmailReport}
+            isEmailPending={isEmailPending}
+          />
         </div>
 
         {/* KPI Cards */}

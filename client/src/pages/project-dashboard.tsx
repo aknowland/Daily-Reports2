@@ -6,13 +6,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Progress } from "@/components/ui/progress";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useParams, Link } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
+import { SummaryReportDropdown, ReportType, ReportParams } from "@/components/summary-report-dropdown";
 import {
   ArrowLeft,
   Calendar,
@@ -34,9 +31,6 @@ import {
   Building2,
   Hash,
   Flag,
-  Mail,
-  Download,
-  Send,
 } from "lucide-react";
 import { format } from "date-fns";
 
@@ -205,68 +199,64 @@ const getHoursStatusColor = (status: string) => {
 export default function ProjectDashboardPage() {
   const { id } = useParams<{ id: string }>();
   const { toast } = useToast();
-  
-  const [monthlySummaryOpen, setMonthlySummaryOpen] = useState(false);
-  const [selectedMonth, setSelectedMonth] = useState(() => (new Date().getMonth() + 1).toString());
-  const [selectedYear, setSelectedYear] = useState(() => new Date().getFullYear().toString());
-  const [additionalEmails, setAdditionalEmails] = useState("");
-  
-  const currentYear = new Date().getFullYear();
-  const years = [currentYear - 1, currentYear, currentYear + 1];
-  const months = [
-    { value: "1", label: "January" },
-    { value: "2", label: "February" },
-    { value: "3", label: "March" },
-    { value: "4", label: "April" },
-    { value: "5", label: "May" },
-    { value: "6", label: "June" },
-    { value: "7", label: "July" },
-    { value: "8", label: "August" },
-    { value: "9", label: "September" },
-    { value: "10", label: "October" },
-    { value: "11", label: "November" },
-    { value: "12", label: "December" },
-  ];
+  const [isEmailPending, setIsEmailPending] = useState(false);
 
   const { data, isLoading, error } = useQuery<ProjectDashboardData>({
     queryKey: ['/api/projects', id, 'dashboard'],
     enabled: !!id,
   });
 
-  const emailMonthlySummary = useMutation({
-    mutationFn: async (): Promise<{ message: string; recipients: string[] }> => {
-      const emailList = additionalEmails
+  const handleDownloadReport = (type: ReportType, params: ReportParams) => {
+    let url = '';
+    if (type === 'weekly') {
+      url = `/api/projects/${id}/weekly-summary?weekStart=${params.weekStart}&weekEnd=${params.weekEnd}`;
+    } else if (type === 'monthly') {
+      url = `/api/projects/${id}/monthly-summary?month=${params.month}&year=${params.year}`;
+    } else if (type === 'current') {
+      url = `/api/projects/${id}/current-status`;
+    }
+    window.open(url, '_blank');
+  };
+
+  const handleEmailReport = async (type: ReportType, params: ReportParams & { additionalEmails: string }) => {
+    setIsEmailPending(true);
+    try {
+      const emailList = params.additionalEmails
         .split(',')
         .map(e => e.trim())
         .filter(e => e && e.includes('@'));
       
-      const response = await apiRequest('POST', `/api/projects/${id}/monthly-summary/email`, {
-        month: parseInt(selectedMonth),
-        year: parseInt(selectedYear),
-        additionalEmails: emailList,
-      });
-      return response.json();
-    },
-    onSuccess: (data) => {
+      let endpoint = '';
+      let body: any = { additionalEmails: emailList };
+      
+      if (type === 'weekly') {
+        endpoint = `/api/projects/${id}/weekly-summary/email`;
+        body.weekStart = params.weekStart;
+        body.weekEnd = params.weekEnd;
+      } else if (type === 'monthly') {
+        endpoint = `/api/projects/${id}/monthly-summary/email`;
+        body.month = parseInt(params.month || '1');
+        body.year = parseInt(params.year || new Date().getFullYear().toString());
+      } else if (type === 'current') {
+        endpoint = `/api/projects/${id}/current-status/email`;
+      }
+      
+      const response = await apiRequest('POST', endpoint, body);
+      const result = await response.json();
+      
       toast({
-        title: "Monthly Summary Sent",
-        description: data.message || "Email sent successfully",
+        title: "Report Sent",
+        description: result.message || "Email sent successfully",
       });
-      setMonthlySummaryOpen(false);
-      setAdditionalEmails("");
-    },
-    onError: (error: Error) => {
+    } catch (error: any) {
       toast({
         title: "Failed to send email",
         description: error.message || "Please try again",
         variant: "destructive",
       });
-    },
-  });
-  
-  const downloadMonthlySummary = () => {
-    const url = `/api/projects/${id}/monthly-summary?month=${selectedMonth}&year=${selectedYear}`;
-    window.open(url, '_blank');
+    } finally {
+      setIsEmailPending(false);
+    }
   };
 
   if (isLoading) {
@@ -314,15 +304,14 @@ export default function ProjectDashboardPage() {
           <div className="flex-1 min-w-0">
             <h1 className="text-2xl font-bold truncate" data-testid="text-project-name">{project.name}</h1>
           </div>
-          <Button 
-            variant="outline" 
-            size="sm" 
-            onClick={() => setMonthlySummaryOpen(true)}
-            data-testid="button-monthly-summary"
-          >
-            <FileText className="w-4 h-4 mr-2" />
-            Monthly Summary
-          </Button>
+          <SummaryReportDropdown
+            scope="project"
+            entityId={id || ''}
+            distributionEmails={project.distributionEmails || []}
+            onDownload={handleDownloadReport}
+            onEmail={handleEmailReport}
+            isEmailPending={isEmailPending}
+          />
         </div>
         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
           <div className="flex-1 min-w-0">
@@ -691,101 +680,6 @@ export default function ProjectDashboardPage() {
           </Card>
         )}
       </div>
-
-      <Dialog open={monthlySummaryOpen} onOpenChange={setMonthlySummaryOpen}>
-        <DialogContent className="sm:max-w-md" data-testid="modal-monthly-summary">
-          <DialogHeader>
-            <DialogTitle>Monthly Summary Report</DialogTitle>
-            <DialogDescription>
-              Generate a PDF summary of all daily reports for a selected month
-            </DialogDescription>
-          </DialogHeader>
-          
-          <div className="space-y-4 py-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="month">Month</Label>
-                <Select value={selectedMonth} onValueChange={setSelectedMonth}>
-                  <SelectTrigger id="month" data-testid="select-month">
-                    <SelectValue placeholder="Select month" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {months.map(m => (
-                      <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              
-              <div className="space-y-2">
-                <Label htmlFor="year">Year</Label>
-                <Select value={selectedYear} onValueChange={setSelectedYear}>
-                  <SelectTrigger id="year" data-testid="select-year">
-                    <SelectValue placeholder="Select year" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {years.map(y => (
-                      <SelectItem key={y} value={y.toString()}>{y}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            
-            <div className="space-y-2">
-              <Label htmlFor="emails">Additional Recipients</Label>
-              <Input
-                id="emails"
-                placeholder="email1@example.com, email2@example.com"
-                value={additionalEmails}
-                onChange={(e) => setAdditionalEmails(e.target.value)}
-                data-testid="input-additional-emails"
-              />
-              <p className="text-xs text-muted-foreground">
-                Separate multiple emails with commas
-              </p>
-            </div>
-            
-            {project.distributionEmails && project.distributionEmails.length > 0 && (
-              <div className="space-y-2">
-                <Label className="text-muted-foreground">Distribution List</Label>
-                <div className="flex flex-wrap gap-1">
-                  {project.distributionEmails.map((email, idx) => (
-                    <Badge key={idx} variant="outline" className="text-xs">
-                      {email}
-                    </Badge>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-          
-          <DialogFooter className="flex flex-col sm:flex-row gap-2">
-            <Button
-              variant="outline"
-              onClick={downloadMonthlySummary}
-              data-testid="button-download-summary"
-            >
-              <Download className="w-4 h-4 mr-2" />
-              Download PDF
-            </Button>
-            <Button
-              onClick={() => emailMonthlySummary.mutate()}
-              disabled={emailMonthlySummary.isPending || (!project.distributionEmails?.length && !additionalEmails)}
-              data-testid="button-send-summary"
-            >
-              {emailMonthlySummary.isPending ? (
-                "Sending..."
-              ) : (
-                <>
-                  <Send className="w-4 h-4 mr-2" />
-                  Send Email
-                </>
-              )}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </PageLayout>
   );
 }
