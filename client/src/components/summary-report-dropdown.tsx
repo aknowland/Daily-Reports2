@@ -33,6 +33,8 @@ interface SummaryReportDropdownProps {
   onDownload: (type: ReportType, params: ReportParams) => void;
   onEmail: (type: ReportType, params: ReportParams & { additionalEmails: string }) => void;
   isEmailPending?: boolean;
+  defaultReportType?: ReportType;
+  triggerVariant?: "default" | "icon";
 }
 
 export interface ReportParams {
@@ -64,6 +66,8 @@ export function SummaryReportDropdown({
   onDownload,
   onEmail,
   isEmailPending = false,
+  defaultReportType,
+  triggerVariant = "default",
 }: SummaryReportDropdownProps) {
   const [selectedReportType, setSelectedReportType] = useState<ReportType | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -149,40 +153,58 @@ export function SummaryReportDropdown({
     { label: "2 Weeks Ago", date: subWeeks(now, 2) },
   ];
 
+  const handleDirectOpen = () => {
+    if (defaultReportType) {
+      setSelectedReportType(defaultReportType);
+      setDialogOpen(true);
+    }
+  };
+
   return (
     <>
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button variant="outline" size="sm" data-testid="button-summary-reports">
-            <FileText className="w-4 h-4 mr-2" />
-            Summary Reports
-            <ChevronDown className="w-4 h-4 ml-2" />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
-          <DropdownMenuItem 
-            onClick={() => handleReportSelect("weekly")}
-            data-testid="menu-item-weekly-summary"
-          >
-            <CalendarIcon className="w-4 h-4 mr-2" />
-            Weekly Summary
-          </DropdownMenuItem>
-          <DropdownMenuItem 
-            onClick={() => handleReportSelect("monthly")}
-            data-testid="menu-item-monthly-summary"
-          >
-            <CalendarIcon className="w-4 h-4 mr-2" />
-            Monthly Summary
-          </DropdownMenuItem>
-          <DropdownMenuItem 
-            onClick={() => handleReportSelect("current")}
-            data-testid="menu-item-current-status"
-          >
-            <FileText className="w-4 h-4 mr-2" />
-            Current Status Report
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+      {triggerVariant === "icon" && defaultReportType ? (
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={handleDirectOpen}
+          data-testid={`button-report-${defaultReportType}`}
+        >
+          <FileText className="w-4 h-4" />
+        </Button>
+      ) : (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" size="sm" data-testid="button-summary-reports">
+              <FileText className="w-4 h-4 mr-2" />
+              Summary Reports
+              <ChevronDown className="w-4 h-4 ml-2" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem 
+              onClick={() => handleReportSelect("weekly")}
+              data-testid="menu-item-weekly-summary"
+            >
+              <CalendarIcon className="w-4 h-4 mr-2" />
+              Weekly Summary
+            </DropdownMenuItem>
+            <DropdownMenuItem 
+              onClick={() => handleReportSelect("monthly")}
+              data-testid="menu-item-monthly-summary"
+            >
+              <CalendarIcon className="w-4 h-4 mr-2" />
+              Monthly Summary
+            </DropdownMenuItem>
+            <DropdownMenuItem 
+              onClick={() => handleReportSelect("current")}
+              data-testid="menu-item-current-status"
+            >
+              <FileText className="w-4 h-4 mr-2" />
+              Current Status Report
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="sm:max-w-md" data-testid="modal-summary-report">

@@ -31,6 +31,9 @@ import {
   Building2,
   Hash,
   Flag,
+  Download,
+  Mail,
+  BarChart3,
 } from "lucide-react";
 import { format } from "date-fns";
 
@@ -444,6 +447,77 @@ export default function ProjectDashboardPage() {
                     </div>
                   </Link>
                 ))}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card data-testid="card-project-reports">
+            <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Project Reports</CardTitle>
+              <BarChart3 className="w-4 h-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-sm text-muted-foreground mb-4">
+                Generate summary reports for this project
+              </div>
+              <div className="space-y-3">
+                <div className="flex items-center justify-between p-3 bg-muted rounded">
+                  <div className="flex items-center gap-2">
+                    <Calendar className="w-4 h-4 text-primary" />
+                    <div>
+                      <div className="text-sm font-medium">Weekly Summary</div>
+                      <div className="text-xs text-muted-foreground">Reports by week with daily details</div>
+                    </div>
+                  </div>
+                  <SummaryReportDropdown
+                    scope="project"
+                    entityId={id || ''}
+                    distributionEmails={project.distributionEmails || []}
+                    onDownload={handleDownloadReport}
+                    onEmail={handleEmailReport}
+                    isEmailPending={isEmailPending}
+                    defaultReportType="weekly"
+                    triggerVariant="icon"
+                  />
+                </div>
+                <div className="flex items-center justify-between p-3 bg-muted rounded">
+                  <div className="flex items-center gap-2">
+                    <Calendar className="w-4 h-4 text-primary" />
+                    <div>
+                      <div className="text-sm font-medium">Monthly Summary</div>
+                      <div className="text-xs text-muted-foreground">Full month overview with metrics</div>
+                    </div>
+                  </div>
+                  <SummaryReportDropdown
+                    scope="project"
+                    entityId={id || ''}
+                    distributionEmails={project.distributionEmails || []}
+                    onDownload={handleDownloadReport}
+                    onEmail={handleEmailReport}
+                    isEmailPending={isEmailPending}
+                    defaultReportType="monthly"
+                    triggerVariant="icon"
+                  />
+                </div>
+                <div className="flex items-center justify-between p-3 bg-muted rounded">
+                  <div className="flex items-center gap-2">
+                    <Activity className="w-4 h-4 text-primary" />
+                    <div>
+                      <div className="text-sm font-medium">Current Status</div>
+                      <div className="text-xs text-muted-foreground">Today's snapshot of project</div>
+                    </div>
+                  </div>
+                  <SummaryReportDropdown
+                    scope="project"
+                    entityId={id || ''}
+                    distributionEmails={project.distributionEmails || []}
+                    onDownload={handleDownloadReport}
+                    onEmail={handleEmailReport}
+                    isEmailPending={isEmailPending}
+                    defaultReportType="current"
+                    triggerVariant="icon"
+                  />
+                </div>
               </div>
             </CardContent>
           </Card>
