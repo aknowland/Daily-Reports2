@@ -1695,10 +1695,48 @@ export async function registerRoutes(
         upcomingMilestones,
       });
       
+      // Merge summary PDF with individual daily report PDFs
+      const mergedPdf = await PDFLibDocument.create();
+      
+      // Add summary pages first
+      const summaryDoc = await PDFLibDocument.load(pdfBuffer);
+      const summaryPages = await mergedPdf.copyPages(summaryDoc, summaryDoc.getPageIndices());
+      summaryPages.forEach(page => mergedPdf.addPage(page));
+      
+      // Add individual daily report PDFs (sorted by date)
+      const reportsWithPdfs = monthlyReports.filter((r: any) => r.pdfPath);
+      reportsWithPdfs.sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime());
+      
+      for (const report of reportsWithPdfs) {
+        try {
+          let pdfBytes: Uint8Array;
+          if (report.pdfPath!.startsWith('/objects/')) {
+            const buffer = await objectStorage.downloadBuffer(report.pdfPath!);
+            pdfBytes = new Uint8Array(buffer);
+          } else {
+            const localPath = path.join(process.cwd(), report.pdfPath!.replace(/^\//, ''));
+            if (fs.existsSync(localPath)) {
+              pdfBytes = new Uint8Array(fs.readFileSync(localPath));
+            } else {
+              continue;
+            }
+          }
+          
+          const reportPdfDoc = await PDFLibDocument.load(pdfBytes);
+          const copiedPages = await mergedPdf.copyPages(reportPdfDoc, reportPdfDoc.getPageIndices());
+          copiedPages.forEach(page => mergedPdf.addPage(page));
+        } catch (err) {
+          console.error(`Error adding daily report ${report.id} to monthly summary PDF:`, err);
+        }
+      }
+      
+      const finalPdfBytes = await mergedPdf.save();
+      const finalPdfBuffer = Buffer.from(finalPdfBytes);
+      
       const monthName = format(startDate, 'MMMM_yyyy');
       res.setHeader('Content-Type', 'application/pdf');
       res.setHeader('Content-Disposition', `attachment; filename="${project.name.replace(/[^a-z0-9]/gi, '_')}_Monthly_Summary_${monthName}.pdf"`);
-      res.send(pdfBuffer);
+      res.send(finalPdfBuffer);
     } catch (error) {
       console.error("Error generating monthly summary PDF:", error);
       res.status(500).json({ message: "Failed to generate monthly summary" });
@@ -1907,6 +1945,44 @@ export async function registerRoutes(
         upcomingMilestones: emailUpcomingMilestones,
       });
       
+      // Merge summary PDF with individual daily report PDFs
+      const mergedPdf = await PDFLibDocument.create();
+      
+      // Add summary pages first
+      const summaryDoc = await PDFLibDocument.load(pdfBuffer);
+      const summaryPages = await mergedPdf.copyPages(summaryDoc, summaryDoc.getPageIndices());
+      summaryPages.forEach(page => mergedPdf.addPage(page));
+      
+      // Add individual daily report PDFs (sorted by date)
+      const reportsWithPdfs = monthlyReports.filter((r: any) => r.pdfPath);
+      reportsWithPdfs.sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime());
+      
+      for (const report of reportsWithPdfs) {
+        try {
+          let pdfBytes: Uint8Array;
+          if (report.pdfPath!.startsWith('/objects/')) {
+            const buffer = await objectStorage.downloadBuffer(report.pdfPath!);
+            pdfBytes = new Uint8Array(buffer);
+          } else {
+            const localPath = path.join(process.cwd(), report.pdfPath!.replace(/^\//, ''));
+            if (fs.existsSync(localPath)) {
+              pdfBytes = new Uint8Array(fs.readFileSync(localPath));
+            } else {
+              continue;
+            }
+          }
+          
+          const reportPdfDoc = await PDFLibDocument.load(pdfBytes);
+          const copiedPages = await mergedPdf.copyPages(reportPdfDoc, reportPdfDoc.getPageIndices());
+          copiedPages.forEach(page => mergedPdf.addPage(page));
+        } catch (err) {
+          console.error(`Error adding daily report ${report.id} to monthly email PDF:`, err);
+        }
+      }
+      
+      const finalPdfBytes = await mergedPdf.save();
+      const finalPdfBuffer = Buffer.from(finalPdfBytes);
+      
       const monthName = format(startDate, 'MMMM yyyy');
       const fileName = `${project.name.replace(/[^a-z0-9]/gi, '_')}_Monthly_Summary_${format(startDate, 'MMMM_yyyy')}.pdf`;
       
@@ -1934,7 +2010,7 @@ export async function registerRoutes(
         `,
         attachments: [{
           filename: fileName,
-          content: pdfBuffer,
+          content: finalPdfBuffer,
         }],
       });
       
@@ -2123,10 +2199,48 @@ export async function registerRoutes(
         teamOverview,
       });
       
+      // Merge summary PDF with individual daily report PDFs
+      const mergedPdf = await PDFLibDocument.create();
+      
+      // Add summary pages first
+      const summaryDoc = await PDFLibDocument.load(pdfBuffer);
+      const summaryPages = await mergedPdf.copyPages(summaryDoc, summaryDoc.getPageIndices());
+      summaryPages.forEach(page => mergedPdf.addPage(page));
+      
+      // Add individual daily report PDFs (sorted by date)
+      const reportsWithPdfs = weeklyReports.filter((r: any) => r.pdfPath);
+      reportsWithPdfs.sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime());
+      
+      for (const report of reportsWithPdfs) {
+        try {
+          let pdfBytes: Uint8Array;
+          if (report.pdfPath!.startsWith('/objects/')) {
+            const buffer = await objectStorage.downloadBuffer(report.pdfPath!);
+            pdfBytes = new Uint8Array(buffer);
+          } else {
+            const localPath = path.join(process.cwd(), report.pdfPath!.replace(/^\//, ''));
+            if (fs.existsSync(localPath)) {
+              pdfBytes = new Uint8Array(fs.readFileSync(localPath));
+            } else {
+              continue;
+            }
+          }
+          
+          const reportPdfDoc = await PDFLibDocument.load(pdfBytes);
+          const copiedPages = await mergedPdf.copyPages(reportPdfDoc, reportPdfDoc.getPageIndices());
+          copiedPages.forEach(page => mergedPdf.addPage(page));
+        } catch (err) {
+          console.error(`Error adding daily report ${report.id} to weekly summary PDF:`, err);
+        }
+      }
+      
+      const finalPdfBytes = await mergedPdf.save();
+      const finalPdfBuffer = Buffer.from(finalPdfBytes);
+      
       const weekLabel = format(startDate, 'MMM_d') + '_to_' + format(endDate, 'MMM_d_yyyy');
       res.setHeader('Content-Type', 'application/pdf');
       res.setHeader('Content-Disposition', `attachment; filename="${project.name.replace(/[^a-z0-9]/gi, '_')}_Weekly_Summary_${weekLabel}.pdf"`);
-      res.send(pdfBuffer);
+      res.send(finalPdfBuffer);
     } catch (error) {
       console.error("Error generating weekly summary PDF:", error);
       res.status(500).json({ message: "Failed to generate weekly summary" });
@@ -2499,6 +2613,44 @@ export async function registerRoutes(
         })),
       });
       
+      // Merge summary PDF with individual daily report PDFs
+      const mergedPdf = await PDFLibDocument.create();
+      
+      // Add summary pages first
+      const summaryDoc = await PDFLibDocument.load(pdfBuffer);
+      const summaryPages = await mergedPdf.copyPages(summaryDoc, summaryDoc.getPageIndices());
+      summaryPages.forEach(page => mergedPdf.addPage(page));
+      
+      // Add individual daily report PDFs (sorted by date)
+      const reportsWithPdfs = weeklyReports.filter((r: any) => r.pdfPath);
+      reportsWithPdfs.sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime());
+      
+      for (const report of reportsWithPdfs) {
+        try {
+          let pdfBytes: Uint8Array;
+          if (report.pdfPath!.startsWith('/objects/')) {
+            const buffer = await objectStorage.downloadBuffer(report.pdfPath!);
+            pdfBytes = new Uint8Array(buffer);
+          } else {
+            const localPath = path.join(process.cwd(), report.pdfPath!.replace(/^\//, ''));
+            if (fs.existsSync(localPath)) {
+              pdfBytes = new Uint8Array(fs.readFileSync(localPath));
+            } else {
+              continue;
+            }
+          }
+          
+          const reportPdfDoc = await PDFLibDocument.load(pdfBytes);
+          const copiedPages = await mergedPdf.copyPages(reportPdfDoc, reportPdfDoc.getPageIndices());
+          copiedPages.forEach(page => mergedPdf.addPage(page));
+        } catch (err) {
+          console.error(`Error adding daily report ${report.id} to weekly email PDF:`, err);
+        }
+      }
+      
+      const finalPdfBytes = await mergedPdf.save();
+      const finalPdfBuffer = Buffer.from(finalPdfBytes);
+      
       const weekLabel = format(startDate, 'MMM d') + ' - ' + format(endDate, 'MMM d, yyyy');
       const fileName = `${project.name.replace(/[^a-z0-9]/gi, '_')}_Weekly_Summary_${format(startDate, 'MMM_d')}_to_${format(endDate, 'MMM_d_yyyy')}.pdf`;
       
@@ -2526,7 +2678,7 @@ export async function registerRoutes(
         `,
         attachments: [{
           filename: fileName,
-          content: pdfBuffer,
+          content: finalPdfBuffer,
         }],
       });
       
