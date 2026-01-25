@@ -234,22 +234,20 @@ export default function ProjectDashboardPage() {
   });
 
   const emailMonthlySummary = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (): Promise<{ message: string; recipients: string[] }> => {
       const emailList = additionalEmails
         .split(',')
         .map(e => e.trim())
         .filter(e => e && e.includes('@'));
       
-      return apiRequest(`/api/projects/${id}/monthly-summary/email`, {
-        method: 'POST',
-        body: JSON.stringify({
-          month: parseInt(selectedMonth),
-          year: parseInt(selectedYear),
-          additionalEmails: emailList,
-        }),
+      const response = await apiRequest('POST', `/api/projects/${id}/monthly-summary/email`, {
+        month: parseInt(selectedMonth),
+        year: parseInt(selectedYear),
+        additionalEmails: emailList,
       });
+      return response.json();
     },
-    onSuccess: (data: { message: string; recipients: string[] }) => {
+    onSuccess: (data) => {
       toast({
         title: "Monthly Summary Sent",
         description: data.message || "Email sent successfully",
