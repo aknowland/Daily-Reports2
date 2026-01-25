@@ -2733,13 +2733,10 @@ export async function registerRoutes(
           premium: hours.premium,
           reportCount: hours.reportCount,
         })),
-        recentActivity: recentReports,
-        keyMetrics: {
-          totalReports: allReports.length,
-          totalHours: totalHoursUsed,
-          issuesCount,
-          safetyIncidentsCount: safetyCount,
-        },
+        recentReports: recentReports,
+        totalReports: allReports.length,
+        issuesCount,
+        safetyCount,
       });
       
       const dateLabel = format(now, 'MMM d, yyyy');
@@ -3196,13 +3193,10 @@ export async function registerRoutes(
           premium: hours.premium,
           reportCount: hours.reportCount,
         })),
-        recentActivity: recentReports,
-        keyMetrics: {
-          totalReports: allReports.length,
-          totalHours: totalHoursUsed,
-          issuesCount: allReports.filter((r: any) => r.issuesFlag).length,
-          safetyIncidentsCount: allReports.filter((r: any) => r.safetyFlag).length,
-        },
+        recentReports: recentReports,
+        totalReports: allReports.length,
+        issuesCount: allReports.filter((r: any) => r.issuesFlag).length,
+        safetyCount: allReports.filter((r: any) => r.safetyFlag).length,
       });
       
       res.setHeader('Content-Type', 'application/pdf');
@@ -4985,13 +4979,10 @@ export async function registerRoutes(
           premium: hours.premium,
           reportCount: hours.reportCount,
         })),
-        recentActivity: recentReports,
-        keyMetrics: {
-          totalReports: allReports.length,
-          totalHours: totalHoursUsed,
-          issuesCount: allReports.filter((r: any) => r.issuesFlag).length,
-          safetyIncidentsCount: allReports.filter((r: any) => r.safetyFlag).length,
-        },
+        recentReports: recentReports,
+        totalReports: allReports.length,
+        issuesCount: allReports.filter((r: any) => r.issuesFlag).length,
+        safetyCount: allReports.filter((r: any) => r.safetyFlag).length,
       });
       
       res.setHeader('Content-Type', 'application/pdf');
