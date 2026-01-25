@@ -66,6 +66,7 @@ function getLastWeekdayOfMonth(year: number, month: number, weekday: number): Da
 
 interface TimesheetData {
   companyName: string;
+  companyLogoBuffer?: Buffer;
   inspectorName: string;
   districtName: string;
   month: number;
@@ -122,8 +123,7 @@ export async function generateTimesheetPdf(data: TimesheetData): Promise<Buffer>
     const subHeaderHeight = 11;
     const rowHeight = 11;
     
-    // Colors matching template
-    const headerFillColor = '#FFFFCC'; // Light yellow for headers
+    // Colors and line widths
     const sectionBorderColor = '#000000';
     const thinLineWidth = 0.5;
     const thickLineWidth = 1.5;
@@ -133,8 +133,25 @@ export async function generateTimesheetPdf(data: TimesheetData): Promise<Buffer>
     // ============ HEADER SECTION ============
     let y = 20;
     
-    // Title row with yellow background
-    doc.fillColor(headerFillColor).rect(startX, y - 3, pageWidth, 14).fill();
+    // Company logo in top right corner (if provided)
+    const logoWidth = 60;
+    const logoHeight = 40;
+    const logoX = startX + pageWidth - logoWidth;
+    const logoY = y;
+    
+    if (data.companyLogoBuffer) {
+      try {
+        doc.image(data.companyLogoBuffer, logoX, logoY, { 
+          fit: [logoWidth, logoHeight],
+          align: 'right',
+          valign: 'center'
+        });
+      } catch (e) {
+        // Logo failed to load, continue without it
+      }
+    }
+    
+    // Title row
     doc.fillColor('#000000');
     doc.fontSize(9).font('Helvetica-Bold');
     doc.text('Time Sheet for:', startX + 5, y);
@@ -143,7 +160,8 @@ export async function generateTimesheetPdf(data: TimesheetData): Promise<Buffer>
     
     const monthName = format(new Date(data.year, data.month - 1), 'MMMM-yyyy');
     doc.font('Helvetica-Bold');
-    doc.text(monthName, pageWidth - 80, y, { width: 80, align: 'right' });
+    // Position month to left of logo area
+    doc.text(monthName, logoX - 90, y, { width: 85, align: 'right' });
 
     y += 16;
     
@@ -161,17 +179,13 @@ export async function generateTimesheetPdf(data: TimesheetData): Promise<Buffer>
     doc.font('Helvetica');
     doc.text(data.districtName || '', startX + 55, y);
 
-    y += 16;
+    // Ensure y is positioned below logo if logo is taller than text
+    y = Math.max(y + 16, logoY + logoHeight + 8);
 
     // ============ TABLE HEADER ============
     const tableStartY = y;
     const totalHeaderHeight = headerRow1Height + headerRow2Height + headerRow3Height + subHeaderHeight;
 
-    // Fill entire header with yellow background
-    doc.fillColor(headerFillColor);
-    doc.rect(startX, y, pageWidth, totalHeaderHeight).fill();
-    doc.fillColor('#000000');
-    
     // Draw thick outer border around header
     doc.lineWidth(thickLineWidth);
     doc.rect(startX, y, pageWidth, totalHeaderHeight).stroke();
@@ -354,11 +368,10 @@ export async function generateTimesheetPdf(data: TimesheetData): Promise<Buffer>
         doc.lineWidth(thinLineWidth);
         
         ['Period 1 Regular', 'Period 1 OT', 'Period 1 Premium'].forEach((label, rowIdx) => {
-          // Yellow background for totals row
-          doc.fillColor(headerFillColor);
-          doc.rect(startX, y, pageWidth, rowHeight).fill();
-          doc.fillColor('#000000');
-          
+          // Thick left border
+          doc.lineWidth(thickLineWidth);
+          doc.moveTo(startX, y).lineTo(startX, y + rowHeight).stroke();
+          doc.lineWidth(thinLineWidth);
           doc.rect(startX, y, dateColWidth, rowHeight).stroke();
           doc.fontSize(6).font('Helvetica-Bold');
           doc.text(label, startX + 3, y + 2.5, { width: dateColWidth - 6 });
@@ -410,11 +423,10 @@ export async function generateTimesheetPdf(data: TimesheetData): Promise<Buffer>
     doc.lineWidth(thinLineWidth);
     
     ['Period 2 Regular', 'Period 2 Overtime', 'Period 2 Premium'].forEach((label, rowIdx) => {
-      // Yellow background for totals row
-      doc.fillColor(headerFillColor);
-      doc.rect(startX, y, pageWidth, rowHeight).fill();
-      doc.fillColor('#000000');
-      
+      // Thick left border
+      doc.lineWidth(thickLineWidth);
+      doc.moveTo(startX, y).lineTo(startX, y + rowHeight).stroke();
+      doc.lineWidth(thinLineWidth);
       doc.rect(startX, y, dateColWidth, rowHeight).stroke();
       doc.fontSize(6).font('Helvetica-Bold');
       doc.text(label, startX + 3, y + 2.5, { width: dateColWidth - 6 });
@@ -459,11 +471,10 @@ export async function generateTimesheetPdf(data: TimesheetData): Promise<Buffer>
     doc.lineWidth(thinLineWidth);
     
     ['Month Regular', 'Month Overtime', 'Month Premium'].forEach((label, rowIdx) => {
-      // Yellow background for totals row
-      doc.fillColor(headerFillColor);
-      doc.rect(startX, y, pageWidth, rowHeight).fill();
-      doc.fillColor('#000000');
-      
+      // Thick left border
+      doc.lineWidth(thickLineWidth);
+      doc.moveTo(startX, y).lineTo(startX, y + rowHeight).stroke();
+      doc.lineWidth(thinLineWidth);
       doc.rect(startX, y, dateColWidth, rowHeight).stroke();
       doc.fontSize(6).font('Helvetica-Bold');
       doc.text(label, startX + 3, y + 2.5, { width: dateColWidth - 6 });
@@ -506,12 +517,9 @@ export async function generateTimesheetPdf(data: TimesheetData): Promise<Buffer>
     // Thick line above Project Total
     doc.lineWidth(thickLineWidth);
     doc.moveTo(startX, y).lineTo(startX + pageWidth, y).stroke();
+    // Thick left border
+    doc.moveTo(startX, y).lineTo(startX, y + rowHeight).stroke();
     doc.lineWidth(thinLineWidth);
-    
-    // Yellow background
-    doc.fillColor(headerFillColor);
-    doc.rect(startX, y, pageWidth, rowHeight).fill();
-    doc.fillColor('#000000');
     
     doc.rect(startX, y, dateColWidth, rowHeight).stroke();
     doc.fontSize(6).font('Helvetica-Bold');
@@ -547,11 +555,10 @@ export async function generateTimesheetPdf(data: TimesheetData): Promise<Buffer>
     y += rowHeight;
 
     // ============ % REG/HOL ROW ============
-    // Yellow background
-    doc.fillColor(headerFillColor);
-    doc.rect(startX, y, pageWidth, rowHeight).fill();
-    doc.fillColor('#000000');
-    
+    // Thick left border
+    doc.lineWidth(thickLineWidth);
+    doc.moveTo(startX, y).lineTo(startX, y + rowHeight).stroke();
+    doc.lineWidth(thinLineWidth);
     doc.rect(startX, y, dateColWidth, rowHeight).stroke();
     doc.fontSize(6).font('Helvetica-Bold');
     doc.text('% Reg/Hol', startX + 3, y + 2.5, { width: dateColWidth - 6 });
@@ -588,17 +595,14 @@ export async function generateTimesheetPdf(data: TimesheetData): Promise<Buffer>
     // Thick line above summary
     doc.lineWidth(thickLineWidth);
     doc.moveTo(startX, y).lineTo(startX + pageWidth, y).stroke();
+    // Thick left border
+    doc.moveTo(startX, y).lineTo(startX, y + rowHeight).stroke();
     doc.lineWidth(thinLineWidth);
     
     const totalReg = period1Totals.reduce((s, t) => s + t.reg, 0) + period2Totals.reduce((s, t) => s + t.reg, 0);
     const totalOT = period1Totals.reduce((s, t) => s + t.ot, 0) + period2Totals.reduce((s, t) => s + t.ot, 0);
     const totalPrm = period1Totals.reduce((s, t) => s + t.prm, 0) + period2Totals.reduce((s, t) => s + t.prm, 0);
 
-    // Yellow background
-    doc.fillColor(headerFillColor);
-    doc.rect(startX, y, pageWidth, rowHeight).fill();
-    doc.fillColor('#000000');
-    
     // Summary row with cells
     doc.rect(startX, y, dateColWidth, rowHeight).stroke();
     doc.fontSize(6).font('Helvetica-Bold');
