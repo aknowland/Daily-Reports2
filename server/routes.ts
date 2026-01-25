@@ -494,6 +494,310 @@ export async function registerRoutes(
     }
   });
 
+  // Get project dashboard data for inspectors (limited info - no financial data)
+  app.get("/api/projects/:id/dashboard", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const project = await storage.getProject(req.params.id);
+      
+      if (!project) {
+        return res.status(404).json({ message: "Project not found" });
+      }
+      
+      const profile = await storage.getUserProfile(userId);
+      const isSysAdmin = isEffectiveSystemAdmin(profile);
+      const isMember = project.companyId ? await storage.isUserMemberOfCompany(project.companyId, userId) : false;
+      const isProjectMember = await storage.isUserMemberOfProject(req.params.id, userId);
+      
+      if (!isMember && !isSysAdmin && !isProjectMember) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      // Calculate schedule progress
+      const now = new Date();
+      let scheduleProgress = 0;
+      let daysRemaining: number | null = null;
+      let daysOverdue: number | null = null;
+      let scheduleStatus: 'not_started' | 'on_track' | 'warning' | 'overdue' | 'complete' = 'not_started';
+      
+      if (project.startDate && project.substantialCompletionDate) {
+        const startDate = new Date(project.startDate);
+        const endDate = new Date(project.substantialCompletionDate);
+        const totalDuration = endDate.getTime() - startDate.getTime();
+        const elapsed = now.getTime() - startDate.getTime();
+        
+        if (now < startDate) {
+          scheduleProgress = 0;
+          scheduleStatus = 'not_started';
+          daysRemaining = Math.ceil((startDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+        } else if (now > endDate) {
+          scheduleProgress = 100;
+          daysOverdue = Math.ceil((now.getTime() - endDate.getTime()) / (1000 * 60 * 60 * 24));
+          scheduleStatus = 'overdue';
+        } else {
+          scheduleProgress = Math.min(100, Math.max(0, (elapsed / totalDuration) * 100));
+          daysRemaining = Math.ceil((endDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+          scheduleStatus = scheduleProgress >= 80 ? 'warning' : 'on_track';
+        }
+      }
+      
+      // Get daily reports for this project
+      const dailyReports = await storage.getReportsByProject(req.params.id);
+      
+      // Calculate hours used (no dollar amounts - only hours)
+      let totalRegularHours = 0;
+      let totalOvertimeHours = 0;
+      let totalPremiumHours = 0;
+      
+      for (const report of dailyReports) {
+        totalRegularHours += parseFloat(report.regularHours || '0');
+        totalOvertimeHours += parseFloat(report.otHours || '0');
+        totalPremiumHours += parseFloat((report as any).premiumHours || '0');
+      }
+      
+      const totalHoursUsed = totalRegularHours + totalOvertimeHours + totalPremiumHours;
+      
+      // Get budgeted hours from project (or contract if linked)
+      let budgetedHours: number | null = null;
+      let baseBudgetHours = 0;
+      
+      if (project.budgetAmount) {
+        // If project has its own budget, estimate hours (we don't expose rates)
+        // This is just a rough estimate based on an assumed average rate
+        budgetedHours = parseFloat(project.budgetAmount);
+      }
+      
+      if (project.baseBudget) {
+        baseBudgetHours = parseFloat(project.baseBudget);
+      }
+      
+      // If project is linked to a contract option, get budgeted hours from there
+      if (project.contractOptionId && project.contractId) {
+        const contractOptions = await storage.getContractOptions(project.contractId);
+        const contractOption = contractOptions.find(opt => opt.id === project.contractOptionId);
+        if (contractOption?.inspectors) {
+          budgetedHours = contractOption.inspectors.reduce((sum: number, i: { hours?: string }) => sum + parseFloat(i.hours || '0'), 0);
+        }
+      }
+      
+      // Budget progress (hours-based only)
+      let budgetProgress = 0;
+      let budgetStatus: 'under' | 'on_track' | 'warning' | 'over' = 'on_track';
+      const effectiveBudgetedHours = budgetedHours || 0;
+      const effectiveTotalHours = totalHoursUsed + baseBudgetHours;
+      
+      if (effectiveBudgetedHours > 0) {
+        budgetProgress = (effectiveTotalHours / effectiveBudgetedHours) * 100;
+        if (budgetProgress >= 100) {
+          budgetStatus = 'over';
+        } else if (budgetProgress >= 80) {
+          budgetStatus = 'warning';
+        } else if (budgetProgress < 50) {
+          budgetStatus = 'under';
+        }
+      }
+      
+      // Activity Timeline - Recent activities from reports
+      const activityTimeline = dailyReports
+        .slice(0, 20)
+        .map(r => ({
+          id: r.id,
+          type: 'report' as const,
+          date: r.createdAt ? r.createdAt.toISOString() : (r.date instanceof Date ? r.date.toISOString() : String(r.date)),
+          title: `Daily Report`,
+          description: r.date ? `Report for ${r.date instanceof Date ? r.date.toISOString().split('T')[0] : String(r.date)}` : 'New report submitted',
+          status: r.status,
+          inspectorId: r.inspectorId,
+        }))
+        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      
+      // Photo Gallery - Recent photos from reports
+      const allPhotos: { id: string; path: string; caption: string | null; reportDate: string; createdAt: string | null }[] = [];
+      for (const report of dailyReports.slice(0, 30)) {
+        const reportPhotos = await storage.getPhotosByReport(report.id);
+        for (const photo of reportPhotos) {
+          allPhotos.push({
+            id: photo.id,
+            path: photo.filePath,
+            caption: photo.caption,
+            reportDate: report.date instanceof Date ? report.date.toISOString().split('T')[0] : String(report.date),
+            createdAt: photo.createdAt ? photo.createdAt.toISOString() : null,
+          });
+        }
+      }
+      const photoGallery = allPhotos
+        .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime())
+        .slice(0, 12);
+      
+      // Issues Summary
+      const issuesReports = dailyReports.filter(r => r.issuesFlag);
+      const issuesSummary = {
+        totalCount: issuesReports.length,
+        recentIssues: issuesReports.slice(0, 10).map(r => ({
+          id: r.id,
+          date: r.date,
+          details: r.issuesDetails,
+        })),
+      };
+      
+      // Safety Incidents
+      const safetyReports = dailyReports.filter(r => r.safetyFlag);
+      const safetySummary = {
+        totalCount: safetyReports.length,
+        recentIncidents: safetyReports.slice(0, 10).map(r => ({
+          id: r.id,
+          date: r.date,
+          details: r.safetyDetails,
+        })),
+      };
+      
+      // Weather Summary
+      const weatherCounts: Record<string, number> = {};
+      for (const report of dailyReports) {
+        const weather = report.weatherType || 'unknown';
+        weatherCounts[weather] = (weatherCounts[weather] || 0) + 1;
+      }
+      const weatherSummary = {
+        totalReports: dailyReports.length,
+        breakdown: Object.entries(weatherCounts).map(([type, count]) => ({
+          type,
+          count,
+          percentage: dailyReports.length > 0 ? Math.round((count / dailyReports.length) * 100) : 0,
+        })).sort((a, b) => b.count - a.count),
+        recentWeather: dailyReports.slice(0, 7).map(r => ({
+          date: r.date,
+          type: r.weatherType,
+          notes: r.weatherNotes,
+        })),
+      };
+      
+      // Inspector hours breakdown (only hours, no rates)
+      const inspectorHours: Record<string, { inspectorId: string; regular: number; overtime: number; premium: number; reportCount: number }> = {};
+      for (const report of dailyReports) {
+        const inspectorId = report.inspectorId || 'unknown';
+        if (!inspectorHours[inspectorId]) {
+          inspectorHours[inspectorId] = { inspectorId, regular: 0, overtime: 0, premium: 0, reportCount: 0 };
+        }
+        inspectorHours[inspectorId].regular += parseFloat(report.regularHours || '0');
+        inspectorHours[inspectorId].overtime += parseFloat(report.otHours || '0');
+        inspectorHours[inspectorId].premium += parseFloat((report as any).premiumHours || '0');
+        inspectorHours[inspectorId].reportCount += 1;
+      }
+      
+      // Fetch inspector names
+      const inspectorIds = Object.keys(inspectorHours).filter(id => id !== 'unknown');
+      const inspectorProfiles = await Promise.all(
+        inspectorIds.map(id => storage.getUserProfile(id))
+      );
+      const inspectorNameMap = new Map(
+        inspectorProfiles
+          .filter((p): p is NonNullable<typeof p> => p !== null && p !== undefined)
+          .map(p => [p.userId, `${p.firstName || ''} ${p.lastName || ''}`.trim() || 'Inspector'])
+      );
+      
+      const teamOverview = Object.values(inspectorHours)
+        .map(i => ({
+          ...i,
+          name: inspectorNameMap.get(i.inspectorId) || 'Unknown Inspector',
+          totalHours: i.regular + i.overtime + i.premium,
+        }))
+        .sort((a, b) => b.totalHours - a.totalHours);
+      
+      // Upcoming Milestones for this project
+      const milestones: { date: string; label: string; type: string; daysUntil: number; isPast: boolean }[] = [];
+      const milestoneFields = [
+        { field: 'startDate', label: 'Project Start' },
+        { field: 'substantialCompletionDate', label: 'Substantial Completion' },
+        { field: 'finalCloseoutDate', label: 'Final Closeout' },
+      ];
+      for (const m of milestoneFields) {
+        const dateValue = (project as any)[m.field];
+        if (dateValue) {
+          const date = new Date(dateValue);
+          const daysUntil = Math.ceil((date.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+          milestones.push({
+            date: dateValue,
+            label: m.label,
+            type: m.field,
+            daysUntil,
+            isPast: daysUntil < 0,
+          });
+        }
+      }
+      const upcomingMilestones = milestones
+        .filter(m => m.daysUntil >= -7)
+        .sort((a, b) => a.daysUntil - b.daysUntil);
+      
+      // Get client info if available
+      let clientInfo = null;
+      if (project.clientId) {
+        const client = await storage.getClient(project.clientId);
+        if (client) {
+          clientInfo = {
+            name: client.name,
+            contactName: client.contactName,
+            contactEmail: client.email,
+          };
+        }
+      }
+      
+      res.json({
+        project: {
+          id: project.id,
+          name: project.name,
+          projectNumber: project.projectNumber,
+          address: project.address,
+          client: project.client || clientInfo?.name || null,
+          clientInfo,
+          startDate: project.startDate,
+          substantialCompletionDate: project.substantialCompletionDate,
+          finalCloseoutDate: project.finalCloseoutDate,
+          distributionEmails: project.distributionEmails,
+        },
+        schedule: {
+          progress: Math.round(scheduleProgress * 100) / 100,
+          status: scheduleStatus,
+          daysRemaining,
+          daysOverdue,
+          startDate: project.startDate,
+          endDate: project.substantialCompletionDate,
+        },
+        hours: {
+          budgeted: effectiveBudgetedHours,
+          baseBudget: baseBudgetHours,
+          used: totalHoursUsed,
+          remaining: Math.max(0, effectiveBudgetedHours - effectiveTotalHours),
+          progress: Math.round(budgetProgress * 100) / 100,
+          status: budgetStatus,
+          breakdown: {
+            regular: totalRegularHours,
+            overtime: totalOvertimeHours,
+            premium: totalPremiumHours,
+          },
+        },
+        dailyReports: dailyReports.slice(0, 50).map(r => ({
+          id: r.id,
+          date: r.date,
+          status: r.status,
+          weatherType: r.weatherType,
+          regularHours: r.regularHours,
+          otHours: r.otHours,
+          signedAt: r.signedAt,
+        })),
+        activityTimeline,
+        photoGallery,
+        issuesSummary,
+        safetySummary,
+        weatherSummary,
+        teamOverview,
+        upcomingMilestones,
+      });
+    } catch (error) {
+      console.error("Error fetching project dashboard:", error);
+      res.status(500).json({ message: "Failed to fetch project dashboard" });
+    }
+  });
+
   app.post("/api/projects", isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user?.claims?.sub;

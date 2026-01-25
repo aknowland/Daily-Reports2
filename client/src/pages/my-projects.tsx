@@ -575,8 +575,9 @@ export default function MyProjectsPage() {
                   <CardHeader>
                     <div className="flex items-start justify-between gap-2">
                       <Link 
-                        href={`/reports?project=${project.id}`}
+                        href={`/project/${project.id}/dashboard`}
                         className="flex items-center gap-2 cursor-pointer flex-1 min-w-0"
+                        data-testid={`link-project-dashboard-${project.id}`}
                       >
                         <FolderOpen className="w-5 h-5 text-muted-foreground" />
                         <CardTitle className="text-lg hover:text-primary transition-colors" data-testid={`text-project-name-${project.id}`}>
@@ -598,7 +599,7 @@ export default function MyProjectsPage() {
                       </div>
                     </div>
                     <Link 
-                      href={`/reports?project=${project.id}`}
+                      href={`/project/${project.id}/dashboard`}
                       className="block cursor-pointer"
                     >
                       <CardDescription className="flex items-center gap-2">
@@ -609,7 +610,7 @@ export default function MyProjectsPage() {
                   </CardHeader>
                   <CardContent className="space-y-3">
                     <Link 
-                      href={`/reports?project=${project.id}`}
+                      href={`/project/${project.id}/dashboard`}
                       className="block cursor-pointer"
                     >
                       {project.client && (
