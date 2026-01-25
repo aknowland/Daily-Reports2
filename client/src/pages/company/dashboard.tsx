@@ -52,6 +52,7 @@ type ContractDashboardSummary = {
   contractNumber: string;
   status: string;
   bidDueDate: string | null;
+  clientName: string | null;
   schedule: {
     progress: number;
     status: 'not_started' | 'on_track' | 'warning' | 'overdue' | 'complete' | 'upcoming';
@@ -560,7 +561,7 @@ export default function CompanyDashboard() {
                             className="p-3 rounded-lg border hover-elevate cursor-pointer"
                             data-testid={`status-contract-${contract.id}`}
                           >
-                            <div className="flex items-center justify-between gap-2 mb-2">
+                            <div className="flex items-center justify-between gap-2 mb-1">
                               <div className="flex items-center gap-2 min-w-0">
                                 <div className={`w-2 h-2 rounded-full ${getStatusColor(contract.status)}`} />
                                 <span className="font-medium truncate">{contract.name}</span>
@@ -569,6 +570,11 @@ export default function CompanyDashboard() {
                                 {contract.status.replace(/_/g, ' ')}
                               </Badge>
                             </div>
+                            {contract.clientName && (
+                              <div className="text-xs text-muted-foreground ml-4 mb-2 truncate">
+                                {contract.clientName}
+                              </div>
+                            )}
                             
                             {/* Dates Row */}
                             <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground mb-3">

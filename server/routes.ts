@@ -1528,6 +1528,10 @@ export async function registerRoutes(
       const contracts = allContracts.filter(c => !archivedStatuses.includes(c.status));
       
       // Calculate schedule and budget progress for each contract
+      // Pre-fetch all clients for efficiency
+      const clients = await storage.getClients(profile.activeCompanyId);
+      const clientMap = new Map(clients.map(c => [c.id, c]));
+      
       const dashboardData = await Promise.all(contracts.map(async (contract) => {
         // Calculate schedule progress
         let scheduleProgress = 0;
@@ -1607,12 +1611,16 @@ export async function registerRoutes(
           }
         }
         
+        // Get client name
+        const client = contract.clientId ? clientMap.get(contract.clientId) : null;
+        
         return {
           id: contract.id,
           name: contract.name,
           contractNumber: contract.contractNumber,
           status: contract.status,
           bidDueDate: contract.bidDueDate,
+          clientName: client?.name || null,
           schedule: {
             progress: Math.round(scheduleProgress),
             status: scheduleStatus,
