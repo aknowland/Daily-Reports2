@@ -1872,9 +1872,9 @@ export default function ContractDashboard() {
                 No daily reports found for this contract's projects
               </p>
             ) : (
-              <div className="overflow-x-auto">
+              <div className="overflow-x-auto max-h-96 overflow-y-auto">
                 <Table>
-                  <TableHeader>
+                  <TableHeader className="sticky top-0 bg-card z-10">
                     <TableRow>
                       <TableHead>Date</TableHead>
                       <TableHead>Project</TableHead>
@@ -1885,7 +1885,7 @@ export default function ContractDashboard() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {dashboard.dailyReports.map((report) => (
+                    {dashboard.dailyReports.slice(0, 10).map((report) => (
                       <TableRow key={report.id} data-testid={`report-row-${report.id}`}>
                         <TableCell className="font-medium">
                           {formatDate(report.date)}

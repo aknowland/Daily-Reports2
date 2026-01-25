@@ -187,8 +187,8 @@ export default function AdminDashboardPage() {
                 <p className="text-muted-foreground">No recent activity</p>
               </div>
             ) : (
-              <div className="space-y-2">
-                {reportsData?.reports.slice(0, 5).map((report) => (
+              <div className="space-y-2 max-h-80 overflow-y-auto">
+                {reportsData?.reports.slice(0, 10).map((report) => (
                   <Link key={report.id} href={`/reports/${report.id}`}>
                     <div className="flex items-center justify-between p-3 rounded-lg hover:bg-muted/50 transition-colors cursor-pointer">
                       <div className="flex items-center gap-3">

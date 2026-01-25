@@ -358,8 +358,8 @@ export default function ProjectDashboardPage() {
             <CardContent>
               <div className="text-2xl font-bold mb-2">{dailyReports.length}</div>
               <div className="text-sm text-muted-foreground mb-3">Total reports submitted</div>
-              <div className="space-y-2 max-h-32 overflow-y-auto">
-                {dailyReports.slice(0, 5).map((report) => (
+              <div className="space-y-2 max-h-80 overflow-y-auto">
+                {dailyReports.slice(0, 10).map((report) => (
                   <Link
                     key={report.id}
                     href={`/reports/${report.id}`}
