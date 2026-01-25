@@ -133,18 +133,17 @@ export async function generateTimesheetPdf(data: TimesheetData): Promise<Buffer>
     // ============ HEADER SECTION ============
     let y = 20;
     
-    // Company logo in top right corner (if provided)
+    // Company logo in top left corner (if provided)
     const logoWidth = 60;
     const logoHeight = 40;
-    const logoX = startX + pageWidth - logoWidth;
+    const logoX = startX;
     const logoY = y;
+    const textStartX = data.companyLogoBuffer ? startX + logoWidth + 10 : startX + 5;
     
     if (data.companyLogoBuffer) {
       try {
         doc.image(data.companyLogoBuffer, logoX, logoY, { 
-          fit: [logoWidth, logoHeight],
-          align: 'right',
-          valign: 'center'
+          fit: [logoWidth, logoHeight]
         });
       } catch (e) {
         // Logo failed to load, continue without it
@@ -154,30 +153,29 @@ export async function generateTimesheetPdf(data: TimesheetData): Promise<Buffer>
     // Title row
     doc.fillColor('#000000');
     doc.fontSize(9).font('Helvetica-Bold');
-    doc.text('Time Sheet for:', startX + 5, y);
+    doc.text('Time Sheet for:', textStartX, y);
     doc.font('Helvetica');
-    doc.text(data.companyName, startX + 90, y);
+    doc.text(data.companyName, textStartX + 85, y);
     
     const monthName = format(new Date(data.year, data.month - 1), 'MMMM-yyyy');
     doc.font('Helvetica-Bold');
-    // Position month to left of logo area
-    doc.text(monthName, logoX - 90, y, { width: 85, align: 'right' });
+    doc.text(monthName, startX + pageWidth - 85, y, { width: 85, align: 'right' });
 
     y += 16;
     
     // Project Inspector row
     doc.fontSize(8).font('Helvetica-Bold');
-    doc.text('Project Inspector:', startX + 5, y);
+    doc.text('Project Inspector:', textStartX, y);
     doc.font('Helvetica');
-    doc.text(data.inspectorName, startX + 100, y);
+    doc.text(data.inspectorName, textStartX + 95, y);
 
     y += 13;
     
     // District row  
     doc.fontSize(8).font('Helvetica-Bold');
-    doc.text('District:', startX + 5, y);
+    doc.text('District:', textStartX, y);
     doc.font('Helvetica');
-    doc.text(data.districtName || '', startX + 55, y);
+    doc.text(data.districtName || '', textStartX + 50, y);
 
     // Ensure y is positioned below logo if logo is taller than text
     y = Math.max(y + 16, logoY + logoHeight + 8);
