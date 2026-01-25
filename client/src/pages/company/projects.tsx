@@ -48,7 +48,7 @@ import {
   Search,
 } from "lucide-react";
 import { Link, useSearch } from "wouter";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import type { Project, Contract, Client, ContractWithProjects, ContractOption } from "@shared/schema";
 import { ClientSelect } from "@/components/client-select";
 
@@ -59,10 +59,12 @@ export default function CompanyProjectsPage() {
   const searchParams = new URLSearchParams(searchString);
   const clientIdFilter = searchParams.get("clientId");
   const projectIdFilter = searchParams.get("projectId");
+  const editMode = searchParams.get("edit") === "true";
   
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [projectToDelete, setProjectToDelete] = useState<Project | null>(null);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
+  const [autoEditHandled, setAutoEditHandled] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [formData, setFormData] = useState({
     name: "",
@@ -295,6 +297,14 @@ export default function CompanyProjectsPage() {
     });
     setEditingProject(project);
   };
+
+  // Auto-open edit dialog when edit=true is in URL
+  useEffect(() => {
+    if (editMode && selectedProject && !autoEditHandled) {
+      setAutoEditHandled(true);
+      handleEdit(selectedProject);
+    }
+  }, [editMode, selectedProject, autoEditHandled]);
 
   // Wait for companies data to load before checking permissions
   if (isCompaniesLoading) {
@@ -761,21 +771,21 @@ export default function CompanyProjectsPage() {
             <div className="space-y-2">
               <Label htmlFor="budgetTrackingMode">Budget Tracking Mode</Label>
               <Select 
-                value={formData.budgetTrackingMode} 
-                onValueChange={(value) => setFormData({ ...formData, budgetTrackingMode: value as "" | "daily_reports" | "scheduled" | "hybrid" })}
+                value={formData.budgetTrackingMode || "inherit"} 
+                onValueChange={(value) => setFormData({ ...formData, budgetTrackingMode: value === "inherit" ? "" : value as "" | "daily_reports" | "scheduled" | "hybrid" })}
               >
                 <SelectTrigger data-testid="select-budget-tracking-mode">
                   <SelectValue placeholder="Inherit from contract" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Inherit from Contract</SelectItem>
+                  <SelectItem value="inherit">Inherit from Contract</SelectItem>
                   <SelectItem value="daily_reports">Daily Reports</SelectItem>
                   <SelectItem value="scheduled">Scheduled Hours</SelectItem>
                   <SelectItem value="hybrid">Hybrid (Both)</SelectItem>
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground">
-                {formData.budgetTrackingMode === "" 
+                {!formData.budgetTrackingMode
                   ? "Uses the tracking mode set on the linked contract"
                   : formData.budgetTrackingMode === "daily_reports"
                   ? "Track based on actual logged daily report hours"

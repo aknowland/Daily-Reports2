@@ -1736,7 +1736,7 @@ export default function ContractDashboard() {
                           key={project.id} 
                           data-testid={`project-row-${project.id}`}
                           className="cursor-pointer hover:bg-muted/50"
-                          onClick={() => setLocation(`/company/projects?projectId=${project.id}`)}
+                          onClick={() => setLocation(`/project/${project.id}/dashboard`)}
                         >
                           <TableCell className="font-medium">{project.name}</TableCell>
                           <TableCell className="text-muted-foreground">{project.projectNumber || '-'}</TableCell>
@@ -1815,9 +1815,28 @@ export default function ContractDashboard() {
                             </div>
                           </TableCell>
                           <TableCell>
-                            <Button variant="ghost" size="icon" data-testid={`view-project-${project.id}`}>
-                              <ExternalLink className="h-4 w-4" />
-                            </Button>
+                            <div className="flex items-center gap-1">
+                              <Button 
+                                variant="ghost" 
+                                size="icon" 
+                                data-testid={`edit-project-${project.id}`}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setLocation(`/company/projects?projectId=${project.id}&edit=true`);
+                                }}
+                                title="Edit Project"
+                              >
+                                <Pencil className="h-4 w-4" />
+                              </Button>
+                              <Button 
+                                variant="ghost" 
+                                size="icon" 
+                                data-testid={`view-project-${project.id}`}
+                                title="View Project Dashboard"
+                              >
+                                <ExternalLink className="h-4 w-4" />
+                              </Button>
+                            </div>
                           </TableCell>
                         </TableRow>
                       );
