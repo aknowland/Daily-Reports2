@@ -85,10 +85,11 @@ interface TimesheetData {
 
 export async function generateTimesheetPdf(data: TimesheetData): Promise<Buffer> {
   return new Promise((resolve, reject) => {
+    // Portrait orientation to match template
     const doc = new PDFDocument({
       size: 'LETTER',
-      layout: 'landscape',
-      margin: 12,
+      layout: 'portrait',
+      margin: 20,
     });
 
     const chunks: Buffer[] = [];
@@ -96,8 +97,8 @@ export async function generateTimesheetPdf(data: TimesheetData): Promise<Buffer>
     doc.on('end', () => resolve(Buffer.concat(chunks)));
     doc.on('error', reject);
 
-    const pageWidth = doc.page.width - 24;
-    const startX = 12;
+    const pageWidth = doc.page.width - 40;
+    const startX = 20;
     const daysInMonth = getDaysInMonth(new Date(data.year, data.month - 1));
 
     // Ensure we always have 5 project columns (pad with empty if needed)
@@ -107,99 +108,122 @@ export async function generateTimesheetPdf(data: TimesheetData): Promise<Buffer>
       projects.push({ projectName: '', dailyHours: {} });
     }
 
-    // Column widths matching spreadsheet layout
-    const dateColWidth = 85;
-    const remarksColWidth = 115;
+    // Column widths for portrait layout
+    const dateColWidth = 72;
+    const remarksColWidth = 75;
     const projectAreaWidth = pageWidth - dateColWidth - remarksColWidth;
     const projectColWidth = projectAreaWidth / projectCount;
     const hourColWidth = projectColWidth / 3;
 
-    // Row heights
-    const headerRow1Height = 10;
-    const headerRow2Height = 10;
-    const headerRow3Height = 10;
-    const subHeaderHeight = 10;
-    const rowHeight = 10;
+    // Row heights - slightly smaller for portrait to fit all 31 days
+    const headerRow1Height = 11;
+    const headerRow2Height = 11;
+    const headerRow3Height = 11;
+    const subHeaderHeight = 11;
+    const rowHeight = 11;
+    
+    // Colors matching template
+    const headerFillColor = '#FFFFCC'; // Light yellow for headers
+    const sectionBorderColor = '#000000';
+    const thinLineWidth = 0.5;
+    const thickLineWidth = 1.5;
 
-    doc.strokeColor('#000').lineWidth(0.5);
+    doc.strokeColor(sectionBorderColor).lineWidth(thinLineWidth);
 
     // ============ HEADER SECTION ============
-    let y = 12;
+    let y = 20;
     
-    // Title row
-    doc.fontSize(8).font('Helvetica-Bold');
+    // Title row with yellow background
+    doc.fillColor(headerFillColor).rect(startX, y - 3, pageWidth, 14).fill();
+    doc.fillColor('#000000');
+    doc.fontSize(9).font('Helvetica-Bold');
     doc.text('Time Sheet for:', startX + 5, y);
     doc.font('Helvetica');
-    doc.text(data.companyName, startX + 85, y);
+    doc.text(data.companyName, startX + 90, y);
     
     const monthName = format(new Date(data.year, data.month - 1), 'MMMM-yyyy');
-    doc.text(monthName, pageWidth - 70, y, { width: 70, align: 'right' });
+    doc.font('Helvetica-Bold');
+    doc.text(monthName, pageWidth - 80, y, { width: 80, align: 'right' });
 
-    y += 14;
+    y += 16;
     
     // Project Inspector row
-    doc.fontSize(7).font('Helvetica-Bold');
+    doc.fontSize(8).font('Helvetica-Bold');
     doc.text('Project Inspector:', startX + 5, y);
     doc.font('Helvetica');
-    doc.text(data.inspectorName, startX + 85, y);
+    doc.text(data.inspectorName, startX + 100, y);
 
-    y += 11;
+    y += 13;
     
     // District row  
-    doc.fontSize(7).font('Helvetica-Bold');
+    doc.fontSize(8).font('Helvetica-Bold');
     doc.text('District:', startX + 5, y);
     doc.font('Helvetica');
-    doc.text(data.districtName || '', startX + 85, y);
+    doc.text(data.districtName || '', startX + 55, y);
 
-    y += 14;
+    y += 16;
 
     // ============ TABLE HEADER ============
     const tableStartY = y;
     const totalHeaderHeight = headerRow1Height + headerRow2Height + headerRow3Height + subHeaderHeight;
+
+    // Fill entire header with yellow background
+    doc.fillColor(headerFillColor);
+    doc.rect(startX, y, pageWidth, totalHeaderHeight).fill();
+    doc.fillColor('#000000');
+    
+    // Draw thick outer border around header
+    doc.lineWidth(thickLineWidth);
+    doc.rect(startX, y, pageWidth, totalHeaderHeight).stroke();
+    doc.lineWidth(thinLineWidth);
 
     // Left column header - spans 4 rows with labels
     doc.rect(startX, y, dateColWidth, totalHeaderHeight).stroke();
     
     // Row 1: Project Name label
     doc.rect(startX, y, dateColWidth, headerRow1Height).stroke();
-    doc.fontSize(6).font('Helvetica-Bold');
-    doc.text('Project Name', startX + 3, y + 2, { width: dateColWidth - 6 });
+    doc.fontSize(7).font('Helvetica-Bold');
+    doc.text('Project Name', startX + 3, y + 2.5, { width: dateColWidth - 6 });
     
-    // Row 2: Empty for project names to extend into
+    // Row 2: DSA A# label
     doc.rect(startX, y + headerRow1Height, dateColWidth, headerRow2Height).stroke();
-    doc.fontSize(6).font('Helvetica-Bold');
-    doc.text('DSA A#', startX + 3, y + headerRow1Height + 2, { width: dateColWidth - 6 });
+    doc.fontSize(7).font('Helvetica-Bold');
+    doc.text('DSA A#', startX + 3, y + headerRow1Height + 2.5, { width: dateColWidth - 6 });
     
     // Row 3: File # label
     doc.rect(startX, y + headerRow1Height + headerRow2Height, dateColWidth, headerRow3Height).stroke();
-    doc.fontSize(6).font('Helvetica-Bold');
-    doc.text('File #', startX + 3, y + headerRow1Height + headerRow2Height + 2, { width: dateColWidth - 6 });
+    doc.fontSize(7).font('Helvetica-Bold');
+    doc.text('File #', startX + 3, y + headerRow1Height + headerRow2Height + 2.5, { width: dateColWidth - 6 });
     
-    // Row 4: REG OT PRM sub-header (empty for date column)
+    // Row 4: Empty for date column (REG OT PRM sub-headers in project columns)
     doc.rect(startX, y + headerRow1Height + headerRow2Height + headerRow3Height, dateColWidth, subHeaderHeight).stroke();
 
     // Project columns header
     let colX = startX + dateColWidth;
     projects.forEach((project, idx) => {
-      // Full project header cell
+      // Full project header cell - thick vertical line between projects
+      doc.lineWidth(thickLineWidth);
+      doc.moveTo(colX, y).lineTo(colX, y + totalHeaderHeight).stroke();
+      doc.lineWidth(thinLineWidth);
       doc.rect(colX, y, projectColWidth, totalHeaderHeight).stroke();
       
       // Project Name row
       doc.rect(colX, y, projectColWidth, headerRow1Height).stroke();
-      doc.fontSize(5).font('Helvetica');
+      doc.fontSize(6).font('Helvetica-Bold');
       const projName = project.projectName || '';
-      doc.text(projName, colX + 2, y + 2, { width: projectColWidth - 4, align: 'center' });
+      doc.text(projName, colX + 2, y + 2.5, { width: projectColWidth - 4, align: 'center' });
       
       // DSA A# row
       doc.rect(colX, y + headerRow1Height, projectColWidth, headerRow2Height).stroke();
+      doc.fontSize(6).font('Helvetica');
       if (project.dsaNumber) {
-        doc.text(project.dsaNumber, colX + 2, y + headerRow1Height + 2, { width: projectColWidth - 4, align: 'center' });
+        doc.text(project.dsaNumber, colX + 2, y + headerRow1Height + 2.5, { width: projectColWidth - 4, align: 'center' });
       }
       
       // File # row
       doc.rect(colX, y + headerRow1Height + headerRow2Height, projectColWidth, headerRow3Height).stroke();
       if (project.fileNumber) {
-        doc.text(project.fileNumber, colX + 2, y + headerRow1Height + headerRow2Height + 2, { width: projectColWidth - 4, align: 'center' });
+        doc.text(project.fileNumber, colX + 2, y + headerRow1Height + headerRow2Height + 2.5, { width: projectColWidth - 4, align: 'center' });
       }
       
       // REG OT PRM sub-header row - with individual cells
@@ -208,18 +232,21 @@ export async function generateTimesheetPdf(data: TimesheetData): Promise<Buffer>
       doc.rect(colX + hourColWidth, subY, hourColWidth, subHeaderHeight).stroke();
       doc.rect(colX + hourColWidth * 2, subY, hourColWidth, subHeaderHeight).stroke();
       
-      doc.fontSize(5).font('Helvetica-Bold');
-      doc.text('REG', colX, subY + 2, { width: hourColWidth, align: 'center' });
-      doc.text('OT', colX + hourColWidth, subY + 2, { width: hourColWidth, align: 'center' });
-      doc.text('PRM', colX + hourColWidth * 2, subY + 2, { width: hourColWidth, align: 'center' });
+      doc.fontSize(6).font('Helvetica-Bold');
+      doc.text('REG', colX, subY + 2.5, { width: hourColWidth, align: 'center' });
+      doc.text('OT', colX + hourColWidth, subY + 2.5, { width: hourColWidth, align: 'center' });
+      doc.text('PRM', colX + hourColWidth * 2, subY + 2.5, { width: hourColWidth, align: 'center' });
 
       colX += projectColWidth;
     });
 
-    // Remarks column header
+    // Remarks column header - thick left border
+    doc.lineWidth(thickLineWidth);
+    doc.moveTo(colX, y).lineTo(colX, y + totalHeaderHeight).stroke();
+    doc.lineWidth(thinLineWidth);
     doc.rect(colX, y, remarksColWidth, totalHeaderHeight).stroke();
-    doc.fontSize(6).font('Helvetica-Bold');
-    doc.text('REMARKS', colX + 3, y + totalHeaderHeight / 2 - 3, { width: remarksColWidth - 6, align: 'center' });
+    doc.fontSize(7).font('Helvetica-Bold');
+    doc.text('REMARKS', colX + 3, y + totalHeaderHeight / 2 - 4, { width: remarksColWidth - 6, align: 'center' });
 
     y += totalHeaderHeight;
 
@@ -229,6 +256,20 @@ export async function generateTimesheetPdf(data: TimesheetData): Promise<Buffer>
     
     // Get holiday remarks for this month
     const holidayRemarks = getHolidayRemarks(data.month, data.year);
+
+    // Helper function to draw a row with thick project separators
+    const drawRowWithThickSeparators = (yPos: number, height: number) => {
+      // Draw thick vertical lines between major sections
+      doc.lineWidth(thickLineWidth);
+      doc.moveTo(startX, yPos).lineTo(startX, yPos + height).stroke(); // Left edge
+      doc.moveTo(startX + dateColWidth, yPos).lineTo(startX + dateColWidth, yPos + height).stroke(); // After date
+      for (let i = 1; i <= projectCount; i++) {
+        doc.moveTo(startX + dateColWidth + projectColWidth * i, yPos)
+           .lineTo(startX + dateColWidth + projectColWidth * i, yPos + height).stroke();
+      }
+      doc.moveTo(startX + pageWidth, yPos).lineTo(startX + pageWidth, yPos + height).stroke(); // Right edge
+      doc.lineWidth(thinLineWidth);
+    };
 
     // Always render 31 rows to match the template exactly
     for (let day = 1; day <= 31; day++) {
@@ -240,16 +281,24 @@ export async function generateTimesheetPdf(data: TimesheetData): Promise<Buffer>
       const holidayKey = isValidDay ? format(date, 'MM-dd') : '';
       const holiday = holidayRemarks[holidayKey] || '';
 
-      // Date column
+      // Date column with thick left border
+      doc.lineWidth(thickLineWidth);
+      doc.moveTo(startX, y).lineTo(startX, y + rowHeight).stroke();
+      doc.lineWidth(thinLineWidth);
       doc.rect(startX, y, dateColWidth, rowHeight).stroke();
-      doc.fontSize(5.5).font('Helvetica');
+      doc.fontSize(6).font('Helvetica');
       if (isValidDay) {
         doc.text(`${dayName}, ${dateStr}`, startX + 3, y + 2.5, { width: dateColWidth - 6 });
       }
 
-      // Project hour columns - each with 3 sub-cells
+      // Project hour columns - each with 3 sub-cells and thick column separators
       colX = startX + dateColWidth;
       projects.forEach((project, idx) => {
+        // Thick line at start of each project column
+        doc.lineWidth(thickLineWidth);
+        doc.moveTo(colX, y).lineTo(colX, y + rowHeight).stroke();
+        doc.lineWidth(thinLineWidth);
+        
         // Draw 3 sub-cells for REG, OT, PRM
         doc.rect(colX, y, hourColWidth, rowHeight).stroke();
         doc.rect(colX + hourColWidth, y, hourColWidth, rowHeight).stroke();
@@ -257,7 +306,7 @@ export async function generateTimesheetPdf(data: TimesheetData): Promise<Buffer>
         
         if (isValidDay) {
           const hours = project.dailyHours[day] || { reg: 0, ot: 0, prm: 0 };
-          doc.fontSize(5).font('Helvetica');
+          doc.fontSize(6).font('Helvetica');
           
           if (hours.reg > 0) {
             doc.text(hours.reg.toFixed(1), colX, y + 2.5, { width: hourColWidth, align: 'center' });
@@ -284,86 +333,148 @@ export async function generateTimesheetPdf(data: TimesheetData): Promise<Buffer>
         colX += projectColWidth;
       });
 
-      // Remarks column
+      // Remarks column with thick left border
+      doc.lineWidth(thickLineWidth);
+      doc.moveTo(colX, y).lineTo(colX, y + rowHeight).stroke();
+      doc.moveTo(startX + pageWidth, y).lineTo(startX + pageWidth, y + rowHeight).stroke(); // Right edge
+      doc.lineWidth(thinLineWidth);
       doc.rect(colX, y, remarksColWidth, rowHeight).stroke();
       if (isValidDay && holiday) {
-        doc.fontSize(5).font('Helvetica');
+        doc.fontSize(6).font('Helvetica');
         doc.text(holiday, colX + 3, y + 2.5, { width: remarksColWidth - 6 });
       }
 
       y += rowHeight;
 
-      // After day 15, draw Period 1 totals
+      // After day 15, draw Period 1 totals with yellow background
       if (day === 15) {
+        // Thick line above Period 1 totals
+        doc.lineWidth(thickLineWidth);
+        doc.moveTo(startX, y).lineTo(startX + pageWidth, y).stroke();
+        doc.lineWidth(thinLineWidth);
+        
         ['Period 1 Regular', 'Period 1 OT', 'Period 1 Premium'].forEach((label, rowIdx) => {
+          // Yellow background for totals row
+          doc.fillColor(headerFillColor);
+          doc.rect(startX, y, pageWidth, rowHeight).fill();
+          doc.fillColor('#000000');
+          
           doc.rect(startX, y, dateColWidth, rowHeight).stroke();
-          doc.fontSize(5).font('Helvetica-Bold');
+          doc.fontSize(6).font('Helvetica-Bold');
           doc.text(label, startX + 3, y + 2.5, { width: dateColWidth - 6 });
 
           colX = startX + dateColWidth;
           let rowTotal = 0;
           projects.forEach((_, idx) => {
+            // Thick line at project column boundary
+            doc.lineWidth(thickLineWidth);
+            doc.moveTo(colX, y).lineTo(colX, y + rowHeight).stroke();
+            doc.lineWidth(thinLineWidth);
+            
             doc.rect(colX, y, hourColWidth, rowHeight).stroke();
             doc.rect(colX + hourColWidth, y, hourColWidth, rowHeight).stroke();
             doc.rect(colX + hourColWidth * 2, y, hourColWidth, rowHeight).stroke();
             
             const val = rowIdx === 0 ? period1Totals[idx].reg : rowIdx === 1 ? period1Totals[idx].ot : period1Totals[idx].prm;
             rowTotal += val;
-            doc.fontSize(5).font('Helvetica');
+            doc.fontSize(6).font('Helvetica');
             doc.text(val.toFixed(1), colX, y + 2.5, { width: projectColWidth, align: 'center' });
             colX += projectColWidth;
           });
 
           // Total in remarks with label on left, value on right
+          doc.lineWidth(thickLineWidth);
+          doc.moveTo(colX, y).lineTo(colX, y + rowHeight).stroke();
+          doc.moveTo(startX + pageWidth, y).lineTo(startX + pageWidth, y + rowHeight).stroke();
+          doc.lineWidth(thinLineWidth);
           doc.rect(colX, y, remarksColWidth, rowHeight).stroke();
           const totalLabel = rowIdx === 0 ? 'Total Regular' : rowIdx === 1 ? 'Total OT' : 'Total Premium';
-          doc.fontSize(5).font('Helvetica-Bold');
-          doc.text(totalLabel, colX + 3, y + 2.5, { width: remarksColWidth / 2 - 6 });
+          doc.fontSize(6).font('Helvetica-Bold');
+          doc.text(totalLabel, colX + 3, y + 2.5, { width: remarksColWidth / 2 - 3 });
           doc.text(rowTotal.toFixed(1), colX + remarksColWidth / 2, y + 2.5, { width: remarksColWidth / 2 - 6, align: 'right' });
 
           y += rowHeight;
         });
+        
+        // Thick line after Period 1 totals
+        doc.lineWidth(thickLineWidth);
+        doc.moveTo(startX, y).lineTo(startX + pageWidth, y).stroke();
+        doc.lineWidth(thinLineWidth);
       }
     }
 
     // ============ PERIOD 2 TOTALS ============
+    // Thick line above Period 2 totals
+    doc.lineWidth(thickLineWidth);
+    doc.moveTo(startX, y).lineTo(startX + pageWidth, y).stroke();
+    doc.lineWidth(thinLineWidth);
+    
     ['Period 2 Regular', 'Period 2 Overtime', 'Period 2 Premium'].forEach((label, rowIdx) => {
+      // Yellow background for totals row
+      doc.fillColor(headerFillColor);
+      doc.rect(startX, y, pageWidth, rowHeight).fill();
+      doc.fillColor('#000000');
+      
       doc.rect(startX, y, dateColWidth, rowHeight).stroke();
-      doc.fontSize(5).font('Helvetica-Bold');
+      doc.fontSize(6).font('Helvetica-Bold');
       doc.text(label, startX + 3, y + 2.5, { width: dateColWidth - 6 });
 
       colX = startX + dateColWidth;
       let rowTotal = 0;
       projects.forEach((_, idx) => {
+        // Thick line at project column boundary
+        doc.lineWidth(thickLineWidth);
+        doc.moveTo(colX, y).lineTo(colX, y + rowHeight).stroke();
+        doc.lineWidth(thinLineWidth);
+        
         doc.rect(colX, y, hourColWidth, rowHeight).stroke();
         doc.rect(colX + hourColWidth, y, hourColWidth, rowHeight).stroke();
         doc.rect(colX + hourColWidth * 2, y, hourColWidth, rowHeight).stroke();
         
         const val = rowIdx === 0 ? period2Totals[idx].reg : rowIdx === 1 ? period2Totals[idx].ot : period2Totals[idx].prm;
         rowTotal += val;
-        doc.fontSize(5).font('Helvetica');
+        doc.fontSize(6).font('Helvetica');
         doc.text(val.toFixed(1), colX, y + 2.5, { width: projectColWidth, align: 'center' });
         colX += projectColWidth;
       });
 
+      doc.lineWidth(thickLineWidth);
+      doc.moveTo(colX, y).lineTo(colX, y + rowHeight).stroke();
+      doc.moveTo(startX + pageWidth, y).lineTo(startX + pageWidth, y + rowHeight).stroke();
+      doc.lineWidth(thinLineWidth);
+      
       doc.rect(colX, y, remarksColWidth, rowHeight).stroke();
       const totalLabel = rowIdx === 0 ? 'Total Regular' : rowIdx === 1 ? 'Total Overtime' : 'Total Premium';
-      doc.fontSize(5).font('Helvetica-Bold');
-      doc.text(totalLabel, colX + 3, y + 2.5, { width: remarksColWidth / 2 - 6 });
+      doc.fontSize(6).font('Helvetica-Bold');
+      doc.text(totalLabel, colX + 3, y + 2.5, { width: remarksColWidth / 2 - 3 });
       doc.text(rowTotal.toFixed(1), colX + remarksColWidth / 2, y + 2.5, { width: remarksColWidth / 2 - 6, align: 'right' });
 
       y += rowHeight;
     });
 
     // ============ MONTH TOTALS ============
+    // Thick line above Month totals
+    doc.lineWidth(thickLineWidth);
+    doc.moveTo(startX, y).lineTo(startX + pageWidth, y).stroke();
+    doc.lineWidth(thinLineWidth);
+    
     ['Month Regular', 'Month Overtime', 'Month Premium'].forEach((label, rowIdx) => {
+      // Yellow background for totals row
+      doc.fillColor(headerFillColor);
+      doc.rect(startX, y, pageWidth, rowHeight).fill();
+      doc.fillColor('#000000');
+      
       doc.rect(startX, y, dateColWidth, rowHeight).stroke();
-      doc.fontSize(5).font('Helvetica-Bold');
+      doc.fontSize(6).font('Helvetica-Bold');
       doc.text(label, startX + 3, y + 2.5, { width: dateColWidth - 6 });
 
       colX = startX + dateColWidth;
       let rowTotal = 0;
       projects.forEach((_, idx) => {
+        doc.lineWidth(thickLineWidth);
+        doc.moveTo(colX, y).lineTo(colX, y + rowHeight).stroke();
+        doc.lineWidth(thinLineWidth);
+        
         doc.rect(colX, y, hourColWidth, rowHeight).stroke();
         doc.rect(colX + hourColWidth, y, hourColWidth, rowHeight).stroke();
         doc.rect(colX + hourColWidth * 2, y, hourColWidth, rowHeight).stroke();
@@ -372,28 +483,47 @@ export async function generateTimesheetPdf(data: TimesheetData): Promise<Buffer>
         const p2 = rowIdx === 0 ? period2Totals[idx].reg : rowIdx === 1 ? period2Totals[idx].ot : period2Totals[idx].prm;
         const val = p1 + p2;
         rowTotal += val;
-        doc.fontSize(5).font('Helvetica');
+        doc.fontSize(6).font('Helvetica');
         doc.text(val.toFixed(1), colX, y + 2.5, { width: projectColWidth, align: 'center' });
         colX += projectColWidth;
       });
 
+      doc.lineWidth(thickLineWidth);
+      doc.moveTo(colX, y).lineTo(colX, y + rowHeight).stroke();
+      doc.moveTo(startX + pageWidth, y).lineTo(startX + pageWidth, y + rowHeight).stroke();
+      doc.lineWidth(thinLineWidth);
+      
       doc.rect(colX, y, remarksColWidth, rowHeight).stroke();
       const totalLabel = rowIdx === 0 ? 'Total Regular' : rowIdx === 1 ? 'Total Overtime' : 'Total Premium';
-      doc.fontSize(5).font('Helvetica-Bold');
-      doc.text(totalLabel, colX + 3, y + 2.5, { width: remarksColWidth / 2 - 6 });
+      doc.fontSize(6).font('Helvetica-Bold');
+      doc.text(totalLabel, colX + 3, y + 2.5, { width: remarksColWidth / 2 - 3 });
       doc.text(rowTotal.toFixed(1), colX + remarksColWidth / 2, y + 2.5, { width: remarksColWidth / 2 - 6, align: 'right' });
 
       y += rowHeight;
     });
 
     // ============ PROJECT TOTAL ROW ============
+    // Thick line above Project Total
+    doc.lineWidth(thickLineWidth);
+    doc.moveTo(startX, y).lineTo(startX + pageWidth, y).stroke();
+    doc.lineWidth(thinLineWidth);
+    
+    // Yellow background
+    doc.fillColor(headerFillColor);
+    doc.rect(startX, y, pageWidth, rowHeight).fill();
+    doc.fillColor('#000000');
+    
     doc.rect(startX, y, dateColWidth, rowHeight).stroke();
-    doc.fontSize(5).font('Helvetica-Bold');
+    doc.fontSize(6).font('Helvetica-Bold');
     doc.text('Project Total', startX + 3, y + 2.5, { width: dateColWidth - 6 });
 
     colX = startX + dateColWidth;
     let grandTotal = 0;
     projects.forEach((_, idx) => {
+      doc.lineWidth(thickLineWidth);
+      doc.moveTo(colX, y).lineTo(colX, y + rowHeight).stroke();
+      doc.lineWidth(thinLineWidth);
+      
       doc.rect(colX, y, hourColWidth, rowHeight).stroke();
       doc.rect(colX + hourColWidth, y, hourColWidth, rowHeight).stroke();
       doc.rect(colX + hourColWidth * 2, y, hourColWidth, rowHeight).stroke();
@@ -401,23 +531,37 @@ export async function generateTimesheetPdf(data: TimesheetData): Promise<Buffer>
       const total = period1Totals[idx].reg + period1Totals[idx].ot + period1Totals[idx].prm +
                    period2Totals[idx].reg + period2Totals[idx].ot + period2Totals[idx].prm;
       grandTotal += total;
-      doc.fontSize(5).font('Helvetica');
+      doc.fontSize(6).font('Helvetica-Bold');
       doc.text(total.toFixed(1), colX, y + 2.5, { width: projectColWidth, align: 'center' });
       colX += projectColWidth;
     });
     
+    doc.lineWidth(thickLineWidth);
+    doc.moveTo(colX, y).lineTo(colX, y + rowHeight).stroke();
+    doc.moveTo(startX + pageWidth, y).lineTo(startX + pageWidth, y + rowHeight).stroke();
+    doc.lineWidth(thinLineWidth);
+    
     doc.rect(colX, y, remarksColWidth, rowHeight).stroke();
-    doc.fontSize(5).font('Helvetica-Bold');
+    doc.fontSize(6).font('Helvetica-Bold');
     doc.text(grandTotal.toFixed(1), colX + remarksColWidth - 30, y + 2.5, { width: 25, align: 'right' });
     y += rowHeight;
 
     // ============ % REG/HOL ROW ============
+    // Yellow background
+    doc.fillColor(headerFillColor);
+    doc.rect(startX, y, pageWidth, rowHeight).fill();
+    doc.fillColor('#000000');
+    
     doc.rect(startX, y, dateColWidth, rowHeight).stroke();
-    doc.fontSize(5).font('Helvetica-Bold');
+    doc.fontSize(6).font('Helvetica-Bold');
     doc.text('% Reg/Hol', startX + 3, y + 2.5, { width: dateColWidth - 6 });
 
     colX = startX + dateColWidth;
     projects.forEach((_, idx) => {
+      doc.lineWidth(thickLineWidth);
+      doc.moveTo(colX, y).lineTo(colX, y + rowHeight).stroke();
+      doc.lineWidth(thinLineWidth);
+      
       doc.rect(colX, y, hourColWidth, rowHeight).stroke();
       doc.rect(colX + hourColWidth, y, hourColWidth, rowHeight).stroke();
       doc.rect(colX + hourColWidth * 2, y, hourColWidth, rowHeight).stroke();
@@ -425,85 +569,124 @@ export async function generateTimesheetPdf(data: TimesheetData): Promise<Buffer>
       const total = period1Totals[idx].reg + period1Totals[idx].ot + period1Totals[idx].prm +
                    period2Totals[idx].reg + period2Totals[idx].ot + period2Totals[idx].prm;
       const pct = grandTotal > 0 ? (total / grandTotal * 100) : 0;
-      doc.fontSize(5).font('Helvetica');
+      doc.fontSize(6).font('Helvetica-Bold');
       doc.text(pct.toFixed(1) + '%', colX, y + 2.5, { width: projectColWidth, align: 'center' });
       colX += projectColWidth;
     });
     
+    doc.lineWidth(thickLineWidth);
+    doc.moveTo(colX, y).lineTo(colX, y + rowHeight).stroke();
+    doc.moveTo(startX + pageWidth, y).lineTo(startX + pageWidth, y + rowHeight).stroke();
+    doc.lineWidth(thinLineWidth);
+    
     doc.rect(colX, y, remarksColWidth, rowHeight).stroke();
-    doc.fontSize(5).font('Helvetica');
+    doc.fontSize(6).font('Helvetica-Bold');
     doc.text(grandTotal > 0 ? '100.0%' : '0.0%', colX + remarksColWidth - 30, y + 2.5, { width: 25, align: 'right' });
     y += rowHeight;
 
     // ============ TOTALS SUMMARY ROW ============
+    // Thick line above summary
+    doc.lineWidth(thickLineWidth);
+    doc.moveTo(startX, y).lineTo(startX + pageWidth, y).stroke();
+    doc.lineWidth(thinLineWidth);
+    
     const totalReg = period1Totals.reduce((s, t) => s + t.reg, 0) + period2Totals.reduce((s, t) => s + t.reg, 0);
     const totalOT = period1Totals.reduce((s, t) => s + t.ot, 0) + period2Totals.reduce((s, t) => s + t.ot, 0);
     const totalPrm = period1Totals.reduce((s, t) => s + t.prm, 0) + period2Totals.reduce((s, t) => s + t.prm, 0);
 
+    // Yellow background
+    doc.fillColor(headerFillColor);
+    doc.rect(startX, y, pageWidth, rowHeight).fill();
+    doc.fillColor('#000000');
+    
     // Summary row with cells
     doc.rect(startX, y, dateColWidth, rowHeight).stroke();
-    doc.fontSize(5).font('Helvetica-Bold');
+    doc.fontSize(6).font('Helvetica-Bold');
     doc.text('Total REG + PRM', startX + 3, y + 2.5, { width: dateColWidth - 6 });
     
     // First project col area for REG+PRM value
+    doc.lineWidth(thickLineWidth);
+    doc.moveTo(startX + dateColWidth, y).lineTo(startX + dateColWidth, y + rowHeight).stroke();
+    doc.lineWidth(thinLineWidth);
     doc.rect(startX + dateColWidth, y, projectColWidth, rowHeight).stroke();
-    doc.fontSize(5).font('Helvetica');
+    doc.fontSize(6).font('Helvetica-Bold');
     doc.text((totalReg + totalPrm).toFixed(1), startX + dateColWidth, y + 2.5, { width: projectColWidth, align: 'center' });
     
     // Second col for "Total OT" label
+    doc.lineWidth(thickLineWidth);
+    doc.moveTo(startX + dateColWidth + projectColWidth, y).lineTo(startX + dateColWidth + projectColWidth, y + rowHeight).stroke();
+    doc.lineWidth(thinLineWidth);
     doc.rect(startX + dateColWidth + projectColWidth, y, projectColWidth, rowHeight).stroke();
-    doc.fontSize(5).font('Helvetica-Bold');
+    doc.fontSize(6).font('Helvetica-Bold');
     doc.text('Total OT', startX + dateColWidth + projectColWidth + 3, y + 2.5, { width: projectColWidth - 6 });
     
     // Third col for OT value
+    doc.lineWidth(thickLineWidth);
+    doc.moveTo(startX + dateColWidth + projectColWidth * 2, y).lineTo(startX + dateColWidth + projectColWidth * 2, y + rowHeight).stroke();
+    doc.lineWidth(thinLineWidth);
     doc.rect(startX + dateColWidth + projectColWidth * 2, y, projectColWidth, rowHeight).stroke();
-    doc.fontSize(5).font('Helvetica');
+    doc.fontSize(6).font('Helvetica-Bold');
     doc.text(totalOT.toFixed(1), startX + dateColWidth + projectColWidth * 2, y + 2.5, { width: projectColWidth, align: 'center' });
     
     // Fourth col empty
+    doc.lineWidth(thickLineWidth);
+    doc.moveTo(startX + dateColWidth + projectColWidth * 3, y).lineTo(startX + dateColWidth + projectColWidth * 3, y + rowHeight).stroke();
+    doc.lineWidth(thinLineWidth);
     doc.rect(startX + dateColWidth + projectColWidth * 3, y, projectColWidth, rowHeight).stroke();
     
     // Fifth col for Grand Total label
+    doc.lineWidth(thickLineWidth);
+    doc.moveTo(startX + dateColWidth + projectColWidth * 4, y).lineTo(startX + dateColWidth + projectColWidth * 4, y + rowHeight).stroke();
+    doc.lineWidth(thinLineWidth);
     doc.rect(startX + dateColWidth + projectColWidth * 4, y, projectColWidth, rowHeight).stroke();
-    doc.fontSize(5).font('Helvetica-Bold');
+    doc.fontSize(6).font('Helvetica-Bold');
     doc.text('Grand Total', startX + dateColWidth + projectColWidth * 4 + 3, y + 2.5, { width: projectColWidth - 6 });
     
     // Remarks col for grand total value
+    doc.lineWidth(thickLineWidth);
+    doc.moveTo(startX + dateColWidth + projectColWidth * 5, y).lineTo(startX + dateColWidth + projectColWidth * 5, y + rowHeight).stroke();
+    doc.moveTo(startX + pageWidth, y).lineTo(startX + pageWidth, y + rowHeight).stroke();
+    doc.lineWidth(thinLineWidth);
     doc.rect(startX + dateColWidth + projectColWidth * 5, y, remarksColWidth, rowHeight).stroke();
-    doc.fontSize(5).font('Helvetica-Bold');
+    doc.fontSize(6).font('Helvetica-Bold');
     doc.text(grandTotal.toFixed(1), startX + dateColWidth + projectColWidth * 5 + remarksColWidth - 30, y + 2.5, { width: 25, align: 'right' });
     y += rowHeight;
+    
+    // Thick bottom border
+    doc.lineWidth(thickLineWidth);
+    doc.moveTo(startX, y).lineTo(startX + pageWidth, y).stroke();
+    doc.lineWidth(thinLineWidth);
 
     // ============ FOOTER NOTE ============
-    y += 5;
-    doc.fontSize(5.5).font('Helvetica-Oblique');
+    y += 8;
+    doc.fontSize(7).font('Helvetica-Oblique');
     doc.text('One separate sheet required for each District. Some Districts require special Overtime sheet to be filled out for acceptance.', startX + 5, y);
 
     // ============ SIGNATURE SECTION ============
-    y += 15;
-    doc.fontSize(7).font('Helvetica-Bold');
+    y += 18;
+    doc.fontSize(8).font('Helvetica-Bold');
     doc.text('District Rep. Approval', startX + 5, y);
     
     // Date field on right side
-    doc.text('Date:', pageWidth - 130, y);
-    doc.moveTo(pageWidth - 100, y + 10).lineTo(pageWidth - 20, y + 10).stroke();
+    doc.text('Date:', startX + pageWidth - 80, y);
+    doc.moveTo(startX + pageWidth - 55, y + 10).lineTo(startX + pageWidth, y + 10).stroke();
 
-    y += 18;
+    y += 20;
     doc.text('Signature:', startX + 25, y);
-    doc.moveTo(startX + 75, y + 10).lineTo(startX + 250, y + 10).stroke();
+    doc.moveTo(startX + 85, y + 10).lineTo(startX + 250, y + 10).stroke();
 
     // ============ ESTIMATE FIELDS ============
-    y += 25;
-    doc.fontSize(7).font('Helvetica-Bold');
+    y += 28;
+    doc.fontSize(8).font('Helvetica-Bold');
     doc.text('Est. Percentage Complete:', startX + 5, y);
     doc.font('Helvetica');
-    doc.text(data.estPercentComplete || '', startX + 140, y);
+    doc.text(data.estPercentComplete || '', startX + 150, y);
     
-    y += 14;
+    y += 16;
     doc.font('Helvetica-Bold');
     doc.text('Est. Completion Date:', startX + 5, y);
     doc.font('Helvetica');
-    doc.text(data.estCompletionDate || '', startX + 125, y);
+    doc.text(data.estCompletionDate || '', startX + 130, y);
 
     doc.end();
   });
