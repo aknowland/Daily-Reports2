@@ -6175,6 +6175,28 @@ export async function registerRoutes(
     }
   });
 
+  // Test endpoint: Generate blank timesheet PDF for viewing the template
+  app.get("/api/billing/test-timesheet", async (req, res) => {
+    try {
+      const blankData = {
+        companyName: "Sample Construction Company",
+        inspectorName: "John Doe",
+        districtName: "",
+        month: 1,
+        year: 2026,
+        projects: []
+      };
+      
+      const pdfBuffer = await generateTimesheetPdf(blankData);
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', 'inline; filename="blank-timesheet.pdf"');
+      res.send(pdfBuffer);
+    } catch (error) {
+      console.error("Error generating test timesheet:", error);
+      res.status(500).json({ message: "Failed to generate test timesheet" });
+    }
+  });
+
   // Generate invoice PDF for a project/month with rates
   app.post("/api/billing/invoice", isAuthenticated, async (req: any, res) => {
     try {
