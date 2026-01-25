@@ -55,12 +55,17 @@ The application is built with a modern web stack, utilizing **React, TypeScript,
     - **Notifications Center**: Budget alerts and deadline warnings with severity indicators
     - **Inspector Workload**: Hours, projects, and reports per inspector
     - **Recent Activity Feed**: Last 10 daily reports with timestamps
--   **Monthly Summary PDF**: Dashboard-style PDF reports with visual themes:
-    - **Weather Summary**: Color-coded progress bars (sunny=#fbbf24, rain=#3b82f6, cloudy=#6b7280)
-    - **Upcoming Milestones**: Cards with status indicators (green=completed, yellow=urgent, gray=future)
-    - **Issues Section**: Yellow-themed cards (#fef9e7 bg, #f59e0b border) with green success message when none
-    - **Safety Incidents**: Red-themed cards (#fef2f2 bg, #dc2626 border) with green success message when none
-    - **Email Distribution**: Send monthly summaries to project distribution lists
+-   **Summary Reports**: Comprehensive reporting accessible via dropdown menus on all dashboards:
+    - **Report Types**: Weekly Summary (user selects week), Monthly Summary (user selects month), Current Status (today's snapshot)
+    - **Dashboard Scopes**: 
+      - Project Dashboard: Individual project data
+      - Contract Dashboard: All linked projects combined with budget/schedule/invoice data
+      - Company Dashboard: All active projects/contracts with company-wide analytics
+    - **Weekly Summary PDF**: Stats boxes, weather progress bars, issues/safety side-by-side sections, daily reports table
+    - **Monthly Summary PDF**: Dashboard-style with weather summary, milestones, issues, safety incidents
+    - **Current Status PDF**: Schedule/budget cards, key metrics, team overview, recent activity
+    - **Week Selection**: Calendar picker with quick selection buttons (This Week, Last Week, 2 Weeks Ago, etc.)
+    - **Email Distribution**: All report types support email distribution to specified recipients
 
 ## External Dependencies
 
