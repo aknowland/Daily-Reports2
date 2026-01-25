@@ -1221,3 +1221,373 @@ export async function generateInspectorInvoicePdf(data: InspectorInvoiceData): P
     doc.end();
   });
 }
+
+// ============ MONTHLY SUMMARY PDF ============
+interface MonthlySummaryData {
+  projectName: string;
+  projectNumber: string;
+  clientName: string;
+  companyName: string;
+  companyLogoBuffer?: Buffer;
+  month: number;
+  year: number;
+  schedule: {
+    progress: number;
+    status: string;
+    startDate: string | null;
+    endDate: string | null;
+    daysRemaining: number | null;
+  };
+  hours: {
+    budgeted: number;
+    baseBudget: number;
+    used: number;
+    remaining: number;
+    progress: number;
+    breakdown: {
+      regular: number;
+      overtime: number;
+      premium: number;
+    };
+  };
+  dailyReports: {
+    id: string;
+    date: string;
+    inspectorName: string;
+    regularHours: number;
+    otHours: number;
+    premiumHours: number;
+    weatherType: string | null;
+    workDescription: string | null;
+    notes: string | null;
+    issues: string | null;
+    safetyIncidents: string | null;
+  }[];
+  weatherSummary: {
+    totalReports: number;
+    breakdown: { type: string; count: number; percentage: number }[];
+  };
+  issuesSummary: {
+    totalCount: number;
+    issues: { date: string; details: string }[];
+  };
+  safetySummary: {
+    totalCount: number;
+    incidents: { date: string; details: string }[];
+  };
+  teamOverview: {
+    inspectorName: string;
+    regular: number;
+    overtime: number;
+    premium: number;
+    reportCount: number;
+  }[];
+}
+
+export async function generateMonthlySummaryPdf(data: MonthlySummaryData): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const doc = new PDFDocument({
+      size: 'LETTER',
+      layout: 'portrait',
+      margin: 40,
+    });
+
+    const chunks: Buffer[] = [];
+    doc.on('data', (chunk: Buffer) => chunks.push(chunk));
+    doc.on('end', () => resolve(Buffer.concat(chunks)));
+    doc.on('error', reject);
+
+    const pageWidth = doc.page.width - 80;
+    const startX = 40;
+    const monthName = format(new Date(data.year, data.month - 1), 'MMMM yyyy');
+
+    // ============ HEADER ============
+    let y = 40;
+    
+    // Company logo in top left corner (if provided)
+    const logoWidth = 60;
+    const logoHeight = 45;
+    const textStartX = data.companyLogoBuffer ? startX + logoWidth + 15 : startX;
+    
+    if (data.companyLogoBuffer) {
+      try {
+        doc.image(data.companyLogoBuffer, startX, y, { 
+          fit: [logoWidth, logoHeight]
+        });
+      } catch (e) {
+        // Logo failed to load
+      }
+    }
+    
+    // Title
+    doc.fontSize(18).font('Helvetica-Bold').fillColor('#000');
+    doc.text('Monthly Project Summary', textStartX, y);
+    
+    y += 25;
+    doc.fontSize(14).font('Helvetica');
+    doc.text(monthName, textStartX, y);
+    
+    y += 20;
+    doc.fontSize(10).fillColor('#666');
+    doc.text(data.companyName, textStartX, y);
+    
+    y = Math.max(y + 25, 40 + logoHeight + 15);
+    
+    // Horizontal divider
+    doc.strokeColor('#ddd').lineWidth(1);
+    doc.moveTo(startX, y).lineTo(startX + pageWidth, y).stroke();
+    y += 15;
+
+    // ============ PROJECT INFO ============
+    doc.fontSize(12).font('Helvetica-Bold').fillColor('#000');
+    doc.text('Project Information', startX, y);
+    y += 18;
+    
+    doc.fontSize(10).font('Helvetica');
+    const infoCol1X = startX;
+    const infoCol2X = startX + pageWidth / 2;
+    
+    doc.font('Helvetica-Bold').text('Project Name:', infoCol1X, y, { continued: true });
+    doc.font('Helvetica').text(' ' + data.projectName);
+    
+    y += 14;
+    doc.font('Helvetica-Bold').text('Project Number:', infoCol1X, y, { continued: true });
+    doc.font('Helvetica').text(' ' + (data.projectNumber || 'N/A'));
+    
+    y += 14;
+    doc.font('Helvetica-Bold').text('Client:', infoCol1X, y, { continued: true });
+    doc.font('Helvetica').text(' ' + (data.clientName || 'N/A'));
+    
+    y += 25;
+
+    // ============ SCHEDULE PROGRESS ============
+    doc.fontSize(12).font('Helvetica-Bold').fillColor('#000');
+    doc.text('Schedule Progress', startX, y);
+    y += 18;
+    
+    // Progress bar
+    const progressBarWidth = pageWidth - 100;
+    const progressBarHeight = 16;
+    
+    doc.rect(startX, y, progressBarWidth, progressBarHeight).fill('#eee');
+    const filledWidth = Math.min(data.schedule.progress / 100, 1) * progressBarWidth;
+    const progressColor = data.schedule.status === 'on_track' || data.schedule.status === 'complete' ? '#22c55e' : 
+                          data.schedule.status === 'warning' ? '#eab308' : '#ef4444';
+    doc.rect(startX, y, filledWidth, progressBarHeight).fill(progressColor);
+    
+    doc.fontSize(10).font('Helvetica-Bold').fillColor('#000');
+    doc.text(`${Math.round(data.schedule.progress)}%`, startX + progressBarWidth + 10, y + 3);
+    
+    y += progressBarHeight + 10;
+    doc.fontSize(9).font('Helvetica').fillColor('#666');
+    if (data.schedule.startDate) {
+      doc.text(`Start: ${format(new Date(data.schedule.startDate), 'MMM d, yyyy')}`, startX, y);
+    }
+    if (data.schedule.endDate) {
+      doc.text(`End: ${format(new Date(data.schedule.endDate), 'MMM d, yyyy')}`, startX + 150, y);
+    }
+    if (data.schedule.daysRemaining !== null && data.schedule.daysRemaining > 0) {
+      doc.text(`${data.schedule.daysRemaining} days remaining`, startX + 300, y);
+    }
+    
+    y += 25;
+
+    // ============ HOURS BUDGET ============
+    doc.fontSize(12).font('Helvetica-Bold').fillColor('#000');
+    doc.text('Hours Budget', startX, y);
+    y += 18;
+    
+    // Hours progress bar
+    const hoursProgress = data.hours.budgeted > 0 ? Math.min(data.hours.progress / 100, 1.2) : 0;
+    doc.rect(startX, y, progressBarWidth, progressBarHeight).fill('#eee');
+    const hoursColor = data.hours.progress <= 75 ? '#22c55e' : data.hours.progress <= 90 ? '#eab308' : '#ef4444';
+    doc.rect(startX, y, Math.min(hoursProgress, 1) * progressBarWidth, progressBarHeight).fill(hoursColor);
+    
+    doc.fontSize(10).font('Helvetica-Bold').fillColor('#000');
+    doc.text(`${Math.round(data.hours.progress)}%`, startX + progressBarWidth + 10, y + 3);
+    
+    y += progressBarHeight + 10;
+    doc.fontSize(9).font('Helvetica').fillColor('#666');
+    doc.text(`Used: ${data.hours.used.toFixed(1)} hrs`, startX, y);
+    doc.text(`Budgeted: ${data.hours.budgeted.toFixed(1)} hrs`, startX + 120, y);
+    doc.text(`Remaining: ${data.hours.remaining.toFixed(1)} hrs`, startX + 260, y);
+    
+    y += 18;
+    // Hours breakdown
+    doc.fontSize(9).font('Helvetica');
+    doc.text(`Regular: ${data.hours.breakdown.regular.toFixed(1)} hrs`, startX, y);
+    doc.text(`Overtime: ${data.hours.breakdown.overtime.toFixed(1)} hrs`, startX + 120, y);
+    doc.text(`Premium: ${data.hours.breakdown.premium.toFixed(1)} hrs`, startX + 260, y);
+    
+    y += 25;
+
+    // ============ TEAM OVERVIEW ============
+    if (data.teamOverview.length > 0) {
+      doc.fontSize(12).font('Helvetica-Bold').fillColor('#000');
+      doc.text('Team Overview', startX, y);
+      y += 18;
+      
+      // Table header
+      doc.fontSize(8).font('Helvetica-Bold').fillColor('#666');
+      doc.rect(startX, y, pageWidth, 18).fill('#f5f5f5');
+      doc.fillColor('#000');
+      doc.text('Inspector', startX + 5, y + 5);
+      doc.text('Reports', startX + 180, y + 5, { width: 50, align: 'center' });
+      doc.text('Regular', startX + 240, y + 5, { width: 60, align: 'center' });
+      doc.text('OT', startX + 310, y + 5, { width: 50, align: 'center' });
+      doc.text('Premium', startX + 370, y + 5, { width: 60, align: 'center' });
+      doc.text('Total', startX + 440, y + 5, { width: 60, align: 'center' });
+      
+      y += 18;
+      
+      data.teamOverview.forEach((inspector, idx) => {
+        if (idx % 2 === 1) {
+          doc.rect(startX, y, pageWidth, 16).fill('#fafafa');
+        }
+        doc.fillColor('#000').fontSize(8).font('Helvetica');
+        doc.text(inspector.inspectorName, startX + 5, y + 4, { width: 170 });
+        doc.text(inspector.reportCount.toString(), startX + 180, y + 4, { width: 50, align: 'center' });
+        doc.text(inspector.regular.toFixed(1), startX + 240, y + 4, { width: 60, align: 'center' });
+        doc.text(inspector.overtime.toFixed(1), startX + 310, y + 4, { width: 50, align: 'center' });
+        doc.text(inspector.premium.toFixed(1), startX + 370, y + 4, { width: 60, align: 'center' });
+        const total = inspector.regular + inspector.overtime + inspector.premium;
+        doc.text(total.toFixed(1), startX + 440, y + 4, { width: 60, align: 'center' });
+        y += 16;
+      });
+      
+      y += 15;
+    }
+
+    // ============ WEATHER SUMMARY ============
+    if (data.weatherSummary.breakdown.length > 0) {
+      doc.fontSize(12).font('Helvetica-Bold').fillColor('#000');
+      doc.text('Weather Summary', startX, y);
+      y += 18;
+      
+      doc.fontSize(9).font('Helvetica').fillColor('#666');
+      const weatherText = data.weatherSummary.breakdown
+        .map(w => `${w.type}: ${w.count} days (${w.percentage}%)`)
+        .join('  |  ');
+      doc.text(weatherText, startX, y);
+      y += 25;
+    }
+
+    // ============ ISSUES SUMMARY ============
+    if (data.issuesSummary.totalCount > 0) {
+      doc.fontSize(12).font('Helvetica-Bold').fillColor('#000');
+      doc.text(`Issues Reported (${data.issuesSummary.totalCount})`, startX, y);
+      y += 18;
+      
+      doc.fontSize(9).font('Helvetica').fillColor('#666');
+      data.issuesSummary.issues.slice(0, 5).forEach(issue => {
+        const dateStr = format(new Date(issue.date), 'MMM d');
+        doc.font('Helvetica-Bold').fillColor('#000').text(`${dateStr}: `, startX, y, { continued: true });
+        doc.font('Helvetica').fillColor('#666').text(issue.details || 'No details', { width: pageWidth - 60 });
+        y += 14;
+      });
+      if (data.issuesSummary.totalCount > 5) {
+        doc.fontSize(8).fillColor('#999').text(`... and ${data.issuesSummary.totalCount - 5} more issues`, startX, y);
+        y += 12;
+      }
+      y += 10;
+    }
+
+    // ============ SAFETY INCIDENTS ============
+    if (data.safetySummary.totalCount > 0) {
+      doc.fontSize(12).font('Helvetica-Bold').fillColor('#c00');
+      doc.text(`Safety Incidents (${data.safetySummary.totalCount})`, startX, y);
+      y += 18;
+      
+      doc.fontSize(9).font('Helvetica').fillColor('#666');
+      data.safetySummary.incidents.slice(0, 3).forEach(incident => {
+        const dateStr = format(new Date(incident.date), 'MMM d');
+        doc.font('Helvetica-Bold').fillColor('#000').text(`${dateStr}: `, startX, y, { continued: true });
+        doc.font('Helvetica').fillColor('#666').text(incident.details || 'No details', { width: pageWidth - 60 });
+        y += 14;
+      });
+      y += 10;
+    }
+
+    // ============ DAILY REPORTS SUMMARY ============
+    // Check if we need a new page
+    if (y > doc.page.height - 200) {
+      doc.addPage();
+      y = 40;
+    }
+    
+    doc.fontSize(12).font('Helvetica-Bold').fillColor('#000');
+    doc.text(`Daily Reports (${data.dailyReports.length} total)`, startX, y);
+    y += 18;
+    
+    if (data.dailyReports.length > 0) {
+      // Table header
+      doc.fontSize(7).font('Helvetica-Bold').fillColor('#666');
+      doc.rect(startX, y, pageWidth, 16).fill('#f5f5f5');
+      doc.fillColor('#000');
+      doc.text('Date', startX + 3, y + 4, { width: 55 });
+      doc.text('Inspector', startX + 58, y + 4, { width: 80 });
+      doc.text('Reg', startX + 140, y + 4, { width: 30, align: 'center' });
+      doc.text('OT', startX + 170, y + 4, { width: 25, align: 'center' });
+      doc.text('Prm', startX + 195, y + 4, { width: 25, align: 'center' });
+      doc.text('Weather', startX + 222, y + 4, { width: 50 });
+      doc.text('Work Description', startX + 275, y + 4, { width: pageWidth - 275 });
+      
+      y += 16;
+      
+      // Show all daily reports (compressed format)
+      data.dailyReports.forEach((report, idx) => {
+        // Check if we need a new page
+        if (y > doc.page.height - 50) {
+          doc.addPage();
+          y = 40;
+          // Repeat header on new page
+          doc.fontSize(7).font('Helvetica-Bold').fillColor('#666');
+          doc.rect(startX, y, pageWidth, 16).fill('#f5f5f5');
+          doc.fillColor('#000');
+          doc.text('Date', startX + 3, y + 4, { width: 55 });
+          doc.text('Inspector', startX + 58, y + 4, { width: 80 });
+          doc.text('Reg', startX + 140, y + 4, { width: 30, align: 'center' });
+          doc.text('OT', startX + 170, y + 4, { width: 25, align: 'center' });
+          doc.text('Prm', startX + 195, y + 4, { width: 25, align: 'center' });
+          doc.text('Weather', startX + 222, y + 4, { width: 50 });
+          doc.text('Work Description', startX + 275, y + 4, { width: pageWidth - 275 });
+          y += 16;
+        }
+        
+        if (idx % 2 === 1) {
+          doc.rect(startX, y, pageWidth, 14).fill('#fafafa');
+        }
+        
+        doc.fontSize(7).font('Helvetica').fillColor('#000');
+        const dateStr = format(new Date(report.date), 'EEE, MMM d');
+        doc.text(dateStr, startX + 3, y + 3, { width: 55 });
+        doc.text(report.inspectorName || '', startX + 58, y + 3, { width: 80 });
+        doc.text(report.regularHours?.toFixed(1) || '0.0', startX + 140, y + 3, { width: 30, align: 'center' });
+        doc.text(report.otHours?.toFixed(1) || '0.0', startX + 170, y + 3, { width: 25, align: 'center' });
+        doc.text(report.premiumHours?.toFixed(1) || '0.0', startX + 195, y + 3, { width: 25, align: 'center' });
+        doc.text(report.weatherType || '', startX + 222, y + 3, { width: 50 });
+        
+        // Truncate work description
+        const workDesc = (report.workDescription || '').substring(0, 80);
+        doc.fontSize(6).text(workDesc + (report.workDescription && report.workDescription.length > 80 ? '...' : ''), 
+          startX + 275, y + 3, { width: pageWidth - 280 });
+        
+        y += 14;
+      });
+    } else {
+      doc.fontSize(9).font('Helvetica').fillColor('#666');
+      doc.text('No daily reports submitted for this month.', startX, y);
+      y += 20;
+    }
+
+    // ============ FOOTER ============
+    const footerY = doc.page.height - 40;
+    doc.fontSize(8).font('Helvetica').fillColor('#999');
+    doc.text(`Generated on ${format(new Date(), 'MMMM d, yyyy')} | ${data.companyName}`, startX, footerY, { 
+      width: pageWidth, 
+      align: 'center' 
+    });
+
+    doc.end();
+  });
+}
