@@ -1282,6 +1282,13 @@ interface MonthlySummaryData {
     premium: number;
     reportCount: number;
   }[];
+  upcomingMilestones: {
+    date: string;
+    label: string;
+    type: string;
+    daysUntil: number;
+    isPast: boolean;
+  }[];
 }
 
 export async function generateMonthlySummaryPdf(data: MonthlySummaryData): Promise<Buffer> {
@@ -1458,55 +1465,220 @@ export async function generateMonthlySummaryPdf(data: MonthlySummaryData): Promi
       y += 15;
     }
 
-    // ============ WEATHER SUMMARY ============
+    // ============ WEATHER SUMMARY (Dashboard Style) ============
     if (data.weatherSummary.breakdown.length > 0) {
+      // Check for page break
+      if (y > doc.page.height - 120) {
+        doc.addPage();
+        y = 40;
+      }
+      
       doc.fontSize(12).font('Helvetica-Bold').fillColor('#000');
       doc.text('Weather Summary', startX, y);
-      y += 18;
+      y += 20;
       
-      doc.fontSize(9).font('Helvetica').fillColor('#666');
-      const weatherText = data.weatherSummary.breakdown
-        .map(w => `${w.type}: ${w.count} days (${w.percentage}%)`)
-        .join('  |  ');
-      doc.text(weatherText, startX, y);
-      y += 25;
+      // Weather breakdown with visual bars
+      const maxPercentage = Math.max(...data.weatherSummary.breakdown.map(w => w.percentage));
+      const barMaxWidth = 150;
+      
+      data.weatherSummary.breakdown.slice(0, 5).forEach(weather => {
+        // Weather type label
+        const weatherLabel = weather.type.charAt(0).toUpperCase() + weather.type.slice(1).replace('_', ' ');
+        doc.fontSize(9).font('Helvetica').fillColor('#333');
+        doc.text(weatherLabel, startX, y, { width: 70 });
+        
+        // Progress bar background
+        doc.rect(startX + 75, y, barMaxWidth, 12).fill('#eee');
+        
+        // Progress bar fill with weather-appropriate colors
+        const weatherColors: Record<string, string> = {
+          'clear': '#fbbf24',
+          'sunny': '#fbbf24',
+          'cloudy': '#9ca3af',
+          'overcast': '#6b7280',
+          'rain': '#3b82f6',
+          'rainy': '#3b82f6',
+          'wind': '#06b6d4',
+          'windy': '#06b6d4',
+          'cold': '#60a5fa',
+          'heat': '#ef4444',
+          'snow': '#bfdbfe',
+        };
+        const fillColor = weatherColors[weather.type.toLowerCase()] || '#6b7280';
+        const fillWidth = (weather.percentage / 100) * barMaxWidth;
+        doc.rect(startX + 75, y, fillWidth, 12).fill(fillColor);
+        
+        // Percentage label
+        doc.fontSize(9).font('Helvetica-Bold').fillColor('#333');
+        doc.text(`${weather.count} days (${weather.percentage}%)`, startX + 235, y + 1);
+        
+        y += 18;
+      });
+      y += 10;
     }
 
-    // ============ ISSUES SUMMARY ============
-    if (data.issuesSummary.totalCount > 0) {
-      doc.fontSize(12).font('Helvetica-Bold').fillColor('#000');
-      doc.text(`Issues Reported (${data.issuesSummary.totalCount})`, startX, y);
-      y += 18;
-      
-      doc.fontSize(9).font('Helvetica').fillColor('#666');
-      data.issuesSummary.issues.slice(0, 5).forEach(issue => {
-        const dateStr = format(new Date(issue.date), 'MMM d');
-        doc.font('Helvetica-Bold').fillColor('#000').text(`${dateStr}: `, startX, y, { continued: true });
-        doc.font('Helvetica').fillColor('#666').text(issue.details || 'No details', { width: pageWidth - 60 });
-        y += 14;
-      });
-      if (data.issuesSummary.totalCount > 5) {
-        doc.fontSize(8).fillColor('#999').text(`... and ${data.issuesSummary.totalCount - 5} more issues`, startX, y);
-        y += 12;
+    // ============ UPCOMING MILESTONES (Dashboard Style) ============
+    if (data.upcomingMilestones && data.upcomingMilestones.length > 0) {
+      // Check for page break
+      if (y > doc.page.height - 100) {
+        doc.addPage();
+        y = 40;
       }
-      y += 10;
-    }
-
-    // ============ SAFETY INCIDENTS ============
-    if (data.safetySummary.totalCount > 0) {
-      doc.fontSize(12).font('Helvetica-Bold').fillColor('#c00');
-      doc.text(`Safety Incidents (${data.safetySummary.totalCount})`, startX, y);
-      y += 18;
       
-      doc.fontSize(9).font('Helvetica').fillColor('#666');
-      data.safetySummary.incidents.slice(0, 3).forEach(incident => {
-        const dateStr = format(new Date(incident.date), 'MMM d');
-        doc.font('Helvetica-Bold').fillColor('#000').text(`${dateStr}: `, startX, y, { continued: true });
-        doc.font('Helvetica').fillColor('#666').text(incident.details || 'No details', { width: pageWidth - 60 });
-        y += 14;
+      doc.fontSize(12).font('Helvetica-Bold').fillColor('#000');
+      doc.text('Upcoming Milestones', startX, y);
+      y += 20;
+      
+      data.upcomingMilestones.slice(0, 5).forEach(milestone => {
+        // Milestone card
+        const cardHeight = 22;
+        const isUpcoming = !milestone.isPast && milestone.daysUntil <= 7;
+        const bgColor = milestone.isPast ? '#f0fdf4' : isUpcoming ? '#fef3c7' : '#f9fafb';
+        const borderColor = milestone.isPast ? '#22c55e' : isUpcoming ? '#f59e0b' : '#e5e7eb';
+        
+        doc.rect(startX, y, pageWidth, cardHeight).fill(bgColor);
+        doc.rect(startX, y, 3, cardHeight).fill(borderColor);
+        
+        // Milestone label
+        doc.fontSize(9).font('Helvetica-Bold').fillColor('#333');
+        doc.text(milestone.label, startX + 10, y + 6);
+        
+        // Date and status
+        const dateStr = format(new Date(milestone.date), 'MMM d, yyyy');
+        const statusText = milestone.isPast ? 'Completed' : `${milestone.daysUntil} days`;
+        const statusColor = milestone.isPast ? '#16a34a' : isUpcoming ? '#d97706' : '#6b7280';
+        
+        doc.fontSize(8).font('Helvetica').fillColor('#666');
+        doc.text(dateStr, startX + pageWidth - 140, y + 6);
+        doc.font('Helvetica-Bold').fillColor(statusColor);
+        doc.text(statusText, startX + pageWidth - 60, y + 6, { width: 55, align: 'right' });
+        
+        y += cardHeight + 4;
       });
       y += 10;
     }
+
+    // ============ ISSUES REPORTED (Dashboard Style) ============
+    // Check for page break
+    if (y > doc.page.height - 100) {
+      doc.addPage();
+      y = 40;
+    }
+    
+    doc.fontSize(12).font('Helvetica-Bold').fillColor('#000');
+    doc.text('Issues Reported', startX, y, { continued: true });
+    if (data.issuesSummary.totalCount > 0) {
+      // Badge-style count
+      const countText = ` (${data.issuesSummary.totalCount})`;
+      doc.fontSize(10).fillColor('#f59e0b').text(countText);
+    } else {
+      doc.text('');
+    }
+    y += 20;
+    
+    if (data.issuesSummary.totalCount > 0) {
+      data.issuesSummary.issues.slice(0, 5).forEach(issue => {
+        // Issue card
+        const issueText = issue.details || 'No details provided';
+        const textHeight = doc.heightOfString(issueText, { width: pageWidth - 20 });
+        const cardHeight = Math.max(35, textHeight + 20);
+        
+        // Check for page break
+        if (y + cardHeight > doc.page.height - 50) {
+          doc.addPage();
+          y = 40;
+        }
+        
+        doc.rect(startX, y, pageWidth, cardHeight).fill('#fef9e7');
+        doc.rect(startX, y, 3, cardHeight).fill('#f59e0b');
+        
+        // Date
+        const dateStr = format(new Date(issue.date), 'MMM d, yyyy');
+        doc.fontSize(8).font('Helvetica').fillColor('#666');
+        doc.text(dateStr, startX + 10, y + 5);
+        
+        // Issue details
+        doc.fontSize(9).font('Helvetica').fillColor('#333');
+        doc.text(issueText, startX + 10, y + 18, { width: pageWidth - 20 });
+        
+        y += cardHeight + 5;
+      });
+      
+      if (data.issuesSummary.totalCount > 5) {
+        doc.fontSize(8).font('Helvetica').fillColor('#666');
+        doc.text(`+ ${data.issuesSummary.totalCount - 5} more issues`, startX, y);
+        y += 15;
+      }
+    } else {
+      // No issues - success message
+      doc.rect(startX, y, pageWidth, 24).fill('#f0fdf4');
+      doc.rect(startX, y, 3, 24).fill('#22c55e');
+      doc.fontSize(9).font('Helvetica').fillColor('#16a34a');
+      doc.text('No issues reported this month', startX + 10, y + 7);
+      y += 30;
+    }
+    y += 5;
+
+    // ============ SAFETY INCIDENTS (Dashboard Style) ============
+    // Check for page break
+    if (y > doc.page.height - 100) {
+      doc.addPage();
+      y = 40;
+    }
+    
+    doc.fontSize(12).font('Helvetica-Bold').fillColor('#000');
+    doc.text('Safety Incidents', startX, y, { continued: true });
+    if (data.safetySummary.totalCount > 0) {
+      // Badge-style count in red
+      const countText = ` (${data.safetySummary.totalCount})`;
+      doc.fontSize(10).fillColor('#dc2626').text(countText);
+    } else {
+      doc.text('');
+    }
+    y += 20;
+    
+    if (data.safetySummary.totalCount > 0) {
+      data.safetySummary.incidents.slice(0, 5).forEach(incident => {
+        // Safety incident card with red theme
+        const incidentText = incident.details || 'No details provided';
+        const textHeight = doc.heightOfString(incidentText, { width: pageWidth - 20 });
+        const cardHeight = Math.max(35, textHeight + 20);
+        
+        // Check for page break
+        if (y + cardHeight > doc.page.height - 50) {
+          doc.addPage();
+          y = 40;
+        }
+        
+        doc.rect(startX, y, pageWidth, cardHeight).fill('#fef2f2');
+        doc.rect(startX, y, 3, cardHeight).fill('#dc2626');
+        
+        // Date
+        const dateStr = format(new Date(incident.date), 'MMM d, yyyy');
+        doc.fontSize(8).font('Helvetica-Bold').fillColor('#dc2626');
+        doc.text(dateStr, startX + 10, y + 5);
+        
+        // Incident details
+        doc.fontSize(9).font('Helvetica').fillColor('#333');
+        doc.text(incidentText, startX + 10, y + 18, { width: pageWidth - 20 });
+        
+        y += cardHeight + 5;
+      });
+      
+      if (data.safetySummary.totalCount > 5) {
+        doc.fontSize(8).font('Helvetica').fillColor('#dc2626');
+        doc.text(`+ ${data.safetySummary.totalCount - 5} more incidents`, startX, y);
+        y += 15;
+      }
+    } else {
+      // No safety incidents - success message
+      doc.rect(startX, y, pageWidth, 24).fill('#f0fdf4');
+      doc.rect(startX, y, 3, 24).fill('#22c55e');
+      doc.fontSize(9).font('Helvetica').fillColor('#16a34a');
+      doc.text('No safety incidents reported this month', startX + 10, y + 7);
+      y += 30;
+    }
+    y += 10;
 
     // ============ DAILY REPORTS SUMMARY ============
     // Check if we need a new page

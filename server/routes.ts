@@ -1634,6 +1634,31 @@ export async function registerRoutes(
         if (client) clientName = client.name;
       }
       
+      // Calculate upcoming milestones
+      const milestones: { date: string; label: string; type: string; daysUntil: number; isPast: boolean }[] = [];
+      const milestoneFields = [
+        { field: 'startDate', label: 'Project Start' },
+        { field: 'substantialCompletionDate', label: 'Substantial Completion' },
+        { field: 'finalCloseoutDate', label: 'Final Closeout' },
+      ];
+      for (const m of milestoneFields) {
+        const dateValue = (project as any)[m.field];
+        if (dateValue) {
+          const date = new Date(dateValue);
+          const daysUntil = Math.ceil((date.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+          milestones.push({
+            date: String(dateValue),
+            label: m.label,
+            type: m.field,
+            daysUntil,
+            isPast: daysUntil < 0,
+          });
+        }
+      }
+      const upcomingMilestones = milestones
+        .filter(m => m.daysUntil >= -7)
+        .sort((a, b) => a.daysUntil - b.daysUntil);
+      
       // Generate PDF
       const pdfBuffer = await generateMonthlySummaryPdf({
         projectName: project.name,
@@ -1667,6 +1692,7 @@ export async function registerRoutes(
         issuesSummary,
         safetySummary,
         teamOverview,
+        upcomingMilestones,
       });
       
       const monthName = format(startDate, 'MMMM_yyyy');
@@ -1804,6 +1830,32 @@ export async function registerRoutes(
       const baseBudget = project.baseBudget ? parseFloat(project.baseBudget) : 0;
       const totalHoursUsed = totalRegular + totalOT + totalPremium;
       
+      // Calculate upcoming milestones
+      const now = new Date();
+      const emailMilestones: { date: string; label: string; type: string; daysUntil: number; isPast: boolean }[] = [];
+      const milestoneFieldsEmail = [
+        { field: 'startDate', label: 'Project Start' },
+        { field: 'substantialCompletionDate', label: 'Substantial Completion' },
+        { field: 'finalCloseoutDate', label: 'Final Closeout' },
+      ];
+      for (const m of milestoneFieldsEmail) {
+        const dateValue = (project as any)[m.field];
+        if (dateValue) {
+          const date = new Date(dateValue);
+          const daysUntil = Math.ceil((date.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+          emailMilestones.push({
+            date: String(dateValue),
+            label: m.label,
+            type: m.field,
+            daysUntil,
+            isPast: daysUntil < 0,
+          });
+        }
+      }
+      const emailUpcomingMilestones = emailMilestones
+        .filter(m => m.daysUntil >= -7)
+        .sort((a, b) => a.daysUntil - b.daysUntil);
+      
       const pdfBuffer = await generateMonthlySummaryPdf({
         projectName: project.name,
         projectNumber: project.projectNumber || '',
@@ -1852,6 +1904,7 @@ export async function registerRoutes(
           inspectorName: inspectorNameMap.get(inspId) || 'Unknown',
           ...hours,
         })),
+        upcomingMilestones: emailUpcomingMilestones,
       });
       
       const monthName = format(startDate, 'MMMM yyyy');
