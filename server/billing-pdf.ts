@@ -3,17 +3,66 @@ import { format, getDaysInMonth, getDay } from "date-fns";
 import { DailyReport, Project, Contract, Company, UserProfile } from "@shared/schema";
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-const HOLIDAY_REMARKS: Record<string, string> = {
-  '01-01': "New Year's Day",
-  '01-15': "MLK Day", // Approximate - actually 3rd Monday
-  '02-19': "Presidents Day", // Approximate
-  '05-27': "Memorial Day", // Approximate
-  '07-04': "Independence Day",
-  '09-02': "Labor Day", // Approximate
-  '11-11': "Veterans Day",
-  '11-28': "Thanksgiving Day", // Approximate
-  '12-25': "Christmas Day",
-};
+
+// Calculate actual holiday dates that fall on specific weekdays (e.g., 3rd Monday)
+function getHolidayRemarks(month: number, year: number): Record<string, string> {
+  const holidays: Record<string, string> = {
+    '01-01': "New Year's Day",
+    '07-04': "Independence Day",
+    '11-11': "Veterans Day",
+    '12-25': "Christmas Day",
+  };
+  
+  // MLK Day - 3rd Monday of January
+  if (month === 1) {
+    const mlkDay = getNthWeekdayOfMonth(year, 0, 1, 3); // 3rd Monday (1) of January (0)
+    holidays[format(mlkDay, 'MM-dd')] = "MLK Day";
+  }
+  
+  // Presidents Day - 3rd Monday of February
+  if (month === 2) {
+    const presidentsDay = getNthWeekdayOfMonth(year, 1, 1, 3);
+    holidays[format(presidentsDay, 'MM-dd')] = "Presidents Day";
+  }
+  
+  // Memorial Day - Last Monday of May
+  if (month === 5) {
+    const memorialDay = getLastWeekdayOfMonth(year, 4, 1);
+    holidays[format(memorialDay, 'MM-dd')] = "Memorial Day";
+  }
+  
+  // Labor Day - 1st Monday of September
+  if (month === 9) {
+    const laborDay = getNthWeekdayOfMonth(year, 8, 1, 1);
+    holidays[format(laborDay, 'MM-dd')] = "Labor Day";
+  }
+  
+  // Thanksgiving - 4th Thursday of November
+  if (month === 11) {
+    const thanksgiving = getNthWeekdayOfMonth(year, 10, 4, 4);
+    holidays[format(thanksgiving, 'MM-dd')] = "Thanksgiving Day";
+  }
+  
+  return holidays;
+}
+
+// Get nth occurrence of a weekday in a month (e.g., 3rd Monday)
+function getNthWeekdayOfMonth(year: number, month: number, weekday: number, n: number): Date {
+  const firstDay = new Date(year, month, 1);
+  const firstWeekday = firstDay.getDay();
+  let dayOffset = weekday - firstWeekday;
+  if (dayOffset < 0) dayOffset += 7;
+  return new Date(year, month, 1 + dayOffset + (n - 1) * 7);
+}
+
+// Get last occurrence of a weekday in a month (e.g., last Monday)
+function getLastWeekdayOfMonth(year: number, month: number, weekday: number): Date {
+  const lastDay = new Date(year, month + 1, 0);
+  const lastWeekday = lastDay.getDay();
+  let dayOffset = lastWeekday - weekday;
+  if (dayOffset < 0) dayOffset += 7;
+  return new Date(year, month + 1, -dayOffset);
+}
 
 interface TimesheetData {
   companyName: string;
@@ -39,7 +88,7 @@ export async function generateTimesheetPdf(data: TimesheetData): Promise<Buffer>
     const doc = new PDFDocument({
       size: 'LETTER',
       layout: 'landscape',
-      margin: 15,
+      margin: 12,
     });
 
     const chunks: Buffer[] = [];
@@ -47,287 +96,414 @@ export async function generateTimesheetPdf(data: TimesheetData): Promise<Buffer>
     doc.on('end', () => resolve(Buffer.concat(chunks)));
     doc.on('error', reject);
 
-    const pageWidth = doc.page.width - 30;
-    const startX = 15;
+    const pageWidth = doc.page.width - 24;
+    const startX = 12;
     const daysInMonth = getDaysInMonth(new Date(data.year, data.month - 1));
 
-    // Header
-    doc.fontSize(9).font('Helvetica-Bold');
-    doc.text('Time Sheet for:', startX, 15);
-    doc.text(data.companyName, startX + 80, 15);
-    
-    const monthName = format(new Date(data.year, data.month - 1), 'MMMM-yyyy');
-    doc.text(monthName, pageWidth - 80, 15, { width: 80, align: 'right' });
+    // Ensure we always have 5 project columns (pad with empty if needed)
+    const projectCount = 5;
+    const projects = [...data.projects.slice(0, 5)];
+    while (projects.length < 5) {
+      projects.push({ projectName: '', dailyHours: {} });
+    }
 
-    doc.fontSize(8).font('Helvetica');
-    doc.text('Project Inspector:', startX, 30);
-    doc.text(data.inspectorName, startX + 80, 30);
-    doc.text('District:', startX, 42);
-    doc.text(data.districtName || '', startX + 80, 42);
-
-    // Calculate column widths
-    const dateColWidth = 75;
-    const projectCount = Math.min(data.projects.length, 5);
-    const remarksColWidth = 100;
-    const projectColWidth = (pageWidth - dateColWidth - remarksColWidth) / Math.max(projectCount, 1);
+    // Column widths matching spreadsheet layout
+    const dateColWidth = 85;
+    const remarksColWidth = 115;
+    const projectAreaWidth = pageWidth - dateColWidth - remarksColWidth;
+    const projectColWidth = projectAreaWidth / projectCount;
     const hourColWidth = projectColWidth / 3;
 
-    // Table header row
-    let tableY = 58;
-    const headerHeight = 35;
-    const rowHeight = 11;
+    // Row heights
+    const headerRow1Height = 10;
+    const headerRow2Height = 10;
+    const headerRow3Height = 10;
+    const subHeaderHeight = 10;
+    const rowHeight = 10;
 
     doc.strokeColor('#000').lineWidth(0.5);
 
-    // Project headers
-    doc.rect(startX, tableY, dateColWidth, headerHeight).stroke();
+    // ============ HEADER SECTION ============
+    let y = 12;
+    
+    // Title row
+    doc.fontSize(8).font('Helvetica-Bold');
+    doc.text('Time Sheet for:', startX + 5, y);
+    doc.font('Helvetica');
+    doc.text(data.companyName, startX + 85, y);
+    
+    const monthName = format(new Date(data.year, data.month - 1), 'MMMM-yyyy');
+    doc.text(monthName, pageWidth - 70, y, { width: 70, align: 'right' });
+
+    y += 14;
+    
+    // Project Inspector row
+    doc.fontSize(7).font('Helvetica-Bold');
+    doc.text('Project Inspector:', startX + 5, y);
+    doc.font('Helvetica');
+    doc.text(data.inspectorName, startX + 85, y);
+
+    y += 11;
+    
+    // District row  
+    doc.fontSize(7).font('Helvetica-Bold');
+    doc.text('District:', startX + 5, y);
+    doc.font('Helvetica');
+    doc.text(data.districtName || '', startX + 85, y);
+
+    y += 14;
+
+    // ============ TABLE HEADER ============
+    const tableStartY = y;
+    const totalHeaderHeight = headerRow1Height + headerRow2Height + headerRow3Height + subHeaderHeight;
+
+    // Left column header - spans 4 rows with labels
+    doc.rect(startX, y, dateColWidth, totalHeaderHeight).stroke();
+    
+    // Row 1: Project Name label
+    doc.rect(startX, y, dateColWidth, headerRow1Height).stroke();
     doc.fontSize(6).font('Helvetica-Bold');
-    doc.text('Project Name', startX + 2, tableY + 3, { width: dateColWidth - 4 });
+    doc.text('Project Name', startX + 3, y + 2, { width: dateColWidth - 6 });
+    
+    // Row 2: Empty for project names to extend into
+    doc.rect(startX, y + headerRow1Height, dateColWidth, headerRow2Height).stroke();
+    doc.fontSize(6).font('Helvetica-Bold');
+    doc.text('DSA A#', startX + 3, y + headerRow1Height + 2, { width: dateColWidth - 6 });
+    
+    // Row 3: File # label
+    doc.rect(startX, y + headerRow1Height + headerRow2Height, dateColWidth, headerRow3Height).stroke();
+    doc.fontSize(6).font('Helvetica-Bold');
+    doc.text('File #', startX + 3, y + headerRow1Height + headerRow2Height + 2, { width: dateColWidth - 6 });
+    
+    // Row 4: REG OT PRM sub-header (empty for date column)
+    doc.rect(startX, y + headerRow1Height + headerRow2Height + headerRow3Height, dateColWidth, subHeaderHeight).stroke();
 
+    // Project columns header
     let colX = startX + dateColWidth;
-    data.projects.slice(0, 5).forEach((project, idx) => {
-      doc.rect(colX, tableY, projectColWidth, headerHeight).stroke();
-      doc.fontSize(5.5).font('Helvetica');
-      doc.text(project.projectName || '', colX + 2, tableY + 2, { width: projectColWidth - 4 });
+    projects.forEach((project, idx) => {
+      // Full project header cell
+      doc.rect(colX, y, projectColWidth, totalHeaderHeight).stroke();
+      
+      // Project Name row
+      doc.rect(colX, y, projectColWidth, headerRow1Height).stroke();
+      doc.fontSize(5).font('Helvetica');
+      const projName = project.projectName || '';
+      doc.text(projName, colX + 2, y + 2, { width: projectColWidth - 4, align: 'center' });
+      
+      // DSA A# row
+      doc.rect(colX, y + headerRow1Height, projectColWidth, headerRow2Height).stroke();
       if (project.dsaNumber) {
-        doc.text(`DSA A#: ${project.dsaNumber}`, colX + 2, tableY + 12, { width: projectColWidth - 4 });
+        doc.text(project.dsaNumber, colX + 2, y + headerRow1Height + 2, { width: projectColWidth - 4, align: 'center' });
       }
+      
+      // File # row
+      doc.rect(colX, y + headerRow1Height + headerRow2Height, projectColWidth, headerRow3Height).stroke();
       if (project.fileNumber) {
-        doc.text(`File #: ${project.fileNumber}`, colX + 2, tableY + 20, { width: projectColWidth - 4 });
+        doc.text(project.fileNumber, colX + 2, y + headerRow1Height + headerRow2Height + 2, { width: projectColWidth - 4, align: 'center' });
       }
-
-      // Sub-header: REG OT PRM
+      
+      // REG OT PRM sub-header row - with individual cells
+      const subY = y + headerRow1Height + headerRow2Height + headerRow3Height;
+      doc.rect(colX, subY, hourColWidth, subHeaderHeight).stroke();
+      doc.rect(colX + hourColWidth, subY, hourColWidth, subHeaderHeight).stroke();
+      doc.rect(colX + hourColWidth * 2, subY, hourColWidth, subHeaderHeight).stroke();
+      
       doc.fontSize(5).font('Helvetica-Bold');
-      const subY = tableY + headerHeight - 10;
-      doc.text('REG', colX + 2, subY, { width: hourColWidth - 2, align: 'center' });
-      doc.text('OT', colX + hourColWidth, subY, { width: hourColWidth, align: 'center' });
-      doc.text('PRM', colX + hourColWidth * 2, subY, { width: hourColWidth - 2, align: 'center' });
+      doc.text('REG', colX, subY + 2, { width: hourColWidth, align: 'center' });
+      doc.text('OT', colX + hourColWidth, subY + 2, { width: hourColWidth, align: 'center' });
+      doc.text('PRM', colX + hourColWidth * 2, subY + 2, { width: hourColWidth, align: 'center' });
 
       colX += projectColWidth;
     });
 
-    // Remarks column
-    doc.rect(colX, tableY, remarksColWidth, headerHeight).stroke();
+    // Remarks column header
+    doc.rect(colX, y, remarksColWidth, totalHeaderHeight).stroke();
     doc.fontSize(6).font('Helvetica-Bold');
-    doc.text('REMARKS', colX + 2, tableY + 15);
+    doc.text('REMARKS', colX + 3, y + totalHeaderHeight / 2 - 3, { width: remarksColWidth - 6, align: 'center' });
 
-    tableY += headerHeight;
+    y += totalHeaderHeight;
 
-    // Period tracking
-    let period1Totals = data.projects.map(() => ({ reg: 0, ot: 0, prm: 0 }));
-    let period2Totals = data.projects.map(() => ({ reg: 0, ot: 0, prm: 0 }));
+    // ============ DAY ROWS ============
+    let period1Totals = projects.map(() => ({ reg: 0, ot: 0, prm: 0 }));
+    let period2Totals = projects.map(() => ({ reg: 0, ot: 0, prm: 0 }));
+    
+    // Get holiday remarks for this month
+    const holidayRemarks = getHolidayRemarks(data.month, data.year);
 
-    // Draw day rows
-    for (let day = 1; day <= daysInMonth; day++) {
+    // Always render 31 rows to match the template exactly
+    for (let day = 1; day <= 31; day++) {
       const date = new Date(data.year, data.month - 1, day);
-      const dayOfWeek = getDay(date);
-      const dayName = DAY_NAMES[dayOfWeek];
-      const dateStr = format(date, 'MM/dd');
-      const holidayKey = format(date, 'MM-dd');
-      const holiday = HOLIDAY_REMARKS[holidayKey] || '';
+      const isValidDay = day <= daysInMonth;
+      const dayOfWeek = isValidDay ? getDay(date) : 0;
+      const dayName = isValidDay ? DAY_NAMES[dayOfWeek] : '';
+      const dateStr = isValidDay ? format(date, 'MM/dd') : '';
+      const holidayKey = isValidDay ? format(date, 'MM-dd') : '';
+      const holiday = holidayRemarks[holidayKey] || '';
 
       // Date column
-      doc.rect(startX, tableY, dateColWidth, rowHeight).stroke();
-      doc.fontSize(6).font('Helvetica');
-      doc.text(`${dayName}, ${dateStr}`, startX + 2, tableY + 3, { width: dateColWidth - 4 });
+      doc.rect(startX, y, dateColWidth, rowHeight).stroke();
+      doc.fontSize(5.5).font('Helvetica');
+      if (isValidDay) {
+        doc.text(`${dayName}, ${dateStr}`, startX + 3, y + 2.5, { width: dateColWidth - 6 });
+      }
 
-      // Project hour columns
+      // Project hour columns - each with 3 sub-cells
       colX = startX + dateColWidth;
-      data.projects.slice(0, 5).forEach((project, idx) => {
-        doc.rect(colX, tableY, projectColWidth, rowHeight).stroke();
+      projects.forEach((project, idx) => {
+        // Draw 3 sub-cells for REG, OT, PRM
+        doc.rect(colX, y, hourColWidth, rowHeight).stroke();
+        doc.rect(colX + hourColWidth, y, hourColWidth, rowHeight).stroke();
+        doc.rect(colX + hourColWidth * 2, y, hourColWidth, rowHeight).stroke();
         
-        const hours = project.dailyHours[day] || { reg: 0, ot: 0, prm: 0 };
-        doc.fontSize(5).font('Helvetica');
-        
-        if (hours.reg > 0) {
-          doc.text(hours.reg.toFixed(1), colX + 2, tableY + 3, { width: hourColWidth - 2, align: 'center' });
-        }
-        if (hours.ot > 0) {
-          doc.text(hours.ot.toFixed(1), colX + hourColWidth, tableY + 3, { width: hourColWidth, align: 'center' });
-        }
-        if (hours.prm > 0) {
-          doc.text(hours.prm.toFixed(1), colX + hourColWidth * 2, tableY + 3, { width: hourColWidth - 2, align: 'center' });
-        }
+        if (isValidDay) {
+          const hours = project.dailyHours[day] || { reg: 0, ot: 0, prm: 0 };
+          doc.fontSize(5).font('Helvetica');
+          
+          if (hours.reg > 0) {
+            doc.text(hours.reg.toFixed(1), colX, y + 2.5, { width: hourColWidth, align: 'center' });
+          }
+          if (hours.ot > 0) {
+            doc.text(hours.ot.toFixed(1), colX + hourColWidth, y + 2.5, { width: hourColWidth, align: 'center' });
+          }
+          if (hours.prm > 0) {
+            doc.text(hours.prm.toFixed(1), colX + hourColWidth * 2, y + 2.5, { width: hourColWidth, align: 'center' });
+          }
 
-        // Accumulate totals
-        if (day <= 15) {
-          period1Totals[idx].reg += hours.reg;
-          period1Totals[idx].ot += hours.ot;
-          period1Totals[idx].prm += hours.prm;
-        } else {
-          period2Totals[idx].reg += hours.reg;
-          period2Totals[idx].ot += hours.ot;
-          period2Totals[idx].prm += hours.prm;
+          // Accumulate totals only for valid days
+          if (day <= 15) {
+            period1Totals[idx].reg += hours.reg;
+            period1Totals[idx].ot += hours.ot;
+            period1Totals[idx].prm += hours.prm;
+          } else {
+            period2Totals[idx].reg += hours.reg;
+            period2Totals[idx].ot += hours.ot;
+            period2Totals[idx].prm += hours.prm;
+          }
         }
 
         colX += projectColWidth;
       });
 
       // Remarks column
-      doc.rect(colX, tableY, remarksColWidth, rowHeight).stroke();
-      if (holiday) {
+      doc.rect(colX, y, remarksColWidth, rowHeight).stroke();
+      if (isValidDay && holiday) {
         doc.fontSize(5).font('Helvetica');
-        doc.text(holiday, colX + 2, tableY + 3, { width: remarksColWidth - 4 });
+        doc.text(holiday, colX + 3, y + 2.5, { width: remarksColWidth - 6 });
       }
 
-      tableY += rowHeight;
+      y += rowHeight;
 
       // After day 15, draw Period 1 totals
       if (day === 15) {
-        const totalsHeight = rowHeight * 3;
         ['Period 1 Regular', 'Period 1 OT', 'Period 1 Premium'].forEach((label, rowIdx) => {
-          doc.rect(startX, tableY, dateColWidth, rowHeight).stroke();
-          doc.fontSize(5.5).font('Helvetica-Bold');
-          doc.text(label, startX + 2, tableY + 3, { width: dateColWidth - 4 });
+          doc.rect(startX, y, dateColWidth, rowHeight).stroke();
+          doc.fontSize(5).font('Helvetica-Bold');
+          doc.text(label, startX + 3, y + 2.5, { width: dateColWidth - 6 });
 
           colX = startX + dateColWidth;
           let rowTotal = 0;
-          data.projects.slice(0, 5).forEach((_, idx) => {
-            doc.rect(colX, tableY, projectColWidth, rowHeight).stroke();
+          projects.forEach((_, idx) => {
+            doc.rect(colX, y, hourColWidth, rowHeight).stroke();
+            doc.rect(colX + hourColWidth, y, hourColWidth, rowHeight).stroke();
+            doc.rect(colX + hourColWidth * 2, y, hourColWidth, rowHeight).stroke();
+            
             const val = rowIdx === 0 ? period1Totals[idx].reg : rowIdx === 1 ? period1Totals[idx].ot : period1Totals[idx].prm;
             rowTotal += val;
             doc.fontSize(5).font('Helvetica');
-            doc.text(val.toFixed(1), colX + 2, tableY + 3, { width: projectColWidth - 4, align: 'center' });
+            doc.text(val.toFixed(1), colX, y + 2.5, { width: projectColWidth, align: 'center' });
             colX += projectColWidth;
           });
 
-          // Total column in remarks
-          doc.rect(colX, tableY, remarksColWidth, rowHeight).stroke();
+          // Total in remarks with label on left, value on right
+          doc.rect(colX, y, remarksColWidth, rowHeight).stroke();
           const totalLabel = rowIdx === 0 ? 'Total Regular' : rowIdx === 1 ? 'Total OT' : 'Total Premium';
           doc.fontSize(5).font('Helvetica-Bold');
-          doc.text(`${totalLabel}  ${rowTotal.toFixed(1)}`, colX + 2, tableY + 3, { width: remarksColWidth - 4 });
+          doc.text(totalLabel, colX + 3, y + 2.5, { width: remarksColWidth / 2 - 6 });
+          doc.text(rowTotal.toFixed(1), colX + remarksColWidth / 2, y + 2.5, { width: remarksColWidth / 2 - 6, align: 'right' });
 
-          tableY += rowHeight;
+          y += rowHeight;
         });
       }
     }
 
-    // Period 2 totals
+    // ============ PERIOD 2 TOTALS ============
     ['Period 2 Regular', 'Period 2 Overtime', 'Period 2 Premium'].forEach((label, rowIdx) => {
-      doc.rect(startX, tableY, dateColWidth, rowHeight).stroke();
-      doc.fontSize(5.5).font('Helvetica-Bold');
-      doc.text(label, startX + 2, tableY + 3, { width: dateColWidth - 4 });
+      doc.rect(startX, y, dateColWidth, rowHeight).stroke();
+      doc.fontSize(5).font('Helvetica-Bold');
+      doc.text(label, startX + 3, y + 2.5, { width: dateColWidth - 6 });
 
       colX = startX + dateColWidth;
       let rowTotal = 0;
-      data.projects.slice(0, 5).forEach((_, idx) => {
-        doc.rect(colX, tableY, projectColWidth, rowHeight).stroke();
+      projects.forEach((_, idx) => {
+        doc.rect(colX, y, hourColWidth, rowHeight).stroke();
+        doc.rect(colX + hourColWidth, y, hourColWidth, rowHeight).stroke();
+        doc.rect(colX + hourColWidth * 2, y, hourColWidth, rowHeight).stroke();
+        
         const val = rowIdx === 0 ? period2Totals[idx].reg : rowIdx === 1 ? period2Totals[idx].ot : period2Totals[idx].prm;
         rowTotal += val;
         doc.fontSize(5).font('Helvetica');
-        doc.text(val.toFixed(1), colX + 2, tableY + 3, { width: projectColWidth - 4, align: 'center' });
+        doc.text(val.toFixed(1), colX, y + 2.5, { width: projectColWidth, align: 'center' });
         colX += projectColWidth;
       });
 
-      doc.rect(colX, tableY, remarksColWidth, rowHeight).stroke();
+      doc.rect(colX, y, remarksColWidth, rowHeight).stroke();
       const totalLabel = rowIdx === 0 ? 'Total Regular' : rowIdx === 1 ? 'Total Overtime' : 'Total Premium';
       doc.fontSize(5).font('Helvetica-Bold');
-      doc.text(`${totalLabel}  ${rowTotal.toFixed(1)}`, colX + 2, tableY + 3, { width: remarksColWidth - 4 });
+      doc.text(totalLabel, colX + 3, y + 2.5, { width: remarksColWidth / 2 - 6 });
+      doc.text(rowTotal.toFixed(1), colX + remarksColWidth / 2, y + 2.5, { width: remarksColWidth / 2 - 6, align: 'right' });
 
-      tableY += rowHeight;
+      y += rowHeight;
     });
 
-    // Month totals
+    // ============ MONTH TOTALS ============
     ['Month Regular', 'Month Overtime', 'Month Premium'].forEach((label, rowIdx) => {
-      doc.rect(startX, tableY, dateColWidth, rowHeight).stroke();
-      doc.fontSize(5.5).font('Helvetica-Bold');
-      doc.text(label, startX + 2, tableY + 3, { width: dateColWidth - 4 });
+      doc.rect(startX, y, dateColWidth, rowHeight).stroke();
+      doc.fontSize(5).font('Helvetica-Bold');
+      doc.text(label, startX + 3, y + 2.5, { width: dateColWidth - 6 });
 
       colX = startX + dateColWidth;
       let rowTotal = 0;
-      data.projects.slice(0, 5).forEach((_, idx) => {
-        doc.rect(colX, tableY, projectColWidth, rowHeight).stroke();
+      projects.forEach((_, idx) => {
+        doc.rect(colX, y, hourColWidth, rowHeight).stroke();
+        doc.rect(colX + hourColWidth, y, hourColWidth, rowHeight).stroke();
+        doc.rect(colX + hourColWidth * 2, y, hourColWidth, rowHeight).stroke();
+        
         const p1 = rowIdx === 0 ? period1Totals[idx].reg : rowIdx === 1 ? period1Totals[idx].ot : period1Totals[idx].prm;
         const p2 = rowIdx === 0 ? period2Totals[idx].reg : rowIdx === 1 ? period2Totals[idx].ot : period2Totals[idx].prm;
         const val = p1 + p2;
         rowTotal += val;
         doc.fontSize(5).font('Helvetica');
-        doc.text(val.toFixed(1), colX + 2, tableY + 3, { width: projectColWidth - 4, align: 'center' });
+        doc.text(val.toFixed(1), colX, y + 2.5, { width: projectColWidth, align: 'center' });
         colX += projectColWidth;
       });
 
-      doc.rect(colX, tableY, remarksColWidth, rowHeight).stroke();
+      doc.rect(colX, y, remarksColWidth, rowHeight).stroke();
       const totalLabel = rowIdx === 0 ? 'Total Regular' : rowIdx === 1 ? 'Total Overtime' : 'Total Premium';
       doc.fontSize(5).font('Helvetica-Bold');
-      doc.text(`${totalLabel}  ${rowTotal.toFixed(1)}`, colX + 2, tableY + 3, { width: remarksColWidth - 4 });
+      doc.text(totalLabel, colX + 3, y + 2.5, { width: remarksColWidth / 2 - 6 });
+      doc.text(rowTotal.toFixed(1), colX + remarksColWidth / 2, y + 2.5, { width: remarksColWidth / 2 - 6, align: 'right' });
 
-      tableY += rowHeight;
+      y += rowHeight;
     });
 
-    // Project Total row
-    doc.rect(startX, tableY, dateColWidth, rowHeight).stroke();
-    doc.fontSize(5.5).font('Helvetica-Bold');
-    doc.text('Project Total', startX + 2, tableY + 3, { width: dateColWidth - 4 });
+    // ============ PROJECT TOTAL ROW ============
+    doc.rect(startX, y, dateColWidth, rowHeight).stroke();
+    doc.fontSize(5).font('Helvetica-Bold');
+    doc.text('Project Total', startX + 3, y + 2.5, { width: dateColWidth - 6 });
 
     colX = startX + dateColWidth;
     let grandTotal = 0;
-    data.projects.slice(0, 5).forEach((_, idx) => {
-      doc.rect(colX, tableY, projectColWidth, rowHeight).stroke();
+    projects.forEach((_, idx) => {
+      doc.rect(colX, y, hourColWidth, rowHeight).stroke();
+      doc.rect(colX + hourColWidth, y, hourColWidth, rowHeight).stroke();
+      doc.rect(colX + hourColWidth * 2, y, hourColWidth, rowHeight).stroke();
+      
       const total = period1Totals[idx].reg + period1Totals[idx].ot + period1Totals[idx].prm +
                    period2Totals[idx].reg + period2Totals[idx].ot + period2Totals[idx].prm;
       grandTotal += total;
       doc.fontSize(5).font('Helvetica');
-      doc.text(total.toFixed(1), colX + 2, tableY + 3, { width: projectColWidth - 4, align: 'center' });
+      doc.text(total.toFixed(1), colX, y + 2.5, { width: projectColWidth, align: 'center' });
       colX += projectColWidth;
     });
-    doc.rect(colX, tableY, remarksColWidth, rowHeight).stroke();
+    
+    doc.rect(colX, y, remarksColWidth, rowHeight).stroke();
     doc.fontSize(5).font('Helvetica-Bold');
-    doc.text(grandTotal.toFixed(1), colX + 2, tableY + 3, { width: remarksColWidth - 4, align: 'right' });
-    tableY += rowHeight;
+    doc.text(grandTotal.toFixed(1), colX + remarksColWidth - 30, y + 2.5, { width: 25, align: 'right' });
+    y += rowHeight;
 
-    // % Reg/Hol row
-    doc.rect(startX, tableY, dateColWidth, rowHeight).stroke();
-    doc.fontSize(5.5).font('Helvetica-Bold');
-    doc.text('% Reg/Hol', startX + 2, tableY + 3, { width: dateColWidth - 4 });
+    // ============ % REG/HOL ROW ============
+    doc.rect(startX, y, dateColWidth, rowHeight).stroke();
+    doc.fontSize(5).font('Helvetica-Bold');
+    doc.text('% Reg/Hol', startX + 3, y + 2.5, { width: dateColWidth - 6 });
 
     colX = startX + dateColWidth;
-    data.projects.slice(0, 5).forEach((_, idx) => {
-      doc.rect(colX, tableY, projectColWidth, rowHeight).stroke();
+    projects.forEach((_, idx) => {
+      doc.rect(colX, y, hourColWidth, rowHeight).stroke();
+      doc.rect(colX + hourColWidth, y, hourColWidth, rowHeight).stroke();
+      doc.rect(colX + hourColWidth * 2, y, hourColWidth, rowHeight).stroke();
+      
       const total = period1Totals[idx].reg + period1Totals[idx].ot + period1Totals[idx].prm +
                    period2Totals[idx].reg + period2Totals[idx].ot + period2Totals[idx].prm;
       const pct = grandTotal > 0 ? (total / grandTotal * 100) : 0;
       doc.fontSize(5).font('Helvetica');
-      doc.text(pct.toFixed(1) + '%', colX + 2, tableY + 3, { width: projectColWidth - 4, align: 'center' });
+      doc.text(pct.toFixed(1) + '%', colX, y + 2.5, { width: projectColWidth, align: 'center' });
       colX += projectColWidth;
     });
-    doc.rect(colX, tableY, remarksColWidth, rowHeight).stroke();
-    doc.text('100.0%', colX + 2, tableY + 3, { width: remarksColWidth - 4, align: 'right' });
-    tableY += rowHeight;
+    
+    doc.rect(colX, y, remarksColWidth, rowHeight).stroke();
+    doc.fontSize(5).font('Helvetica');
+    doc.text(grandTotal > 0 ? '100.0%' : '0.0%', colX + remarksColWidth - 30, y + 2.5, { width: 25, align: 'right' });
+    y += rowHeight;
 
-    // Totals summary row
+    // ============ TOTALS SUMMARY ROW ============
     const totalReg = period1Totals.reduce((s, t) => s + t.reg, 0) + period2Totals.reduce((s, t) => s + t.reg, 0);
     const totalOT = period1Totals.reduce((s, t) => s + t.ot, 0) + period2Totals.reduce((s, t) => s + t.ot, 0);
     const totalPrm = period1Totals.reduce((s, t) => s + t.prm, 0) + period2Totals.reduce((s, t) => s + t.prm, 0);
 
-    tableY += 5;
-    doc.fontSize(6).font('Helvetica');
-    doc.text(`Total REG + PRM: ${(totalReg + totalPrm).toFixed(1)}`, startX, tableY);
-    doc.text(`Total OT: ${totalOT.toFixed(1)}`, startX + 120, tableY);
-    doc.text(`Grand Total: ${grandTotal.toFixed(1)}`, startX + 240, tableY);
-
-    // Footer notes
-    tableY += 15;
-    doc.fontSize(6).font('Helvetica-Oblique');
-    doc.text('One separate sheet required for each District. Some Districts require special Overtime sheet to be filled out for acceptance.', startX, tableY);
-
-    // Signature section
-    tableY += 20;
-    doc.fontSize(7).font('Helvetica');
-    doc.text('District Rep. Approval', startX, tableY);
-    doc.text('Date:', startX + 300, tableY);
-    doc.moveTo(startX + 330, tableY + 8).lineTo(startX + 430, tableY + 8).stroke();
-
-    tableY += 15;
-    doc.text('Signature:', startX, tableY);
-    doc.moveTo(startX + 50, tableY + 8).lineTo(startX + 200, tableY + 8).stroke();
-
-    tableY += 20;
-    doc.text('Est. Percentage Complete:', startX, tableY);
-    doc.text(data.estPercentComplete || '', startX + 130, tableY);
+    // Summary row with cells
+    doc.rect(startX, y, dateColWidth, rowHeight).stroke();
+    doc.fontSize(5).font('Helvetica-Bold');
+    doc.text('Total REG + PRM', startX + 3, y + 2.5, { width: dateColWidth - 6 });
     
-    tableY += 12;
-    doc.text('Est. Completion Date:', startX, tableY);
-    doc.text(data.estCompletionDate || '', startX + 110, tableY);
+    // First project col area for REG+PRM value
+    doc.rect(startX + dateColWidth, y, projectColWidth, rowHeight).stroke();
+    doc.fontSize(5).font('Helvetica');
+    doc.text((totalReg + totalPrm).toFixed(1), startX + dateColWidth, y + 2.5, { width: projectColWidth, align: 'center' });
+    
+    // Second col for "Total OT" label
+    doc.rect(startX + dateColWidth + projectColWidth, y, projectColWidth, rowHeight).stroke();
+    doc.fontSize(5).font('Helvetica-Bold');
+    doc.text('Total OT', startX + dateColWidth + projectColWidth + 3, y + 2.5, { width: projectColWidth - 6 });
+    
+    // Third col for OT value
+    doc.rect(startX + dateColWidth + projectColWidth * 2, y, projectColWidth, rowHeight).stroke();
+    doc.fontSize(5).font('Helvetica');
+    doc.text(totalOT.toFixed(1), startX + dateColWidth + projectColWidth * 2, y + 2.5, { width: projectColWidth, align: 'center' });
+    
+    // Fourth col empty
+    doc.rect(startX + dateColWidth + projectColWidth * 3, y, projectColWidth, rowHeight).stroke();
+    
+    // Fifth col for Grand Total label
+    doc.rect(startX + dateColWidth + projectColWidth * 4, y, projectColWidth, rowHeight).stroke();
+    doc.fontSize(5).font('Helvetica-Bold');
+    doc.text('Grand Total', startX + dateColWidth + projectColWidth * 4 + 3, y + 2.5, { width: projectColWidth - 6 });
+    
+    // Remarks col for grand total value
+    doc.rect(startX + dateColWidth + projectColWidth * 5, y, remarksColWidth, rowHeight).stroke();
+    doc.fontSize(5).font('Helvetica-Bold');
+    doc.text(grandTotal.toFixed(1), startX + dateColWidth + projectColWidth * 5 + remarksColWidth - 30, y + 2.5, { width: 25, align: 'right' });
+    y += rowHeight;
+
+    // ============ FOOTER NOTE ============
+    y += 5;
+    doc.fontSize(5.5).font('Helvetica-Oblique');
+    doc.text('One separate sheet required for each District. Some Districts require special Overtime sheet to be filled out for acceptance.', startX + 5, y);
+
+    // ============ SIGNATURE SECTION ============
+    y += 15;
+    doc.fontSize(7).font('Helvetica-Bold');
+    doc.text('District Rep. Approval', startX + 5, y);
+    
+    // Date field on right side
+    doc.text('Date:', pageWidth - 130, y);
+    doc.moveTo(pageWidth - 100, y + 10).lineTo(pageWidth - 20, y + 10).stroke();
+
+    y += 18;
+    doc.text('Signature:', startX + 25, y);
+    doc.moveTo(startX + 75, y + 10).lineTo(startX + 250, y + 10).stroke();
+
+    // ============ ESTIMATE FIELDS ============
+    y += 25;
+    doc.fontSize(7).font('Helvetica-Bold');
+    doc.text('Est. Percentage Complete:', startX + 5, y);
+    doc.font('Helvetica');
+    doc.text(data.estPercentComplete || '', startX + 140, y);
+    
+    y += 14;
+    doc.font('Helvetica-Bold');
+    doc.text('Est. Completion Date:', startX + 5, y);
+    doc.font('Helvetica');
+    doc.text(data.estCompletionDate || '', startX + 125, y);
 
     doc.end();
   });
