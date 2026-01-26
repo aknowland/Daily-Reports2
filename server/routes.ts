@@ -1315,6 +1315,70 @@ export async function registerRoutes(
     }
   });
 
+  // ========== PROJECT BASE HOURS ==========
+  // Get project base hours (for mid-project onboarding)
+  app.get("/api/projects/:id/base-hours", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const project = await storage.getProject(req.params.id);
+      
+      if (!project) {
+        return res.status(404).json({ message: "Project not found" });
+      }
+      
+      // Check if user has access to this project (member or company admin)
+      const isMember = await storage.isUserMemberOfProject(req.params.id, userId);
+      let isCompanyAdmin = false;
+      if (project.companyId) {
+        const membership = await storage.getCompanyMembership(userId, project.companyId);
+        isCompanyAdmin = membership?.role === "admin" || membership?.role === "system_admin";
+      }
+      
+      if (!isMember && !isCompanyAdmin) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      const baseHours = await storage.getProjectBaseHours(req.params.id);
+      res.json(baseHours);
+    } catch (error) {
+      console.error("Error fetching project base hours:", error);
+      res.status(500).json({ message: "Failed to fetch project base hours" });
+    }
+  });
+
+  // Set project base hours (replaces all existing entries)
+  app.put("/api/projects/:id/base-hours", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const { allowed, project } = await checkProjectAdminAccess(userId, req.params.id);
+      
+      if (!project) {
+        return res.status(404).json({ message: "Project not found" });
+      }
+      if (!allowed) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      const { entries } = req.body;
+      if (!Array.isArray(entries)) {
+        return res.status(400).json({ message: "Entries must be an array" });
+      }
+      
+      // Validate each entry
+      for (const entry of entries) {
+        if (!entry.inspectorName) {
+          return res.status(400).json({ message: "Each entry must have inspectorName" });
+        }
+      }
+      
+      const updatedEntries = await storage.setProjectBaseHours(req.params.id, entries);
+      res.json(updatedEntries);
+    } catch (error) {
+      console.error("Error updating project base hours:", error);
+      res.status(500).json({ message: "Failed to update project base hours" });
+    }
+  });
+
   // ========== INVOICE HOURS CALCULATION ==========
   app.get("/api/projects/:id/invoice-hours", isAuthenticated, async (req: any, res) => {
     try {
