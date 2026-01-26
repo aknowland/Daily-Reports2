@@ -191,6 +191,19 @@ export const projectBillingRates = pgTable("project_billing_rates", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// Project Base Hours table - for tracking hours used before project was onboarded (per inspector)
+export const projectBaseHours = pgTable("project_base_hours", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  projectId: varchar("project_id").references(() => projects.id, { onDelete: "cascade" }).notNull(),
+  inspectorName: text("inspector_name").notNull(), // Name of the inspector who worked these hours
+  title: text("title"), // Role/title if applicable
+  regularHours: varchar("regular_hours").notNull().default("0"), // Regular hours already used
+  overtimeHours: varchar("overtime_hours").default("0"), // Overtime hours already used
+  billedAmount: varchar("billed_amount"), // Optional: amount already billed for these hours
+  notes: text("notes"), // Optional notes about this base hours entry
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 // Project Members table (many-to-many: users <-> projects)
 export const projectMembers = pgTable("project_members", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -683,11 +696,19 @@ export const projectsRelations = relations(projects, ({ one, many }) => ({
   dailyReports: many(dailyReports),
   members: many(projectMembers),
   billingRates: many(projectBillingRates),
+  baseHours: many(projectBaseHours),
 }));
 
 export const projectBillingRatesRelations = relations(projectBillingRates, ({ one }) => ({
   project: one(projects, {
     fields: [projectBillingRates.projectId],
+    references: [projects.id],
+  }),
+}));
+
+export const projectBaseHoursRelations = relations(projectBaseHours, ({ one }) => ({
+  project: one(projects, {
+    fields: [projectBaseHours.projectId],
     references: [projects.id],
   }),
 }));
@@ -748,6 +769,7 @@ export const updateUserProfileSchema = createInsertSchema(userProfiles)
 export type UpdateUserProfile = z.infer<typeof updateUserProfileSchema>;
 export const insertProjectSchema = createInsertSchema(projects).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertProjectBillingRateSchema = createInsertSchema(projectBillingRates).omit({ id: true, createdAt: true });
+export const insertProjectBaseHoursSchema = createInsertSchema(projectBaseHours).omit({ id: true, createdAt: true });
 export const insertProjectMemberSchema = createInsertSchema(projectMembers).omit({ id: true, assignedAt: true });
 export const insertDailyReportSchema = createInsertSchema(dailyReports).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertPhotoSchema = createInsertSchema(photos).omit({ id: true, createdAt: true });
@@ -784,6 +806,8 @@ export type Project = typeof projects.$inferSelect;
 export type InsertProject = z.infer<typeof insertProjectSchema>;
 export type ProjectBillingRate = typeof projectBillingRates.$inferSelect;
 export type InsertProjectBillingRate = z.infer<typeof insertProjectBillingRateSchema>;
+export type ProjectBaseHours = typeof projectBaseHours.$inferSelect;
+export type InsertProjectBaseHours = z.infer<typeof insertProjectBaseHoursSchema>;
 export type ProjectMember = typeof projectMembers.$inferSelect;
 export type InsertProjectMember = z.infer<typeof insertProjectMemberSchema>;
 export type DailyReport = typeof dailyReports.$inferSelect;
