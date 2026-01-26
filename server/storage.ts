@@ -1,9 +1,10 @@
 import { 
   projects, dailyReports, photos, distributionLogs, appSettings, userProfiles, projectMembers, invites,
   companies, companyMembers, joinRequests, invoices, contracts, clients, contractAttachments, contractOptions, contractOptionInspectors, timesheets, monthlyReportBundles,
-  proposals, proposalOptions, proposalOptionInspectors, iorAgreements, purchaseOrders, contractNotifications, budgetNotifications, projectBudgetNotifications, pendingMemberAssignments, teamInspectors, manualTimeEntries, projectBillingRates,
+  proposals, proposalOptions, proposalOptionInspectors, iorAgreements, purchaseOrders, contractNotifications, budgetNotifications, projectBudgetNotifications, pendingMemberAssignments, teamInspectors, manualTimeEntries, projectBillingRates, projectBaseHours,
   type Project, type InsertProject,
   type ProjectBillingRate, type InsertProjectBillingRate,
+  type ProjectBaseHours, type InsertProjectBaseHours,
   type DailyReport, type InsertDailyReport,
   type Photo, type InsertPhoto,
   type DistributionLog, type InsertDistributionLog,
@@ -137,6 +138,10 @@ export interface IStorage {
   // Project Billing Rates
   getProjectBillingRates(projectId: string): Promise<ProjectBillingRate[]>;
   setProjectBillingRates(projectId: string, rates: InsertProjectBillingRate[]): Promise<ProjectBillingRate[]>;
+
+  // Project Base Hours
+  getProjectBaseHours(projectId: string): Promise<ProjectBaseHours[]>;
+  setProjectBaseHours(projectId: string, entries: InsertProjectBaseHours[]): Promise<ProjectBaseHours[]>;
 
   // Invites
   getInvites(): Promise<(Invite & { invitedByUser?: User; projects?: Project[]; company?: Company })[]>;
@@ -887,6 +892,35 @@ export class DatabaseStorage implements IStorage {
       .returning();
     
     return insertedRates;
+  }
+
+  // Project Base Hours
+  async getProjectBaseHours(projectId: string): Promise<ProjectBaseHours[]> {
+    return await db
+      .select()
+      .from(projectBaseHours)
+      .where(eq(projectBaseHours.projectId, projectId))
+      .orderBy(asc(projectBaseHours.createdAt));
+  }
+
+  async setProjectBaseHours(projectId: string, entries: InsertProjectBaseHours[]): Promise<ProjectBaseHours[]> {
+    // Delete existing base hours entries for this project
+    await db.delete(projectBaseHours).where(eq(projectBaseHours.projectId, projectId));
+    
+    // Insert new entries if any
+    if (entries.length === 0) {
+      return [];
+    }
+    
+    const insertedEntries = await db
+      .insert(projectBaseHours)
+      .values(entries.map(entry => ({
+        ...entry,
+        projectId,
+      })))
+      .returning();
+    
+    return insertedEntries;
   }
 
   // Invites
