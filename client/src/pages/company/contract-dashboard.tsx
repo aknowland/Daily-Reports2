@@ -702,17 +702,28 @@ export default function ContractDashboard() {
     status: string;
     originalValue: string | null;
     currentValue: string | null;
+    clientId: string | null;
+    purchaseOrderId: string | null;
     bidReleaseDate: string | Date | null;
     bidDueDate: string | Date | null;
     awardDate: string | Date | null;
     startDate: string | Date | null;
     substantialCompletionDate: string | Date | null;
     finalCloseoutDate: string | Date | null;
-    regularRate: string | null;
-    overtimeRate: string | null;
-    premiumRate: string | null;
     budgetTrackingMode: BudgetTrackingMode | null;
     notes: string | null;
+    options?: Array<{
+      id: string;
+      name: string;
+      awardStatus: string;
+      inspectors: Array<{
+        title: string;
+        inspectorName: string;
+        rate: string;
+        hours: string;
+        scheduleType: string;
+      }>;
+    }>;
   }>({
     queryKey: ["/api/contracts", contractId],
     enabled: showEditDialog && !!contractId,
@@ -2381,28 +2392,38 @@ export default function ContractDashboard() {
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            {activeCompany?.id && (
               <div className="space-y-2">
-                <Label>Client</Label>
+                <Label htmlFor="clientId">Client</Label>
                 <ClientSelect
                   value={editFormData.clientId || ""}
-                  onValueChange={(value) => setEditFormData({ ...editFormData, clientId: value })}
-                  placeholder="Select client..."
-                  allowEmpty
+                  onValueChange={(value) => setEditFormData({ ...editFormData, clientId: value, purchaseOrderId: "" })}
+                  companyId={activeCompany.id}
+                  placeholder="Select or create a client"
                   data-testid="select-edit-contract-client"
                 />
+                <p className="text-xs text-muted-foreground">
+                  Link projects to this contract from the project settings.
+                </p>
               </div>
+            )}
+
+            {editFormData.clientId && activeCompany?.id && (
               <div className="space-y-2">
-                <Label>Purchase Order</Label>
+                <Label htmlFor="purchaseOrderId">Purchase Order (PO)</Label>
                 <PurchaseOrderSelect
                   value={editFormData.purchaseOrderId || ""}
                   onValueChange={(value) => setEditFormData({ ...editFormData, purchaseOrderId: value })}
-                  placeholder="Select PO..."
-                  allowEmpty
+                  companyId={activeCompany.id}
+                  clientId={editFormData.clientId}
+                  placeholder="Select or create a purchase order (optional)"
                   data-testid="select-edit-contract-po"
                 />
+                <p className="text-xs text-muted-foreground">
+                  Link this contract to a client's purchase order for billing.
+                </p>
               </div>
-            </div>
+            )}
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
