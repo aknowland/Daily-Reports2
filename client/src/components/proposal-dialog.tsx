@@ -138,6 +138,12 @@ export function ProposalDialog({ open, onOpenChange, editingProposal }: Proposal
     enabled: !!activeCompany?.id && open,
   });
 
+  // Fetch clients for fallback name lookup
+  const { data: clients = [] } = useQuery<Array<{ id: string; name: string }>>({
+    queryKey: ["/api/clients"],
+    enabled: !!activeCompany?.id && open,
+  });
+
   // Fetch projects for the selected contract
   const { data: contractProjects = [] } = useQuery<Project[]>({
     queryKey: ["/api/contracts", formData.contractId, "projects"],
@@ -227,16 +233,28 @@ export function ProposalDialog({ open, onOpenChange, editingProposal }: Proposal
   const handleContractChange = (contractId: string) => {
     const contract = contracts.find(c => c.id === contractId);
     if (contract) {
-      setFormData(prev => ({
-        ...prev,
-        contractId,
-        projectId: "", // Reset project when contract changes
-        // Auto-populate from contract
-        clientName: (contract as any).clientName || prev.clientName,
-        clientId: (contract as any).clientId || prev.clientId,
-        startDate: contract.startDate ? new Date(contract.startDate).toISOString().split('T')[0] : prev.startDate,
-        endDate: contract.substantialCompletionDate ? new Date(contract.substantialCompletionDate).toISOString().split('T')[0] : prev.endDate,
-      }));
+      setFormData(prev => {
+        // Get clientId from contract (either directly or from nested client object)
+        const contractClientId = (contract as any).clientId || (contract as any).client?.id || "";
+        
+        // Get client name: first try nested client object, then lookup from clients list
+        let clientName = (contract as any).client?.name || "";
+        if (!clientName && contractClientId && clients.length > 0) {
+          const foundClient = clients.find(c => c.id === contractClientId);
+          clientName = foundClient?.name || "";
+        }
+        
+        return {
+          ...prev,
+          contractId,
+          projectId: "", // Reset project when contract changes
+          // Auto-populate from contract
+          clientName: clientName || prev.clientName,
+          clientId: contractClientId || prev.clientId,
+          startDate: contract.startDate ? new Date(contract.startDate).toISOString().split('T')[0] : prev.startDate,
+          endDate: contract.substantialCompletionDate ? new Date(contract.substantialCompletionDate).toISOString().split('T')[0] : prev.endDate,
+        };
+      });
     } else {
       setFormData(prev => ({ ...prev, contractId, projectId: "" }));
     }
