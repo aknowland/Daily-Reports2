@@ -102,6 +102,7 @@ export interface IStorage {
   // Manual Time Entries
   getManualTimeEntry(id: string): Promise<ManualTimeEntry | undefined>;
   getManualTimeEntries(projectId: string, inspectorId: string, startDate: Date, endDate: Date): Promise<ManualTimeEntry[]>;
+  getAllManualTimeEntriesForProject(projectId: string): Promise<ManualTimeEntry[]>;
   createManualTimeEntry(data: InsertManualTimeEntry): Promise<ManualTimeEntry>;
   updateManualTimeEntry(id: string, data: Partial<InsertManualTimeEntry>): Promise<ManualTimeEntry | undefined>;
   deleteManualTimeEntry(id: string): Promise<boolean>;
@@ -618,6 +619,12 @@ export class DatabaseStorage implements IStorage {
           lte(manualTimeEntries.date, endDate)
         )
       )
+      .orderBy(asc(manualTimeEntries.date));
+  }
+
+  async getAllManualTimeEntriesForProject(projectId: string): Promise<ManualTimeEntry[]> {
+    return db.select().from(manualTimeEntries)
+      .where(eq(manualTimeEntries.projectId, projectId))
       .orderBy(asc(manualTimeEntries.date));
   }
 

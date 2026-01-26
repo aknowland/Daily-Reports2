@@ -545,18 +545,36 @@ export async function registerRoutes(
       // Get daily reports for this project
       const dailyReports = await storage.getReportsByProject(req.params.id);
       
-      // Calculate hours used (no dollar amounts - only hours)
-      let totalRegularHours = 0;
-      let totalOvertimeHours = 0;
-      let totalPremiumHours = 0;
+      // Calculate hours from daily reports (no dollar amounts - only hours)
+      let dailyReportRegularHours = 0;
+      let dailyReportOvertimeHours = 0;
+      let dailyReportPremiumHours = 0;
       
       for (const report of dailyReports) {
-        totalRegularHours += parseFloat(report.regularHours || '0');
-        totalOvertimeHours += parseFloat(report.otHours || '0');
-        totalPremiumHours += parseFloat((report as any).premiumHours || '0');
+        dailyReportRegularHours += parseFloat(report.regularHours || '0');
+        dailyReportOvertimeHours += parseFloat(report.otHours || '0');
+        dailyReportPremiumHours += parseFloat((report as any).premiumHours || '0');
       }
       
-      const totalHoursUsed = totalRegularHours + totalOvertimeHours + totalPremiumHours;
+      const dailyReportHoursUsed = dailyReportRegularHours + dailyReportOvertimeHours + dailyReportPremiumHours;
+      
+      // Get manual time entries for budget tracking (timesheet hours)
+      const manualEntries = await storage.getAllManualTimeEntriesForProject(req.params.id);
+      let manualRegularHours = 0;
+      let manualOvertimeHours = 0;
+      
+      for (const entry of manualEntries) {
+        manualRegularHours += parseFloat(entry.regularHours || '0');
+        manualOvertimeHours += parseFloat(entry.otHours || '0');
+      }
+      
+      const manualHoursUsed = manualRegularHours + manualOvertimeHours;
+      
+      // Combined totals for budget tracking (daily reports + manual entries)
+      const totalRegularHours = dailyReportRegularHours + manualRegularHours;
+      const totalOvertimeHours = dailyReportOvertimeHours + manualOvertimeHours;
+      const totalPremiumHours = dailyReportPremiumHours;
+      const totalHoursUsed = dailyReportHoursUsed + manualHoursUsed;
       
       // Get budgeted hours from project (or contract if linked)
       let budgetedHours: number | null = null;
@@ -774,6 +792,19 @@ export async function registerRoutes(
             regular: totalRegularHours,
             overtime: totalOvertimeHours,
             premium: totalPremiumHours,
+          },
+          sources: {
+            dailyReports: {
+              total: dailyReportHoursUsed,
+              regular: dailyReportRegularHours,
+              overtime: dailyReportOvertimeHours,
+              premium: dailyReportPremiumHours,
+            },
+            manualEntries: {
+              total: manualHoursUsed,
+              regular: manualRegularHours,
+              overtime: manualOvertimeHours,
+            },
           },
         },
         dailyReports: dailyReports.slice(0, 50).map(r => ({
