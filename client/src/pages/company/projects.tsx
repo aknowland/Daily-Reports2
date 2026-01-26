@@ -49,8 +49,27 @@ import {
 } from "lucide-react";
 import { Link, useSearch } from "wouter";
 import { useState, useMemo, useEffect } from "react";
-import type { Project, Contract, Client, ContractWithProjects, ContractOption } from "@shared/schema";
+import type { Project, Contract, Client, ContractWithProjects, ContractOption, ProjectBillingRate, ContractOptionInspector } from "@shared/schema";
 import { ClientSelect } from "@/components/client-select";
+import { Switch } from "@/components/ui/switch";
+import { InspectorSelector } from "@/components/inspector-selector";
+import { DollarSign, Users } from "lucide-react";
+
+type BillingRateEntry = {
+  title: string;
+  inspectorName: string;
+  rate: string;
+  hours: string;
+  scheduleType: "fullTime" | "partTime";
+};
+
+const emptyBillingRate: BillingRateEntry = {
+  title: "",
+  inspectorName: "",
+  rate: "",
+  hours: "",
+  scheduleType: "fullTime",
+};
 
 export default function CompanyProjectsPage() {
   const { toast } = useToast();
@@ -81,7 +100,9 @@ export default function CompanyProjectsPage() {
     budgetAmount: "",
     baseBudget: "",
     budgetTrackingMode: "" as "" | "daily_reports" | "scheduled" | "hybrid", // empty = inherit from contract
+    inheritBillingRates: true, // true = inherit from contract option
   });
+  const [billingRates, setBillingRates] = useState<BillingRateEntry[]>([{ ...emptyBillingRate }]);
 
   const { data: projects = [], isLoading, error } = useQuery<Project[]>({
     queryKey: ["/api/companies", activeCompany?.id, "projects"],
@@ -103,6 +124,46 @@ export default function CompanyProjectsPage() {
     if (!selectedContract?.options) return [];
     return selectedContract.options.filter((opt) => opt.awardStatus === "awarded");
   }, [selectedContract]);
+
+  // Get inherited billing rates from the selected contract option
+  const inheritedRates = useMemo(() => {
+    if (!formData.contractOptionId || !selectedContract?.options) return [];
+    const selectedOption = selectedContract.options.find(opt => opt.id === formData.contractOptionId);
+    if (!selectedOption?.inspectors) return [];
+    return selectedOption.inspectors.map((ins: ContractOptionInspector) => ({
+      title: ins.title,
+      inspectorName: ins.inspectorName || "",
+      rate: ins.rate,
+      hours: ins.hours,
+      scheduleType: (ins.scheduleType as "fullTime" | "partTime") || "fullTime",
+    }));
+  }, [formData.contractOptionId, selectedContract]);
+
+  // Billing rate helper functions
+  const addBillingRate = () => {
+    setBillingRates([...billingRates, { ...emptyBillingRate }]);
+  };
+
+  const removeBillingRate = (index: number) => {
+    if (billingRates.length <= 1) return;
+    setBillingRates(billingRates.filter((_, i) => i !== index));
+  };
+
+  const updateBillingRate = (index: number, field: keyof BillingRateEntry, value: string) => {
+    setBillingRates(billingRates.map((rate, i) => 
+      i === index ? { ...rate, [field]: value } : rate
+    ));
+  };
+
+  const calculateBillingRateTotal = (rate: BillingRateEntry) => {
+    const hourlyRate = parseFloat(rate.rate) || 0;
+    const hours = parseFloat(rate.hours) || 0;
+    return hourlyRate * hours;
+  };
+
+  const calculateTotalBillingAmount = (rates: BillingRateEntry[]) => {
+    return rates.reduce((sum, rate) => sum + calculateBillingRateTotal(rate), 0);
+  };
 
   const { data: clients = [] } = useQuery<Client[]>({
     queryKey: ["/api/clients", activeCompany?.id],
@@ -192,8 +253,8 @@ export default function CompanyProjectsPage() {
   };
 
   const createMutation = useMutation({
-    mutationFn: async (data: typeof formData) => {
-      return apiRequest("POST", "/api/projects", {
+    mutationFn: async (data: typeof formData & { billingRates?: BillingRateEntry[] }) => {
+      const response = await apiRequest("POST", "/api/projects", {
         ...data,
         companyId: activeCompany?.id,
         contractId: data.contractId || null,
@@ -203,13 +264,25 @@ export default function CompanyProjectsPage() {
           ? data.distributionEmails.split(",").map((e) => e.trim()).filter(Boolean)
           : [],
       });
+      const project = await response.json();
+      
+      // Save billing rates if not inheriting and rates have valid data
+      if (!data.inheritBillingRates && data.billingRates && data.billingRates.length > 0) {
+        const validRates = data.billingRates.filter(r => r.title && r.rate && r.hours);
+        if (validRates.length > 0) {
+          await apiRequest("PUT", `/api/projects/${project.id}/billing-rates`, { rates: validRates });
+        }
+      }
+      
+      return project;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/companies", activeCompany?.id, "projects"] });
       queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
       queryClient.invalidateQueries({ queryKey: ["/api/contracts"] });
       setShowCreateDialog(false);
-      setFormData({ name: "", projectNumber: "", client: "", clientId: "", address: "", distributionEmails: "", contractId: "", contractOptionId: "", startDate: "", substantialCompletionDate: "", finalCloseoutDate: "", budgetAmount: "", baseBudget: "", budgetTrackingMode: "" });
+      setFormData({ name: "", projectNumber: "", client: "", clientId: "", address: "", distributionEmails: "", contractId: "", contractOptionId: "", startDate: "", substantialCompletionDate: "", finalCloseoutDate: "", budgetAmount: "", baseBudget: "", budgetTrackingMode: "", inheritBillingRates: true });
+      setBillingRates([{ ...emptyBillingRate }]);
       toast({
         title: "Project Created",
         description: "New project has been created.",
@@ -225,8 +298,8 @@ export default function CompanyProjectsPage() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: async (data: typeof formData & { id: string }) => {
-      return apiRequest("PATCH", `/api/projects/${data.id}`, {
+    mutationFn: async (data: typeof formData & { id: string; billingRates?: BillingRateEntry[] }) => {
+      const project = await apiRequest("PATCH", `/api/projects/${data.id}`, {
         ...data,
         contractId: data.contractId || null,
         contractOptionId: data.contractOptionId || null,
@@ -235,13 +308,25 @@ export default function CompanyProjectsPage() {
           ? data.distributionEmails.split(",").map((e) => e.trim()).filter(Boolean)
           : [],
       });
+      
+      // Save billing rates - either custom rates or clear them if inheriting
+      if (!data.inheritBillingRates && data.billingRates && data.billingRates.length > 0) {
+        const validRates = data.billingRates.filter(r => r.title && r.rate && r.hours);
+        await apiRequest("PUT", `/api/projects/${data.id}/billing-rates`, { rates: validRates });
+      } else if (data.inheritBillingRates) {
+        // Clear any existing custom rates when switching to inherit
+        await apiRequest("PUT", `/api/projects/${data.id}/billing-rates`, { rates: [] });
+      }
+      
+      return project;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/companies", activeCompany?.id, "projects"] });
       queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
       queryClient.invalidateQueries({ queryKey: ["/api/contracts"] });
       setEditingProject(null);
-      setFormData({ name: "", projectNumber: "", client: "", clientId: "", address: "", distributionEmails: "", contractId: "", contractOptionId: "", startDate: "", substantialCompletionDate: "", finalCloseoutDate: "", budgetAmount: "", baseBudget: "", budgetTrackingMode: "" });
+      setFormData({ name: "", projectNumber: "", client: "", clientId: "", address: "", distributionEmails: "", contractId: "", contractOptionId: "", startDate: "", substantialCompletionDate: "", finalCloseoutDate: "", budgetAmount: "", baseBudget: "", budgetTrackingMode: "", inheritBillingRates: true });
+      setBillingRates([{ ...emptyBillingRate }]);
       toast({
         title: "Project Updated",
         description: "Project has been updated.",
@@ -278,7 +363,8 @@ export default function CompanyProjectsPage() {
     },
   });
 
-  const handleEdit = (project: Project) => {
+  const handleEdit = async (project: Project) => {
+    const inheritRates = (project as any).inheritBillingRates !== false; // default true
     setFormData({
       name: project.name,
       projectNumber: project.projectNumber,
@@ -294,7 +380,35 @@ export default function CompanyProjectsPage() {
       budgetAmount: (project as any).budgetAmount || "",
       baseBudget: (project as any).baseBudget || "",
       budgetTrackingMode: (project as any).budgetTrackingMode || "",
+      inheritBillingRates: inheritRates,
     });
+    
+    // Load existing billing rates if not inheriting
+    if (!inheritRates) {
+      try {
+        const response = await fetch(`/api/projects/${project.id}/billing-rates`, { credentials: "include" });
+        if (response.ok) {
+          const rates: ProjectBillingRate[] = await response.json();
+          if (rates.length > 0) {
+            setBillingRates(rates.map(r => ({
+              title: r.title,
+              inspectorName: r.inspectorName || "",
+              rate: r.rate,
+              hours: r.hours,
+              scheduleType: (r.scheduleType as "fullTime" | "partTime") || "fullTime",
+            })));
+          } else {
+            setBillingRates([{ ...emptyBillingRate }]);
+          }
+        }
+      } catch (e) {
+        console.error("Failed to load billing rates", e);
+        setBillingRates([{ ...emptyBillingRate }]);
+      }
+    } else {
+      setBillingRates([{ ...emptyBillingRate }]);
+    }
+    
     setEditingProject(project);
   };
 
@@ -579,7 +693,8 @@ export default function CompanyProjectsPage() {
         if (!open) {
           setShowCreateDialog(false);
           setEditingProject(null);
-          setFormData({ name: "", projectNumber: "", client: "", clientId: "", address: "", distributionEmails: "", contractId: "", contractOptionId: "", startDate: "", substantialCompletionDate: "", finalCloseoutDate: "", budgetAmount: "", baseBudget: "", budgetTrackingMode: "" });
+          setFormData({ name: "", projectNumber: "", client: "", clientId: "", address: "", distributionEmails: "", contractId: "", contractOptionId: "", startDate: "", substantialCompletionDate: "", finalCloseoutDate: "", budgetAmount: "", baseBudget: "", budgetTrackingMode: "", inheritBillingRates: true });
+      setBillingRates([{ ...emptyBillingRate }]);
         }
       }}>
         <DialogContent className="max-h-[90vh] flex flex-col">
@@ -795,13 +910,215 @@ export default function CompanyProjectsPage() {
               </p>
             </div>
           </div>
+
+          {/* Billing Rates Section */}
+          <div className="space-y-4 pt-2 border-t">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <DollarSign className="w-4 h-4 text-muted-foreground" />
+                <h3 className="font-medium text-sm">Billing Rates</h3>
+              </div>
+              {formData.contractOptionId && (
+                <div className="flex items-center gap-2">
+                  <Label htmlFor="inheritBillingRates" className="text-sm text-muted-foreground">
+                    Inherit from contract
+                  </Label>
+                  <Switch
+                    id="inheritBillingRates"
+                    checked={formData.inheritBillingRates}
+                    onCheckedChange={(checked) => {
+                      setFormData({ ...formData, inheritBillingRates: checked });
+                      if (checked) {
+                        setBillingRates([{ ...emptyBillingRate }]);
+                      }
+                    }}
+                    data-testid="switch-inherit-billing-rates"
+                  />
+                </div>
+              )}
+            </div>
+
+            {formData.inheritBillingRates && formData.contractOptionId ? (
+              // Show inherited rates (read-only)
+              inheritedRates.length > 0 ? (
+                <div className="space-y-2">
+                  <p className="text-xs text-muted-foreground">Rates inherited from linked contract option:</p>
+                  <div className="space-y-2">
+                    {inheritedRates.map((rate, idx) => (
+                      <div key={idx} className="flex items-center gap-3 p-2 bg-muted/50 rounded-md text-sm">
+                        <Users className="w-4 h-4 text-muted-foreground" />
+                        <span className="font-medium">{rate.title}</span>
+                        {rate.inspectorName && <span className="text-muted-foreground">({rate.inspectorName})</span>}
+                        <span className="ml-auto text-green-600 dark:text-green-400 font-medium">
+                          ${parseFloat(rate.rate).toLocaleString('en-US', { minimumFractionDigits: 2 })}/hr
+                        </span>
+                        <span className="text-muted-foreground">{rate.hours}hrs</span>
+                        <Badge variant="secondary" className="text-xs">{rate.scheduleType === "fullTime" ? "FT" : "PT"}</Badge>
+                      </div>
+                    ))}
+                    <div className="text-right text-sm font-medium text-green-600 dark:text-green-400">
+                      Total: ${calculateTotalBillingAmount(inheritedRates).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground italic">
+                  No billing rates found on linked contract option
+                </p>
+              )
+            ) : formData.inheritBillingRates && !formData.contractOptionId ? (
+              // No contract option selected, but inherit is on
+              <p className="text-xs text-muted-foreground italic">
+                Select a contract option above to inherit billing rates, or turn off inheritance to set custom rates
+              </p>
+            ) : (
+              // Custom billing rates editor
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs text-muted-foreground">Define custom billing rates for this project:</p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={addBillingRate}
+                    data-testid="button-add-billing-rate"
+                  >
+                    <Plus className="w-3 h-3 mr-1" />
+                    Add Rate
+                  </Button>
+                </div>
+                
+                {billingRates.map((rate, idx) => (
+                  <Card key={idx} className="p-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-xs font-medium text-muted-foreground">Rate #{idx + 1}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-semibold text-green-600 dark:text-green-400">
+                          ${calculateBillingRateTotal(rate).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                        </span>
+                        {billingRates.length > 1 && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7"
+                            onClick={() => removeBillingRate(idx)}
+                            data-testid={`button-remove-billing-rate-${idx}`}
+                          >
+                            <Trash2 className="h-3 w-3 text-destructive" />
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                    
+                    <div className="grid grid-cols-2 gap-2 mb-2">
+                      <div className="space-y-1">
+                        <Label className="text-xs">Title/Role</Label>
+                        <Input
+                          className="h-9"
+                          value={rate.title}
+                          onChange={(e) => updateBillingRate(idx, "title", e.target.value)}
+                          placeholder="e.g., DSA Class 1 Inspector"
+                          data-testid={`input-billing-rate-title-${idx}`}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Inspector Name</Label>
+                        <InspectorSelector
+                          value=""
+                          onValueChange={(_, option) => {
+                            if (option) {
+                              updateBillingRate(idx, "inspectorName", option.displayName);
+                            }
+                          }}
+                          placeholder={rate.inspectorName || "Select or type..."}
+                          allowEmpty
+                          allowCreate
+                          className="h-9"
+                          data-testid={`select-billing-rate-inspector-${idx}`}
+                        />
+                        <Input
+                          className="h-9 mt-1"
+                          value={rate.inspectorName}
+                          onChange={(e) => updateBillingRate(idx, "inspectorName", e.target.value)}
+                          placeholder="Or type a name..."
+                          data-testid={`input-billing-rate-inspector-${idx}`}
+                        />
+                      </div>
+                    </div>
+                    
+                    <div className="grid grid-cols-3 gap-2">
+                      <div className="space-y-1">
+                        <Label className="text-xs">Schedule</Label>
+                        <div className="flex gap-1">
+                          <Button
+                            type="button"
+                            variant={rate.scheduleType === "fullTime" ? "default" : "outline"}
+                            size="sm"
+                            className="flex-1 h-9 text-xs px-2"
+                            onClick={() => updateBillingRate(idx, "scheduleType", "fullTime")}
+                            data-testid={`button-billing-rate-full-${idx}`}
+                          >
+                            FT (8hr)
+                          </Button>
+                          <Button
+                            type="button"
+                            variant={rate.scheduleType === "partTime" ? "default" : "outline"}
+                            size="sm"
+                            className="flex-1 h-9 text-xs px-2"
+                            onClick={() => updateBillingRate(idx, "scheduleType", "partTime")}
+                            data-testid={`button-billing-rate-part-${idx}`}
+                          >
+                            PT (4hr)
+                          </Button>
+                        </div>
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Rate ($/hr)</Label>
+                        <Input
+                          className="h-9"
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={rate.rate}
+                          onChange={(e) => updateBillingRate(idx, "rate", e.target.value)}
+                          placeholder="0.00"
+                          data-testid={`input-billing-rate-rate-${idx}`}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Hours</Label>
+                        <Input
+                          className="h-9"
+                          type="number"
+                          step="0.5"
+                          min="0"
+                          value={rate.hours}
+                          onChange={(e) => updateBillingRate(idx, "hours", e.target.value)}
+                          placeholder="0"
+                          data-testid={`input-billing-rate-hours-${idx}`}
+                        />
+                      </div>
+                    </div>
+                  </Card>
+                ))}
+                
+                {billingRates.some(r => r.title && r.rate && r.hours) && (
+                  <div className="text-right text-sm font-medium text-green-600 dark:text-green-400">
+                    Total: ${calculateTotalBillingAmount(billingRates).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
           <DialogFooter className="gap-2">
             <Button
               variant="outline"
               onClick={() => {
                 setShowCreateDialog(false);
                 setEditingProject(null);
-                setFormData({ name: "", projectNumber: "", client: "", clientId: "", address: "", distributionEmails: "", contractId: "", contractOptionId: "", startDate: "", substantialCompletionDate: "", finalCloseoutDate: "", budgetAmount: "", baseBudget: "", budgetTrackingMode: "" });
+                setFormData({ name: "", projectNumber: "", client: "", clientId: "", address: "", distributionEmails: "", contractId: "", contractOptionId: "", startDate: "", substantialCompletionDate: "", finalCloseoutDate: "", budgetAmount: "", baseBudget: "", budgetTrackingMode: "", inheritBillingRates: true });
+      setBillingRates([{ ...emptyBillingRate }]);
               }}
               data-testid="button-cancel"
             >
@@ -810,9 +1127,9 @@ export default function CompanyProjectsPage() {
             <Button
               onClick={() => {
                 if (editingProject) {
-                  updateMutation.mutate({ ...formData, id: editingProject.id });
+                  updateMutation.mutate({ ...formData, id: editingProject.id, billingRates });
                 } else {
-                  createMutation.mutate(formData);
+                  createMutation.mutate({ ...formData, billingRates });
                 }
               }}
               disabled={!formData.name.trim() || !formData.projectNumber.trim() || createMutation.isPending || updateMutation.isPending}
