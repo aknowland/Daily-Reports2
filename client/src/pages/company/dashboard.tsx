@@ -125,6 +125,17 @@ type CompanyDashboardData = {
     revenue: number;
     hours: number;
   }[];
+  atRiskProjects?: {
+    id: string;
+    name: string;
+    contractId?: string;
+    contractName?: string;
+    hoursRemaining: number;
+    budgetedHours: number;
+    percentRemaining: number;
+    status: 'orange' | 'red';
+    recommendation: string;
+  }[];
 };
 
 const getStatusColor = (status: string) => {
@@ -778,6 +789,69 @@ export default function CompanyDashboard() {
                 )}
               </CardContent>
             </Card>
+            
+            {/* At-Risk Projects */}
+            {companyDashboard?.atRiskProjects && companyDashboard.atRiskProjects.length > 0 && (
+              <Card data-testid="card-at-risk-projects">
+                <CardHeader>
+                  <div className="flex items-center gap-2">
+                    <AlertTriangle className="h-5 w-5 text-orange-500" />
+                    <CardTitle>At-Risk Projects</CardTitle>
+                    <Badge variant="destructive" className="ml-auto">
+                      {companyDashboard.atRiskProjects.length}
+                    </Badge>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Projects with less than 20% of budgeted hours remaining
+                  </p>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-2 max-h-80 overflow-y-auto">
+                    {companyDashboard.atRiskProjects.map((project) => (
+                      <Link 
+                        key={project.id} 
+                        href={`/projects/${project.id}/dashboard`}
+                      >
+                        <div 
+                          className={`p-3 rounded-lg border cursor-pointer hover-elevate ${
+                            project.status === 'red' 
+                              ? 'bg-red-50 dark:bg-red-950 border-red-200 dark:border-red-800' 
+                              : 'bg-orange-50 dark:bg-orange-950 border-orange-200 dark:border-orange-800'
+                          }`}
+                          data-testid={`at-risk-project-${project.id}`}
+                        >
+                          <div className="flex items-center justify-between gap-2 mb-1">
+                            <span className="font-medium text-sm truncate">{project.name}</span>
+                            <Badge 
+                              variant={project.status === 'red' ? 'destructive' : 'secondary'}
+                              className="shrink-0"
+                            >
+                              {project.percentRemaining}% left
+                            </Badge>
+                          </div>
+                          {project.contractName && (
+                            <p className="text-xs text-muted-foreground mb-1">
+                              Contract: {project.contractName}
+                            </p>
+                          )}
+                          <p className={`text-xs ${
+                            project.status === 'red' 
+                              ? 'text-red-700 dark:text-red-400' 
+                              : 'text-orange-700 dark:text-orange-400'
+                          }`}>
+                            {project.recommendation}
+                          </p>
+                          <div className="flex items-center justify-between mt-2 text-xs text-muted-foreground">
+                            <span>{project.hoursRemaining.toFixed(1)} hrs remaining</span>
+                            <span>{project.budgetedHours.toFixed(1)} hrs budgeted</span>
+                          </div>
+                        </div>
+                      </Link>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
 
             {/* Inspector Workload */}
             <Card data-testid="card-inspector-workload">

@@ -760,6 +760,139 @@ export async function registerRoutes(
         }
       }
       
+      // Hours Forecast Calculation
+      // Calculate working days (excluding weekends) between two dates
+      const countWorkingDays = (startDate: Date, endDate: Date): number => {
+        let count = 0;
+        const current = new Date(startDate);
+        while (current <= endDate) {
+          const dayOfWeek = current.getDay();
+          if (dayOfWeek !== 0 && dayOfWeek !== 6) { // Not Sunday or Saturday
+            count++;
+          }
+          current.setDate(current.getDate() + 1);
+        }
+        return count;
+      };
+      
+      // Get daily capacity from contract option inspectors (full-time = 8 hrs, part-time = 4 hrs)
+      let dailyCapacity = 8; // Default to full-time
+      let scheduleType = 'fullTime';
+      
+      if (project.contractOptionId && project.contractId) {
+        const contractOptions = await storage.getContractOptions(project.contractId);
+        const contractOption = contractOptions.find(opt => opt.id === project.contractOptionId);
+        // Check schedule type from the first inspector in the option (or majority)
+        if (contractOption?.inspectors && contractOption.inspectors.length > 0) {
+          // Use the first inspector's schedule type as the default
+          const firstInspectorSchedule = (contractOption.inspectors[0] as any).scheduleType;
+          if (firstInspectorSchedule) {
+            scheduleType = firstInspectorSchedule;
+            dailyCapacity = scheduleType === 'partTime' ? 4 : 8;
+          }
+        }
+      }
+      
+      // Calculate forecast
+      let forecast: {
+        workingDaysRemaining: number;
+        dailyCapacity: number;
+        scheduleType: string;
+        maxPossibleHours: number;
+        hoursRemaining: number;
+        burnRate: number; // hours per working day used so far
+        projectedCompletion: 'on_track' | 'at_risk' | 'over_budget' | 'unknown';
+        recommendation: string;
+        suggestedDailyHours: number | null;
+        additionalHoursNeeded: number;
+      } | null = null;
+      
+      const hoursRemaining = Math.max(0, effectiveBudgetedHours - effectiveTotalHours);
+      
+      if (project.substantialCompletionDate && effectiveBudgetedHours > 0) {
+        const endDate = new Date(project.substantialCompletionDate);
+        const workingDaysRemaining = countWorkingDays(now, endDate);
+        
+        // Calculate burn rate (hours per working day so far)
+        let workingDaysElapsed = 0;
+        if (project.startDate) {
+          const startDate = new Date(project.startDate);
+          if (now > startDate) {
+            workingDaysElapsed = countWorkingDays(startDate, now);
+          }
+        }
+        const burnRate = workingDaysElapsed > 0 ? totalHoursUsed / workingDaysElapsed : 0;
+        
+        // Max possible hours with current schedule
+        const maxPossibleHours = workingDaysRemaining * dailyCapacity;
+        
+        // Determine forecast status and recommendation
+        let projectedCompletion: 'on_track' | 'at_risk' | 'over_budget' | 'unknown' = 'unknown';
+        let recommendation = '';
+        let suggestedDailyHours: number | null = null;
+        let additionalHoursNeeded = 0;
+        
+        if (now > endDate) {
+          // Project is past completion date
+          if (hoursRemaining > 0) {
+            projectedCompletion = 'over_budget';
+            recommendation = 'Project is past completion date with hours remaining. Consider requesting timeline extension.';
+            additionalHoursNeeded = hoursRemaining;
+          } else {
+            projectedCompletion = 'on_track';
+            recommendation = 'Project hours have been fully utilized.';
+          }
+        } else if (workingDaysRemaining > 0) {
+          // Required daily hours to finish remaining budget on time
+          suggestedDailyHours = hoursRemaining / workingDaysRemaining;
+          
+          if (hoursRemaining <= 0) {
+            // Budget exhausted
+            projectedCompletion = 'over_budget';
+            recommendation = 'Hours budget exhausted. Request additional hours from client if work continues.';
+          } else if (suggestedDailyHours <= dailyCapacity * 0.8) {
+            // Can finish comfortably within schedule
+            projectedCompletion = 'on_track';
+            recommendation = `On track. Work ${suggestedDailyHours.toFixed(1)} hrs/day to use remaining budget by completion.`;
+          } else if (suggestedDailyHours <= dailyCapacity) {
+            // Can finish but need to work close to capacity
+            projectedCompletion = 'at_risk';
+            recommendation = `At risk. Need ${suggestedDailyHours.toFixed(1)} hrs/day (near full capacity) to complete on time.`;
+          } else {
+            // Cannot finish within current schedule capacity
+            projectedCompletion = 'at_risk';
+            additionalHoursNeeded = hoursRemaining - maxPossibleHours;
+            if (additionalHoursNeeded > 0) {
+              recommendation = `Capacity shortage. Would need ${suggestedDailyHours.toFixed(1)} hrs/day but capacity is ${dailyCapacity} hrs. Consider reducing scope or extending timeline.`;
+            } else {
+              recommendation = `Tight schedule. Need ${suggestedDailyHours.toFixed(1)} hrs/day to complete. Monitor closely.`;
+            }
+          }
+        } else {
+          // No working days remaining
+          if (hoursRemaining > 0) {
+            projectedCompletion = 'over_budget';
+            recommendation = 'Deadline reached with unused hours. Review if additional work is expected.';
+          } else {
+            projectedCompletion = 'on_track';
+            recommendation = 'Project completed on schedule.';
+          }
+        }
+        
+        forecast = {
+          workingDaysRemaining,
+          dailyCapacity,
+          scheduleType,
+          maxPossibleHours,
+          hoursRemaining,
+          burnRate: Math.round(burnRate * 100) / 100,
+          projectedCompletion,
+          recommendation,
+          suggestedDailyHours: suggestedDailyHours !== null ? Math.round(suggestedDailyHours * 100) / 100 : null,
+          additionalHoursNeeded: Math.max(0, Math.round(additionalHoursNeeded * 100) / 100),
+        };
+      }
+      
       res.json({
         project: {
           id: project.id,
@@ -823,6 +956,7 @@ export async function registerRoutes(
         weatherSummary,
         teamOverview,
         upcomingMilestones,
+        forecast,
       });
     } catch (error) {
       console.error("Error fetching project dashboard:", error);
@@ -3976,6 +4110,100 @@ export async function registerRoutes(
         })
         .reduce((sum, r) => sum + parseFloat(r.regularHours || '0') + parseFloat(r.otHours || '0'), 0);
       
+      // 7. At-Risk Projects - projects with less than 20% of budgeted hours remaining
+      const atRiskProjects: {
+        id: string;
+        name: string;
+        contractId?: string;
+        contractName?: string;
+        hoursRemaining: number;
+        budgetedHours: number;
+        percentRemaining: number;
+        status: 'orange' | 'red';
+        recommendation: string;
+      }[] = [];
+      
+      for (const project of projects) {
+        // Get budgeted hours from linked contract option or project budget
+        let budgetedHours = 0;
+        let contractInfo: { id?: string; name?: string } = {};
+        
+        const projectAny = project as any;
+        if (projectAny.contractId) {
+          const contract = contracts.find(c => c.id === projectAny.contractId);
+          if (contract) {
+            contractInfo = { id: contract.id, name: contract.name };
+          }
+          
+          // Get contract options for budgeted hours
+          const contractOptions = await storage.getContractOptions(projectAny.contractId);
+          const linkedOption = projectAny.contractOptionId 
+            ? contractOptions.find(opt => opt.id === projectAny.contractOptionId)
+            : contractOptions[0];
+          
+          if (linkedOption?.inspectors) {
+            budgetedHours = linkedOption.inspectors.reduce((sum: number, i: any) => sum + parseFloat(i.hours || '0'), 0);
+          }
+        } else if (projectAny.budgetAmount) {
+          budgetedHours = parseFloat(projectAny.budgetAmount);
+        }
+        
+        if (budgetedHours <= 0) continue;
+        
+        // Calculate used hours from reports
+        const projectReports = allReports.filter(r => r.projectId === project.id);
+        let usedHours = 0;
+        for (const report of projectReports) {
+          usedHours += parseFloat(report.regularHours || '0');
+          usedHours += parseFloat(report.otHours || '0');
+          usedHours += parseFloat((report as any).premiumHours || '0');
+        }
+        
+        // Add manual entries
+        const manualEntries = await storage.getAllManualTimeEntriesForProject(project.id);
+        for (const entry of manualEntries) {
+          usedHours += parseFloat(entry.regularHours || '0');
+          usedHours += parseFloat(entry.otHours || '0');
+        }
+        
+        const hoursRemaining = Math.max(0, budgetedHours - usedHours);
+        const percentRemaining = budgetedHours > 0 ? (hoursRemaining / budgetedHours) : 1;
+        
+        // Only flag projects in orange (<20%) or red (≤10%) zones
+        if (percentRemaining < 0.2) {
+          const isRed = percentRemaining <= 0.1;
+          
+          let recommendation = '';
+          if (isRed) {
+            if (hoursRemaining <= 0) {
+              recommendation = 'Budget exhausted. Request additional hours if work continues.';
+            } else {
+              recommendation = `Critical: Only ${hoursRemaining.toFixed(1)} hours (${Math.round(percentRemaining * 100)}%) remaining.`;
+            }
+          } else {
+            recommendation = `Warning: ${hoursRemaining.toFixed(1)} hours (${Math.round(percentRemaining * 100)}%) remaining. Monitor closely.`;
+          }
+          
+          atRiskProjects.push({
+            id: project.id,
+            name: project.name,
+            contractId: contractInfo.id,
+            contractName: contractInfo.name,
+            hoursRemaining: Math.round(hoursRemaining * 10) / 10,
+            budgetedHours,
+            percentRemaining: Math.round(percentRemaining * 100),
+            status: isRed ? 'red' : 'orange',
+            recommendation,
+          });
+        }
+      }
+      
+      // Sort by severity (red first) then by percent remaining
+      atRiskProjects.sort((a, b) => {
+        if (a.status !== b.status) return a.status === 'red' ? -1 : 1;
+        return a.percentRemaining - b.percentRemaining;
+      });
+      
       res.json({
         summary: {
           activeContracts,
@@ -3993,6 +4221,7 @@ export async function registerRoutes(
         alerts: alerts.slice(0, 20),
         recentActivity,
         revenueAnalytics,
+        atRiskProjects,
       });
     } catch (error) {
       console.error("Error fetching company dashboard:", error);
@@ -4370,6 +4599,94 @@ export async function registerRoutes(
         .filter(m => m.daysUntil >= -7) // Include recently past (within a week) and future
         .sort((a, b) => a.daysUntil - b.daysUntil);
       
+      // Calculate at-risk projects (projects with less than 20% of budgeted hours remaining)
+      const countWorkingDays = (startDate: Date, endDate: Date): number => {
+        let count = 0;
+        const current = new Date(startDate);
+        while (current <= endDate) {
+          const dayOfWeek = current.getDay();
+          if (dayOfWeek !== 0 && dayOfWeek !== 6) { // Not Sunday or Saturday
+            count++;
+          }
+          current.setDate(current.getDate() + 1);
+        }
+        return count;
+      };
+      
+      const atRiskProjects: {
+        id: string;
+        name: string;
+        hoursRemaining: number;
+        budgetedHours: number;
+        percentRemaining: number;
+        status: 'orange' | 'red';
+        recommendation: string;
+      }[] = [];
+      
+      for (const p of contractProjects) {
+        // Get project's linked contract option for budgeted hours
+        const projectOption = (p as any).contractOptionId 
+          ? contractRateOptions.find(opt => opt.id === (p as any).contractOptionId)
+          : primaryOption;
+        
+        let projectBudgetedHours = 0;
+        if (projectOption?.inspectors) {
+          projectBudgetedHours = projectOption.inspectors.reduce((sum: number, i: any) => sum + parseFloat(i.hours || '0'), 0);
+        }
+        
+        // Get project's hours used
+        const projectReports = dailyReports.filter(r => r.projectId === p.id);
+        let projectUsedHours = 0;
+        for (const report of projectReports) {
+          projectUsedHours += parseFloat(report.regularHours || '0');
+          projectUsedHours += parseFloat(report.otHours || '0');
+          projectUsedHours += parseFloat((report as any).premiumHours || '0');
+        }
+        
+        // Add manual entries
+        const projectManualEntries = await storage.getAllManualTimeEntriesForProject(p.id);
+        for (const entry of projectManualEntries) {
+          projectUsedHours += parseFloat(entry.regularHours || '0');
+          projectUsedHours += parseFloat(entry.otHours || '0');
+        }
+        
+        const projectHoursRemaining = Math.max(0, projectBudgetedHours - projectUsedHours);
+        const percentRemaining = projectBudgetedHours > 0 ? (projectHoursRemaining / projectBudgetedHours) : 1;
+        
+        // Only flag projects in orange (<20%) or red (≤10%) zones
+        if (percentRemaining < 0.2 && projectBudgetedHours > 0) {
+          const isRed = percentRemaining <= 0.1;
+          
+          // Calculate forecast info for recommendation
+          let recommendation = '';
+          if (isRed) {
+            if (projectHoursRemaining <= 0) {
+              recommendation = 'Budget exhausted. Request additional hours if work continues.';
+            } else {
+              recommendation = `Critical: Only ${projectHoursRemaining.toFixed(1)} hours (${Math.round(percentRemaining * 100)}%) remaining.`;
+            }
+          } else {
+            recommendation = `Warning: ${projectHoursRemaining.toFixed(1)} hours (${Math.round(percentRemaining * 100)}%) remaining. Monitor closely.`;
+          }
+          
+          atRiskProjects.push({
+            id: p.id,
+            name: p.name,
+            hoursRemaining: Math.round(projectHoursRemaining * 10) / 10,
+            budgetedHours: projectBudgetedHours,
+            percentRemaining: Math.round(percentRemaining * 100),
+            status: isRed ? 'red' : 'orange',
+            recommendation,
+          });
+        }
+      }
+      
+      // Sort by severity (red first) then by percent remaining
+      atRiskProjects.sort((a, b) => {
+        if (a.status !== b.status) return a.status === 'red' ? -1 : 1;
+        return a.percentRemaining - b.percentRemaining;
+      });
+      
       res.json({
         contract: {
           id: contract.id,
@@ -4509,6 +4826,7 @@ export async function registerRoutes(
         weatherSummary,
         teamOverview,
         upcomingMilestones,
+        atRiskProjects,
         projects: await Promise.all(contractProjects.map(async (p) => {
           // Get report count and budget for this project
           const projectReports = dailyReports.filter(r => r.projectId === p.id);
