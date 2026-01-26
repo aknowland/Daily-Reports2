@@ -157,6 +157,7 @@ export function ProposalDialog({ open, onOpenChange, editingProposal }: Proposal
   };
 
   // Helper function to find suggested rate for an inspector based on name/title
+  // Only uses contract rates (client billing rates) - IOR rates are for paying inspectors, not proposals
   const getSuggestedRate = (inspectorName: string, title: string, currentRate: string) => {
     if (!rateLookup) return null;
     
@@ -164,36 +165,27 @@ export function ProposalDialog({ open, onOpenChange, editingProposal }: Proposal
     const titleKey = title.toLowerCase().trim();
     
     let suggestedRate: string | null = null;
-    let source: "contract" | "ior" | null = null;
     let details: string | null = null;
     
-    // First check by inspector name in client rates
+    // Check by inspector name in client rates (contract billing rates)
     if (nameKey && rateLookup.clientRates[nameKey]) {
       suggestedRate = rateLookup.clientRates[nameKey].rate;
-      source = "contract";
       details = `From ${rateLookup.clientRates[nameKey].optionName || "contract option"}`;
     }
     // Then check by title in client rates
     else if (titleKey && rateLookup.clientRates[titleKey]) {
       suggestedRate = rateLookup.clientRates[titleKey].rate;
-      source = "contract";
       details = `From ${rateLookup.clientRates[titleKey].optionName || "contract option"}`;
     }
-    // Check inspector pay rates (IOR agreements)
-    else if (nameKey && rateLookup.inspectorPayRates[nameKey]) {
-      suggestedRate = rateLookup.inspectorPayRates[nameKey].rate;
-      source = "ior";
-      details = `IOR rate from ${rateLookup.inspectorPayRates[nameKey].projectName}`;
-    }
     
-    if (!suggestedRate || !source || !details) return null;
+    if (!suggestedRate || !details) return null;
     
     // Use normalized comparison to handle rate formatting differences
     if (normalizeRate(suggestedRate) === normalizeRate(currentRate)) {
       return null; // Already applied
     }
     
-    return { rate: suggestedRate, source, details };
+    return { rate: suggestedRate, source: "contract" as const, details };
   };
 
   useEffect(() => {
@@ -811,11 +803,7 @@ export function ProposalDialog({ open, onOpenChange, editingProposal }: Proposal
                                       <TooltipTrigger asChild>
                                         <Badge 
                                           variant="outline" 
-                                          className={`text-[10px] h-4 px-1 cursor-pointer ${
-                                            suggested.source === "contract" 
-                                              ? "bg-blue-50 text-blue-600 border-blue-200 hover:bg-blue-100" 
-                                              : "bg-green-50 text-green-600 border-green-200 hover:bg-green-100"
-                                          }`}
+                                          className="text-[10px] h-4 px-1 cursor-pointer bg-blue-50 text-blue-600 border-blue-200 hover:bg-blue-100"
                                           onClick={() => updateInspector(optionIndex, inspectorIndex, "rate", suggested.rate)}
                                           data-testid={`badge-suggested-rate-${optionIndex}-${inspectorIndex}`}
                                         >
