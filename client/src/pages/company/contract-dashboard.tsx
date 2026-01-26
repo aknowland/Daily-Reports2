@@ -1020,7 +1020,7 @@ export default function ContractDashboard() {
                       <p className="text-lg font-bold" data-testid="text-used-hours">{dashboard.budget.hours.used.toFixed(1)} hrs</p>
                     </div>
                     <div className={`p-2 rounded ${
-                      dashboard.budget.hours.remaining <= 0 
+                      dashboard.budget.hours.budgeted > 0 && (dashboard.budget.hours.remaining / dashboard.budget.hours.budgeted) <= 0.1 
                         ? 'bg-red-50 dark:bg-red-950' 
                         : dashboard.budget.hours.budgeted > 0 && (dashboard.budget.hours.remaining / dashboard.budget.hours.budgeted) < 0.2 
                           ? 'bg-orange-50 dark:bg-orange-950' 
@@ -1028,7 +1028,7 @@ export default function ContractDashboard() {
                     }`}>
                       <p className="text-xs text-muted-foreground">Remaining</p>
                       <p className={`text-lg font-bold ${
-                        dashboard.budget.hours.remaining <= 0 
+                        dashboard.budget.hours.budgeted > 0 && (dashboard.budget.hours.remaining / dashboard.budget.hours.budgeted) <= 0.1 
                           ? 'text-red-700 dark:text-red-400' 
                           : dashboard.budget.hours.budgeted > 0 && (dashboard.budget.hours.remaining / dashboard.budget.hours.budgeted) < 0.2 
                             ? 'text-orange-700 dark:text-orange-400' 
