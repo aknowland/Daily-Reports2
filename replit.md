@@ -39,6 +39,7 @@ The application is built with a modern web stack, utilizing **React, TypeScript,
 -   **Inspector Profile**: Users can manage their names for report generation.
 -   **Admin Capabilities**: Management of projects, users, company settings, and invitations.
 -   **Billing Features**: Generation of timesheet PDFs, client invoices, combined reports, and inspector invoices.
+-   **Manual Time Entry**: Inspectors who don't use the daily reporting system can manually enter hours for timesheet generation. The Project Dashboard timesheet dialog provides tabs for switching between "From Daily Reports" and "Manual Entry" modes, with a scrollable date-by-date form for entering regular and overtime hours.
 -   **Clients Management**: Full CRUD for managing company clients, with inline creation and project linking.
 -   **IOR Agreements**: Creation and management of Inspector of Record agreements by company admins, including PDF generation.
 -   **Contract Dashboard**: Provides a visual dashboard for each contract, displaying schedule progress, budget tracking, linked projects, financial summary, bid schedule, billing rates, notes, attached files, and daily reports.
