@@ -181,6 +181,19 @@ type DashboardData = {
       overtime: number;
       premium: number;
       total: number;
+      sources?: {
+        invoices: {
+          regular: number;
+          overtime: number;
+          premium: number;
+          total: number;
+        };
+        manualEntries: {
+          regular: number;
+          overtime: number;
+          total: number;
+        };
+      };
     };
     scheduled: {
       amount: number;
@@ -1009,6 +1022,21 @@ export default function ContractDashboard() {
                     <p className="text-xs text-muted-foreground">Total Hours</p>
                     <p className="font-medium" data-testid="text-total-hours">{dashboard.budget.hours.total.toFixed(1)}</p>
                   </div>
+                  {dashboard.budget.hours.sources && (dashboard.budget.hours.sources.invoices.total > 0 || dashboard.budget.hours.sources.manualEntries.total > 0) && (
+                    <div className="mt-3 pt-3 border-t border-dashed">
+                      <p className="text-xs font-medium text-muted-foreground mb-2">Hours by Source</p>
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        <div className="p-2 bg-blue-50 dark:bg-blue-950 rounded">
+                          <span className="font-medium">From Invoices</span>
+                          <p className="text-lg font-bold">{dashboard.budget.hours.sources.invoices.total.toFixed(1)} hrs</p>
+                        </div>
+                        <div className="p-2 bg-green-50 dark:bg-green-950 rounded">
+                          <span className="font-medium">Manual Entries</span>
+                          <p className="text-lg font-bold">{dashboard.budget.hours.sources.manualEntries.total.toFixed(1)} hrs</p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 

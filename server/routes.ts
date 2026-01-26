@@ -4120,6 +4120,13 @@ export async function registerRoutes(
       // Get daily reports for all projects under this contract
       const dailyReports = await storage.getReportsByContractProjects(req.params.id);
       
+      // Get all manual time entries for projects under this contract
+      let allContractManualEntries: any[] = [];
+      for (const project of contractProjects) {
+        const projectManualEntries = await storage.getAllManualTimeEntriesForProject(project.id);
+        allContractManualEntries.push(...projectManualEntries);
+      }
+      
       // Get contract rate options for client billing rates
       const contractRateOptions = await storage.getContractOptions(req.params.id);
       
@@ -4198,6 +4205,16 @@ export async function registerRoutes(
       
       const actualProfit = actualRevenue - actualCost;
       const actualMargin = actualRevenue > 0 ? (actualProfit / actualRevenue) * 100 : 0;
+      
+      // Calculate contract-level manual entry hours totals
+      let contractManualHours = { regular: 0, overtime: 0, total: 0 };
+      for (const entry of allContractManualEntries) {
+        const regHrs = parseFloat(entry.regularHours || '0');
+        const otHrs = parseFloat(entry.otHours || '0');
+        contractManualHours.regular += regHrs;
+        contractManualHours.overtime += otHrs;
+        contractManualHours.total += regHrs + otHrs;
+      }
       
       // === NEW DASHBOARD FEATURES ===
       
@@ -4371,10 +4388,23 @@ export async function registerRoutes(
           status: budgetStatus,
           trackingMode,
           hours: {
-            regular: budgetSummary.regularHours,
-            overtime: budgetSummary.overtimeHours,
+            regular: budgetSummary.regularHours + contractManualHours.regular,
+            overtime: budgetSummary.overtimeHours + contractManualHours.overtime,
             premium: budgetSummary.premiumHours,
-            total: budgetSummary.totalHours,
+            total: budgetSummary.totalHours + contractManualHours.total,
+            sources: {
+              invoices: {
+                regular: budgetSummary.regularHours,
+                overtime: budgetSummary.overtimeHours,
+                premium: budgetSummary.premiumHours,
+                total: budgetSummary.totalHours,
+              },
+              manualEntries: {
+                regular: contractManualHours.regular,
+                overtime: contractManualHours.overtime,
+                total: contractManualHours.total,
+              },
+            },
           },
           scheduled: {
             amount: scheduledBudget.scheduledAmount,
@@ -4466,20 +4496,42 @@ export async function registerRoutes(
           const projectReports = dailyReports.filter(r => r.projectId === p.id);
           const reportCount = projectReports.length;
           
+          // Get manual time entries for this project
+          const projectManualEntries = await storage.getAllManualTimeEntriesForProject(p.id);
+          
           // Calculate project budget from its reports
-          let projectBilled = 0;
+          let projectBilledFromReports = 0;
+          let dailyReportHours = { regular: 0, overtime: 0, premium: 0 };
           for (const report of projectReports) {
             const regularHours = parseFloat(report.regularHours || '0');
             const otHours = parseFloat(report.otHours || '0');
             const premiumHours = parseFloat((report as any).premiumHours || '0');
+            
+            dailyReportHours.regular += regularHours;
+            dailyReportHours.overtime += otHours;
+            dailyReportHours.premium += premiumHours;
             
             // Use first rate option's first inspector rate as base
             const firstOption = contractRateOptions[0];
             const firstInspector = firstOption?.inspectors?.[0];
             const hourlyRate = parseFloat(firstInspector?.rate || '0');
             
-            projectBilled += (regularHours + otHours * 1.5 + premiumHours * 2) * hourlyRate;
+            projectBilledFromReports += (regularHours + otHours * 1.5 + premiumHours * 2) * hourlyRate;
           }
+          
+          // Calculate hours from manual entries (for hours tracking only, not billing)
+          let manualEntryHours = { regular: 0, overtime: 0 };
+          for (const entry of projectManualEntries) {
+            const regularHours = parseFloat(entry.regularHours || '0');
+            const otHours = parseFloat(entry.otHours || '0');
+            
+            manualEntryHours.regular += regularHours;
+            manualEntryHours.overtime += otHours;
+          }
+          
+          // Project billed amount comes only from daily reports (not manual entries)
+          // Manual entries are for hours tracking, not billing
+          const projectBilled = projectBilledFromReports;
           
           // Calculate per-project schedule progress
           let projectScheduleProgress = 0;
@@ -4562,6 +4614,7 @@ export async function registerRoutes(
             projectNumber: p.projectNumber,
             status: (p as any).status || 'active',
             reportCount,
+            manualEntryCount: projectManualEntries.length,
             budgetSpent: projectTotalSpent,
             budgetAmount: projectBudgetAmount,
             baseBudget: projectBaseBudget,
@@ -4575,6 +4628,19 @@ export async function registerRoutes(
               hours: projectScheduledBudget.scheduledHours,
               workingDaysElapsed: projectScheduledBudget.workingDaysElapsed,
               totalWorkingDays: projectScheduledBudget.totalWorkingDays,
+            },
+            hoursSources: {
+              dailyReports: {
+                total: dailyReportHours.regular + dailyReportHours.overtime + dailyReportHours.premium,
+                regular: dailyReportHours.regular,
+                overtime: dailyReportHours.overtime,
+                premium: dailyReportHours.premium,
+              },
+              manualEntries: {
+                total: manualEntryHours.regular + manualEntryHours.overtime,
+                regular: manualEntryHours.regular,
+                overtime: manualEntryHours.overtime,
+              },
             },
             startDate: (p as any).startDate,
             substantialCompletionDate: (p as any).substantialCompletionDate,
