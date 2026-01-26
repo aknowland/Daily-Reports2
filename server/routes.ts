@@ -4216,6 +4216,21 @@ export async function registerRoutes(
         contractManualHours.total += regHrs + otHrs;
       }
       
+      // Calculate total budgeted hours from all awarded contract options (or first option if none awarded)
+      const optionsForHoursBudget = awardedOptions.length > 0 ? awardedOptions : (contractRateOptions.length > 0 ? [contractRateOptions[0]] : []);
+      let totalBudgetedHours = 0;
+      for (const option of optionsForHoursBudget) {
+        if (option?.inspectors) {
+          for (const inspector of option.inspectors) {
+            totalBudgetedHours += parseFloat(inspector.hours || '0');
+          }
+        }
+      }
+      
+      // Total used hours = invoices/reports + manual entries
+      const totalUsedHours = budgetSummary.totalHours + contractManualHours.total;
+      const remainingHours = Math.max(0, totalBudgetedHours - totalUsedHours);
+      
       // === NEW DASHBOARD FEATURES ===
       
       // 1. Activity Timeline - Recent activities from reports
@@ -4388,6 +4403,9 @@ export async function registerRoutes(
           status: budgetStatus,
           trackingMode,
           hours: {
+            budgeted: totalBudgetedHours,
+            used: totalUsedHours,
+            remaining: remainingHours,
             regular: budgetSummary.regularHours + contractManualHours.regular,
             overtime: budgetSummary.overtimeHours + contractManualHours.overtime,
             premium: budgetSummary.premiumHours,
