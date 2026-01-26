@@ -174,8 +174,21 @@ export const projects = pgTable("projects", {
   budgetAmount: numeric("budget_amount"), // Total budget for this project
   baseBudget: numeric("base_budget"), // Base budget for stacking (work done before current tracking)
   budgetTrackingMode: budgetTrackingModeEnum("budget_tracking_mode"), // null = inherit from contract
+  inheritBillingRates: boolean("inherit_billing_rates").default(true), // true = inherit from contract option, false = use project-specific rates
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Project Billing Rates table - similar to contract option inspectors but for projects
+export const projectBillingRates = pgTable("project_billing_rates", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  projectId: varchar("project_id").references(() => projects.id, { onDelete: "cascade" }).notNull(),
+  title: text("title").notNull(), // Role/title like "DSA Class 1 Inspector"
+  inspectorName: text("inspector_name"), // Optional - name of the inspector
+  rate: varchar("rate").notNull(), // Hourly rate
+  hours: varchar("hours").notNull(), // Total hours
+  scheduleType: varchar("schedule_type").default("fullTime"), // fullTime (8 hrs/day) or partTime (4 hrs/day)
+  createdAt: timestamp("created_at").defaultNow(),
 });
 
 // Project Members table (many-to-many: users <-> projects)
@@ -669,6 +682,14 @@ export const projectsRelations = relations(projects, ({ one, many }) => ({
   }),
   dailyReports: many(dailyReports),
   members: many(projectMembers),
+  billingRates: many(projectBillingRates),
+}));
+
+export const projectBillingRatesRelations = relations(projectBillingRates, ({ one }) => ({
+  project: one(projects, {
+    fields: [projectBillingRates.projectId],
+    references: [projects.id],
+  }),
 }));
 
 export const projectMembersRelations = relations(projectMembers, ({ one }) => ({
@@ -726,6 +747,7 @@ export const updateUserProfileSchema = createInsertSchema(userProfiles)
 
 export type UpdateUserProfile = z.infer<typeof updateUserProfileSchema>;
 export const insertProjectSchema = createInsertSchema(projects).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertProjectBillingRateSchema = createInsertSchema(projectBillingRates).omit({ id: true, createdAt: true });
 export const insertProjectMemberSchema = createInsertSchema(projectMembers).omit({ id: true, assignedAt: true });
 export const insertDailyReportSchema = createInsertSchema(dailyReports).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertPhotoSchema = createInsertSchema(photos).omit({ id: true, createdAt: true });
@@ -760,6 +782,8 @@ export type UserProfile = typeof userProfiles.$inferSelect;
 export type InsertUserProfile = z.infer<typeof insertUserProfileSchema>;
 export type Project = typeof projects.$inferSelect;
 export type InsertProject = z.infer<typeof insertProjectSchema>;
+export type ProjectBillingRate = typeof projectBillingRates.$inferSelect;
+export type InsertProjectBillingRate = z.infer<typeof insertProjectBillingRateSchema>;
 export type ProjectMember = typeof projectMembers.$inferSelect;
 export type InsertProjectMember = z.infer<typeof insertProjectMemberSchema>;
 export type DailyReport = typeof dailyReports.$inferSelect;
