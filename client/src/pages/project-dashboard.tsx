@@ -675,7 +675,7 @@ export default function ProjectDashboardPage() {
                     <p className="text-lg font-bold" data-testid="text-used-hours">{hours.used.toFixed(1)}</p>
                   </div>
                   <div className={`p-2 rounded text-center ${
-                    hours.remaining <= 0 
+                    hours.budgeted > 0 && (hours.remaining / hours.budgeted) <= 0.1 
                       ? 'bg-red-50 dark:bg-red-950' 
                       : hours.budgeted > 0 && (hours.remaining / hours.budgeted) < 0.2 
                         ? 'bg-orange-50 dark:bg-orange-950' 
@@ -683,7 +683,7 @@ export default function ProjectDashboardPage() {
                   }`}>
                     <p className="text-xs text-muted-foreground">Remaining</p>
                     <p className={`text-lg font-bold ${
-                      hours.remaining <= 0 
+                      hours.budgeted > 0 && (hours.remaining / hours.budgeted) <= 0.1 
                         ? 'text-red-700 dark:text-red-400' 
                         : hours.budgeted > 0 && (hours.remaining / hours.budgeted) < 0.2 
                           ? 'text-orange-700 dark:text-orange-400' 
