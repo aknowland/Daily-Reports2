@@ -90,6 +90,19 @@ type ProjectDashboardData = {
       overtime: number;
       premium: number;
     };
+    sources?: {
+      dailyReports: {
+        total: number;
+        regular: number;
+        overtime: number;
+        premium: number;
+      };
+      manualEntries: {
+        total: number;
+        regular: number;
+        overtime: number;
+      };
+    };
   };
   dailyReports: {
     id: string;
@@ -674,6 +687,27 @@ export default function ProjectDashboardPage() {
                     <div className="text-muted-foreground">Premium</div>
                   </div>
                 </div>
+                {hours.sources && (hours.sources.dailyReports.total > 0 || hours.sources.manualEntries.total > 0) && (
+                  <div className="mt-3 pt-3 border-t border-border">
+                    <div className="text-xs font-medium text-muted-foreground mb-2">Hours by Source</div>
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div className="p-2 bg-blue-50 dark:bg-blue-950 rounded">
+                        <div className="flex items-center gap-1 mb-1">
+                          <FileText className="w-3 h-3" />
+                          <span className="font-medium">Daily Reports</span>
+                        </div>
+                        <div className="text-lg font-bold">{hours.sources.dailyReports.total.toFixed(1)} hrs</div>
+                      </div>
+                      <div className="p-2 bg-green-50 dark:bg-green-950 rounded">
+                        <div className="flex items-center gap-1 mb-1">
+                          <Clock className="w-3 h-3" />
+                          <span className="font-medium">Manual Entries</span>
+                        </div>
+                        <div className="text-lg font-bold">{hours.sources.manualEntries.total.toFixed(1)} hrs</div>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>
