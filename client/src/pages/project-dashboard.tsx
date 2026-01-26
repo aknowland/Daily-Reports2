@@ -655,40 +655,67 @@ export default function ProjectDashboardPage() {
           <Card data-testid="card-hours-budget">
             <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Hours Budget</CardTitle>
-              <Clock className="w-4 h-4 text-muted-foreground" />
+              <div className="flex items-center gap-2">
+                <Badge variant={hours.status === 'under' || hours.status === 'on_track' ? 'default' : hours.status === 'warning' ? 'secondary' : 'destructive'}>
+                  {hours.status === 'under' ? 'On Track' : hours.status.replace('_', ' ')}
+                </Badge>
+                <Clock className="w-4 h-4 text-muted-foreground" />
+              </div>
             </CardHeader>
             <CardContent>
               <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-2xl font-bold">{hours.used.toFixed(1)} hrs</span>
-                  <Badge variant={hours.status === 'under' || hours.status === 'on_track' ? 'default' : hours.status === 'warning' ? 'secondary' : 'destructive'}>
-                    {hours.status === 'under' ? 'On Track' : hours.status.replace('_', ' ')}
-                  </Badge>
+                {/* Hours Budget Summary - Budgeted / Used / Remaining */}
+                <div className="grid grid-cols-3 gap-2 text-sm">
+                  <div className="p-2 bg-muted/50 rounded text-center">
+                    <p className="text-xs text-muted-foreground">Budgeted</p>
+                    <p className="text-lg font-bold" data-testid="text-budgeted-hours">{hours.budgeted.toFixed(1)}</p>
+                  </div>
+                  <div className="p-2 bg-muted/50 rounded text-center">
+                    <p className="text-xs text-muted-foreground">Used</p>
+                    <p className="text-lg font-bold" data-testid="text-used-hours">{hours.used.toFixed(1)}</p>
+                  </div>
+                  <div className={`p-2 rounded text-center ${hours.remaining > 0 ? 'bg-green-50 dark:bg-green-950' : 'bg-red-50 dark:bg-red-950'}`}>
+                    <p className="text-xs text-muted-foreground">Remaining</p>
+                    <p className={`text-lg font-bold ${hours.remaining > 0 ? 'text-green-700 dark:text-green-400' : 'text-red-700 dark:text-red-400'}`} data-testid="text-remaining-hours">
+                      {hours.remaining.toFixed(1)}
+                    </p>
+                  </div>
                 </div>
+                
                 {hours.budgeted > 0 && (
-                  <>
-                    <Progress value={Math.min(hours.progress, 100)} className={getHoursStatusColor(hours.status)} />
-                    <div className="text-xs text-muted-foreground">
-                      {hours.remaining.toFixed(1)} hrs remaining of {hours.budgeted.toFixed(1)} budgeted
+                  <div>
+                    <div className="flex justify-between text-xs text-muted-foreground mb-1">
+                      <span>Hours Progress</span>
+                      <span>{hours.progress.toFixed(1)}%</span>
                     </div>
-                  </>
+                    <Progress 
+                      value={Math.min(hours.progress, 100)} 
+                      className={`h-2 ${hours.progress > 100 ? '[&>div]:bg-red-500' : ''}`}
+                    />
+                  </div>
                 )}
-                <div className="grid grid-cols-3 gap-2 text-xs">
-                  <div className="text-center p-2 bg-muted rounded">
-                    <div className="font-medium">{hours.breakdown.regular.toFixed(1)}</div>
-                    <div className="text-muted-foreground">Regular</div>
-                  </div>
-                  <div className="text-center p-2 bg-muted rounded">
-                    <div className="font-medium">{hours.breakdown.overtime.toFixed(1)}</div>
-                    <div className="text-muted-foreground">OT</div>
-                  </div>
-                  <div className="text-center p-2 bg-muted rounded">
-                    <div className="font-medium">{hours.breakdown.premium.toFixed(1)}</div>
-                    <div className="text-muted-foreground">Premium</div>
+                
+                {/* Hours Breakdown by Type */}
+                <div className="pt-2">
+                  <div className="text-xs text-muted-foreground mb-2">Hours by Type</div>
+                  <div className="grid grid-cols-3 gap-2 text-xs">
+                    <div className="text-center p-2 bg-muted rounded">
+                      <div className="font-medium">{hours.breakdown.regular.toFixed(1)}</div>
+                      <div className="text-muted-foreground">Regular</div>
+                    </div>
+                    <div className="text-center p-2 bg-muted rounded">
+                      <div className="font-medium">{hours.breakdown.overtime.toFixed(1)}</div>
+                      <div className="text-muted-foreground">OT</div>
+                    </div>
+                    <div className="text-center p-2 bg-muted rounded">
+                      <div className="font-medium">{hours.breakdown.premium.toFixed(1)}</div>
+                      <div className="text-muted-foreground">Premium</div>
+                    </div>
                   </div>
                 </div>
+                
                 {hours.sources && (hours.sources.dailyReports.total > 0 || hours.sources.manualEntries.total > 0) && (
-                  <div className="mt-3 pt-3 border-t border-border">
+                  <div className="pt-3 border-t border-border">
                     <div className="text-xs font-medium text-muted-foreground mb-2">Hours by Source</div>
                     <div className="grid grid-cols-2 gap-2 text-xs">
                       <div className="p-2 bg-blue-50 dark:bg-blue-950 rounded">

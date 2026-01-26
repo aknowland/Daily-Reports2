@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Progress } from "@/components/ui/progress";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -177,6 +178,9 @@ type DashboardData = {
     status: 'under' | 'on_track' | 'warning' | 'over';
     trackingMode: BudgetTrackingMode;
     hours: {
+      budgeted: number;
+      used: number;
+      remaining: number;
       regular: number;
       overtime: number;
       premium: number;
@@ -1003,7 +1007,42 @@ export default function ContractDashboard() {
 
               {dashboard.budget.trackingMode !== 'scheduled' && (
                 <div className="pt-4 border-t">
-                  <p className="text-sm text-muted-foreground mb-2">Hours Breakdown</p>
+                  <p className="text-sm text-muted-foreground mb-2">Hours Budget</p>
+                  
+                  {/* Hours Budget Summary - Budgeted / Used / Remaining */}
+                  <div className="grid grid-cols-3 gap-2 text-sm mb-4">
+                    <div className="p-2 bg-muted/50 rounded">
+                      <p className="text-xs text-muted-foreground">Budgeted</p>
+                      <p className="text-lg font-bold" data-testid="text-budgeted-hours">{dashboard.budget.hours.budgeted.toFixed(1)} hrs</p>
+                    </div>
+                    <div className="p-2 bg-muted/50 rounded">
+                      <p className="text-xs text-muted-foreground">Used</p>
+                      <p className="text-lg font-bold" data-testid="text-used-hours">{dashboard.budget.hours.used.toFixed(1)} hrs</p>
+                    </div>
+                    <div className={`p-2 rounded ${dashboard.budget.hours.remaining > 0 ? 'bg-green-50 dark:bg-green-950' : 'bg-red-50 dark:bg-red-950'}`}>
+                      <p className="text-xs text-muted-foreground">Remaining</p>
+                      <p className={`text-lg font-bold ${dashboard.budget.hours.remaining > 0 ? 'text-green-700 dark:text-green-400' : 'text-red-700 dark:text-red-400'}`} data-testid="text-remaining-hours">
+                        {dashboard.budget.hours.remaining.toFixed(1)} hrs
+                      </p>
+                    </div>
+                  </div>
+                  
+                  {/* Hours progress bar */}
+                  {dashboard.budget.hours.budgeted > 0 && (
+                    <div className="mb-4">
+                      <div className="flex justify-between text-xs text-muted-foreground mb-1">
+                        <span>Hours Progress</span>
+                        <span>{((dashboard.budget.hours.used / dashboard.budget.hours.budgeted) * 100).toFixed(1)}%</span>
+                      </div>
+                      <Progress 
+                        value={Math.min(100, (dashboard.budget.hours.used / dashboard.budget.hours.budgeted) * 100)} 
+                        className={`h-2 ${dashboard.budget.hours.used > dashboard.budget.hours.budgeted ? '[&>div]:bg-red-500' : ''}`}
+                      />
+                    </div>
+                  )}
+                  
+                  {/* Hours Breakdown by Type */}
+                  <p className="text-xs text-muted-foreground mb-2">Hours by Type</p>
                   <div className="grid grid-cols-3 gap-2 text-sm">
                     <div>
                       <p className="text-xs text-muted-foreground">Regular</p>
@@ -1018,10 +1057,7 @@ export default function ContractDashboard() {
                       <p className="font-medium" data-testid="text-premium-hours">{dashboard.budget.hours.premium.toFixed(1)}</p>
                     </div>
                   </div>
-                  <div className="mt-2">
-                    <p className="text-xs text-muted-foreground">Total Hours</p>
-                    <p className="font-medium" data-testid="text-total-hours">{dashboard.budget.hours.total.toFixed(1)}</p>
-                  </div>
+                  
                   {dashboard.budget.hours.sources && (dashboard.budget.hours.sources.invoices.total > 0 || dashboard.budget.hours.sources.manualEntries.total > 0) && (
                     <div className="mt-3 pt-3 border-t border-dashed">
                       <p className="text-xs font-medium text-muted-foreground mb-2">Hours by Source</p>
