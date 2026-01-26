@@ -275,6 +275,21 @@ export const distributionLogs = pgTable("distribution_logs", {
   errorMessage: text("error_message"),
 });
 
+// Manual Time Entries table (for inspectors who don't use daily reports)
+export const manualTimeEntries = pgTable("manual_time_entries", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  projectId: varchar("project_id").references(() => projects.id, { onDelete: "cascade" }).notNull(),
+  inspectorId: varchar("inspector_id").notNull(),
+  date: timestamp("date").notNull(),
+  regularHours: varchar("regular_hours"), // Decimal string (e.g., "8.00")
+  otHours: varchar("ot_hours"), // Overtime hours (e.g., "2.50")
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  unique().on(table.projectId, table.inspectorId, table.date),
+]);
+
 // App Settings table (for company logo, etc.)
 export const appSettings = pgTable("app_settings", {
   key: varchar("key").primaryKey(),
@@ -715,6 +730,7 @@ export const insertProjectMemberSchema = createInsertSchema(projectMembers).omit
 export const insertDailyReportSchema = createInsertSchema(dailyReports).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertPhotoSchema = createInsertSchema(photos).omit({ id: true, createdAt: true });
 export const insertDistributionLogSchema = createInsertSchema(distributionLogs).omit({ id: true, sentAt: true });
+export const insertManualTimeEntrySchema = createInsertSchema(manualTimeEntries).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertAppSettingSchema = createInsertSchema(appSettings);
 export const insertInviteSchema = createInsertSchema(invites).omit({ id: true, createdAt: true, acceptedAt: true });
 export const insertJoinRequestSchema = createInsertSchema(joinRequests).omit({ id: true, createdAt: true, reviewedAt: true });
@@ -752,6 +768,8 @@ export type Photo = typeof photos.$inferSelect;
 export type InsertPhoto = z.infer<typeof insertPhotoSchema>;
 export type DistributionLog = typeof distributionLogs.$inferSelect;
 export type InsertDistributionLog = z.infer<typeof insertDistributionLogSchema>;
+export type ManualTimeEntry = typeof manualTimeEntries.$inferSelect;
+export type InsertManualTimeEntry = z.infer<typeof insertManualTimeEntrySchema>;
 export type AppSetting = typeof appSettings.$inferSelect;
 export type InsertAppSetting = z.infer<typeof insertAppSettingSchema>;
 export type Invite = typeof invites.$inferSelect;
