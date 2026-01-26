@@ -1019,9 +1019,21 @@ export default function ContractDashboard() {
                       <p className="text-xs text-muted-foreground">Used</p>
                       <p className="text-lg font-bold" data-testid="text-used-hours">{dashboard.budget.hours.used.toFixed(1)} hrs</p>
                     </div>
-                    <div className={`p-2 rounded ${dashboard.budget.hours.remaining > 0 ? 'bg-green-50 dark:bg-green-950' : 'bg-red-50 dark:bg-red-950'}`}>
+                    <div className={`p-2 rounded ${
+                      dashboard.budget.hours.remaining <= 0 
+                        ? 'bg-red-50 dark:bg-red-950' 
+                        : dashboard.budget.hours.budgeted > 0 && (dashboard.budget.hours.remaining / dashboard.budget.hours.budgeted) < 0.2 
+                          ? 'bg-orange-50 dark:bg-orange-950' 
+                          : 'bg-green-50 dark:bg-green-950'
+                    }`}>
                       <p className="text-xs text-muted-foreground">Remaining</p>
-                      <p className={`text-lg font-bold ${dashboard.budget.hours.remaining > 0 ? 'text-green-700 dark:text-green-400' : 'text-red-700 dark:text-red-400'}`} data-testid="text-remaining-hours">
+                      <p className={`text-lg font-bold ${
+                        dashboard.budget.hours.remaining <= 0 
+                          ? 'text-red-700 dark:text-red-400' 
+                          : dashboard.budget.hours.budgeted > 0 && (dashboard.budget.hours.remaining / dashboard.budget.hours.budgeted) < 0.2 
+                            ? 'text-orange-700 dark:text-orange-400' 
+                            : 'text-green-700 dark:text-green-400'
+                      }`} data-testid="text-remaining-hours">
                         {dashboard.budget.hours.remaining.toFixed(1)} hrs
                       </p>
                     </div>
