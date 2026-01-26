@@ -859,6 +859,7 @@ export const proposals = pgTable("proposals", {
   companyId: varchar("company_id").references(() => companies.id, { onDelete: "cascade" }).notNull(),
   clientId: varchar("client_id").references(() => clients.id, { onDelete: "set null" }),
   contractId: varchar("contract_id").references(() => contracts.id, { onDelete: "set null" }),
+  projectId: varchar("project_id").references(() => projects.id, { onDelete: "set null" }),
   proposalNumber: varchar("proposal_number").notNull(),
   clientName: text("client_name").notNull(),
   projectName: text("project_name").notNull(),
@@ -891,6 +892,7 @@ export const proposalOptions = pgTable("proposal_options", {
 export const proposalOptionInspectors = pgTable("proposal_option_inspectors", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   optionId: varchar("option_id").references(() => proposalOptions.id, { onDelete: "cascade" }).notNull(),
+  teamInspectorId: varchar("team_inspector_id").references(() => teamInspectors.id, { onDelete: "set null" }),
   title: text("title").notNull(),
   inspectorName: text("inspector_name"),
   rate: varchar("rate").notNull(),
@@ -913,6 +915,10 @@ export const proposalsRelations = relations(proposals, ({ one, many }) => ({
     fields: [proposals.contractId],
     references: [contracts.id],
   }),
+  project: one(projects, {
+    fields: [proposals.projectId],
+    references: [projects.id],
+  }),
   options: many(proposalOptions),
 }));
 
@@ -928,6 +934,10 @@ export const proposalOptionInspectorsRelations = relations(proposalOptionInspect
   option: one(proposalOptions, {
     fields: [proposalOptionInspectors.optionId],
     references: [proposalOptions.id],
+  }),
+  teamInspector: one(teamInspectors, {
+    fields: [proposalOptionInspectors.teamInspectorId],
+    references: [teamInspectors.id],
   }),
 }));
 

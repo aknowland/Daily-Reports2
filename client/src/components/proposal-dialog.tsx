@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -15,13 +15,35 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Plus, Trash2, Users, FileText, Clock, Calendar, Info } from "lucide-react";
+import { Plus, Trash2, Users, FileText, Clock, Calendar, Info, Link2, Building2, Lightbulb, DollarSign } from "lucide-react";
 import { ClientSelect } from "@/components/client-select";
 import { useAuth } from "@/hooks/use-auth";
-import type { ProposalWithDetails } from "@shared/schema";
+import type { ProposalWithDetails, Contract, Project } from "@shared/schema";
 import { calculateTotalHours, calculateWorkingDays, getHolidaysInRange, formatHoursDisplay } from "@/lib/working-days-calculator";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { InspectorSelector } from "@/components/inspector-selector";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
+
+// Rate lookup types for contract billing rates and IOR pay rates
+type RateLookupData = {
+  contractOptions: {
+    id: string;
+    optionNumber: number;
+    name: string;
+    inspectors: { title: string; inspectorName?: string; rate: string; hours: string }[];
+  }[];
+  iorAgreements: {
+    id: string;
+    projectId: string;
+    projectName: string;
+    inspectorId: string;
+    inspectorName: string;
+    rate: string;
+  }[];
+  clientRates: { [key: string]: { rate: string; hours: string; title: string; optionName?: string } };
+  inspectorPayRates: { [key: string]: { rate: string; inspectorId: string; projectName: string } };
+};
 
 type InspectorEntry = {
   title: string;
@@ -41,6 +63,8 @@ type ScheduleType = "fullTime" | "partTime";
 type ProposalFormData = {
   clientId: string;
   clientName: string;
+  contractId: string;
+  projectId: string;
   projectName: string;
   projectManager: string;
   startDate: string;
@@ -67,6 +91,8 @@ const emptyOption: OptionEntry = {
 const emptyFormData: ProposalFormData = {
   clientId: "",
   clientName: "",
+  contractId: "",
+  projectId: "",
   projectName: "",
   projectManager: "",
   startDate: "",
@@ -106,11 +132,77 @@ export function ProposalDialog({ open, onOpenChange, editingProposal }: Proposal
   const [options, setOptions] = useState<OptionEntry[]>([{ ...emptyOption, inspectors: [{ ...emptyInspector }] }]);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Fetch contracts for the company
+  const { data: contracts = [] } = useQuery<Contract[]>({
+    queryKey: ["/api/contracts"],
+    enabled: !!activeCompany?.id && open,
+  });
+
+  // Fetch projects for the selected contract
+  const { data: contractProjects = [] } = useQuery<Project[]>({
+    queryKey: ["/api/contracts", formData.contractId, "projects"],
+    enabled: !!formData.contractId && open,
+  });
+
+  // Fetch rate lookup data (contract options + IOR agreements) for rate suggestions
+  const { data: rateLookup } = useQuery<RateLookupData>({
+    queryKey: ["/api/contracts", formData.contractId, "rate-lookup"],
+    enabled: !!formData.contractId && open,
+  });
+
+  // Helper function to normalize rate for comparison (handles "108" vs "108.00")
+  const normalizeRate = (rate: string): number => {
+    const num = parseFloat(rate || "0");
+    return isNaN(num) ? 0 : num;
+  };
+
+  // Helper function to find suggested rate for an inspector based on name/title
+  const getSuggestedRate = (inspectorName: string, title: string, currentRate: string) => {
+    if (!rateLookup) return null;
+    
+    const nameKey = inspectorName.toLowerCase().trim();
+    const titleKey = title.toLowerCase().trim();
+    
+    let suggestedRate: string | null = null;
+    let source: "contract" | "ior" | null = null;
+    let details: string | null = null;
+    
+    // First check by inspector name in client rates
+    if (nameKey && rateLookup.clientRates[nameKey]) {
+      suggestedRate = rateLookup.clientRates[nameKey].rate;
+      source = "contract";
+      details = `From ${rateLookup.clientRates[nameKey].optionName || "contract option"}`;
+    }
+    // Then check by title in client rates
+    else if (titleKey && rateLookup.clientRates[titleKey]) {
+      suggestedRate = rateLookup.clientRates[titleKey].rate;
+      source = "contract";
+      details = `From ${rateLookup.clientRates[titleKey].optionName || "contract option"}`;
+    }
+    // Check inspector pay rates (IOR agreements)
+    else if (nameKey && rateLookup.inspectorPayRates[nameKey]) {
+      suggestedRate = rateLookup.inspectorPayRates[nameKey].rate;
+      source = "ior";
+      details = `IOR rate from ${rateLookup.inspectorPayRates[nameKey].projectName}`;
+    }
+    
+    if (!suggestedRate || !source || !details) return null;
+    
+    // Use normalized comparison to handle rate formatting differences
+    if (normalizeRate(suggestedRate) === normalizeRate(currentRate)) {
+      return null; // Already applied
+    }
+    
+    return { rate: suggestedRate, source, details };
+  };
+
   useEffect(() => {
     if (editingProposal) {
       setFormData({
         clientId: editingProposal.clientId || "",
         clientName: editingProposal.clientName,
+        contractId: (editingProposal as any).contractId || "",
+        projectId: (editingProposal as any).projectId || "",
         projectName: editingProposal.projectName,
         projectManager: editingProposal.projectManager || "",
         startDate: editingProposal.startDate ? new Date(editingProposal.startDate).toISOString().split('T')[0] : "",
@@ -138,6 +230,42 @@ export function ProposalDialog({ open, onOpenChange, editingProposal }: Proposal
       setOptions([{ ...emptyOption, inspectors: [{ ...emptyInspector }] }]);
     }
   }, [editingProposal, open]);
+
+  // Handle contract selection - auto-populate client and dates from contract
+  const handleContractChange = (contractId: string) => {
+    const contract = contracts.find(c => c.id === contractId);
+    if (contract) {
+      setFormData(prev => ({
+        ...prev,
+        contractId,
+        projectId: "", // Reset project when contract changes
+        // Auto-populate from contract
+        clientName: (contract as any).clientName || prev.clientName,
+        clientId: (contract as any).clientId || prev.clientId,
+        startDate: contract.startDate ? new Date(contract.startDate).toISOString().split('T')[0] : prev.startDate,
+        endDate: contract.substantialCompletionDate ? new Date(contract.substantialCompletionDate).toISOString().split('T')[0] : prev.endDate,
+      }));
+    } else {
+      setFormData(prev => ({ ...prev, contractId, projectId: "" }));
+    }
+  };
+
+  // Handle project selection - auto-populate project name and dates
+  const handleProjectChange = (projectId: string) => {
+    const project = contractProjects.find(p => p.id === projectId);
+    if (project) {
+      setFormData(prev => ({
+        ...prev,
+        projectId,
+        projectName: project.name,
+        // Optionally override with project-specific dates if they differ from contract
+        startDate: (project as any).startDate ? new Date((project as any).startDate).toISOString().split('T')[0] : prev.startDate,
+        endDate: (project as any).substantialCompletionDate ? new Date((project as any).substantialCompletionDate).toISOString().split('T')[0] : prev.endDate,
+      }));
+    } else {
+      setFormData(prev => ({ ...prev, projectId }));
+    }
+  };
 
   const calculatedData = useMemo(() => {
     const workingDays = calculateWorkingDays(formData.startDate, formData.endDate);
@@ -276,6 +404,81 @@ export function ProposalDialog({ open, onOpenChange, editingProposal }: Proposal
         </DialogHeader>
 
         <div className="grid gap-6 py-4">
+          {/* Contract & Project Linking Section */}
+          <Card className="bg-muted/30 border-dashed">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <Link2 className="h-4 w-4" />
+                Link to Existing Contract/Project
+                <Badge variant="outline" className="ml-auto">Optional</Badge>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Contract</Label>
+                  <Select
+                    value={formData.contractId || undefined}
+                    onValueChange={handleContractChange}
+                  >
+                    <SelectTrigger data-testid="select-proposal-contract">
+                      <SelectValue placeholder="Select a contract..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {contracts.map(contract => (
+                        <SelectItem key={contract.id} value={contract.id}>
+                          <div className="flex items-center gap-2">
+                            <Building2 className="h-3 w-3 text-muted-foreground" />
+                            {contract.name}
+                            {contract.contractNumber && (
+                              <span className="text-xs text-muted-foreground">({contract.contractNumber})</span>
+                            )}
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {formData.contractId && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="text-xs h-6 px-2"
+                      onClick={() => setFormData(prev => ({ ...prev, contractId: "", projectId: "" }))}
+                    >
+                      Clear contract link
+                    </Button>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Project</Label>
+                  <Select
+                    value={formData.projectId || undefined}
+                    onValueChange={handleProjectChange}
+                    disabled={!formData.contractId}
+                  >
+                    <SelectTrigger data-testid="select-proposal-project">
+                      <SelectValue placeholder={formData.contractId ? "Select a project..." : "Select contract first"} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {contractProjects.map(project => (
+                        <SelectItem key={project.id} value={project.id}>
+                          {project.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              {formData.contractId && (
+                <p className="text-xs text-muted-foreground">
+                  Linking auto-fills client, dates, and enables rate lookup from contract billing rates
+                </p>
+              )}
+            </CardContent>
+          </Card>
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Client *</Label>
@@ -598,7 +801,38 @@ export function ProposalDialog({ open, onOpenChange, editingProposal }: Proposal
                             </div>
                           </div>
                           <div className="space-y-1">
-                            <Label className="text-xs">Rate ($/hr)</Label>
+                            <Label className="text-xs flex items-center gap-1">
+                              Rate ($/hr)
+                              {(() => {
+                                const suggested = getSuggestedRate(inspector.inspectorName, inspector.title, inspector.rate);
+                                if (suggested) {
+                                  return (
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <Badge 
+                                          variant="outline" 
+                                          className={`text-[10px] h-4 px-1 cursor-pointer ${
+                                            suggested.source === "contract" 
+                                              ? "bg-blue-50 text-blue-600 border-blue-200 hover:bg-blue-100" 
+                                              : "bg-green-50 text-green-600 border-green-200 hover:bg-green-100"
+                                          }`}
+                                          onClick={() => updateInspector(optionIndex, inspectorIndex, "rate", suggested.rate)}
+                                          data-testid={`badge-suggested-rate-${optionIndex}-${inspectorIndex}`}
+                                        >
+                                          <Lightbulb className="h-2.5 w-2.5 mr-0.5" />
+                                          ${suggested.rate}
+                                        </Badge>
+                                      </TooltipTrigger>
+                                      <TooltipContent side="top">
+                                        <p className="font-medium">{suggested.details}</p>
+                                        <p className="text-xs text-muted-foreground">Click to apply</p>
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  );
+                                }
+                                return null;
+                              })()}
+                            </Label>
                             <Input
                               className="h-9"
                               type="number"
