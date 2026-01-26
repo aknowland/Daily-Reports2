@@ -14,7 +14,7 @@ import PDFDocument from "pdfkit";
 import { PDFDocument as PDFLibDocument } from "pdf-lib";
 import { format } from "date-fns";
 import { speechToText, openai } from "./replit_integrations/audio/client";
-import { generateTimesheetPdf, aggregateReportsToTimesheetData, generateInvoicePdf, InvoiceData, generateInspectorInvoicePdf, InspectorInvoiceData, generateMonthlySummaryPdf, generateWeeklySummaryPdf, generateCurrentStatusPdf } from "./billing-pdf";
+import { generateTimesheetPdf, aggregateReportsToTimesheetData, aggregateManualEntriesToTimesheetData, generateInvoicePdf, InvoiceData, generateInspectorInvoicePdf, InspectorInvoiceData, generateMonthlySummaryPdf, generateWeeklySummaryPdf, generateCurrentStatusPdf } from "./billing-pdf";
 import { sendEmail } from "./replit_integrations/email/client";
 import { registerChatRoutes } from "./replit_integrations/chat";
 import { calculateScheduledBudget, calculateBaseBudgetBreakdown, type InspectorRate, type ScheduledBudgetResult, type BaseBudgetBreakdown, type BudgetTrackingMode } from "./budget-utils";
@@ -8870,6 +8870,139 @@ export async function registerRoutes(
     }
   });
 
+  // ========== MANUAL TIME ENTRIES ==========
+
+  // Get manual time entries for a project/month
+  app.get("/api/manual-time-entries", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      const { projectId, month, year } = req.query;
+
+      if (!projectId || !month || !year) {
+        return res.status(400).json({ message: "Project ID, month, and year are required" });
+      }
+
+      const project = await storage.getProject(projectId);
+      if (!project) {
+        return res.status(404).json({ message: "Project not found" });
+      }
+
+      // Check access
+      const isProjectMember = await storage.isUserMemberOfProject(projectId, userId);
+      const hasCompanyAccess = project.companyId && await isEffectiveCompanyAdmin(userId, project.companyId, profile);
+      
+      if (!isEffectiveSystemAdmin(profile) && !hasCompanyAccess && !isProjectMember) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      // Get entries for the month
+      const monthNum = parseInt(month);
+      const yearNum = parseInt(year);
+      const startDate = new Date(yearNum, monthNum - 1, 1);
+      const endDate = new Date(yearNum, monthNum, 0);
+      endDate.setHours(23, 59, 59, 999);
+
+      const entries = await storage.getManualTimeEntries(projectId, userId, startDate, endDate);
+      res.json(entries);
+    } catch (error) {
+      console.error("Error fetching manual time entries:", error);
+      res.status(500).json({ message: "Failed to fetch manual time entries" });
+    }
+  });
+
+  // Bulk upsert manual time entries for a month
+  app.post("/api/manual-time-entries/bulk", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      const { projectId, entries } = req.body;
+
+      if (!projectId || !Array.isArray(entries)) {
+        return res.status(400).json({ message: "Project ID and entries array are required" });
+      }
+
+      const project = await storage.getProject(projectId);
+      if (!project) {
+        return res.status(404).json({ message: "Project not found" });
+      }
+
+      // Check access
+      const isProjectMember = await storage.isUserMemberOfProject(projectId, userId);
+      const hasCompanyAccess = project.companyId && await isEffectiveCompanyAdmin(userId, project.companyId, profile);
+      
+      if (!isEffectiveSystemAdmin(profile) && !hasCompanyAccess && !isProjectMember) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      // Process each entry - upsert by projectId + inspectorId + date
+      const results = [];
+      for (const entry of entries) {
+        const entryDate = new Date(entry.date);
+        
+        // Check if entry exists
+        const existingEntries = await storage.getManualTimeEntries(projectId, userId, entryDate, entryDate);
+        const existing = existingEntries.find(e => 
+          new Date(e.date).toDateString() === entryDate.toDateString()
+        );
+
+        if (existing) {
+          // Update existing entry
+          const updated = await storage.updateManualTimeEntry(existing.id, {
+            regularHours: entry.regularHours || null,
+            otHours: entry.otHours || null,
+            notes: entry.notes || null,
+          });
+          results.push(updated);
+        } else if (entry.regularHours || entry.otHours) {
+          // Only create if there are hours to log
+          const created = await storage.createManualTimeEntry({
+            projectId,
+            inspectorId: userId,
+            date: entryDate,
+            regularHours: entry.regularHours || null,
+            otHours: entry.otHours || null,
+            notes: entry.notes || null,
+          });
+          results.push(created);
+        }
+      }
+
+      res.json({ success: true, entries: results });
+    } catch (error) {
+      console.error("Error saving manual time entries:", error);
+      res.status(500).json({ message: "Failed to save manual time entries" });
+    }
+  });
+
+  // Delete a manual time entry
+  app.delete("/api/manual-time-entries/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      const { id } = req.params;
+
+      const entry = await storage.getManualTimeEntry(id);
+      if (!entry) {
+        return res.status(404).json({ message: "Entry not found" });
+      }
+
+      // Only the owner or admins can delete
+      const project = await storage.getProject(entry.projectId);
+      const hasCompanyAccess = project?.companyId && await isEffectiveCompanyAdmin(userId, project.companyId, profile);
+      
+      if (entry.inspectorId !== userId && !isEffectiveSystemAdmin(profile) && !hasCompanyAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      await storage.deleteManualTimeEntry(id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting manual time entry:", error);
+      res.status(500).json({ message: "Failed to delete manual time entry" });
+    }
+  });
+
   // ========== BILLING & TIMESHEETS ==========
 
   // Generate timesheet PDF for a project/month
@@ -8877,7 +9010,7 @@ export async function registerRoutes(
     try {
       const userId = req.user?.claims?.sub;
       const profile = await storage.getUserProfile(userId);
-      const { projectId, month, year, inspectorId } = req.body;
+      const { projectId, month, year, inspectorId, useManualEntries } = req.body;
 
       if (!projectId || !month || !year) {
         return res.status(400).json({ message: "Project ID, month, and year are required" });
@@ -8905,28 +9038,59 @@ export async function registerRoutes(
       // Get reports for the specified month
       const startDate = new Date(year, month - 1, 1);
       const endDate = new Date(year, month, 0);
+      endDate.setHours(23, 59, 59, 999);
       
       // Filter by inspector if specified (for inspector's own timesheet)
       const targetInspectorId = inspectorId || userId;
-      const allReports = await storage.getReportsForInvoice(projectId, startDate, endDate);
-      const reports = allReports.filter(r => !inspectorId || r.inspectorId === targetInspectorId);
+      
+      let timesheetData;
+      
+      if (useManualEntries) {
+        // Use manual time entries instead of daily reports
+        const manualEntries = await storage.getManualTimeEntries(projectId, targetInspectorId, startDate, endDate);
+        
+        // Get inspector profile
+        const inspectorProfile = await storage.getUserProfile(targetInspectorId);
+        
+        // Get contracts for rates
+        const contracts = project.companyId ? await storage.getContracts(project.companyId) : [];
+        
+        // Get project member rates
+        const projectMember = await storage.getProjectMember(projectId, targetInspectorId);
+        
+        // Build timesheet data from manual entries
+        timesheetData = aggregateManualEntriesToTimesheetData(
+          manualEntries,
+          project,
+          contracts,
+          company,
+          inspectorProfile,
+          projectMember,
+          month,
+          year
+        );
+      } else {
+        // Use daily reports (original behavior)
+        const allReports = await storage.getReportsForInvoice(projectId, startDate, endDate);
+        const reports = allReports.filter(r => !inspectorId || r.inspectorId === targetInspectorId);
 
-      // Get contracts for rates
-      const contracts = project.companyId ? await storage.getContracts(project.companyId) : [];
-      
-      // Get inspector profile
-      const inspectorProfile = await storage.getUserProfile(targetInspectorId);
-      
-      // Build timesheet data
-      const timesheetData = aggregateReportsToTimesheetData(
-        reports,
-        [project],
-        contracts,
-        company,
-        inspectorProfile,
-        month,
-        year
-      );
+        // Get contracts for rates
+        const contracts = project.companyId ? await storage.getContracts(project.companyId) : [];
+        
+        // Get inspector profile
+        const inspectorProfile = await storage.getUserProfile(targetInspectorId);
+        
+        // Build timesheet data
+        timesheetData = aggregateReportsToTimesheetData(
+          reports,
+          [project],
+          contracts,
+          company,
+          inspectorProfile,
+          month,
+          year
+        );
+      }
 
       // Generate PDF
       const pdfBuffer = await generateTimesheetPdf(timesheetData);

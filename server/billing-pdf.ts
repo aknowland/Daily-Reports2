@@ -1,6 +1,6 @@
 import PDFDocument from "pdfkit";
 import { format, getDaysInMonth, getDay } from "date-fns";
-import { DailyReport, Project, Contract, Company, UserProfile } from "@shared/schema";
+import { DailyReport, Project, Contract, Company, UserProfile, ManualTimeEntry, ProjectMember } from "@shared/schema";
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
@@ -758,6 +758,79 @@ export function aggregateReportsToTimesheetData(
       dailyHours,
     });
   });
+
+  const inspectorName = inspectorProfile 
+    ? `${inspectorProfile.firstName || ''} ${inspectorProfile.lastName || ''}`.trim() 
+    : 'Unknown Inspector';
+
+  return {
+    companyName: company?.name || 'Company',
+    inspectorName,
+    districtName: '',
+    month,
+    year,
+    projects: timesheetProjects,
+  };
+}
+
+export function aggregateManualEntriesToTimesheetData(
+  entries: ManualTimeEntry[],
+  project: Project,
+  contracts: (Contract & { projects?: any[]; client?: any; attachments?: any[] })[],
+  company: Company | null | undefined,
+  inspectorProfile: UserProfile | null | undefined,
+  projectMember: ProjectMember | null | undefined,
+  month: number,
+  year: number
+): TimesheetData {
+  // Find contract for this project
+  let contract: typeof contracts[0] | undefined;
+  contracts.forEach(c => {
+    if (c.projects) {
+      c.projects.forEach((p: any) => {
+        if (p.id === project.id) contract = c;
+      });
+    }
+  });
+
+  // Build daily hours from manual entries
+  const dailyHours: Record<number, { reg: number; ot: number; prm: number }> = {};
+  
+  entries.forEach(entry => {
+    const entryDate = new Date(entry.date);
+    if (entryDate.getMonth() + 1 === month && entryDate.getFullYear() === year) {
+      const day = entryDate.getDate();
+      const reg = parseFloat(entry.regularHours || '0') || 0;
+      const ot = parseFloat(entry.otHours || '0') || 0;
+      
+      if (!dailyHours[day]) {
+        dailyHours[day] = { reg: 0, ot: 0, prm: 0 };
+      }
+      dailyHours[day].reg += reg;
+      dailyHours[day].ot += ot;
+    }
+  });
+
+  // Use project member rates if available, otherwise fall back to contract rates
+  const regularRate = projectMember?.regularRate 
+    ? parseFloat(projectMember.regularRate) 
+    : (contract?.regularRate ? parseFloat(contract.regularRate) : undefined);
+  const overtimeRate = projectMember?.overtimeRate 
+    ? parseFloat(projectMember.overtimeRate) 
+    : (contract?.overtimeRate ? parseFloat(contract.overtimeRate) : undefined);
+  const premiumRate = projectMember?.premiumRate 
+    ? parseFloat(projectMember.premiumRate) 
+    : (contract?.premiumRate ? parseFloat(contract.premiumRate) : undefined);
+
+  const timesheetProjects: TimesheetData['projects'] = [{
+    projectName: project.name || 'Unknown Project',
+    dsaNumber: project.projectNumber,
+    fileNumber: undefined,
+    regularRate,
+    overtimeRate,
+    premiumRate,
+    dailyHours,
+  }];
 
   const inspectorName = inspectorProfile 
     ? `${inspectorProfile.firstName || ''} ${inspectorProfile.lastName || ''}`.trim() 

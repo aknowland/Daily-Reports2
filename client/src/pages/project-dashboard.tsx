@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { PageLayout } from "@/components/layout/page-layout";
 import { Button } from "@/components/ui/button";
@@ -8,8 +8,11 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Progress } from "@/components/ui/progress";
 import { useParams, Link } from "wouter";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import { SummaryReportDropdown, ReportType, ReportParams } from "@/components/summary-report-dropdown";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Input } from "@/components/ui/input";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   ArrowLeft,
   Calendar,
@@ -238,8 +241,56 @@ export default function ProjectDashboardPage() {
   const [selectedMonth, setSelectedMonth] = useState(String(new Date().getMonth() + 1));
   const [selectedYear, setSelectedYear] = useState(String(new Date().getFullYear()));
   const [isGenerating, setIsGenerating] = useState(false);
+  const [timesheetMode, setTimesheetMode] = useState<'daily_reports' | 'manual'>('daily_reports');
+  const [manualEntries, setManualEntries] = useState<Record<string, { regularHours: string; otHours: string }>>({});
+  const [isSavingEntries, setIsSavingEntries] = useState(false);
   
   const years = Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - i);
+  
+  // Generate all days in selected month
+  const daysInMonth = useMemo(() => {
+    const year = parseInt(selectedYear);
+    const month = parseInt(selectedMonth) - 1;
+    const days: Date[] = [];
+    const lastDay = new Date(year, month + 1, 0).getDate();
+    for (let d = 1; d <= lastDay; d++) {
+      days.push(new Date(year, month, d));
+    }
+    return days;
+  }, [selectedMonth, selectedYear]);
+
+  // Fetch existing manual entries when mode is manual
+  const { data: existingManualEntries, refetch: refetchManualEntries } = useQuery({
+    queryKey: ['/api/manual-time-entries', id, selectedMonth, selectedYear],
+    queryFn: async () => {
+      const res = await fetch(`/api/manual-time-entries?projectId=${id}&month=${selectedMonth}&year=${selectedYear}`, {
+        credentials: 'include',
+      });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: timesheetMode === 'manual' && timesheetDialogOpen && !!id,
+  });
+
+  // Populate manual entries from fetched data
+  useEffect(() => {
+    if (existingManualEntries && Array.isArray(existingManualEntries)) {
+      const entriesMap: Record<string, { regularHours: string; otHours: string }> = {};
+      existingManualEntries.forEach((entry: any) => {
+        const dateKey = format(new Date(entry.date), 'yyyy-MM-dd');
+        entriesMap[dateKey] = {
+          regularHours: entry.regularHours || '',
+          otHours: entry.otHours || '',
+        };
+      });
+      setManualEntries(entriesMap);
+    }
+  }, [existingManualEntries]);
+
+  // Reset manual entries when month/year changes
+  useEffect(() => {
+    setManualEntries({});
+  }, [selectedMonth, selectedYear]);
 
   const { data, isLoading, error } = useQuery<ProjectDashboardData>({
     queryKey: ['/api/projects', id, 'dashboard'],
@@ -299,7 +350,83 @@ export default function ProjectDashboardPage() {
     }
   };
 
+  const handleSaveManualEntries = async () => {
+    setIsSavingEntries(true);
+    try {
+      // Convert entries to array format for API
+      const entriesArray = Object.entries(manualEntries)
+        .filter(([_, entry]) => entry.regularHours || entry.otHours)
+        .map(([dateKey, entry]) => ({
+          date: dateKey,
+          regularHours: entry.regularHours || null,
+          otHours: entry.otHours || null,
+        }));
+
+      const response = await apiRequest('POST', '/api/manual-time-entries/bulk', {
+        projectId: id,
+        entries: entriesArray,
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || 'Failed to save entries');
+      }
+
+      toast({
+        title: "Entries Saved",
+        description: "Your time entries have been saved",
+      });
+      
+      // Refetch the entries
+      refetchManualEntries();
+    } catch (error: any) {
+      toast({
+        title: "Failed to save entries",
+        description: error.message || "Please try again",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSavingEntries(false);
+    }
+  };
+
   const handleGenerateTimesheet = async () => {
+    // If manual mode, save entries first
+    if (timesheetMode === 'manual') {
+      setIsSavingEntries(true);
+      try {
+        const entriesArray = Object.entries(manualEntries)
+          .filter(([_, entry]) => entry.regularHours || entry.otHours)
+          .map(([dateKey, entry]) => ({
+            date: dateKey,
+            regularHours: entry.regularHours || null,
+            otHours: entry.otHours || null,
+          }));
+
+        const response = await apiRequest('POST', '/api/manual-time-entries/bulk', {
+          projectId: id,
+          entries: entriesArray,
+        });
+
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.message || 'Failed to save entries');
+        }
+        
+        refetchManualEntries();
+      } catch (error: any) {
+        toast({
+          title: "Failed to save entries",
+          description: error.message || "Please try again",
+          variant: "destructive",
+        });
+        setIsSavingEntries(false);
+        return; // Stop if save fails
+      } finally {
+        setIsSavingEntries(false);
+      }
+    }
+    
     setIsGenerating(true);
     try {
       const response = await fetch('/api/billing/timesheet', {
@@ -309,6 +436,7 @@ export default function ProjectDashboardPage() {
           projectId: id,
           month: parseInt(selectedMonth),
           year: parseInt(selectedYear),
+          useManualEntries: timesheetMode === 'manual',
         }),
         credentials: 'include',
       });
@@ -925,7 +1053,7 @@ export default function ProjectDashboardPage() {
       </div>
 
       <Dialog open={timesheetDialogOpen} onOpenChange={setTimesheetDialogOpen}>
-        <DialogContent className="sm:max-w-md" data-testid="modal-timesheet">
+        <DialogContent className="sm:max-w-lg" data-testid="modal-timesheet">
           <DialogHeader>
             <DialogTitle>Generate Timesheet</DialogTitle>
             <DialogDescription>
@@ -965,6 +1093,109 @@ export default function ProjectDashboardPage() {
                 </Select>
               </div>
             </div>
+
+            <Tabs value={timesheetMode} onValueChange={(v) => setTimesheetMode(v as 'daily_reports' | 'manual')}>
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="daily_reports" data-testid="tab-daily-reports">
+                  From Daily Reports
+                </TabsTrigger>
+                <TabsTrigger value="manual" data-testid="tab-manual-entry">
+                  Manual Entry
+                </TabsTrigger>
+              </TabsList>
+              
+              <TabsContent value="daily_reports" className="mt-4">
+                <div className="p-4 bg-muted rounded text-sm text-muted-foreground">
+                  Hours will be calculated from your submitted daily reports for this project during the selected period.
+                </div>
+              </TabsContent>
+              
+              <TabsContent value="manual" className="mt-4">
+                <div className="space-y-3">
+                  <div className="text-sm text-muted-foreground mb-2">
+                    Enter hours for each day. Leave blank for days not worked.
+                  </div>
+                  <ScrollArea className="h-64 border rounded-md">
+                    <div className="p-2">
+                      <div className="grid grid-cols-[1fr,80px,80px] gap-2 mb-2 px-2 text-xs font-medium text-muted-foreground sticky top-0 bg-background py-1">
+                        <span>Date</span>
+                        <span className="text-center">Regular</span>
+                        <span className="text-center">OT</span>
+                      </div>
+                      {daysInMonth.map((day) => {
+                        const dateKey = format(day, 'yyyy-MM-dd');
+                        const dayOfWeek = day.getDay();
+                        const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+                        return (
+                          <div 
+                            key={dateKey} 
+                            className={`grid grid-cols-[1fr,80px,80px] gap-2 items-center py-1.5 px-2 rounded ${isWeekend ? 'bg-muted/50' : ''}`}
+                          >
+                            <span className="text-sm">
+                              {format(day, 'EEE, MMM d')}
+                              {isWeekend && <span className="text-xs text-muted-foreground ml-1">(Weekend)</span>}
+                            </span>
+                            <Input
+                              type="number"
+                              step="0.5"
+                              min="0"
+                              max="24"
+                              placeholder="0"
+                              className="h-8 text-center text-sm"
+                              value={manualEntries[dateKey]?.regularHours || ''}
+                              onChange={(e) => {
+                                setManualEntries(prev => ({
+                                  ...prev,
+                                  [dateKey]: {
+                                    ...prev[dateKey],
+                                    regularHours: e.target.value,
+                                    otHours: prev[dateKey]?.otHours || '',
+                                  }
+                                }));
+                              }}
+                              data-testid={`input-regular-hours-${dateKey}`}
+                            />
+                            <Input
+                              type="number"
+                              step="0.5"
+                              min="0"
+                              max="24"
+                              placeholder="0"
+                              className="h-8 text-center text-sm"
+                              value={manualEntries[dateKey]?.otHours || ''}
+                              onChange={(e) => {
+                                setManualEntries(prev => ({
+                                  ...prev,
+                                  [dateKey]: {
+                                    ...prev[dateKey],
+                                    regularHours: prev[dateKey]?.regularHours || '',
+                                    otHours: e.target.value,
+                                  }
+                                }));
+                              }}
+                              data-testid={`input-ot-hours-${dateKey}`}
+                            />
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </ScrollArea>
+                  <div className="flex justify-between items-center text-sm">
+                    <span className="text-muted-foreground">
+                      Total: {Object.values(manualEntries).reduce((sum, e) => sum + (parseFloat(e.regularHours) || 0) + (parseFloat(e.otHours) || 0), 0).toFixed(1)} hrs
+                    </span>
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      onClick={handleSaveManualEntries}
+                      disabled={isSavingEntries}
+                    >
+                      {isSavingEntries ? "Saving..." : "Save Entries"}
+                    </Button>
+                  </div>
+                </div>
+              </TabsContent>
+            </Tabs>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setTimesheetDialogOpen(false)}>
@@ -972,7 +1203,7 @@ export default function ProjectDashboardPage() {
             </Button>
             <Button 
               onClick={handleGenerateTimesheet} 
-              disabled={isGenerating}
+              disabled={isGenerating || isSavingEntries}
               data-testid="button-download-timesheet"
             >
               {isGenerating ? "Generating..." : "Download Timesheet"}

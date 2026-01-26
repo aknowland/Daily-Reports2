@@ -1,11 +1,12 @@
 import { 
   projects, dailyReports, photos, distributionLogs, appSettings, userProfiles, projectMembers, invites,
   companies, companyMembers, joinRequests, invoices, contracts, clients, contractAttachments, contractOptions, contractOptionInspectors, timesheets, monthlyReportBundles,
-  proposals, proposalOptions, proposalOptionInspectors, iorAgreements, purchaseOrders, contractNotifications, budgetNotifications, projectBudgetNotifications, pendingMemberAssignments, teamInspectors,
+  proposals, proposalOptions, proposalOptionInspectors, iorAgreements, purchaseOrders, contractNotifications, budgetNotifications, projectBudgetNotifications, pendingMemberAssignments, teamInspectors, manualTimeEntries,
   type Project, type InsertProject,
   type DailyReport, type InsertDailyReport,
   type Photo, type InsertPhoto,
   type DistributionLog, type InsertDistributionLog,
+  type ManualTimeEntry, type InsertManualTimeEntry,
   type AppSetting, type InsertAppSetting,
   type UserProfile, type InsertUserProfile,
   type ProjectMember, type InsertProjectMember,
@@ -35,7 +36,7 @@ import {
 } from "@shared/schema";
 import { users, type User } from "@shared/models/auth";
 import { db } from "./db";
-import { eq, desc, and, or, sql, inArray, isNull } from "drizzle-orm";
+import { eq, desc, asc, and, or, sql, inArray, isNull, gte, lte } from "drizzle-orm";
 
 // Re-export db for use in other modules
 export { db };
@@ -97,6 +98,13 @@ export interface IStorage {
   getDistributionLogs(reportId: string): Promise<DistributionLog[]>;
   createDistributionLog(data: InsertDistributionLog): Promise<DistributionLog>;
   updateDistributionLogStatus(id: string, status: string): Promise<void>;
+
+  // Manual Time Entries
+  getManualTimeEntry(id: string): Promise<ManualTimeEntry | undefined>;
+  getManualTimeEntries(projectId: string, inspectorId: string, startDate: Date, endDate: Date): Promise<ManualTimeEntry[]>;
+  createManualTimeEntry(data: InsertManualTimeEntry): Promise<ManualTimeEntry>;
+  updateManualTimeEntry(id: string, data: Partial<InsertManualTimeEntry>): Promise<ManualTimeEntry | undefined>;
+  deleteManualTimeEntry(id: string): Promise<boolean>;
 
   // App Settings
   getSettings(): Promise<AppSetting[]>;
@@ -592,6 +600,43 @@ export class DatabaseStorage implements IStorage {
     await db.update(distributionLogs)
       .set({ status: status as "pending" | "sent" | "failed" })
       .where(eq(distributionLogs.id, id));
+  }
+
+  // Manual Time Entries
+  async getManualTimeEntry(id: string): Promise<ManualTimeEntry | undefined> {
+    const [entry] = await db.select().from(manualTimeEntries).where(eq(manualTimeEntries.id, id));
+    return entry;
+  }
+
+  async getManualTimeEntries(projectId: string, inspectorId: string, startDate: Date, endDate: Date): Promise<ManualTimeEntry[]> {
+    return db.select().from(manualTimeEntries)
+      .where(
+        and(
+          eq(manualTimeEntries.projectId, projectId),
+          eq(manualTimeEntries.inspectorId, inspectorId),
+          gte(manualTimeEntries.date, startDate),
+          lte(manualTimeEntries.date, endDate)
+        )
+      )
+      .orderBy(asc(manualTimeEntries.date));
+  }
+
+  async createManualTimeEntry(data: InsertManualTimeEntry): Promise<ManualTimeEntry> {
+    const [entry] = await db.insert(manualTimeEntries).values(data).returning();
+    return entry;
+  }
+
+  async updateManualTimeEntry(id: string, data: Partial<InsertManualTimeEntry>): Promise<ManualTimeEntry | undefined> {
+    const [entry] = await db.update(manualTimeEntries)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(manualTimeEntries.id, id))
+      .returning();
+    return entry;
+  }
+
+  async deleteManualTimeEntry(id: string): Promise<boolean> {
+    const result = await db.delete(manualTimeEntries).where(eq(manualTimeEntries.id, id));
+    return result.rowCount > 0;
   }
 
   // App Settings
