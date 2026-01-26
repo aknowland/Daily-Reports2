@@ -71,6 +71,22 @@ const emptyBillingRate: BillingRateEntry = {
   scheduleType: "fullTime",
 };
 
+type BaseHoursEntry = {
+  inspectorName: string;
+  regularHours: string;
+  overtimeHours: string;
+  billedAmount: string;
+  notes: string;
+};
+
+const emptyBaseHoursEntry: BaseHoursEntry = {
+  inspectorName: "",
+  regularHours: "",
+  overtimeHours: "",
+  billedAmount: "",
+  notes: "",
+};
+
 export default function CompanyProjectsPage() {
   const { toast } = useToast();
   const { activeCompany, isCompanyAdmin, isEffectiveCompanyAdmin, isCompaniesLoading } = useAuth();
@@ -103,6 +119,7 @@ export default function CompanyProjectsPage() {
     inheritBillingRates: true, // true = inherit from contract option
   });
   const [billingRates, setBillingRates] = useState<BillingRateEntry[]>([{ ...emptyBillingRate }]);
+  const [baseHours, setBaseHours] = useState<BaseHoursEntry[]>([]);
 
   const { data: projects = [], isLoading, error } = useQuery<Project[]>({
     queryKey: ["/api/companies", activeCompany?.id, "projects"],
@@ -153,6 +170,33 @@ export default function CompanyProjectsPage() {
     setBillingRates(billingRates.map((rate, i) => 
       i === index ? { ...rate, [field]: value } : rate
     ));
+  };
+
+  // Base hours helper functions
+  const addBaseHoursEntry = () => {
+    setBaseHours([...baseHours, { ...emptyBaseHoursEntry }]);
+  };
+
+  const removeBaseHoursEntry = (index: number) => {
+    setBaseHours(baseHours.filter((_, i) => i !== index));
+  };
+
+  const updateBaseHoursEntry = (index: number, field: keyof BaseHoursEntry, value: string) => {
+    setBaseHours(baseHours.map((entry, i) => 
+      i === index ? { ...entry, [field]: value } : entry
+    ));
+  };
+
+  const calculateBaseHoursTotal = () => {
+    let totalRegular = 0;
+    let totalOvertime = 0;
+    let totalBilled = 0;
+    for (const entry of baseHours) {
+      totalRegular += parseFloat(entry.regularHours) || 0;
+      totalOvertime += parseFloat(entry.overtimeHours) || 0;
+      totalBilled += parseFloat(entry.billedAmount) || 0;
+    }
+    return { totalRegular, totalOvertime, totalBilled };
   };
 
   const calculateBillingRateTotal = (rate: BillingRateEntry) => {
@@ -253,7 +297,7 @@ export default function CompanyProjectsPage() {
   };
 
   const createMutation = useMutation({
-    mutationFn: async (data: typeof formData & { billingRates?: BillingRateEntry[] }) => {
+    mutationFn: async (data: typeof formData & { billingRates?: BillingRateEntry[]; baseHours?: BaseHoursEntry[] }) => {
       const response = await apiRequest("POST", "/api/projects", {
         ...data,
         companyId: activeCompany?.id,
@@ -274,6 +318,14 @@ export default function CompanyProjectsPage() {
         }
       }
       
+      // Save base hours if any entries have valid data
+      if (data.baseHours && data.baseHours.length > 0) {
+        const validEntries = data.baseHours.filter(e => e.inspectorName && (parseFloat(e.regularHours) > 0 || parseFloat(e.overtimeHours) > 0));
+        if (validEntries.length > 0) {
+          await apiRequest("PUT", `/api/projects/${project.id}/base-hours`, { entries: validEntries });
+        }
+      }
+      
       return project;
     },
     onSuccess: () => {
@@ -283,6 +335,7 @@ export default function CompanyProjectsPage() {
       setShowCreateDialog(false);
       setFormData({ name: "", projectNumber: "", client: "", clientId: "", address: "", distributionEmails: "", contractId: "", contractOptionId: "", startDate: "", substantialCompletionDate: "", finalCloseoutDate: "", budgetAmount: "", baseBudget: "", budgetTrackingMode: "", inheritBillingRates: true });
       setBillingRates([{ ...emptyBillingRate }]);
+      setBaseHours([]);
       toast({
         title: "Project Created",
         description: "New project has been created.",
@@ -298,7 +351,7 @@ export default function CompanyProjectsPage() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: async (data: typeof formData & { id: string; billingRates?: BillingRateEntry[] }) => {
+    mutationFn: async (data: typeof formData & { id: string; billingRates?: BillingRateEntry[]; baseHours?: BaseHoursEntry[] }) => {
       const project = await apiRequest("PATCH", `/api/projects/${data.id}`, {
         ...data,
         contractId: data.contractId || null,
@@ -318,6 +371,12 @@ export default function CompanyProjectsPage() {
         await apiRequest("PUT", `/api/projects/${data.id}/billing-rates`, { rates: [] });
       }
       
+      // Save base hours entries
+      if (data.baseHours) {
+        const validEntries = data.baseHours.filter(e => e.inspectorName && (parseFloat(e.regularHours) > 0 || parseFloat(e.overtimeHours) > 0));
+        await apiRequest("PUT", `/api/projects/${data.id}/base-hours`, { entries: validEntries });
+      }
+      
       return project;
     },
     onSuccess: () => {
@@ -327,6 +386,7 @@ export default function CompanyProjectsPage() {
       setEditingProject(null);
       setFormData({ name: "", projectNumber: "", client: "", clientId: "", address: "", distributionEmails: "", contractId: "", contractOptionId: "", startDate: "", substantialCompletionDate: "", finalCloseoutDate: "", budgetAmount: "", baseBudget: "", budgetTrackingMode: "", inheritBillingRates: true });
       setBillingRates([{ ...emptyBillingRate }]);
+      setBaseHours([]);
       toast({
         title: "Project Updated",
         description: "Project has been updated.",
@@ -407,6 +467,28 @@ export default function CompanyProjectsPage() {
       }
     } else {
       setBillingRates([{ ...emptyBillingRate }]);
+    }
+    
+    // Load existing base hours
+    try {
+      const baseHoursResponse = await fetch(`/api/projects/${project.id}/base-hours`, { credentials: "include" });
+      if (baseHoursResponse.ok) {
+        const entries = await baseHoursResponse.json();
+        if (entries.length > 0) {
+          setBaseHours(entries.map((e: any) => ({
+            inspectorName: e.inspectorName || "",
+            regularHours: e.regularHours || "",
+            overtimeHours: e.overtimeHours || "",
+            billedAmount: e.billedAmount || "",
+            notes: e.notes || "",
+          })));
+        } else {
+          setBaseHours([]);
+        }
+      }
+    } catch (e) {
+      console.error("Failed to load base hours", e);
+      setBaseHours([]);
     }
     
     setEditingProject(project);
@@ -694,7 +776,8 @@ export default function CompanyProjectsPage() {
           setShowCreateDialog(false);
           setEditingProject(null);
           setFormData({ name: "", projectNumber: "", client: "", clientId: "", address: "", distributionEmails: "", contractId: "", contractOptionId: "", startDate: "", substantialCompletionDate: "", finalCloseoutDate: "", budgetAmount: "", baseBudget: "", budgetTrackingMode: "", inheritBillingRates: true });
-      setBillingRates([{ ...emptyBillingRate }]);
+          setBillingRates([{ ...emptyBillingRate }]);
+          setBaseHours([]);
         }
       }}>
         <DialogContent className="max-h-[90vh] flex flex-col">
@@ -1106,6 +1189,134 @@ export default function CompanyProjectsPage() {
               </div>
             )}
           </div>
+
+          {/* Base Hours Section - For mid-project onboarding */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between gap-2">
+              <div>
+                <Label className="text-sm font-medium">Base Hours (Pre-Onboarding)</Label>
+                <p className="text-xs text-muted-foreground">Track hours already used before joining this project</p>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={addBaseHoursEntry}
+                data-testid="button-add-base-hours"
+              >
+                <Plus className="w-3 h-3 mr-1" />
+                Add Entry
+              </Button>
+            </div>
+
+            {baseHours.length === 0 ? (
+              <p className="text-xs text-muted-foreground italic">No base hours entries. Add entries for inspectors who had hours before onboarding.</p>
+            ) : (
+              <div className="space-y-3">
+                {baseHours.map((entry, idx) => (
+                  <Card key={idx} className="p-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-xs font-medium text-muted-foreground">Entry #{idx + 1}</span>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7"
+                        onClick={() => removeBaseHoursEntry(idx)}
+                        data-testid={`button-remove-base-hours-${idx}`}
+                      >
+                        <Trash2 className="h-3 w-3 text-destructive" />
+                      </Button>
+                    </div>
+                    
+                    <div className="grid grid-cols-2 gap-2 mb-2">
+                      <div className="space-y-1">
+                        <Label className="text-xs">Inspector Name</Label>
+                        <Input
+                          className="h-9"
+                          value={entry.inspectorName}
+                          onChange={(e) => updateBaseHoursEntry(idx, "inspectorName", e.target.value)}
+                          placeholder="Inspector name"
+                          data-testid={`input-base-hours-inspector-${idx}`}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Notes</Label>
+                        <Input
+                          className="h-9"
+                          value={entry.notes}
+                          onChange={(e) => updateBaseHoursEntry(idx, "notes", e.target.value)}
+                          placeholder="Optional notes"
+                          data-testid={`input-base-hours-notes-${idx}`}
+                        />
+                      </div>
+                    </div>
+                    
+                    <div className="grid grid-cols-3 gap-2">
+                      <div className="space-y-1">
+                        <Label className="text-xs">Regular Hours</Label>
+                        <Input
+                          className="h-9"
+                          type="number"
+                          step="0.5"
+                          min="0"
+                          value={entry.regularHours}
+                          onChange={(e) => updateBaseHoursEntry(idx, "regularHours", e.target.value)}
+                          placeholder="0"
+                          data-testid={`input-base-hours-regular-${idx}`}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Overtime Hours</Label>
+                        <Input
+                          className="h-9"
+                          type="number"
+                          step="0.5"
+                          min="0"
+                          value={entry.overtimeHours}
+                          onChange={(e) => updateBaseHoursEntry(idx, "overtimeHours", e.target.value)}
+                          placeholder="0"
+                          data-testid={`input-base-hours-overtime-${idx}`}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Billed Amount ($)</Label>
+                        <Input
+                          className="h-9"
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={entry.billedAmount}
+                          onChange={(e) => updateBaseHoursEntry(idx, "billedAmount", e.target.value)}
+                          placeholder="0.00"
+                          data-testid={`input-base-hours-billed-${idx}`}
+                        />
+                      </div>
+                    </div>
+                  </Card>
+                ))}
+                
+                {baseHours.some(e => e.inspectorName && (parseFloat(e.regularHours) > 0 || parseFloat(e.overtimeHours) > 0)) && (
+                  <div className="text-right text-sm font-medium">
+                    {(() => {
+                      const totals = calculateBaseHoursTotal();
+                      return (
+                        <span>
+                          Total: {totals.totalRegular + totals.totalOvertime} hrs 
+                          ({totals.totalRegular} regular, {totals.totalOvertime} OT)
+                          {totals.totalBilled > 0 && (
+                            <span className="text-green-600 dark:text-green-400 ml-2">
+                              ${totals.totalBilled.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                            </span>
+                          )}
+                        </span>
+                      );
+                    })()}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
           <DialogFooter className="gap-2">
             <Button
               variant="outline"
@@ -1113,7 +1324,8 @@ export default function CompanyProjectsPage() {
                 setShowCreateDialog(false);
                 setEditingProject(null);
                 setFormData({ name: "", projectNumber: "", client: "", clientId: "", address: "", distributionEmails: "", contractId: "", contractOptionId: "", startDate: "", substantialCompletionDate: "", finalCloseoutDate: "", budgetAmount: "", baseBudget: "", budgetTrackingMode: "", inheritBillingRates: true });
-      setBillingRates([{ ...emptyBillingRate }]);
+                setBillingRates([{ ...emptyBillingRate }]);
+                setBaseHours([]);
               }}
               data-testid="button-cancel"
             >
@@ -1122,9 +1334,9 @@ export default function CompanyProjectsPage() {
             <Button
               onClick={() => {
                 if (editingProject) {
-                  updateMutation.mutate({ ...formData, id: editingProject.id, billingRates });
+                  updateMutation.mutate({ ...formData, id: editingProject.id, billingRates, baseHours });
                 } else {
-                  createMutation.mutate({ ...formData, billingRates });
+                  createMutation.mutate({ ...formData, billingRates, baseHours });
                 }
               }}
               disabled={!formData.name.trim() || !formData.projectNumber.trim() || createMutation.isPending || updateMutation.isPending}
