@@ -4254,6 +4254,141 @@ export async function registerRoutes(
     }
   });
 
+  // Get projects for a contract
+  app.get("/api/contracts/:id/projects", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const contract = await storage.getContract(req.params.id);
+      
+      if (!contract) {
+        return res.status(404).json({ message: "Contract not found" });
+      }
+      
+      const profile = await storage.getUserProfile(userId);
+      const isMember = await storage.isUserMemberOfCompany(contract.companyId, userId);
+      const isSysAdmin = isEffectiveSystemAdmin(profile);
+      
+      if (!isMember && !isSysAdmin) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      const projects = await storage.getProjectsByContract(req.params.id);
+      res.json(projects);
+    } catch (error) {
+      console.error("Error fetching contract projects:", error);
+      res.status(500).json({ message: "Failed to fetch contract projects" });
+    }
+  });
+
+  // Get rate lookup info for proposal creation - includes contract options and IOR agreements
+  app.get("/api/contracts/:id/rate-lookup", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const contract = await storage.getContract(req.params.id);
+      
+      if (!contract) {
+        return res.status(404).json({ message: "Contract not found" });
+      }
+      
+      const profile = await storage.getUserProfile(userId);
+      const isMember = await storage.isUserMemberOfCompany(contract.companyId, userId);
+      const isSysAdmin = isEffectiveSystemAdmin(profile);
+      
+      if (!isMember && !isSysAdmin) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      // Get contract rate options (client billing rates)
+      const contractOptions = await storage.getContractOptions(req.params.id);
+      
+      // Get all IOR agreements for projects under this contract (optimized batch fetch)
+      const contractProjects = await storage.getProjectsByContract(req.params.id);
+      
+      // Collect all agreements first
+      const allAgreements: { agreement: any; projectName: string }[] = [];
+      for (const project of contractProjects) {
+        const projectAgreements = await storage.getIorAgreementsByProject(project.id);
+        for (const agreement of projectAgreements) {
+          allAgreements.push({ agreement, projectName: project.name });
+        }
+      }
+      
+      // Batch fetch all unique inspector profiles
+      const uniqueInspectorIds = [...new Set(allAgreements.map(a => a.agreement.inspectorId))];
+      const inspectorProfiles = new Map<string, { firstName?: string; lastName?: string }>();
+      await Promise.all(
+        uniqueInspectorIds.map(async (inspectorId) => {
+          const profile = await storage.getUserProfile(inspectorId);
+          if (profile) {
+            inspectorProfiles.set(inspectorId, profile);
+          }
+        })
+      );
+      
+      // Build IOR agreements with inspector names
+      const iorAgreements = allAgreements.map(({ agreement, projectName }) => {
+        const inspector = inspectorProfiles.get(agreement.inspectorId);
+        return {
+          ...agreement,
+          projectName,
+          inspectorName: inspector ? `${inspector.firstName || ''} ${inspector.lastName || ''}`.trim() : 'Unknown',
+        };
+      });
+      
+      // Build a rate lookup map by inspector name/title for easy UI lookup
+      const clientRates: { [key: string]: { rate: string; hours: string; title: string; optionName?: string } } = {};
+      for (const option of contractOptions) {
+        if (option.inspectors) {
+          for (const inspector of option.inspectors) {
+            const key = (inspector.inspectorName || inspector.title || '').toLowerCase().trim();
+            if (key) {
+              clientRates[key] = {
+                rate: inspector.rate,
+                hours: inspector.hours,
+                title: inspector.title,
+                optionName: option.name || `Option ${option.optionNumber}`,
+              };
+            }
+          }
+        }
+      }
+      
+      const inspectorPayRates: { [key: string]: { rate: string; inspectorId: string; projectName: string } } = {};
+      for (const agreement of iorAgreements) {
+        const key = (agreement.inspectorName || '').toLowerCase().trim();
+        if (key && agreement.rate) {
+          inspectorPayRates[key] = {
+            rate: agreement.rate,
+            inspectorId: agreement.inspectorId,
+            projectName: agreement.projectName,
+          };
+        }
+      }
+      
+      res.json({
+        contractOptions: contractOptions.map(opt => ({
+          id: opt.id,
+          optionNumber: opt.optionNumber,
+          name: opt.name,
+          inspectors: opt.inspectors || [],
+        })),
+        iorAgreements: iorAgreements.map(a => ({
+          id: a.id,
+          projectId: a.projectId,
+          projectName: a.projectName,
+          inspectorId: a.inspectorId,
+          inspectorName: a.inspectorName,
+          rate: a.rate,
+        })),
+        clientRates,
+        inspectorPayRates,
+      });
+    } catch (error) {
+      console.error("Error fetching rate lookup:", error);
+      res.status(500).json({ message: "Failed to fetch rate lookup data" });
+    }
+  });
+
   // Get contract dashboard data (schedule progress + budget)
   app.get("/api/contracts/:id/dashboard", isAuthenticated, async (req: any, res) => {
     try {
@@ -7168,6 +7303,8 @@ export async function registerRoutes(
         startDate: proposalData.startDate ? new Date(proposalData.startDate) : null,
         endDate: proposalData.endDate ? new Date(proposalData.endDate) : null,
         clientId: proposalData.clientId || null, // Convert empty string to null
+        contractId: proposalData.contractId || null, // Link to contract
+        projectId: proposalData.projectId || null, // Link to project
       };
       
       const proposal = await storage.createProposal(processedData);
@@ -7231,6 +7368,8 @@ export async function registerRoutes(
         startDate: proposalData.startDate ? new Date(proposalData.startDate) : null,
         endDate: proposalData.endDate ? new Date(proposalData.endDate) : null,
         clientId: proposalData.clientId || null, // Convert empty string to null
+        contractId: proposalData.contractId || null, // Link to contract
+        projectId: proposalData.projectId || null, // Link to project
       };
       
       const updated = await storage.updateProposal(req.params.id, processedData);
