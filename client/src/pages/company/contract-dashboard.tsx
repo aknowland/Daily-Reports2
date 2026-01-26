@@ -380,6 +380,15 @@ type DashboardData = {
     contractOptionId: string | null;
     contractOptionName: string | null;
   }[];
+  atRiskProjects: {
+    id: string;
+    name: string;
+    hoursRemaining: number;
+    budgetedHours: number;
+    percentRemaining: number;
+    status: 'orange' | 'red';
+    recommendation: string;
+  }[];
 };
 
 const getScheduleStatusConfig = (status: string) => {
@@ -1082,6 +1091,52 @@ export default function ContractDashboard() {
                           <span className="font-medium">Manual Entries</span>
                           <p className="text-lg font-bold">{dashboard.budget.hours.sources.manualEntries.total.toFixed(1)} hrs</p>
                         </div>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* At-Risk Projects Alert */}
+                  {dashboard.atRiskProjects && dashboard.atRiskProjects.length > 0 && (
+                    <div className="mt-3 pt-3 border-t border-dashed" data-testid="section-at-risk-projects">
+                      <div className="flex items-center gap-2 mb-2">
+                        <AlertTriangle className="w-4 h-4 text-orange-500" />
+                        <p className="text-xs font-medium text-muted-foreground">At-Risk Projects</p>
+                        <Badge variant="destructive" className="text-xs">{dashboard.atRiskProjects.length}</Badge>
+                      </div>
+                      <div className="space-y-2">
+                        {dashboard.atRiskProjects.map((project) => (
+                          <Link 
+                            key={project.id} 
+                            href={`/projects/${project.id}/dashboard`}
+                            className="block"
+                          >
+                            <div 
+                              className={`p-2 rounded border ${
+                                project.status === 'red' 
+                                  ? 'bg-red-50 dark:bg-red-950 border-red-200 dark:border-red-800' 
+                                  : 'bg-orange-50 dark:bg-orange-950 border-orange-200 dark:border-orange-800'
+                              } hover-elevate cursor-pointer`}
+                              data-testid={`at-risk-project-${project.id}`}
+                            >
+                              <div className="flex items-center justify-between mb-1">
+                                <span className="font-medium text-sm truncate">{project.name}</span>
+                                <Badge 
+                                  variant={project.status === 'red' ? 'destructive' : 'secondary'}
+                                  className="text-xs"
+                                >
+                                  {project.percentRemaining}% left
+                                </Badge>
+                              </div>
+                              <p className={`text-xs ${
+                                project.status === 'red' 
+                                  ? 'text-red-700 dark:text-red-400' 
+                                  : 'text-orange-700 dark:text-orange-400'
+                              }`}>
+                                {project.recommendation}
+                              </p>
+                            </div>
+                          </Link>
+                        ))}
                       </div>
                     </div>
                   )}

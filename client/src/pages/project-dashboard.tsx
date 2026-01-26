@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { useAuth } from "@/hooks/use-auth";
 import { PageLayout } from "@/components/layout/page-layout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -40,6 +41,8 @@ import {
   Plus,
   Receipt,
   ClipboardList,
+  TrendingUp,
+  TrendingDown,
 } from "lucide-react";
 import { format } from "date-fns";
 import {
@@ -174,6 +177,18 @@ type ProjectDashboardData = {
     daysUntil: number;
     isPast: boolean;
   }[];
+  forecast: {
+    workingDaysRemaining: number;
+    dailyCapacity: number;
+    scheduleType: string;
+    maxPossibleHours: number;
+    hoursRemaining: number;
+    burnRate: number;
+    projectedCompletion: 'on_track' | 'at_risk' | 'over_budget' | 'unknown';
+    recommendation: string;
+    suggestedDailyHours: number | null;
+    additionalHoursNeeded: number;
+  } | null;
 };
 
 const getWeatherIcon = (type: string | null) => {
@@ -246,6 +261,7 @@ const months = [
 export default function ProjectDashboardPage() {
   const { id } = useParams<{ id: string }>();
   const { toast } = useToast();
+  const { isAdmin, isCompanyAdmin, isEffectiveSystemAdmin, isEffectiveCompanyAdmin } = useAuth();
   const [isEmailPending, setIsEmailPending] = useState(false);
   
   // Inspector action dialogs
@@ -560,7 +576,7 @@ export default function ProjectDashboardPage() {
     );
   }
 
-  const { project, schedule, hours, dailyReports, activityTimeline, photoGallery, issuesSummary, safetySummary, weatherSummary, teamOverview, upcomingMilestones } = data;
+  const { project, schedule, hours, dailyReports, activityTimeline, photoGallery, issuesSummary, safetySummary, weatherSummary, teamOverview, upcomingMilestones, forecast } = data;
 
   return (
     <PageLayout title={project.name}>
@@ -743,6 +759,106 @@ export default function ProjectDashboardPage() {
                           <span className="font-medium">Manual Entries</span>
                         </div>
                         <div className="text-lg font-bold">{hours.sources.manualEntries.total.toFixed(1)} hrs</div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                
+                {/* Hours Forecast - Hidden from inspectors */}
+                {(isAdmin || isCompanyAdmin || isEffectiveSystemAdmin || isEffectiveCompanyAdmin) && forecast && (
+                  <div className="pt-3 border-t border-border" data-testid="section-hours-forecast">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="text-xs font-medium text-muted-foreground">Hours Forecast</div>
+                      <Badge 
+                        variant={forecast.projectedCompletion === 'on_track' ? 'default' : forecast.projectedCompletion === 'at_risk' ? 'secondary' : 'destructive'}
+                        data-testid="badge-forecast-status"
+                      >
+                        {forecast.projectedCompletion === 'on_track' ? 'On Track' : forecast.projectedCompletion === 'at_risk' ? 'At Risk' : forecast.projectedCompletion === 'over_budget' ? 'Over Budget' : 'Unknown'}
+                      </Badge>
+                    </div>
+                    
+                    <div className="grid grid-cols-2 gap-2 text-xs mb-3">
+                      <div className="p-2 bg-muted/50 rounded">
+                        <div className="text-muted-foreground">Working Days Left</div>
+                        <div className="text-lg font-bold" data-testid="text-working-days-remaining">{forecast.workingDaysRemaining}</div>
+                      </div>
+                      <div className="p-2 bg-muted/50 rounded">
+                        <div className="text-muted-foreground">Daily Capacity</div>
+                        <div className="text-lg font-bold" data-testid="text-daily-capacity">
+                          {forecast.dailyCapacity} hrs
+                          <span className="text-xs font-normal text-muted-foreground ml-1">
+                            ({forecast.scheduleType === 'partTime' ? 'PT' : 'FT'})
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <div className="grid grid-cols-2 gap-2 text-xs mb-3">
+                      <div className="p-2 bg-muted/50 rounded">
+                        <div className="text-muted-foreground">Max Possible Hours</div>
+                        <div className="text-lg font-bold" data-testid="text-max-possible-hours">{forecast.maxPossibleHours.toFixed(1)}</div>
+                      </div>
+                      <div className="p-2 bg-muted/50 rounded">
+                        <div className="flex items-center gap-1 text-muted-foreground">
+                          {forecast.burnRate > forecast.dailyCapacity ? (
+                            <TrendingUp className="w-3 h-3 text-red-500" />
+                          ) : (
+                            <TrendingDown className="w-3 h-3 text-green-500" />
+                          )}
+                          <span>Burn Rate</span>
+                        </div>
+                        <div className="text-lg font-bold" data-testid="text-burn-rate">{forecast.burnRate.toFixed(1)} hrs/day</div>
+                      </div>
+                    </div>
+                    
+                    {forecast.suggestedDailyHours !== null && (
+                      <div className={`p-2 rounded mb-3 ${
+                        forecast.projectedCompletion === 'on_track' 
+                          ? 'bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800' 
+                          : forecast.projectedCompletion === 'at_risk'
+                            ? 'bg-orange-50 dark:bg-orange-950 border border-orange-200 dark:border-orange-800'
+                            : 'bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800'
+                      }`}>
+                        <div className="text-xs text-muted-foreground mb-1">Suggested Daily Hours</div>
+                        <div className={`text-lg font-bold ${
+                          forecast.projectedCompletion === 'on_track' 
+                            ? 'text-green-700 dark:text-green-400' 
+                            : forecast.projectedCompletion === 'at_risk'
+                              ? 'text-orange-700 dark:text-orange-400'
+                              : 'text-red-700 dark:text-red-400'
+                        }`} data-testid="text-suggested-daily-hours">
+                          {forecast.suggestedDailyHours.toFixed(1)} hrs/day
+                        </div>
+                      </div>
+                    )}
+                    
+                    {forecast.additionalHoursNeeded > 0 && (
+                      <div className="p-2 bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 rounded mb-3">
+                        <div className="text-xs text-muted-foreground mb-1">Additional Hours Needed</div>
+                        <div className="text-lg font-bold text-red-700 dark:text-red-400" data-testid="text-additional-hours-needed">
+                          {forecast.additionalHoursNeeded.toFixed(1)} hrs
+                        </div>
+                      </div>
+                    )}
+                    
+                    <div className={`p-2 rounded text-xs ${
+                      forecast.projectedCompletion === 'on_track' 
+                        ? 'bg-green-50 dark:bg-green-950' 
+                        : forecast.projectedCompletion === 'at_risk'
+                          ? 'bg-orange-50 dark:bg-orange-950'
+                          : 'bg-red-50 dark:bg-red-950'
+                    }`}>
+                      <div className="flex items-start gap-2">
+                        <AlertCircle className={`w-4 h-4 mt-0.5 flex-shrink-0 ${
+                          forecast.projectedCompletion === 'on_track' 
+                            ? 'text-green-600' 
+                            : forecast.projectedCompletion === 'at_risk'
+                              ? 'text-orange-600'
+                              : 'text-red-600'
+                        }`} />
+                        <p className="text-muted-foreground" data-testid="text-forecast-recommendation">
+                          {forecast.recommendation}
+                        </p>
                       </div>
                     </div>
                   </div>
