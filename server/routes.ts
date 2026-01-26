@@ -1248,6 +1248,71 @@ export async function registerRoutes(
     }
   });
 
+  // ========== PROJECT BILLING RATES (Company → Client) ==========
+  
+  // Get project billing rates
+  app.get("/api/projects/:id/billing-rates", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const project = await storage.getProject(req.params.id);
+      
+      if (!project) {
+        return res.status(404).json({ message: "Project not found" });
+      }
+      
+      // Check if user has access to this project (member or company admin)
+      const isMember = await storage.isUserMemberOfProject(req.params.id, userId);
+      let isCompanyAdmin = false;
+      if (project.companyId) {
+        const membership = await storage.getCompanyMembership(userId, project.companyId);
+        isCompanyAdmin = membership?.role === "admin" || membership?.role === "system_admin";
+      }
+      
+      if (!isMember && !isCompanyAdmin) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      const rates = await storage.getProjectBillingRates(req.params.id);
+      res.json(rates);
+    } catch (error) {
+      console.error("Error fetching project billing rates:", error);
+      res.status(500).json({ message: "Failed to fetch project billing rates" });
+    }
+  });
+
+  // Set project billing rates (replaces all existing rates)
+  app.put("/api/projects/:id/billing-rates", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const { allowed, project } = await checkProjectAdminAccess(userId, req.params.id);
+      
+      if (!project) {
+        return res.status(404).json({ message: "Project not found" });
+      }
+      if (!allowed) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      const { rates } = req.body;
+      if (!Array.isArray(rates)) {
+        return res.status(400).json({ message: "Rates must be an array" });
+      }
+      
+      // Validate each rate entry
+      for (const rate of rates) {
+        if (!rate.title || !rate.rate || !rate.hours) {
+          return res.status(400).json({ message: "Each rate must have title, rate, and hours" });
+        }
+      }
+      
+      const updatedRates = await storage.setProjectBillingRates(req.params.id, rates);
+      res.json(updatedRates);
+    } catch (error) {
+      console.error("Error updating project billing rates:", error);
+      res.status(500).json({ message: "Failed to update project billing rates" });
+    }
+  });
+
   // ========== INVOICE HOURS CALCULATION ==========
   app.get("/api/projects/:id/invoice-hours", isAuthenticated, async (req: any, res) => {
     try {
