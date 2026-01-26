@@ -1,8 +1,9 @@
 import { 
   projects, dailyReports, photos, distributionLogs, appSettings, userProfiles, projectMembers, invites,
   companies, companyMembers, joinRequests, invoices, contracts, clients, contractAttachments, contractOptions, contractOptionInspectors, timesheets, monthlyReportBundles,
-  proposals, proposalOptions, proposalOptionInspectors, iorAgreements, purchaseOrders, contractNotifications, budgetNotifications, projectBudgetNotifications, pendingMemberAssignments, teamInspectors, manualTimeEntries,
+  proposals, proposalOptions, proposalOptionInspectors, iorAgreements, purchaseOrders, contractNotifications, budgetNotifications, projectBudgetNotifications, pendingMemberAssignments, teamInspectors, manualTimeEntries, projectBillingRates,
   type Project, type InsertProject,
+  type ProjectBillingRate, type InsertProjectBillingRate,
   type DailyReport, type InsertDailyReport,
   type Photo, type InsertPhoto,
   type DistributionLog, type InsertDistributionLog,
@@ -132,6 +133,10 @@ export interface IStorage {
   getProjectMember(projectId: string, userId: string): Promise<ProjectMember | undefined>;
   removeProjectMember(projectId: string, userId: string): Promise<boolean>;
   isUserMemberOfProject(projectId: string, userId: string): Promise<boolean>;
+
+  // Project Billing Rates
+  getProjectBillingRates(projectId: string): Promise<ProjectBillingRate[]>;
+  setProjectBillingRates(projectId: string, rates: InsertProjectBillingRate[]): Promise<ProjectBillingRate[]>;
 
   // Invites
   getInvites(): Promise<(Invite & { invitedByUser?: User; projects?: Project[]; company?: Company })[]>;
@@ -853,6 +858,35 @@ export class DatabaseStorage implements IStorage {
         eq(projectMembers.userId, userId)
       ));
     return !!result;
+  }
+
+  // Project Billing Rates
+  async getProjectBillingRates(projectId: string): Promise<ProjectBillingRate[]> {
+    return await db
+      .select()
+      .from(projectBillingRates)
+      .where(eq(projectBillingRates.projectId, projectId))
+      .orderBy(asc(projectBillingRates.createdAt));
+  }
+
+  async setProjectBillingRates(projectId: string, rates: InsertProjectBillingRate[]): Promise<ProjectBillingRate[]> {
+    // Delete existing rates for this project
+    await db.delete(projectBillingRates).where(eq(projectBillingRates.projectId, projectId));
+    
+    // Insert new rates if any
+    if (rates.length === 0) {
+      return [];
+    }
+    
+    const insertedRates = await db
+      .insert(projectBillingRates)
+      .values(rates.map(rate => ({
+        ...rate,
+        projectId,
+      })))
+      .returning();
+    
+    return insertedRates;
   }
 
   // Invites
