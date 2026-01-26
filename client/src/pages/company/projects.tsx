@@ -966,11 +966,6 @@ export default function CompanyProjectsPage() {
                   No billing rates found on linked contract option
                 </p>
               )
-            ) : formData.inheritBillingRates && !formData.contractOptionId ? (
-              // No contract option selected, but inherit is on
-              <p className="text-xs text-muted-foreground italic">
-                Select a contract option above to inherit billing rates, or turn off inheritance to set custom rates
-              </p>
             ) : (
               // Custom billing rates editor
               <div className="space-y-3">
