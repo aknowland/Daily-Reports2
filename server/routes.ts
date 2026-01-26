@@ -572,11 +572,25 @@ export async function registerRoutes(
       
       const manualHoursUsed = manualRegularHours + manualOvertimeHours;
       
-      // Combined totals for budget tracking (daily reports + manual entries)
-      const totalRegularHours = dailyReportRegularHours + manualRegularHours;
-      const totalOvertimeHours = dailyReportOvertimeHours + manualOvertimeHours;
+      // Get base hours entries (pre-onboarding hours per inspector)
+      const baseHoursEntries = await storage.getProjectBaseHours(req.params.id);
+      let baseHoursRegular = 0;
+      let baseHoursOvertime = 0;
+      let baseHoursBilledAmount = 0;
+      
+      for (const entry of baseHoursEntries) {
+        baseHoursRegular += parseFloat(entry.regularHours || '0');
+        baseHoursOvertime += parseFloat(entry.overtimeHours || '0');
+        baseHoursBilledAmount += parseFloat(entry.billedAmount || '0');
+      }
+      
+      const baseHoursTotal = baseHoursRegular + baseHoursOvertime;
+      
+      // Combined totals for budget tracking (daily reports + manual entries + base hours)
+      const totalRegularHours = dailyReportRegularHours + manualRegularHours + baseHoursRegular;
+      const totalOvertimeHours = dailyReportOvertimeHours + manualOvertimeHours + baseHoursOvertime;
       const totalPremiumHours = dailyReportPremiumHours;
-      const totalHoursUsed = dailyReportHoursUsed + manualHoursUsed;
+      const totalHoursUsed = dailyReportHoursUsed + manualHoursUsed + baseHoursTotal;
       
       // Get budgeted hours from project (or contract if linked)
       let budgetedHours: number | null = null;
@@ -939,6 +953,13 @@ export async function registerRoutes(
               total: manualHoursUsed,
               regular: manualRegularHours,
               overtime: manualOvertimeHours,
+            },
+            baseHours: {
+              total: baseHoursTotal,
+              regular: baseHoursRegular,
+              overtime: baseHoursOvertime,
+              billedAmount: baseHoursBilledAmount,
+              entryCount: baseHoursEntries.length,
             },
           },
         },
@@ -5131,6 +5152,16 @@ export async function registerRoutes(
             manualEntryHours.overtime += otHours;
           }
           
+          // Get base hours entries (pre-onboarding hours per inspector)
+          const projectBaseHoursEntries = await storage.getProjectBaseHours(p.id);
+          let baseHoursData = { regular: 0, overtime: 0, billedAmount: 0, entryCount: 0 };
+          for (const entry of projectBaseHoursEntries) {
+            baseHoursData.regular += parseFloat(entry.regularHours || '0');
+            baseHoursData.overtime += parseFloat(entry.overtimeHours || '0');
+            baseHoursData.billedAmount += parseFloat(entry.billedAmount || '0');
+            baseHoursData.entryCount++;
+          }
+          
           // Project billed amount comes only from daily reports (not manual entries)
           // Manual entries are for hours tracking, not billing
           const projectBilled = projectBilledFromReports;
@@ -5242,6 +5273,13 @@ export async function registerRoutes(
                 total: manualEntryHours.regular + manualEntryHours.overtime,
                 regular: manualEntryHours.regular,
                 overtime: manualEntryHours.overtime,
+              },
+              baseHours: {
+                total: baseHoursData.regular + baseHoursData.overtime,
+                regular: baseHoursData.regular,
+                overtime: baseHoursData.overtime,
+                billedAmount: baseHoursData.billedAmount,
+                entryCount: baseHoursData.entryCount,
               },
             },
             startDate: (p as any).startDate,
