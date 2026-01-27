@@ -1759,12 +1759,12 @@ export default function ProjectDashboardPage() {
           setBaseHours([]);
         }
       }}>
-        <DialogContent className="max-h-[90vh] flex flex-col overflow-hidden max-w-2xl">
+        <DialogContent className="max-h-[90vh] !flex !flex-col overflow-hidden max-w-2xl">
           <DialogHeader className="flex-shrink-0">
             <DialogTitle>Edit Project</DialogTitle>
             <DialogDescription>Update project details and settings</DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 pt-4 overflow-y-auto flex-1 min-h-0 pr-2">
+          <div className="flex-1 min-h-0 overflow-y-auto space-y-4 pt-4 pr-2">
             {/* Basic Info */}
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
