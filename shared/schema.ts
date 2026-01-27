@@ -171,8 +171,9 @@ export const projects = pgTable("projects", {
   substantialCompletionDate: timestamp("substantial_completion_date"),
   finalCloseoutDate: timestamp("final_closeout_date"),
   // Project-level budget tracking
-  budgetAmount: numeric("budget_amount"), // Total budget for this project
-  baseBudget: numeric("base_budget"), // Base budget for stacking (work done before current tracking)
+  budgetAmount: numeric("budget_amount"), // Total budget for this project (dollar amount)
+  budgetedHours: numeric("budgeted_hours"), // Total hours allocated for this project
+  baseBudget: numeric("base_budget"), // Pre-billed dollar amount before onboarding
   budgetTrackingMode: budgetTrackingModeEnum("budget_tracking_mode"), // null = inherit from contract
   inheritBillingRates: boolean("inherit_billing_rates").default(true), // true = inherit from contract option, false = use project-specific rates
   createdAt: timestamp("created_at").defaultNow(),
