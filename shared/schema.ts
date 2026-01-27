@@ -425,7 +425,8 @@ export const contracts = pgTable("contracts", {
   overtimeRate: varchar("overtime_rate"),
   premiumRate: varchar("premium_rate"),
   budgetOverride: varchar("budget_override"),
-  baseBudgetSpent: varchar("base_budget_spent"), // Manual starting point for mid-project onboarding
+  budgetedHours: numeric("budgeted_hours"), // Total hours allocated for this contract
+  baseBudgetSpent: varchar("base_budget_spent"), // Manual starting point for mid-project onboarding (dollar amount)
   budgetTrackingMode: budgetTrackingModeEnum("budget_tracking_mode").default("daily_reports"), // How budget is calculated
   notes: text("notes"),
   createdById: varchar("created_by_id").references(() => users.id),
