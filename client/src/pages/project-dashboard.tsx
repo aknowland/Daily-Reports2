@@ -46,6 +46,7 @@ import {
   Pencil,
   Trash2,
   DollarSign,
+  History,
 } from "lucide-react";
 import { format } from "date-fns";
 import { Textarea } from "@/components/ui/textarea";
@@ -110,6 +111,13 @@ type ProjectDashboardData = {
         total: number;
         regular: number;
         overtime: number;
+      };
+      baseHours?: {
+        total: number;
+        regular: number;
+        overtime: number;
+        billedAmount: number;
+        entryCount: number;
       };
     };
   };
@@ -1029,10 +1037,10 @@ export default function ProjectDashboardPage() {
                   </div>
                 </div>
                 
-                {hours.sources && (hours.sources.dailyReports.total > 0 || hours.sources.manualEntries.total > 0) && (
+                {hours.sources && (hours.sources.dailyReports.total > 0 || hours.sources.manualEntries.total > 0 || (hours.sources.baseHours?.total || 0) > 0) && (
                   <div className="pt-3 border-t border-border">
                     <div className="text-xs font-medium text-muted-foreground mb-2">Hours by Source</div>
-                    <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div className={`grid gap-2 text-xs ${hours.sources.baseHours?.total ? 'grid-cols-3' : 'grid-cols-2'}`}>
                       <div className="p-2 bg-blue-50 dark:bg-blue-950 rounded">
                         <div className="flex items-center gap-1 mb-1">
                           <FileText className="w-3 h-3" />
@@ -1047,6 +1055,18 @@ export default function ProjectDashboardPage() {
                         </div>
                         <div className="text-lg font-bold">{hours.sources.manualEntries.total.toFixed(1)} hrs</div>
                       </div>
+                      {hours.sources.baseHours && hours.sources.baseHours.total > 0 && (
+                        <div className="p-2 bg-orange-50 dark:bg-orange-950 rounded">
+                          <div className="flex items-center gap-1 mb-1">
+                            <History className="w-3 h-3" />
+                            <span className="font-medium">Base Hours</span>
+                          </div>
+                          <div className="text-lg font-bold">{hours.sources.baseHours.total.toFixed(1)} hrs</div>
+                          {hours.sources.baseHours.billedAmount > 0 && (
+                            <div className="text-xs text-muted-foreground">${hours.sources.baseHours.billedAmount.toLocaleString()}</div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
@@ -1917,7 +1937,7 @@ export default function ProjectDashboardPage() {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="edit-baseBudget">Base Budget (Pre-Onboarding)</Label>
+                <Label htmlFor="edit-baseBudget">Pre-Billed Amount ($)</Label>
                 <Input
                   id="edit-baseBudget"
                   type="number"
@@ -1926,6 +1946,7 @@ export default function ProjectDashboardPage() {
                   placeholder="0.00"
                   data-testid="input-edit-base-budget"
                 />
+                <p className="text-xs text-muted-foreground">Dollar amount already billed before onboarding</p>
               </div>
             </div>
 

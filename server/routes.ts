@@ -594,16 +594,15 @@ export async function registerRoutes(
       
       // Get budgeted hours from project (or contract if linked)
       let budgetedHours: number | null = null;
-      let baseBudgetHours = 0;
+      
+      // baseBudget is a dollar amount (pre-billed amount before onboarding), NOT hours
+      // The actual base hours come from projectBaseHours entries (already included in totalHoursUsed via baseHoursTotal)
+      const baseBudgetAmount = project.baseBudget ? parseFloat(project.baseBudget) : 0;
       
       if (project.budgetAmount) {
         // If project has its own budget, estimate hours (we don't expose rates)
         // This is just a rough estimate based on an assumed average rate
         budgetedHours = parseFloat(project.budgetAmount);
-      }
-      
-      if (project.baseBudget) {
-        baseBudgetHours = parseFloat(project.baseBudget);
       }
       
       // If project is linked to a contract option, get budgeted hours from there
@@ -616,10 +615,11 @@ export async function registerRoutes(
       }
       
       // Budget progress (hours-based only)
+      // totalHoursUsed already includes base hours from projectBaseHours entries
       let budgetProgress = 0;
       let budgetStatus: 'under' | 'on_track' | 'warning' | 'over' = 'on_track';
       const effectiveBudgetedHours = budgetedHours || 0;
-      const effectiveTotalHours = totalHoursUsed + baseBudgetHours;
+      const effectiveTotalHours = totalHoursUsed; // Base hours already included in totalHoursUsed
       
       if (effectiveBudgetedHours > 0) {
         budgetProgress = (effectiveTotalHours / effectiveBudgetedHours) * 100;
@@ -932,8 +932,8 @@ export async function registerRoutes(
         },
         hours: {
           budgeted: effectiveBudgetedHours,
-          baseBudget: baseBudgetHours,
-          used: totalHoursUsed,
+          baseBudget: baseBudgetAmount, // Dollar amount pre-billed (not hours)
+          used: totalHoursUsed, // Includes base hours from per-inspector entries
           remaining: Math.max(0, effectiveBudgetedHours - effectiveTotalHours),
           progress: Math.round(budgetProgress * 100) / 100,
           status: budgetStatus,
