@@ -152,8 +152,6 @@ export const userProfiles = pgTable("user_profiles", {
   hasSeenOnboarding: boolean("has_seen_onboarding").default(false),
   // Admin mode preference (for system admins)
   preferAdminMode: boolean("prefer_admin_mode").default(true),
-  // Accessibility preferences
-  textSize: varchar("text_size").default("normal"), // 'small', 'normal', 'large', 'extra-large'
 });
 
 // Projects table
@@ -765,7 +763,6 @@ export const updateUserProfileSchema = createInsertSchema(userProfiles)
     contractorAddress: true,
     contractorPhone: true,
     contractorEmail: true,
-    textSize: true,
   })
   .partial();
 
