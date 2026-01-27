@@ -5500,7 +5500,7 @@ export async function registerRoutes(
         if (client) clientName = client.name;
       }
       
-      const budgetedHours = parseFloat(contract.budgetOverride || contract.currentValue || '0');
+      const budgetedHours = parseFloat(contract.budgetedHours || '0');
       const totalHoursUsed = totalRegular + totalOT + totalPremium;
       
       const pdfBuffer = await generateMonthlySummaryPdf({
@@ -5663,7 +5663,7 @@ export async function registerRoutes(
         if (client) clientName = client.name;
       }
       
-      const budgetedHours = parseFloat(contract.budgetOverride || contract.currentValue || '0');
+      const budgetedHours = parseFloat(contract.budgetedHours || '0');
       const totalHoursUsed = totalRegular + totalOT + totalPremium;
       
       const pdfBuffer = await generateWeeklySummaryPdf({
@@ -5815,7 +5815,7 @@ export async function registerRoutes(
         }
       }
       
-      const budgetedHours = parseFloat(contract.budgetOverride || contract.currentValue || '0');
+      const budgetedHours = parseFloat(contract.budgetedHours || '0');
       const budgetProgress = budgetedHours > 0 ? (totalHoursUsed / budgetedHours) * 100 : 0;
       const budgetStatus = budgetProgress >= 100 ? 'over' : budgetProgress >= 75 ? 'warning' : 'on_track';
       
