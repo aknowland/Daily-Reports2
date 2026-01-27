@@ -1759,12 +1759,12 @@ export default function ProjectDashboardPage() {
           setBaseHours([]);
         }
       }}>
-        <DialogContent className="max-h-[90vh] !grid-rows-[auto_1fr_auto] overflow-hidden max-w-2xl">
-          <DialogHeader>
+        <DialogContent className="max-h-[90vh] flex flex-col overflow-hidden max-w-2xl">
+          <DialogHeader className="flex-shrink-0">
             <DialogTitle>Edit Project</DialogTitle>
             <DialogDescription>Update project details and settings</DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 pt-4 overflow-y-auto pr-2 -mr-2">
+          <div className="space-y-4 pt-4 overflow-y-auto flex-1 min-h-0 pr-2">
             {/* Basic Info */}
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
@@ -2137,7 +2137,7 @@ export default function ProjectDashboardPage() {
               )}
             </div>
           </div>
-          <DialogFooter>
+          <DialogFooter className="flex-shrink-0 pt-4">
             <Button variant="outline" onClick={() => setEditDialogOpen(false)}>
               Cancel
             </Button>
