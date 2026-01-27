@@ -168,6 +168,7 @@ const createProjectSchema = z.object({
   substantialCompletionDate: z.string().or(z.date()).transform(val => val ? new Date(val) : null).nullable().optional(),
   finalCloseoutDate: z.string().or(z.date()).transform(val => val ? new Date(val) : null).nullable().optional(),
   budgetAmount: z.string().or(z.number()).transform(val => val ? String(val) : null).nullable().optional(),
+  budgetedHours: z.string().or(z.number()).transform(val => val ? String(val) : null).nullable().optional(),
   baseBudget: z.string().or(z.number()).transform(val => val ? String(val) : null).nullable().optional(),
   budgetTrackingMode: z.enum(["daily_reports", "scheduled", "hybrid"]).nullable().optional(),
   inheritBillingRates: z.boolean().optional().default(true),
