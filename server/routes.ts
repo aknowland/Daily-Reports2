@@ -4643,6 +4643,21 @@ export async function registerRoutes(
         allContractManualEntries.push(...projectManualEntries);
       }
       
+      // Get all base hours entries for projects under this contract (pre-onboarding hours)
+      let contractBaseHours = { regular: 0, overtime: 0, total: 0, billedAmount: 0, entryCount: 0 };
+      for (const project of contractProjects) {
+        const projectBaseHoursEntries = await storage.getProjectBaseHours(project.id);
+        for (const entry of projectBaseHoursEntries) {
+          const regHrs = parseFloat(entry.regularHours || '0');
+          const otHrs = parseFloat(entry.overtimeHours || '0');
+          contractBaseHours.regular += regHrs;
+          contractBaseHours.overtime += otHrs;
+          contractBaseHours.total += regHrs + otHrs;
+          contractBaseHours.billedAmount += parseFloat(entry.billedAmount || '0');
+          contractBaseHours.entryCount++;
+        }
+      }
+      
       // Get contract rate options for client billing rates
       const contractRateOptions = await storage.getContractOptions(req.params.id);
       
@@ -4743,8 +4758,8 @@ export async function registerRoutes(
         }
       }
       
-      // Total used hours = invoices/reports + manual entries
-      const totalUsedHours = budgetSummary.totalHours + contractManualHours.total;
+      // Total used hours = daily reports + manual entries + base hours
+      const totalUsedHours = budgetSummary.totalHours + contractManualHours.total + contractBaseHours.total;
       const remainingHours = Math.max(0, totalBudgetedHours - totalUsedHours);
       
       // === NEW DASHBOARD FEATURES ===
@@ -5010,12 +5025,12 @@ export async function registerRoutes(
             budgeted: totalBudgetedHours,
             used: totalUsedHours,
             remaining: remainingHours,
-            regular: budgetSummary.regularHours + contractManualHours.regular,
-            overtime: budgetSummary.overtimeHours + contractManualHours.overtime,
+            regular: budgetSummary.regularHours + contractManualHours.regular + contractBaseHours.regular,
+            overtime: budgetSummary.overtimeHours + contractManualHours.overtime + contractBaseHours.overtime,
             premium: budgetSummary.premiumHours,
-            total: budgetSummary.totalHours + contractManualHours.total,
+            total: budgetSummary.totalHours + contractManualHours.total + contractBaseHours.total,
             sources: {
-              invoices: {
+              dailyReports: {
                 regular: budgetSummary.regularHours,
                 overtime: budgetSummary.overtimeHours,
                 premium: budgetSummary.premiumHours,
@@ -5025,6 +5040,11 @@ export async function registerRoutes(
                 regular: contractManualHours.regular,
                 overtime: contractManualHours.overtime,
                 total: contractManualHours.total,
+              },
+              baseHours: {
+                regular: contractBaseHours.regular,
+                overtime: contractBaseHours.overtime,
+                total: contractBaseHours.total,
               },
             },
           },
