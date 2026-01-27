@@ -1764,7 +1764,8 @@ export default function ProjectDashboardPage() {
             <DialogTitle>Edit Project</DialogTitle>
             <DialogDescription>Update project details and settings</DialogDescription>
           </DialogHeader>
-          <div className="flex-1 min-h-0 overflow-y-auto space-y-4 pt-4 pr-2">
+          <ScrollArea className="flex-1 max-h-[60vh] pr-4">
+            <div className="space-y-4 pt-4">
             {/* Basic Info */}
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
@@ -2136,7 +2137,8 @@ export default function ProjectDashboardPage() {
                 </div>
               )}
             </div>
-          </div>
+            </div>
+          </ScrollArea>
           <DialogFooter className="flex-shrink-0 pt-4">
             <Button variant="outline" onClick={() => setEditDialogOpen(false)}>
               Cancel
