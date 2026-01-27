@@ -952,7 +952,7 @@ export default function CompanyProjectsPage() {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="baseBudget">Base Budget ($)</Label>
+                <Label htmlFor="baseBudget">Pre-Billed Amount ($)</Label>
                 <Input
                   id="baseBudget"
                   type="number"
@@ -964,7 +964,7 @@ export default function CompanyProjectsPage() {
                   data-testid="input-base-budget"
                 />
                 <p className="text-xs text-muted-foreground">
-                  Work done before tracking started (stacks with reports)
+                  Dollar amount already billed before onboarding (for reference)
                 </p>
               </div>
             </div>
