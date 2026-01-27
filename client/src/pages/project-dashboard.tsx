@@ -352,6 +352,7 @@ export default function ProjectDashboardPage() {
     substantialCompletionDate: "",
     finalCloseoutDate: "",
     budgetAmount: "",
+    budgetedHours: "",
     baseBudget: "",
     budgetTrackingMode: "" as "" | "daily_reports" | "scheduled" | "hybrid",
     inheritBillingRates: true,
@@ -568,6 +569,7 @@ export default function ProjectDashboardPage() {
         substantialCompletionDate: fullProjectData.substantialCompletionDate ? fullProjectData.substantialCompletionDate.split("T")[0] : "",
         finalCloseoutDate: fullProjectData.finalCloseoutDate ? fullProjectData.finalCloseoutDate.split("T")[0] : "",
         budgetAmount: fullProjectData.budgetAmount?.toString() || "",
+        budgetedHours: fullProjectData.budgetedHours?.toString() || "",
         baseBudget: fullProjectData.baseBudget?.toString() || "",
         budgetTrackingMode: fullProjectData.budgetTrackingMode || "",
         inheritBillingRates: fullProjectData.inheritBillingRates ?? true,
@@ -1773,7 +1775,7 @@ export default function ProjectDashboardPage() {
             name: "", projectNumber: "", client: "", clientId: "", address: "",
             distributionEmails: "", contractId: "", contractOptionId: "",
             startDate: "", substantialCompletionDate: "", finalCloseoutDate: "",
-            budgetAmount: "", baseBudget: "", budgetTrackingMode: "", inheritBillingRates: true,
+            budgetAmount: "", budgetedHours: "", baseBudget: "", budgetTrackingMode: "", inheritBillingRates: true,
           });
           setBillingRates([{ ...emptyBillingRate }]);
           setBaseHours([]);
@@ -1924,16 +1926,31 @@ export default function ProjectDashboardPage() {
             </div>
 
             {/* Budget */}
-            <div className="space-y-2">
-              <Label htmlFor="edit-budgetAmount">Budget Amount ($)</Label>
-              <Input
-                id="edit-budgetAmount"
-                type="number"
-                value={editFormData.budgetAmount}
-                onChange={(e) => setEditFormData({ ...editFormData, budgetAmount: e.target.value })}
-                placeholder="0.00"
-                data-testid="input-edit-budget-amount"
-              />
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit-budgetAmount">Budget Amount ($)</Label>
+                <Input
+                  id="edit-budgetAmount"
+                  type="number"
+                  value={editFormData.budgetAmount}
+                  onChange={(e) => setEditFormData({ ...editFormData, budgetAmount: e.target.value })}
+                  placeholder="0.00"
+                  data-testid="input-edit-budget-amount"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-budgetedHours">Budgeted Hours</Label>
+                <Input
+                  id="edit-budgetedHours"
+                  type="number"
+                  step="0.5"
+                  value={editFormData.budgetedHours}
+                  onChange={(e) => setEditFormData({ ...editFormData, budgetedHours: e.target.value })}
+                  placeholder="0"
+                  data-testid="input-edit-budgeted-hours"
+                />
+                <p className="text-xs text-muted-foreground">Total hours allocated for this project</p>
+              </div>
             </div>
 
             <div className="space-y-2">
