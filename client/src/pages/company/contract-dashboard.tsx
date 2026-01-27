@@ -982,26 +982,28 @@ export default function ContractDashboard() {
                       const projectConfig = getScheduleStatusConfig(project.scheduleStatus);
                       const ProjectIcon = projectConfig.icon;
                       return (
-                        <div key={project.id} className="border rounded-md p-3 space-y-2" data-testid={`project-schedule-${project.id}`}>
-                          <div className="flex items-center justify-between gap-2 flex-wrap">
-                            <span className="font-medium text-sm">{project.name}</span>
-                            <Badge className={`${projectConfig.textColor} text-xs`} variant="outline">
-                              <ProjectIcon className="h-3 w-3 mr-1" />
-                              {projectConfig.label}
-                            </Badge>
+                        <Link key={project.id} href={`/project/${project.id}`}>
+                          <div className="border rounded-md p-3 space-y-2 cursor-pointer hover:border-primary/50 hover:bg-muted/50 transition-colors" data-testid={`project-schedule-${project.id}`}>
+                            <div className="flex items-center justify-between gap-2 flex-wrap">
+                              <span className="font-medium text-sm">{project.name}</span>
+                              <Badge className={`${projectConfig.textColor} text-xs`} variant="outline">
+                                <ProjectIcon className="h-3 w-3 mr-1" />
+                                {projectConfig.label}
+                              </Badge>
+                            </div>
+                            <div className="relative h-2 w-full overflow-hidden rounded-full bg-secondary">
+                              <div
+                                className={`h-full transition-all ${projectConfig.color}`}
+                                style={{ width: `${Math.min(100, project.scheduleProgress)}%` }}
+                              />
+                            </div>
+                            <div className="flex justify-between text-xs text-muted-foreground">
+                              <span>{project.startDate ? format(new Date(project.startDate), "MMM d, yyyy") : "No start"}</span>
+                              <span>{project.scheduleProgress.toFixed(0)}%</span>
+                              <span>{project.substantialCompletionDate ? format(new Date(project.substantialCompletionDate), "MMM d, yyyy") : "No end"}</span>
+                            </div>
                           </div>
-                          <div className="relative h-2 w-full overflow-hidden rounded-full bg-secondary">
-                            <div
-                              className={`h-full transition-all ${projectConfig.color}`}
-                              style={{ width: `${Math.min(100, project.scheduleProgress)}%` }}
-                            />
-                          </div>
-                          <div className="flex justify-between text-xs text-muted-foreground">
-                            <span>{project.startDate ? format(new Date(project.startDate), "MMM d, yyyy") : "No start"}</span>
-                            <span>{project.scheduleProgress.toFixed(0)}%</span>
-                            <span>{project.substantialCompletionDate ? format(new Date(project.substantialCompletionDate), "MMM d, yyyy") : "No end"}</span>
-                          </div>
-                        </div>
+                        </Link>
                       );
                     })}
                   </div>
