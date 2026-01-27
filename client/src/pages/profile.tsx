@@ -208,6 +208,7 @@ export default function ProfilePage() {
                 <div>
                   <CardTitle className="text-base">Billing & Subscription</CardTitle>
                   <CardDescription>Manage your subscription plan and billing</CardDescription>
+                  <p className="text-xs text-muted-foreground mt-1">Free for Knowland Inspectors</p>
                 </div>
               </div>
               <ChevronRight className="w-5 h-5 text-muted-foreground" />
