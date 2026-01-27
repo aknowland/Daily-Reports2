@@ -1830,14 +1830,14 @@ export default function ProjectDashboardPage() {
             <div className="space-y-2">
               <Label>Link to Contract (Optional)</Label>
               <Select
-                value={editFormData.contractId}
-                onValueChange={(v) => setEditFormData({ ...editFormData, contractId: v, contractOptionId: "" })}
+                value={editFormData.contractId || "_none"}
+                onValueChange={(v) => setEditFormData({ ...editFormData, contractId: v === "_none" ? "" : v, contractOptionId: "" })}
               >
                 <SelectTrigger data-testid="select-edit-contract">
                   <SelectValue placeholder="Select a contract" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">No contract</SelectItem>
+                  <SelectItem value="_none">No contract</SelectItem>
                   {contracts.map((contract) => (
                     <SelectItem key={contract.id} value={contract.id}>
                       {contract.name}
@@ -1851,14 +1851,14 @@ export default function ProjectDashboardPage() {
               <div className="space-y-2">
                 <Label>Contract Option</Label>
                 <Select
-                  value={editFormData.contractOptionId}
-                  onValueChange={(v) => setEditFormData({ ...editFormData, contractOptionId: v })}
+                  value={editFormData.contractOptionId || "_none"}
+                  onValueChange={(v) => setEditFormData({ ...editFormData, contractOptionId: v === "_none" ? "" : v })}
                 >
                   <SelectTrigger data-testid="select-edit-contract-option">
                     <SelectValue placeholder="Select an awarded option" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">None</SelectItem>
+                    <SelectItem value="_none">None</SelectItem>
                     {awardedOptions.map((option) => (
                       <SelectItem key={option.id} value={option.id}>
                         {option.name}
@@ -1932,14 +1932,14 @@ export default function ProjectDashboardPage() {
             <div className="space-y-2">
               <Label>Budget Tracking Mode</Label>
               <Select
-                value={editFormData.budgetTrackingMode}
-                onValueChange={(v) => setEditFormData({ ...editFormData, budgetTrackingMode: v as "" | "daily_reports" | "scheduled" | "hybrid" })}
+                value={editFormData.budgetTrackingMode || "_inherit"}
+                onValueChange={(v) => setEditFormData({ ...editFormData, budgetTrackingMode: (v === "_inherit" ? "" : v) as "" | "daily_reports" | "scheduled" | "hybrid" })}
               >
                 <SelectTrigger data-testid="select-edit-budget-mode">
                   <SelectValue placeholder="Inherit from contract" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Inherit from contract</SelectItem>
+                  <SelectItem value="_inherit">Inherit from contract</SelectItem>
                   <SelectItem value="daily_reports">Daily Reports</SelectItem>
                   <SelectItem value="scheduled">Scheduled</SelectItem>
                   <SelectItem value="hybrid">Hybrid</SelectItem>
