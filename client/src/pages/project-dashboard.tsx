@@ -43,8 +43,14 @@ import {
   ClipboardList,
   TrendingUp,
   TrendingDown,
+  Pencil,
+  Trash2,
+  DollarSign,
 } from "lucide-react";
 import { format } from "date-fns";
+import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
+import { ClientSelect } from "@/components/client-select";
 import {
   Dialog,
   DialogContent,
@@ -191,6 +197,55 @@ type ProjectDashboardData = {
   } | null;
 };
 
+type BillingRateEntry = {
+  title: string;
+  inspectorName: string;
+  rate: string;
+  hours: string;
+  scheduleType: "fullTime" | "partTime";
+};
+
+type BaseHoursEntry = {
+  inspectorName: string;
+  regularHours: string;
+  overtimeHours: string;
+  billedAmount: string;
+};
+
+type ContractOptionInspector = {
+  title: string;
+  inspectorName?: string;
+  rate: string;
+  hours: string;
+  scheduleType?: "fullTime" | "partTime";
+};
+
+type Contract = {
+  id: string;
+  name: string;
+  options?: {
+    id: string;
+    name: string;
+    awardStatus: string;
+    inspectors?: ContractOptionInspector[];
+  }[];
+};
+
+const emptyBillingRate: BillingRateEntry = {
+  title: "",
+  inspectorName: "",
+  rate: "",
+  hours: "",
+  scheduleType: "fullTime",
+};
+
+const emptyBaseHoursEntry: BaseHoursEntry = {
+  inspectorName: "",
+  regularHours: "",
+  overtimeHours: "",
+  billedAmount: "",
+};
+
 const getWeatherIcon = (type: string | null) => {
   switch (type?.toLowerCase()) {
     case 'clear':
@@ -261,7 +316,7 @@ const months = [
 export default function ProjectDashboardPage() {
   const { id } = useParams<{ id: string }>();
   const { toast } = useToast();
-  const { isAdmin, isCompanyAdmin, isEffectiveSystemAdmin, isEffectiveCompanyAdmin } = useAuth();
+  const { isAdmin, isCompanyAdmin, isEffectiveSystemAdmin, isEffectiveCompanyAdmin, activeCompany } = useAuth();
   const [isEmailPending, setIsEmailPending] = useState(false);
   
   // Inspector action dialogs
@@ -273,6 +328,28 @@ export default function ProjectDashboardPage() {
   const [timesheetMode, setTimesheetMode] = useState<'daily_reports' | 'manual'>('daily_reports');
   const [manualEntries, setManualEntries] = useState<Record<string, { regularHours: string; otHours: string }>>({});
   const [isSavingEntries, setIsSavingEntries] = useState(false);
+  
+  // Edit project dialog state
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editFormData, setEditFormData] = useState({
+    name: "",
+    projectNumber: "",
+    client: "",
+    clientId: "",
+    address: "",
+    distributionEmails: "",
+    contractId: "",
+    contractOptionId: "",
+    startDate: "",
+    substantialCompletionDate: "",
+    finalCloseoutDate: "",
+    budgetAmount: "",
+    baseBudget: "",
+    budgetTrackingMode: "" as "" | "daily_reports" | "scheduled" | "hybrid",
+    inheritBillingRates: true,
+  });
+  const [billingRates, setBillingRates] = useState<BillingRateEntry[]>([{ ...emptyBillingRate }]);
+  const [baseHours, setBaseHours] = useState<BaseHoursEntry[]>([]);
   
   const years = Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - i);
   
@@ -325,6 +402,203 @@ export default function ProjectDashboardPage() {
     queryKey: ['/api/projects', id, 'dashboard'],
     enabled: !!id,
   });
+
+  // Fetch contracts for edit dialog (admin only)
+  const { data: contracts = [] } = useQuery<Contract[]>({
+    queryKey: ['/api/contracts'],
+    enabled: isEffectiveCompanyAdmin && editDialogOpen,
+  });
+
+  // Fetch full project data for editing
+  const { data: fullProjectData } = useQuery<any>({
+    queryKey: ['/api/projects', id],
+    enabled: isEffectiveCompanyAdmin && editDialogOpen && !!id,
+  });
+
+  // Selected contract and awarded options for edit form
+  const selectedContract = useMemo(() => {
+    if (!editFormData.contractId) return null;
+    return contracts.find((c) => c.id === editFormData.contractId) || null;
+  }, [editFormData.contractId, contracts]);
+
+  const awardedOptions = useMemo(() => {
+    if (!selectedContract?.options) return [];
+    return selectedContract.options.filter((opt) => opt.awardStatus === "awarded");
+  }, [selectedContract]);
+
+  // Get inherited billing rates from the selected contract option
+  const inheritedRates = useMemo(() => {
+    if (!editFormData.contractOptionId || !selectedContract?.options) return [];
+    const selectedOption = selectedContract.options.find(opt => opt.id === editFormData.contractOptionId);
+    if (!selectedOption?.inspectors) return [];
+    return selectedOption.inspectors.map((ins: ContractOptionInspector) => ({
+      title: ins.title,
+      inspectorName: ins.inspectorName || "",
+      rate: ins.rate,
+      hours: ins.hours,
+      scheduleType: (ins.scheduleType as "fullTime" | "partTime") || "fullTime",
+    }));
+  }, [editFormData.contractOptionId, selectedContract]);
+
+  // Billing rate helper functions
+  const addBillingRate = () => {
+    setBillingRates([...billingRates, { ...emptyBillingRate }]);
+  };
+
+  const removeBillingRate = (index: number) => {
+    if (billingRates.length <= 1) return;
+    setBillingRates(billingRates.filter((_, i) => i !== index));
+  };
+
+  const updateBillingRate = (index: number, field: keyof BillingRateEntry, value: string) => {
+    setBillingRates(billingRates.map((rate, i) => 
+      i === index ? { ...rate, [field]: value } : rate
+    ));
+  };
+
+  // Base hours helper functions
+  const addBaseHoursEntry = () => {
+    setBaseHours([...baseHours, { ...emptyBaseHoursEntry }]);
+  };
+
+  const removeBaseHoursEntry = (index: number) => {
+    setBaseHours(baseHours.filter((_, i) => i !== index));
+  };
+
+  const updateBaseHoursEntry = (index: number, field: keyof BaseHoursEntry, value: string) => {
+    setBaseHours(baseHours.map((entry, i) => 
+      i === index ? { ...entry, [field]: value } : entry
+    ));
+  };
+
+  const calculateBaseHoursTotal = () => {
+    let totalRegular = 0;
+    let totalOvertime = 0;
+    let totalBilled = 0;
+    for (const entry of baseHours) {
+      totalRegular += parseFloat(entry.regularHours) || 0;
+      totalOvertime += parseFloat(entry.overtimeHours) || 0;
+      totalBilled += parseFloat(entry.billedAmount) || 0;
+    }
+    return { totalRegular, totalOvertime, totalBilled };
+  };
+
+  const calculateBillingTotal = (rates: BillingRateEntry[]) => {
+    return rates.reduce((sum, r) => sum + (parseFloat(r.rate) || 0) * (parseFloat(r.hours) || 0), 0);
+  };
+
+  // Update project mutation
+  const updateProjectMutation = useMutation({
+    mutationFn: async (formDataWithId: typeof editFormData & { id: string; billingRates?: BillingRateEntry[]; baseHours?: BaseHoursEntry[] }) => {
+      const project = await apiRequest("PATCH", `/api/projects/${formDataWithId.id}`, {
+        ...formDataWithId,
+        contractId: formDataWithId.contractId || null,
+        contractOptionId: formDataWithId.contractOptionId || null,
+        clientId: formDataWithId.clientId || null,
+        budgetAmount: formDataWithId.budgetAmount ? parseFloat(formDataWithId.budgetAmount) : null,
+        baseBudget: formDataWithId.baseBudget ? parseFloat(formDataWithId.baseBudget) : null,
+        budgetTrackingMode: formDataWithId.budgetTrackingMode || null,
+        distributionEmails: formDataWithId.distributionEmails
+          .split(",")
+          .map(e => e.trim())
+          .filter(Boolean),
+      });
+      
+      // Save billing rates if not inheriting
+      if (formDataWithId.billingRates && !formDataWithId.inheritBillingRates) {
+        const validRates = formDataWithId.billingRates.filter(r => r.title && r.rate);
+        if (validRates.length > 0) {
+          await apiRequest("PUT", `/api/projects/${formDataWithId.id}/billing-rates`, { rates: validRates });
+        }
+      }
+      
+      // Save base hours entries
+      if (formDataWithId.baseHours) {
+        const validEntries = formDataWithId.baseHours.filter(e => e.inspectorName && (parseFloat(e.regularHours) > 0 || parseFloat(e.overtimeHours) > 0));
+        await apiRequest("PUT", `/api/projects/${formDataWithId.id}/base-hours`, { entries: validEntries });
+      }
+      
+      return project;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/projects', id, 'dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/projects', id] });
+      setEditDialogOpen(false);
+      toast({
+        title: "Project Updated",
+        description: "Project has been updated successfully.",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to update project.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Function to open edit dialog and populate form
+  const openEditDialog = async () => {
+    if (!id) return;
+    setEditDialogOpen(true);
+  };
+
+  // Populate edit form when fullProjectData is loaded
+  useEffect(() => {
+    if (fullProjectData && editDialogOpen) {
+      setEditFormData({
+        name: fullProjectData.name || "",
+        projectNumber: fullProjectData.projectNumber || "",
+        client: fullProjectData.client || "",
+        clientId: fullProjectData.clientId || "",
+        address: fullProjectData.address || "",
+        distributionEmails: fullProjectData.distributionEmails?.join(", ") || "",
+        contractId: fullProjectData.contractId || "",
+        contractOptionId: fullProjectData.contractOptionId || "",
+        startDate: fullProjectData.startDate ? fullProjectData.startDate.split("T")[0] : "",
+        substantialCompletionDate: fullProjectData.substantialCompletionDate ? fullProjectData.substantialCompletionDate.split("T")[0] : "",
+        finalCloseoutDate: fullProjectData.finalCloseoutDate ? fullProjectData.finalCloseoutDate.split("T")[0] : "",
+        budgetAmount: fullProjectData.budgetAmount?.toString() || "",
+        baseBudget: fullProjectData.baseBudget?.toString() || "",
+        budgetTrackingMode: fullProjectData.budgetTrackingMode || "",
+        inheritBillingRates: fullProjectData.inheritBillingRates ?? true,
+      });
+
+      // Load billing rates
+      fetch(`/api/projects/${id}/billing-rates`, { credentials: "include" })
+        .then(res => res.ok ? res.json() : [])
+        .then(rates => {
+          if (rates.length > 0) {
+            setBillingRates(rates.map((r: any) => ({
+              title: r.title || "",
+              inspectorName: r.inspectorName || "",
+              rate: r.rate || "",
+              hours: r.hours || "",
+              scheduleType: r.scheduleType || "fullTime",
+            })));
+          } else {
+            setBillingRates([{ ...emptyBillingRate }]);
+          }
+        });
+
+      // Load base hours
+      fetch(`/api/projects/${id}/base-hours`, { credentials: "include" })
+        .then(res => res.ok ? res.json() : [])
+        .then(entries => {
+          if (entries.length > 0) {
+            setBaseHours(entries.map((e: any) => ({
+              inspectorName: e.inspectorName || "",
+              regularHours: e.regularHours || "",
+              overtimeHours: e.overtimeHours || "",
+              billedAmount: e.billedAmount || "",
+            })));
+          } else {
+            setBaseHours([]);
+          }
+        });
+    }
+  }, [fullProjectData, editDialogOpen, id]);
 
   const handleDownloadReport = (type: ReportType, params: ReportParams) => {
     let url = '';
@@ -591,14 +865,27 @@ export default function ProjectDashboardPage() {
           <div className="flex-1 min-w-0">
             <h1 className="text-2xl font-bold truncate" data-testid="text-project-name">{project.name}</h1>
           </div>
-          <SummaryReportDropdown
-            scope="project"
-            entityId={id || ''}
-            distributionEmails={project.distributionEmails || []}
-            onDownload={handleDownloadReport}
-            onEmail={handleEmailReport}
-            isEmailPending={isEmailPending}
-          />
+          <div className="flex items-center gap-2">
+            {isEffectiveCompanyAdmin && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={openEditDialog}
+                data-testid="button-edit-project"
+              >
+                <Pencil className="w-4 h-4 mr-2" />
+                Edit Project
+              </Button>
+            )}
+            <SummaryReportDropdown
+              scope="project"
+              entityId={id || ''}
+              distributionEmails={project.distributionEmails || []}
+              onDownload={handleDownloadReport}
+              onEmail={handleEmailReport}
+              isEmailPending={isEmailPending}
+            />
+          </div>
         </div>
         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
           <div className="flex-1 min-w-0">
@@ -1453,6 +1740,417 @@ export default function ProjectDashboardPage() {
               data-testid="button-download-invoice"
             >
               {isGenerating ? "Generating..." : "Download Invoice"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Project Dialog */}
+      <Dialog open={editDialogOpen} onOpenChange={(open) => {
+        setEditDialogOpen(open);
+        if (!open) {
+          setEditFormData({
+            name: "", projectNumber: "", client: "", clientId: "", address: "",
+            distributionEmails: "", contractId: "", contractOptionId: "",
+            startDate: "", substantialCompletionDate: "", finalCloseoutDate: "",
+            budgetAmount: "", baseBudget: "", budgetTrackingMode: "", inheritBillingRates: true,
+          });
+          setBillingRates([{ ...emptyBillingRate }]);
+          setBaseHours([]);
+        }
+      }}>
+        <DialogContent className="max-h-[90vh] !grid-rows-[auto_1fr_auto] overflow-hidden max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Edit Project</DialogTitle>
+            <DialogDescription>Update project details and settings</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 pt-4 overflow-y-auto pr-2 -mr-2">
+            {/* Basic Info */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit-name">Project Name *</Label>
+                <Input
+                  id="edit-name"
+                  value={editFormData.name}
+                  onChange={(e) => setEditFormData({ ...editFormData, name: e.target.value })}
+                  placeholder="Enter project name"
+                  data-testid="input-edit-project-name"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-projectNumber">Project Number *</Label>
+                <Input
+                  id="edit-projectNumber"
+                  value={editFormData.projectNumber}
+                  onChange={(e) => setEditFormData({ ...editFormData, projectNumber: e.target.value })}
+                  placeholder="e.g., PRJ-001"
+                  data-testid="input-edit-project-number"
+                />
+              </div>
+            </div>
+
+            {/* Client Selection */}
+            <div className="space-y-2">
+              <Label>Client</Label>
+              <ClientSelect
+                value={editFormData.clientId}
+                onValueChange={(clientId: string, clientName?: string) => setEditFormData({ ...editFormData, clientId, client: clientName || "" })}
+                companyId={activeCompany?.id || ""}
+                data-testid="select-edit-client"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="edit-address">Address</Label>
+              <Input
+                id="edit-address"
+                value={editFormData.address}
+                onChange={(e) => setEditFormData({ ...editFormData, address: e.target.value })}
+                placeholder="Project address"
+                data-testid="input-edit-address"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="edit-distributionEmails">Distribution Emails</Label>
+              <Textarea
+                id="edit-distributionEmails"
+                value={editFormData.distributionEmails}
+                onChange={(e) => setEditFormData({ ...editFormData, distributionEmails: e.target.value })}
+                placeholder="email1@example.com, email2@example.com"
+                rows={2}
+                data-testid="input-edit-distribution-emails"
+              />
+              <p className="text-xs text-muted-foreground">Comma-separated list of emails for report distribution</p>
+            </div>
+
+            {/* Contract Linking */}
+            <div className="space-y-2">
+              <Label>Link to Contract (Optional)</Label>
+              <Select
+                value={editFormData.contractId}
+                onValueChange={(v) => setEditFormData({ ...editFormData, contractId: v, contractOptionId: "" })}
+              >
+                <SelectTrigger data-testid="select-edit-contract">
+                  <SelectValue placeholder="Select a contract" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">No contract</SelectItem>
+                  {contracts.map((contract) => (
+                    <SelectItem key={contract.id} value={contract.id}>
+                      {contract.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {awardedOptions.length > 0 && (
+              <div className="space-y-2">
+                <Label>Contract Option</Label>
+                <Select
+                  value={editFormData.contractOptionId}
+                  onValueChange={(v) => setEditFormData({ ...editFormData, contractOptionId: v })}
+                >
+                  <SelectTrigger data-testid="select-edit-contract-option">
+                    <SelectValue placeholder="Select an awarded option" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">None</SelectItem>
+                    {awardedOptions.map((option) => (
+                      <SelectItem key={option.id} value={option.id}>
+                        {option.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {/* Dates */}
+            <div className="grid grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit-startDate">Start Date</Label>
+                <Input
+                  id="edit-startDate"
+                  type="date"
+                  value={editFormData.startDate}
+                  onChange={(e) => setEditFormData({ ...editFormData, startDate: e.target.value })}
+                  data-testid="input-edit-start-date"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-substantialCompletionDate">Substantial Completion</Label>
+                <Input
+                  id="edit-substantialCompletionDate"
+                  type="date"
+                  value={editFormData.substantialCompletionDate}
+                  onChange={(e) => setEditFormData({ ...editFormData, substantialCompletionDate: e.target.value })}
+                  data-testid="input-edit-substantial-completion"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-finalCloseoutDate">Final Closeout</Label>
+                <Input
+                  id="edit-finalCloseoutDate"
+                  type="date"
+                  value={editFormData.finalCloseoutDate}
+                  onChange={(e) => setEditFormData({ ...editFormData, finalCloseoutDate: e.target.value })}
+                  data-testid="input-edit-final-closeout"
+                />
+              </div>
+            </div>
+
+            {/* Budget */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit-budgetAmount">Budget Amount ($)</Label>
+                <Input
+                  id="edit-budgetAmount"
+                  type="number"
+                  value={editFormData.budgetAmount}
+                  onChange={(e) => setEditFormData({ ...editFormData, budgetAmount: e.target.value })}
+                  placeholder="0.00"
+                  data-testid="input-edit-budget-amount"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-baseBudget">Base Budget (Pre-Onboarding)</Label>
+                <Input
+                  id="edit-baseBudget"
+                  type="number"
+                  value={editFormData.baseBudget}
+                  onChange={(e) => setEditFormData({ ...editFormData, baseBudget: e.target.value })}
+                  placeholder="0.00"
+                  data-testid="input-edit-base-budget"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Budget Tracking Mode</Label>
+              <Select
+                value={editFormData.budgetTrackingMode}
+                onValueChange={(v) => setEditFormData({ ...editFormData, budgetTrackingMode: v as "" | "daily_reports" | "scheduled" | "hybrid" })}
+              >
+                <SelectTrigger data-testid="select-edit-budget-mode">
+                  <SelectValue placeholder="Inherit from contract" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">Inherit from contract</SelectItem>
+                  <SelectItem value="daily_reports">Daily Reports</SelectItem>
+                  <SelectItem value="scheduled">Scheduled</SelectItem>
+                  <SelectItem value="hybrid">Hybrid</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Billing Rates */}
+            {editFormData.contractOptionId && (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <Label>Inherit Billing Rates from Contract</Label>
+                  <Switch
+                    checked={editFormData.inheritBillingRates}
+                    onCheckedChange={(checked) => setEditFormData({ ...editFormData, inheritBillingRates: checked })}
+                    data-testid="switch-inherit-billing-rates"
+                  />
+                </div>
+                {editFormData.inheritBillingRates && inheritedRates.length > 0 && (
+                  <div className="text-xs text-muted-foreground bg-muted/50 p-2 rounded">
+                    Inheriting {inheritedRates.length} rate(s) from contract option (${calculateBillingTotal(inheritedRates).toLocaleString()} total)
+                  </div>
+                )}
+              </div>
+            )}
+
+            {!editFormData.inheritBillingRates && (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between gap-2">
+                  <Label>Project Billing Rates</Label>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={addBillingRate}
+                    data-testid="button-add-billing-rate"
+                  >
+                    <Plus className="w-4 h-4 mr-1" />
+                    Add Rate
+                  </Button>
+                </div>
+                {billingRates.map((rate, idx) => (
+                  <Card key={idx} className="p-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-xs font-medium text-muted-foreground">Rate #{idx + 1}</span>
+                      {billingRates.length > 1 && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => removeBillingRate(idx)}
+                          className="h-6 w-6"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </Button>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <Input
+                        placeholder="Title/Role"
+                        value={rate.title}
+                        onChange={(e) => updateBillingRate(idx, "title", e.target.value)}
+                        data-testid={`input-rate-title-${idx}`}
+                      />
+                      <Input
+                        placeholder="Inspector Name"
+                        value={rate.inspectorName}
+                        onChange={(e) => updateBillingRate(idx, "inspectorName", e.target.value)}
+                        data-testid={`input-rate-inspector-${idx}`}
+                      />
+                      <Input
+                        placeholder="Hourly Rate ($)"
+                        type="number"
+                        value={rate.rate}
+                        onChange={(e) => updateBillingRate(idx, "rate", e.target.value)}
+                        data-testid={`input-rate-rate-${idx}`}
+                      />
+                      <Input
+                        placeholder="Hours"
+                        type="number"
+                        value={rate.hours}
+                        onChange={(e) => updateBillingRate(idx, "hours", e.target.value)}
+                        data-testid={`input-rate-hours-${idx}`}
+                      />
+                    </div>
+                    <div className="mt-2">
+                      <Select
+                        value={rate.scheduleType}
+                        onValueChange={(v) => updateBillingRate(idx, "scheduleType", v)}
+                      >
+                        <SelectTrigger className="h-8">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="fullTime">Full-Time</SelectItem>
+                          <SelectItem value="partTime">Part-Time</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </Card>
+                ))}
+                {billingRates.some(r => r.rate && r.hours) && (
+                  <div className="text-right text-sm font-medium">
+                    Total: ${calculateBillingTotal(billingRates).toLocaleString()}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Base Hours Section */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <Label className="text-sm font-medium">Base Hours (Pre-Onboarding)</Label>
+                  <p className="text-xs text-muted-foreground">Track hours already used before joining this project</p>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={addBaseHoursEntry}
+                  data-testid="button-add-base-hours"
+                >
+                  <Plus className="w-4 h-4 mr-1" />
+                  Add Entry
+                </Button>
+              </div>
+
+              {baseHours.length === 0 ? (
+                <p className="text-xs text-muted-foreground italic">No base hours entries. Add entries for inspectors who had hours before onboarding.</p>
+              ) : (
+                <div className="space-y-3">
+                  {baseHours.map((entry, idx) => (
+                    <Card key={idx} className="p-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-xs font-medium text-muted-foreground">Entry #{idx + 1}</span>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => removeBaseHoursEntry(idx)}
+                          className="h-6 w-6"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </Button>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="col-span-2">
+                          <Input
+                            placeholder="Inspector Name"
+                            value={entry.inspectorName}
+                            onChange={(e) => updateBaseHoursEntry(idx, "inspectorName", e.target.value)}
+                            data-testid={`input-base-inspector-${idx}`}
+                          />
+                        </div>
+                        <Input
+                          placeholder="Regular Hours"
+                          type="number"
+                          value={entry.regularHours}
+                          onChange={(e) => updateBaseHoursEntry(idx, "regularHours", e.target.value)}
+                          data-testid={`input-base-regular-${idx}`}
+                        />
+                        <Input
+                          placeholder="OT Hours"
+                          type="number"
+                          value={entry.overtimeHours}
+                          onChange={(e) => updateBaseHoursEntry(idx, "overtimeHours", e.target.value)}
+                          data-testid={`input-base-overtime-${idx}`}
+                        />
+                        <div className="col-span-2">
+                          <Input
+                            placeholder="Already Billed ($)"
+                            type="number"
+                            value={entry.billedAmount}
+                            onChange={(e) => updateBaseHoursEntry(idx, "billedAmount", e.target.value)}
+                            data-testid={`input-base-billed-${idx}`}
+                          />
+                        </div>
+                      </div>
+                    </Card>
+                  ))}
+                  
+                  {baseHours.some(e => e.inspectorName && (parseFloat(e.regularHours) > 0 || parseFloat(e.overtimeHours) > 0)) && (
+                    <div className="text-right text-sm font-medium">
+                      {(() => {
+                        const totals = calculateBaseHoursTotal();
+                        return (
+                          <span>
+                            Total: {totals.totalRegular.toFixed(1)} reg + {totals.totalOvertime.toFixed(1)} OT hrs
+                            {totals.totalBilled > 0 && ` | $${totals.totalBilled.toLocaleString()} billed`}
+                          </span>
+                        );
+                      })()}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                if (id) {
+                  updateProjectMutation.mutate({ ...editFormData, id, billingRates, baseHours });
+                }
+              }}
+              disabled={!editFormData.name.trim() || !editFormData.projectNumber.trim() || updateProjectMutation.isPending}
+              data-testid="button-save-project"
+            >
+              {updateProjectMutation.isPending ? "Saving..." : "Save Changes"}
             </Button>
           </DialogFooter>
         </DialogContent>
