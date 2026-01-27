@@ -599,10 +599,9 @@ export async function registerRoutes(
       // The actual base hours come from projectBaseHours entries (already included in totalHoursUsed via baseHoursTotal)
       const baseBudgetAmount = project.baseBudget ? parseFloat(project.baseBudget) : 0;
       
-      if (project.budgetAmount) {
-        // If project has its own budget, estimate hours (we don't expose rates)
-        // This is just a rough estimate based on an assumed average rate
-        budgetedHours = parseFloat(project.budgetAmount);
+      if (project.budgetedHours) {
+        // Use the dedicated budgeted hours field
+        budgetedHours = parseFloat(project.budgetedHours);
       }
       
       // If project is linked to a contract option, get budgeted hours from there
@@ -1863,7 +1862,7 @@ export async function registerRoutes(
       }
       
       const totalHoursUsed = totalRegular + totalOT + totalPremium;
-      let budgetedHours = project.budgetAmount ? parseFloat(project.budgetAmount) : 0;
+      let budgetedHours = project.budgetedHours ? parseFloat(project.budgetedHours) : 0;
       const baseBudget = project.baseBudget ? parseFloat(project.baseBudget) : 0;
       
       // Get inspector names for reports
@@ -2181,7 +2180,7 @@ export async function registerRoutes(
         if (client) clientName = client.name;
       }
       
-      const budgetedHours = project.budgetAmount ? parseFloat(project.budgetAmount) : 0;
+      const budgetedHours = project.budgetedHours ? parseFloat(project.budgetedHours) : 0;
       const baseBudget = project.baseBudget ? parseFloat(project.baseBudget) : 0;
       const totalHoursUsed = totalRegular + totalOT + totalPremium;
       
@@ -2482,7 +2481,7 @@ export async function registerRoutes(
         if (client) clientName = client.name;
       }
       
-      const budgetedHours = project.budgetAmount ? parseFloat(project.budgetAmount) : 0;
+      const budgetedHours = project.budgetedHours ? parseFloat(project.budgetedHours) : 0;
       const baseBudget = project.baseBudget ? parseFloat(project.baseBudget) : 0;
       
       // Generate PDF
@@ -2648,7 +2647,7 @@ export async function registerRoutes(
       }
       
       // Budget calculations
-      const budgetedHours = project.budgetAmount ? parseFloat(project.budgetAmount) : 0;
+      const budgetedHours = project.budgetedHours ? parseFloat(project.budgetedHours) : 0;
       const baseBudget = project.baseBudget ? parseFloat(project.baseBudget) : 0;
       const effectiveTotalHours = totalHoursUsed + baseBudget;
       const budgetProgress = budgetedHours > 0 ? (effectiveTotalHours / budgetedHours) * 100 : 0;
@@ -2875,7 +2874,7 @@ export async function registerRoutes(
         if (client) clientName = client.name;
       }
       
-      const budgetedHours = project.budgetAmount ? parseFloat(project.budgetAmount) : 0;
+      const budgetedHours = project.budgetedHours ? parseFloat(project.budgetedHours) : 0;
       const baseBudget = project.baseBudget ? parseFloat(project.baseBudget) : 0;
       const totalHoursUsed = totalRegular + totalOT + totalPremium;
       
@@ -3109,7 +3108,7 @@ export async function registerRoutes(
       }
       
       // Budget calculations
-      const budgetedHours = project.budgetAmount ? parseFloat(project.budgetAmount) : 0;
+      const budgetedHours = project.budgetedHours ? parseFloat(project.budgetedHours) : 0;
       const baseBudget = project.baseBudget ? parseFloat(project.baseBudget) : 0;
       const effectiveTotalHours = totalHoursUsed + baseBudget;
       const budgetProgress = budgetedHours > 0 ? (effectiveTotalHours / budgetedHours) * 100 : 0;
@@ -4296,8 +4295,8 @@ export async function registerRoutes(
           if (linkedOption?.inspectors) {
             budgetedHours = linkedOption.inspectors.reduce((sum: number, i: any) => sum + parseFloat(i.hours || '0'), 0);
           }
-        } else if (projectAny.budgetAmount) {
-          budgetedHours = parseFloat(projectAny.budgetAmount);
+        } else if (projectAny.budgetedHours) {
+          budgetedHours = parseFloat(projectAny.budgetedHours);
         }
         
         if (budgetedHours <= 0) continue;
