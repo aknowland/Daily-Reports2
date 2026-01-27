@@ -146,6 +146,7 @@ type ContractFormData = {
   status: string;
   originalValue: string;
   currentValue: string;
+  budgetedHours: string;
   bidReleaseDate: string;
   bidDueDate: string;
   awardDate: string;
@@ -169,6 +170,7 @@ const emptyFormData: ContractFormData = {
   status: "bid_release",
   originalValue: "",
   currentValue: "",
+  budgetedHours: "",
   bidReleaseDate: "",
   bidDueDate: "",
   awardDate: "",
@@ -745,6 +747,7 @@ export default function ContractsPage() {
       status: contract.status,
       originalValue: contract.originalValue || "",
       currentValue: contract.currentValue || "",
+      budgetedHours: contract.budgetedHours || "",
       bidReleaseDate: contract.bidReleaseDate ? format(new Date(contract.bidReleaseDate), "yyyy-MM-dd") : "",
       bidDueDate: contract.bidDueDate ? format(new Date(contract.bidDueDate), "yyyy-MM-dd") : "",
       awardDate: contract.awardDate ? format(new Date(contract.awardDate), "yyyy-MM-dd") : "",
@@ -1673,6 +1676,20 @@ export default function ContractsPage() {
                   value={formData.currentValue}
                   onChange={(e) => setFormData({ ...formData, currentValue: e.target.value })}
                   data-testid="input-current-value"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="budgetedHours">Budgeted Hours</Label>
+                <Input
+                  id="budgetedHours"
+                  type="text"
+                  placeholder="e.g., 2000"
+                  value={formData.budgetedHours}
+                  onChange={(e) => setFormData({ ...formData, budgetedHours: e.target.value })}
+                  data-testid="input-budgeted-hours"
                 />
               </div>
             </div>
