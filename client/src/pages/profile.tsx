@@ -34,8 +34,10 @@ import {
   CreditCard,
   ChevronRight,
   Moon,
-  Sun
+  Sun,
+  Type
 } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { useTheme } from "@/hooks/use-theme";
 import { Textarea } from "@/components/ui/textarea";
@@ -48,6 +50,7 @@ export default function ProfilePage() {
   const { theme, setTheme } = useTheme();
   const [certifications, setCertifications] = useState<string[]>([]);
   const [newCertification, setNewCertification] = useState("");
+  const [textSize, setTextSize] = useState<string>("normal");
 
   const { data: profile, isLoading } = useQuery<UserProfile>({
     queryKey: ["/api/profile"],
@@ -86,8 +89,20 @@ export default function ProfilePage() {
         contractorEmail: profile.contractorEmail || "",
       });
       setCertifications(profile.certifications || []);
+      setTextSize(profile.textSize || "normal");
     }
   }, [profile, form, user]);
+
+  // Apply text size to document
+  useEffect(() => {
+    const sizes: Record<string, string> = {
+      small: "14px",
+      normal: "16px",
+      large: "18px",
+      "extra-large": "20px",
+    };
+    document.documentElement.style.fontSize = sizes[textSize] || "16px";
+  }, [textSize]);
 
   const updateMutation = useMutation({
     mutationFn: async (data: UpdateUserProfile) => {
@@ -113,6 +128,31 @@ export default function ProfilePage() {
       });
     },
   });
+
+  const textSizeMutation = useMutation({
+    mutationFn: async (size: string) => {
+      return apiRequest("PATCH", "/api/profile", { textSize: size });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/profile"] });
+      toast({
+        title: "Text Size Updated",
+        description: "Your text size preference has been saved.",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to save text size preference.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleTextSizeChange = (size: string) => {
+    setTextSize(size);
+    textSizeMutation.mutate(size);
+  };
 
   const getInitials = () => {
     const first = profile?.firstName || user?.firstName || "";
@@ -242,6 +282,33 @@ export default function ProfilePage() {
               />
               <Moon className="w-4 h-4 text-muted-foreground" />
             </div>
+          </CardHeader>
+        </Card>
+
+        <Card data-testid="card-text-size">
+          <CardHeader className="flex-row items-center justify-between gap-2">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+                <Type className="w-5 h-5 text-foreground" />
+              </div>
+              <div>
+                <CardTitle className="text-base">Text Size</CardTitle>
+                <CardDescription>
+                  Adjust text size for better readability
+                </CardDescription>
+              </div>
+            </div>
+            <Select value={textSize} onValueChange={handleTextSizeChange}>
+              <SelectTrigger className="w-[140px]" data-testid="select-text-size">
+                <SelectValue placeholder="Select size" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="small">Small</SelectItem>
+                <SelectItem value="normal">Normal</SelectItem>
+                <SelectItem value="large">Large</SelectItem>
+                <SelectItem value="extra-large">Extra Large</SelectItem>
+              </SelectContent>
+            </Select>
           </CardHeader>
         </Card>
 

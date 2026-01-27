@@ -1,6 +1,6 @@
 import { Switch, Route } from "wouter";
 import { queryClient } from "./lib/queryClient";
-import { QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider, useQuery } from "@tanstack/react-query";
 import { HelmetProvider } from "react-helmet-async";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -10,6 +10,8 @@ import { ThemeProvider } from "@/hooks/use-theme";
 import { AdminRoute } from "@/components/layout/admin-route";
 import { AIChatBubble } from "@/components/chat/ai-chat-bubble";
 import { Loader2 } from "lucide-react";
+import { useEffect } from "react";
+import type { UserProfile } from "@shared/schema";
 
 import NotFound from "@/pages/not-found";
 import LandingPage from "@/pages/landing";
@@ -51,6 +53,26 @@ function LoadingScreen() {
       </div>
     </div>
   );
+}
+
+// Component to apply user's text size preference globally
+function TextSizeApplier() {
+  const { data: profile } = useQuery<UserProfile>({
+    queryKey: ["/api/profile"],
+  });
+
+  useEffect(() => {
+    const sizes: Record<string, string> = {
+      small: "14px",
+      normal: "16px",
+      large: "18px",
+      "extra-large": "20px",
+    };
+    const size = profile?.textSize || "normal";
+    document.documentElement.style.fontSize = sizes[size] || "16px";
+  }, [profile?.textSize]);
+
+  return null;
 }
 
 function AuthenticatedRoutes() {
@@ -117,6 +139,7 @@ function AppContent() {
         <Route component={LandingPage} />
       ) : (
         <>
+          <TextSizeApplier />
           <AuthenticatedRoutes />
           <AIChatBubble />
         </>
