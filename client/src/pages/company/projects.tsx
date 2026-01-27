@@ -780,14 +780,14 @@ export default function CompanyProjectsPage() {
           setBaseHours([]);
         }
       }}>
-        <DialogContent className="max-h-[90vh] flex flex-col">
+        <DialogContent className="max-h-[90vh] !grid-rows-[auto_1fr_auto] overflow-hidden">
           <DialogHeader>
             <DialogTitle>{editingProject ? "Edit Project" : "Create Project"}</DialogTitle>
             <DialogDescription>
               {editingProject ? "Update project details" : "Add a new project to your company"}
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 pt-4 overflow-y-auto flex-1 pr-2">
+          <div className="space-y-4 pt-4 overflow-y-auto pr-2 -mr-2">
             <div className="space-y-2">
               <Label htmlFor="name">Project Name *</Label>
               <Input
