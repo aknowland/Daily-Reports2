@@ -780,14 +780,16 @@ export default function CompanyProjectsPage() {
           setBaseHours([]);
         }
       }}>
-        <DialogContent className="max-h-[90vh] !grid-rows-[auto_1fr_auto] overflow-hidden">
-          <DialogHeader>
+        <DialogContent className="max-h-[90vh] max-w-2xl p-0">
+          <div className="flex flex-col max-h-[90vh]">
+          <DialogHeader className="flex-shrink-0 p-6 pb-0">
             <DialogTitle>{editingProject ? "Edit Project" : "Create Project"}</DialogTitle>
             <DialogDescription>
               {editingProject ? "Update project details" : "Add a new project to your company"}
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 pt-4 overflow-y-auto pr-2 -mr-2">
+          <div className="flex-1 overflow-y-auto p-6 pt-4">
+            <div className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="name">Project Name *</Label>
               <Input
@@ -931,9 +933,9 @@ export default function CompanyProjectsPage() {
                 />
               </div>
             </div>
-          </div>
 
-          <div className="space-y-4 pt-2">
+            {/* Budget Tracking */}
+            <div className="space-y-4 pt-2 border-t">
             <h3 className="font-medium text-sm text-muted-foreground">Budget Tracking</h3>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
@@ -992,10 +994,10 @@ export default function CompanyProjectsPage() {
                   : "Show both scheduled and actual side-by-side"}
               </p>
             </div>
-          </div>
+            </div>
 
-          {/* Billing Rates Section */}
-          <div className="space-y-4 pt-2 border-t">
+            {/* Billing Rates Section */}
+            <div className="space-y-4 pt-2 border-t">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <DollarSign className="w-4 h-4 text-muted-foreground" />
@@ -1188,10 +1190,10 @@ export default function CompanyProjectsPage() {
                 )}
               </div>
             )}
-          </div>
+            </div>
 
-          {/* Base Hours Section - For mid-project onboarding */}
-          <div className="space-y-3">
+            {/* Base Hours Section - For mid-project onboarding */}
+            <div className="space-y-3 pt-2 border-t">
             <div className="flex items-center justify-between gap-2">
               <div>
                 <Label className="text-sm font-medium">Base Hours (Pre-Onboarding)</Label>
@@ -1316,8 +1318,10 @@ export default function CompanyProjectsPage() {
                 )}
               </div>
             )}
+            </div>
+            </div>
           </div>
-          <DialogFooter className="gap-2">
+          <DialogFooter className="flex-shrink-0 p-6 pt-4 border-t gap-2">
             <Button
               variant="outline"
               onClick={() => {
@@ -1348,6 +1352,7 @@ export default function CompanyProjectsPage() {
               }
             </Button>
           </DialogFooter>
+          </div>
         </DialogContent>
       </Dialog>
 
