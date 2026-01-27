@@ -1759,13 +1759,14 @@ export default function ProjectDashboardPage() {
           setBaseHours([]);
         }
       }}>
-        <DialogContent className="max-h-[90vh] !flex !flex-col overflow-hidden max-w-2xl">
-          <DialogHeader className="flex-shrink-0">
+        <DialogContent className="max-h-[90vh] max-w-2xl p-0">
+          <div className="flex flex-col max-h-[90vh]">
+          <DialogHeader className="flex-shrink-0 p-6 pb-0">
             <DialogTitle>Edit Project</DialogTitle>
             <DialogDescription>Update project details and settings</DialogDescription>
           </DialogHeader>
-          <ScrollArea className="flex-1 max-h-[60vh] pr-4">
-            <div className="space-y-4 pt-4">
+          <div className="flex-1 overflow-y-auto p-6 pt-4">
+            <div className="space-y-4">
             {/* Basic Info */}
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
@@ -2138,8 +2139,8 @@ export default function ProjectDashboardPage() {
               )}
             </div>
             </div>
-          </ScrollArea>
-          <DialogFooter className="flex-shrink-0 pt-4">
+          </div>
+          <DialogFooter className="flex-shrink-0 p-6 pt-4 border-t">
             <Button variant="outline" onClick={() => setEditDialogOpen(false)}>
               Cancel
             </Button>
@@ -2155,6 +2156,7 @@ export default function ProjectDashboardPage() {
               {updateProjectMutation.isPending ? "Saving..." : "Save Changes"}
             </Button>
           </DialogFooter>
+          </div>
         </DialogContent>
       </Dialog>
     </PageLayout>
