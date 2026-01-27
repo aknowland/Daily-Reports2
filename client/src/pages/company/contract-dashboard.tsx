@@ -76,6 +76,7 @@ import {
   Zap,
   Trash2,
   Info,
+  History,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { format } from "date-fns";
@@ -219,13 +220,18 @@ type DashboardData = {
       premium: number;
       total: number;
       sources?: {
-        invoices: {
+        dailyReports: {
           regular: number;
           overtime: number;
           premium: number;
           total: number;
         };
         manualEntries: {
+          regular: number;
+          overtime: number;
+          total: number;
+        };
+        baseHours?: {
           regular: number;
           overtime: number;
           total: number;
@@ -1204,18 +1210,33 @@ export default function ContractDashboard() {
                     </div>
                   </div>
                   
-                  {dashboard.budget.hours.sources && (dashboard.budget.hours.sources.invoices.total > 0 || dashboard.budget.hours.sources.manualEntries.total > 0) && (
+                  {dashboard.budget.hours.sources && (dashboard.budget.hours.sources.dailyReports.total > 0 || dashboard.budget.hours.sources.manualEntries.total > 0 || (dashboard.budget.hours.sources.baseHours?.total || 0) > 0) && (
                     <div className="mt-3 pt-3 border-t border-dashed">
                       <p className="text-xs font-medium text-muted-foreground mb-2">Hours by Source</p>
-                      <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div className={`grid gap-2 text-xs ${dashboard.budget.hours.sources.baseHours?.total ? 'grid-cols-3' : 'grid-cols-2'}`}>
                         <div className="p-2 bg-blue-50 dark:bg-blue-950 rounded">
-                          <span className="font-medium">From Invoices</span>
-                          <p className="text-lg font-bold">{dashboard.budget.hours.sources.invoices.total.toFixed(1)} hrs</p>
+                          <div className="flex items-center gap-1 mb-1">
+                            <FileText className="w-3 h-3" />
+                            <span className="font-medium">Daily Reports</span>
+                          </div>
+                          <p className="text-lg font-bold">{dashboard.budget.hours.sources.dailyReports.total.toFixed(1)} hrs</p>
                         </div>
                         <div className="p-2 bg-green-50 dark:bg-green-950 rounded">
-                          <span className="font-medium">Manual Entries</span>
+                          <div className="flex items-center gap-1 mb-1">
+                            <Clock className="w-3 h-3" />
+                            <span className="font-medium">Manual Entries</span>
+                          </div>
                           <p className="text-lg font-bold">{dashboard.budget.hours.sources.manualEntries.total.toFixed(1)} hrs</p>
                         </div>
+                        {dashboard.budget.hours.sources.baseHours && dashboard.budget.hours.sources.baseHours.total > 0 && (
+                          <div className="p-2 bg-orange-50 dark:bg-orange-950 rounded">
+                            <div className="flex items-center gap-1 mb-1">
+                              <History className="w-3 h-3" />
+                              <span className="font-medium">Base Hours</span>
+                            </div>
+                            <p className="text-lg font-bold">{dashboard.budget.hours.sources.baseHours.total.toFixed(1)} hrs</p>
+                          </div>
+                        )}
                       </div>
                     </div>
                   )}
