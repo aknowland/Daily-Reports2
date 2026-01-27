@@ -951,22 +951,6 @@ export default function CompanyProjectsPage() {
                   data-testid="input-budget-amount"
                 />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="baseBudget">Pre-Billed Amount ($)</Label>
-                <Input
-                  id="baseBudget"
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  placeholder="0.00"
-                  value={formData.baseBudget}
-                  onChange={(e) => setFormData({ ...formData, baseBudget: e.target.value })}
-                  data-testid="input-base-budget"
-                />
-                <p className="text-xs text-muted-foreground">
-                  Dollar amount already billed before onboarding (for reference)
-                </p>
-              </div>
             </div>
             <div className="space-y-2">
               <Label htmlFor="budgetTrackingMode">Budget Tracking Mode</Label>
@@ -1192,12 +1176,33 @@ export default function CompanyProjectsPage() {
             )}
             </div>
 
-            {/* Base Hours Section - For mid-project onboarding */}
-            <div className="space-y-3 pt-2 border-t">
+            {/* Pre-Onboarding Data Section - For mid-project onboarding */}
+            <div className="space-y-4 pt-2 border-t">
+            <div>
+              <Label className="text-sm font-medium">Pre-Onboarding Data</Label>
+              <p className="text-xs text-muted-foreground">Track hours and amounts from before this project was onboarded</p>
+            </div>
+            
+            {/* Pre-Billed Amount */}
+            <div className="space-y-2">
+              <Label htmlFor="baseBudget" className="text-xs">Pre-Billed Amount ($)</Label>
+              <Input
+                id="baseBudget"
+                type="number"
+                step="0.01"
+                min="0"
+                placeholder="0.00"
+                value={formData.baseBudget}
+                onChange={(e) => setFormData({ ...formData, baseBudget: e.target.value })}
+                data-testid="input-base-budget"
+              />
+              <p className="text-xs text-muted-foreground">Dollar amount already billed before onboarding</p>
+            </div>
+            
+            {/* Base Hours Per Inspector */}
             <div className="flex items-center justify-between gap-2">
               <div>
-                <Label className="text-sm font-medium">Base Hours (Pre-Onboarding)</Label>
-                <p className="text-xs text-muted-foreground">Track hours already used before joining this project</p>
+                <Label className="text-xs font-medium">Base Hours by Inspector</Label>
               </div>
               <Button
                 type="button"

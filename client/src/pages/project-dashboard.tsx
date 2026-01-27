@@ -1924,30 +1924,16 @@ export default function ProjectDashboardPage() {
             </div>
 
             {/* Budget */}
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="edit-budgetAmount">Budget Amount ($)</Label>
-                <Input
-                  id="edit-budgetAmount"
-                  type="number"
-                  value={editFormData.budgetAmount}
-                  onChange={(e) => setEditFormData({ ...editFormData, budgetAmount: e.target.value })}
-                  placeholder="0.00"
-                  data-testid="input-edit-budget-amount"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-baseBudget">Pre-Billed Amount ($)</Label>
-                <Input
-                  id="edit-baseBudget"
-                  type="number"
-                  value={editFormData.baseBudget}
-                  onChange={(e) => setEditFormData({ ...editFormData, baseBudget: e.target.value })}
-                  placeholder="0.00"
-                  data-testid="input-edit-base-budget"
-                />
-                <p className="text-xs text-muted-foreground">Dollar amount already billed before onboarding</p>
-              </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-budgetAmount">Budget Amount ($)</Label>
+              <Input
+                id="edit-budgetAmount"
+                type="number"
+                value={editFormData.budgetAmount}
+                onChange={(e) => setEditFormData({ ...editFormData, budgetAmount: e.target.value })}
+                placeholder="0.00"
+                data-testid="input-edit-budget-amount"
+              />
             </div>
 
             <div className="space-y-2">
@@ -2070,12 +2056,31 @@ export default function ProjectDashboardPage() {
               </div>
             )}
 
-            {/* Base Hours Section */}
-            <div className="space-y-3">
+            {/* Pre-Onboarding Data Section */}
+            <div className="space-y-4 pt-2 border-t">
+              <div>
+                <Label className="text-sm font-medium">Pre-Onboarding Data</Label>
+                <p className="text-xs text-muted-foreground">Track hours and amounts from before this project was onboarded</p>
+              </div>
+              
+              {/* Pre-Billed Amount */}
+              <div className="space-y-2">
+                <Label htmlFor="edit-baseBudget" className="text-xs">Pre-Billed Amount ($)</Label>
+                <Input
+                  id="edit-baseBudget"
+                  type="number"
+                  value={editFormData.baseBudget}
+                  onChange={(e) => setEditFormData({ ...editFormData, baseBudget: e.target.value })}
+                  placeholder="0.00"
+                  data-testid="input-edit-base-budget"
+                />
+                <p className="text-xs text-muted-foreground">Dollar amount already billed before onboarding</p>
+              </div>
+              
+              {/* Base Hours Per Inspector */}
               <div className="flex items-center justify-between gap-2">
                 <div>
-                  <Label className="text-sm font-medium">Base Hours (Pre-Onboarding)</Label>
-                  <p className="text-xs text-muted-foreground">Track hours already used before joining this project</p>
+                  <Label className="text-xs font-medium">Base Hours by Inspector</Label>
                 </div>
                 <Button
                   type="button"
