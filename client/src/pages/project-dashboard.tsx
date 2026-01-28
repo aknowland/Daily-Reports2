@@ -1025,7 +1025,7 @@ export default function ProjectDashboardPage() {
 
   return (
     <PageLayout title={project.name}>
-      <div className="space-y-6">
+      <div className="space-y-6 w-full overflow-x-hidden">
         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 flex-wrap">
           <Button variant="ghost" size="sm" asChild>
             <Link href="/my-projects">

@@ -38,10 +38,10 @@ export function PageLayout({
       </Helmet>
       <Header title={title} />
       <main className={cn(
-        "flex-1 pb-20 lg:pb-6 px-4 md:px-6 lg:px-8",
+        "flex-1 pb-20 lg:pb-6 px-4 md:px-6 lg:px-8 overflow-x-hidden",
         className
       )}>
-        <div className="max-w-7xl mx-auto py-4 md:py-6">
+        <div className="max-w-7xl mx-auto py-4 md:py-6 w-full">
           {children}
         </div>
       </main>
