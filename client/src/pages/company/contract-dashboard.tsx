@@ -244,6 +244,11 @@ type DashboardData = {
           overtime: number;
           total: number;
         };
+        fromBaseBudget?: {
+          total: number;
+          averageRate: number;
+          baseBudgetAmount: number;
+        };
       };
     };
     scheduled: {
@@ -1070,7 +1075,7 @@ export default function ContractDashboard() {
                       const projectConfig = getScheduleStatusConfig(project.scheduleStatus);
                       const ProjectIcon = projectConfig.icon;
                       return (
-                        <Link key={project.id} href={`/project/${project.id}`}>
+                        <Link key={project.id} href={`/project/${project.id}/dashboard`}>
                           <div className="border rounded-md p-3 space-y-2 cursor-pointer hover:border-primary/50 hover:bg-muted/50 transition-colors" data-testid={`project-schedule-${project.id}`}>
                             <div className="flex items-center justify-between gap-2 flex-wrap">
                               <span className="font-medium text-sm">{project.name}</span>
@@ -1292,10 +1297,10 @@ export default function ContractDashboard() {
                     </div>
                   </div>
                   
-                  {dashboard.budget.hours.sources && (dashboard.budget.hours.sources.dailyReports.total > 0 || dashboard.budget.hours.sources.manualEntries.total > 0 || (dashboard.budget.hours.sources.baseHours?.total || 0) > 0) && (
+                  {dashboard.budget.hours.sources && (dashboard.budget.hours.sources.dailyReports.total > 0 || dashboard.budget.hours.sources.manualEntries.total > 0 || (dashboard.budget.hours.sources.baseHours?.total || 0) > 0 || (dashboard.budget.hours.sources.fromBaseBudget?.total || 0) > 0) && (
                     <div className="mt-3 pt-3 border-t border-dashed">
                       <p className="text-xs font-medium text-muted-foreground mb-2">Hours by Source</p>
-                      <div className={`grid gap-2 text-xs ${dashboard.budget.hours.sources.baseHours?.total ? 'grid-cols-3' : 'grid-cols-2'}`}>
+                      <div className={`grid gap-2 text-xs ${(dashboard.budget.hours.sources.baseHours?.total || dashboard.budget.hours.sources.fromBaseBudget?.total) ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-2'}`}>
                         <div className="p-2 bg-blue-50 dark:bg-blue-950 rounded">
                           <div className="flex items-center gap-1 mb-1">
                             <FileText className="w-3 h-3" />
@@ -1319,6 +1324,18 @@ export default function ContractDashboard() {
                             <p className="text-lg font-bold">{dashboard.budget.hours.sources.baseHours.total.toFixed(1)} hrs</p>
                           </div>
                         )}
+                        {dashboard.budget.hours.sources.fromBaseBudget && dashboard.budget.hours.sources.fromBaseBudget.total > 0 && (
+                          <div className="p-2 bg-purple-50 dark:bg-purple-950 rounded" data-testid="hours-from-base-budget">
+                            <div className="flex items-center gap-1 mb-1">
+                              <DollarSign className="w-3 h-3" />
+                              <span className="font-medium">From Base Budget</span>
+                            </div>
+                            <p className="text-lg font-bold">{dashboard.budget.hours.sources.fromBaseBudget.total.toFixed(1)} hrs</p>
+                            <p className="text-xs text-muted-foreground">
+                              {formatCurrency(dashboard.budget.hours.sources.fromBaseBudget.baseBudgetAmount)} ÷ {formatCurrency(dashboard.budget.hours.sources.fromBaseBudget.averageRate)}/hr
+                            </p>
+                          </div>
+                        )}
                       </div>
                     </div>
                   )}
@@ -1335,7 +1352,7 @@ export default function ContractDashboard() {
                         {dashboard.atRiskProjects.map((project) => (
                           <Link 
                             key={project.id} 
-                            href={`/projects/${project.id}/dashboard`}
+                            href={`/project/${project.id}/dashboard`}
                             className="block"
                           >
                             <div 
