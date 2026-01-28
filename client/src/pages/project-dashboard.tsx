@@ -638,15 +638,25 @@ export default function ProjectDashboardPage() {
     setBaseHours(baseHours.filter((_, i) => i !== index));
   };
 
-  // Find billing rate for an inspector by name (case-insensitive match)
-  const findInspectorRate = (inspectorName: string): number | null => {
+  // Find billing rate for an inspector by name (case-insensitive exact match)
+  const findInspectorRate = (inspectorName: string): { rate: number; matchedName: string } | null => {
     if (!inspectorName) return null;
-    const normalizedName = inspectorName.toLowerCase().trim();
+    const normalizedInput = inspectorName.toLowerCase().trim();
+    
+    // Exact match only (case-insensitive)
     const matchingRate = billingRates.find(r => 
-      r.inspectorName?.toLowerCase().trim() === normalizedName
+      r.inspectorName?.toLowerCase().trim() === normalizedInput
     );
-    return matchingRate ? parseFloat(matchingRate.rate) || null : null;
+    
+    if (!matchingRate) return null;
+    const rate = parseFloat(matchingRate.rate);
+    return rate > 0 ? { rate, matchedName: matchingRate.inspectorName || '' } : null;
   };
+  
+  // Get list of inspector names from billing rates for suggestions
+  const billingRateInspectors = billingRates
+    .filter(r => r.inspectorName && r.inspectorName.trim())
+    .map(r => r.inspectorName);
 
   const updateBaseHoursEntry = (index: number, field: keyof BaseHoursEntry, value: string) => {
     setBaseHours(baseHours.map((entry, i) => {
@@ -654,16 +664,21 @@ export default function ProjectDashboardPage() {
       
       const updatedEntry = { ...entry, [field]: value };
       
-      // Auto-calculate hours when billed amount or inspector name changes
+      // Auto-calculate hours when billed amount OR inspector name changes
+      // ONLY if both hour fields are currently empty
       if (field === "billedAmount" || field === "inspectorName") {
-        const rate = findInspectorRate(updatedEntry.inspectorName);
-        const billedAmount = parseFloat(updatedEntry.billedAmount) || 0;
+        const currentHours = parseFloat(entry.regularHours) || 0;
+        const currentOT = parseFloat(entry.overtimeHours) || 0;
+        const hoursAreEmpty = currentHours === 0 && currentOT === 0;
         
-        if (rate && rate > 0 && billedAmount > 0) {
-          // Calculate total hours from billed amount
-          const calculatedHours = billedAmount / rate;
-          // Put all calculated hours as regular hours
-          updatedEntry.regularHours = calculatedHours.toFixed(1);
+        if (hoursAreEmpty) {
+          const rateInfo = findInspectorRate(updatedEntry.inspectorName);
+          const billedAmount = parseFloat(updatedEntry.billedAmount) || 0;
+          
+          if (rateInfo && billedAmount > 0) {
+            const calculatedHours = billedAmount / rateInfo.rate;
+            updatedEntry.regularHours = calculatedHours.toFixed(1);
+          }
         }
       }
       
@@ -2367,20 +2382,40 @@ export default function ProjectDashboardPage() {
                       </div>
                       <div className="grid grid-cols-2 gap-2">
                         <div className="col-span-2">
-                          <Input
-                            placeholder="Inspector Name"
-                            value={entry.inspectorName}
-                            onChange={(e) => updateBaseHoursEntry(idx, "inspectorName", e.target.value)}
-                            data-testid={`input-base-inspector-${idx}`}
-                          />
+                          {billingRates.some(r => r.inspectorName?.trim()) ? (
+                            <Select
+                              value={entry.inspectorName}
+                              onValueChange={(value) => updateBaseHoursEntry(idx, "inspectorName", value)}
+                            >
+                              <SelectTrigger data-testid={`select-base-inspector-${idx}`}>
+                                <SelectValue placeholder="Select inspector from billing rates" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {billingRates
+                                  .filter(r => r.inspectorName?.trim())
+                                  .map((rate, i) => (
+                                    <SelectItem key={`${rate.inspectorName}-${rate.rate}-${i}`} value={rate.inspectorName || ''}>
+                                      {rate.inspectorName} (${rate.rate}/hr)
+                                    </SelectItem>
+                                  ))}
+                              </SelectContent>
+                            </Select>
+                          ) : (
+                            <Input
+                              placeholder="Inspector Name (add billing rates first)"
+                              value={entry.inspectorName}
+                              onChange={(e) => updateBaseHoursEntry(idx, "inspectorName", e.target.value)}
+                              data-testid={`input-base-inspector-${idx}`}
+                            />
+                          )}
                           {entry.inspectorName && (
                             <div className="text-xs mt-1">
                               {(() => {
-                                const rate = findInspectorRate(entry.inspectorName);
-                                if (rate) {
-                                  return <span className="text-green-600">Rate found: ${rate}/hr</span>;
+                                const rateInfo = findInspectorRate(entry.inspectorName);
+                                if (rateInfo) {
+                                  return <span className="text-green-600 dark:text-green-400">Rate: ${rateInfo.rate}/hr</span>;
                                 }
-                                return <span className="text-muted-foreground">No matching rate in billing rates</span>;
+                                return <span className="text-muted-foreground">No rate found for this inspector</span>;
                               })()}
                             </div>
                           )}
@@ -2396,17 +2431,39 @@ export default function ProjectDashboardPage() {
                           {entry.billedAmount && parseFloat(entry.billedAmount) > 0 && (
                             <div className="text-xs mt-1">
                               {(() => {
-                                const rate = findInspectorRate(entry.inspectorName);
+                                const rateInfo = findInspectorRate(entry.inspectorName);
                                 const billedAmount = parseFloat(entry.billedAmount) || 0;
-                                if (rate && rate > 0) {
-                                  const hours = billedAmount / rate;
+                                if (rateInfo) {
+                                  const hours = billedAmount / rateInfo.rate;
+                                  const currentHours = parseFloat(entry.regularHours) || 0;
+                                  const isDifferent = Math.abs(currentHours - hours) > 0.1;
                                   return (
-                                    <span className="text-muted-foreground">
-                                      ${billedAmount.toLocaleString()} ÷ ${rate}/hr = <span className="font-medium text-foreground">{hours.toFixed(1)} hrs</span>
-                                    </span>
+                                    <div className="space-y-1">
+                                      <span className="text-muted-foreground">
+                                        ${billedAmount.toLocaleString()} ÷ ${rateInfo.rate}/hr = <span className="font-medium text-foreground">{hours.toFixed(1)} hrs</span>
+                                      </span>
+                                      {isDifferent && (
+                                        <div className="flex items-center gap-2 p-1 bg-amber-50 dark:bg-amber-950 rounded border border-amber-200 dark:border-amber-800">
+                                          <span className="text-amber-700 dark:text-amber-300 flex-1">Hours differ from calculation</span>
+                                          <Button
+                                            type="button"
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => {
+                                              setBaseHours(baseHours.map((e, i) => 
+                                                i === idx ? { ...e, regularHours: hours.toFixed(1), overtimeHours: "0" } : e
+                                              ));
+                                            }}
+                                            data-testid={`button-recalc-hours-${idx}`}
+                                          >
+                                            Apply Calculated
+                                          </Button>
+                                        </div>
+                                      )}
+                                    </div>
                                   );
                                 }
-                                return <span className="text-amber-600">Enter inspector name with billing rate for auto-calculation</span>;
+                                return <span className="text-amber-600 dark:text-amber-400">Select inspector from billing rates for auto-calculation</span>;
                               })()}
                             </div>
                           )}
