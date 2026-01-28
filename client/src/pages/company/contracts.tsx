@@ -925,40 +925,65 @@ export default function ContractsPage() {
       );
     }
     
-    // Sort: bid-phase by due date, in_execution by progress descending, others by status priority
+    // Sort: 1) Bid Released/Received by upcoming bid due date, 2) Under Review by bid due date (oldest first),
+    //       3) Awarded by start date, 4) In Execution by progress % descending
     return result.sort((a, b) => {
-      const aInBidPhase = isInBidPhase(a.status);
-      const bInBidPhase = isInBidPhase(b.status);
-      const aInExecution = a.status === 'in_execution';
-      const bInExecution = b.status === 'in_execution';
-      
-      // Both in bid phase: sort by days until due (soonest first)
-      if (aInBidPhase && bInBidPhase) {
-        const aUrgency = getBidDueUrgency(a.bidDueDate);
-        const bUrgency = getBidDueUrgency(b.bidDueDate);
+      // Calculate priority scores (lower = higher priority)
+      const getPriority = (contract: ContractWithProjects) => {
+        const isBidReleased = contract.status === 'bid_release';
+        const isBidReceived = contract.status === 'bid_received';
+        const isUnderReview = contract.status === 'under_review';
+        const isAwarded = contract.status === 'awarded';
+        const isInExecution = contract.status === 'in_execution';
         
-        // Contracts with bid due dates come before those without
-        if (aUrgency && !bUrgency) return -1;
-        if (!aUrgency && bUrgency) return 1;
-        if (aUrgency && bUrgency) {
-          return aUrgency.days - bUrgency.days;
-        }
-        // Both have no due date, sort by status priority
-        return getStatusPriority(a.status) - getStatusPriority(b.status);
+        // Priority 1: Bid Released or Bid Received (sorted by upcoming bid due date)
+        if (isBidReleased || isBidReceived) return 1;
+        // Priority 2: Under Review (sorted by bid due date, oldest first)
+        if (isUnderReview) return 2;
+        // Priority 3: Awarded (sorted by start date)
+        if (isAwarded) return 3;
+        // Priority 4: In Execution (sorted by schedule progress % descending)
+        if (isInExecution) return 4;
+        // Priority 5: Other statuses
+        return getStatusPriority(contract.status);
+      };
+      
+      const aPriority = getPriority(a);
+      const bPriority = getPriority(b);
+      
+      if (aPriority !== bPriority) return aPriority - bPriority;
+      
+      // Within same priority, apply appropriate secondary sorting
+      if (aPriority === 1) {
+        // Bid Released/Received: sort by bid due date (soonest first)
+        const aDue = a.bidDueDate ? new Date(a.bidDueDate).getTime() : Infinity;
+        const bDue = b.bidDueDate ? new Date(b.bidDueDate).getTime() : Infinity;
+        return aDue - bDue;
       }
       
-      // Bid phase contracts come before non-bid phase
-      if (aInBidPhase && !bInBidPhase) return -1;
-      if (!aInBidPhase && bInBidPhase) return 1;
+      if (aPriority === 2) {
+        // Under Review: sort by bid due date (oldest first - ascending order)
+        // Contracts without bid due date go to end of this group
+        const aDue = a.bidDueDate ? new Date(a.bidDueDate).getTime() : Infinity;
+        const bDue = b.bidDueDate ? new Date(b.bidDueDate).getTime() : Infinity;
+        return aDue - bDue;
+      }
       
-      // Both in execution: sort by progress descending (highest progress first)
-      if (aInExecution && bInExecution) {
+      if (aPriority === 3) {
+        // Awarded/Pre-construction: sort by start date (earliest first)
+        const aStart = a.startDate ? new Date(a.startDate).getTime() : Infinity;
+        const bStart = b.startDate ? new Date(b.startDate).getTime() : Infinity;
+        return aStart - bStart;
+      }
+      
+      if (aPriority === 4) {
+        // In Execution: sort by schedule progress (highest first - descending)
         const aProgress = getScheduleProgress(a).progress;
         const bProgress = getScheduleProgress(b).progress;
-        return bProgress - aProgress; // Descending
+        return bProgress - aProgress;
       }
       
-      // Both not in bid phase: sort by status priority
+      // Default: sort by status priority
       return getStatusPriority(a.status) - getStatusPriority(b.status);
     });
   })();

@@ -289,25 +289,25 @@ export default function CompanyDashboard() {
   });
 
   // Priority-based sorting for contracts
-  // Order: 1) Earliest bid due dates, 2) Under review, 3) Awarded/pre-construction, 4) Active projects
+  // Order: 1) Bid Released/Received by upcoming bid due date, 2) Under Review by bid due date (oldest first), 
+  //        3) Awarded by start date, 4) In Execution by progress % descending
   const sortContractsByPriority = (contracts: ContractDashboardSummary[]) => {
     return [...contracts].sort((a, b) => {
       // Calculate priority scores (lower = higher priority)
       const getPriority = (contract: ContractDashboardSummary) => {
-        const bidDue = contract.bidDueDate ? new Date(contract.bidDueDate) : null;
-        const hasBidDueDate = bidDue !== null;
+        const isBidReleased = contract.status === 'bid_release';
+        const isBidReceived = contract.status === 'bid_received';
         const isUnderReview = contract.status === 'under_review';
         const isAwarded = contract.status === 'awarded';
-        const isPreConstruction = contract.status === 'pre_construction';
         const isInExecution = contract.status === 'in_execution';
         
-        // Priority 1: Has bid due date (earliest first)
-        if (hasBidDueDate) return 1;
-        // Priority 2: Under review status
+        // Priority 1: Bid Released or Bid Received (sorted by upcoming bid due date)
+        if (isBidReleased || isBidReceived) return 1;
+        // Priority 2: Under Review (sorted by bid due date, oldest first)
         if (isUnderReview) return 2;
-        // Priority 3: Awarded / pre-construction
-        if (isAwarded || isPreConstruction) return 3;
-        // Priority 4: Active projects (in_execution)
+        // Priority 3: Awarded (sorted by start date)
+        if (isAwarded) return 3;
+        // Priority 4: In Execution (sorted by schedule progress % descending)
         if (isInExecution) return 4;
         // Priority 5: Other statuses
         return 5;
@@ -320,10 +320,30 @@ export default function CompanyDashboard() {
       
       // Within same priority, apply appropriate secondary sorting
       if (aPriority === 1) {
-        // Bid due dates: sort by earliest due date first
+        // Bid Released/Received: sort by bid due date (soonest first)
         const aDue = a.bidDueDate ? new Date(a.bidDueDate).getTime() : Infinity;
         const bDue = b.bidDueDate ? new Date(b.bidDueDate).getTime() : Infinity;
         return aDue - bDue;
+      }
+      
+      if (aPriority === 2) {
+        // Under Review: sort by bid due date (oldest first - ascending order)
+        // Contracts without bid due date go to end of this group
+        const aDue = a.bidDueDate ? new Date(a.bidDueDate).getTime() : Infinity;
+        const bDue = b.bidDueDate ? new Date(b.bidDueDate).getTime() : Infinity;
+        return aDue - bDue;
+      }
+      
+      if (aPriority === 3) {
+        // Awarded/Pre-construction: sort by start date (earliest first)
+        const aStart = a.schedule.startDate ? new Date(a.schedule.startDate).getTime() : Infinity;
+        const bStart = b.schedule.startDate ? new Date(b.schedule.startDate).getTime() : Infinity;
+        return aStart - bStart;
+      }
+      
+      if (aPriority === 4) {
+        // In Execution: sort by schedule progress (highest first - descending)
+        return b.schedule.progress - a.schedule.progress;
       }
       
       // Default: sort alphabetically
