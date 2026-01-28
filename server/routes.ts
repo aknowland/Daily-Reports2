@@ -5337,6 +5337,7 @@ export async function registerRoutes(
             scheduleStatus: projectScheduleStatus,
             contractOptionId: (p as any).contractOptionId || null,
             contractOptionName: linkedOption ? `Option ${linkedOption.optionNumber}${linkedOption.name ? `: ${linkedOption.name}` : ''}` : null,
+            inheritBillingRates: (p as any).inheritBillingRates !== false, // default true
           };
         })),
       });

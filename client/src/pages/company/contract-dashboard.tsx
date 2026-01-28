@@ -426,6 +426,7 @@ type DashboardData = {
     scheduleStatus: 'not_started' | 'on_track' | 'warning' | 'overdue' | 'complete';
     contractOptionId: string | null;
     contractOptionName: string | null;
+    inheritBillingRates: boolean;
   }[];
   atRiskProjects: {
     id: string;
@@ -517,6 +518,13 @@ export default function ContractDashboard() {
   const [editFormData, setEditFormData] = useState<ContractFormData>(emptyFormData);
   const [editContractOptions, setEditContractOptions] = useState<ContractOptionEntry[]>([{ ...emptyContractOption, inspectors: [{ ...emptyContractInspector }] }]);
   const [isEmailPending, setIsEmailPending] = useState(false);
+  const [showCreateProjectDialog, setShowCreateProjectDialog] = useState(false);
+  const [newProjectData, setNewProjectData] = useState({
+    name: "",
+    projectNumber: "",
+    contractOptionId: "",
+    inheritBillingRates: true,
+  });
 
   const addEditContractOption = () => {
     setEditContractOptions([...editContractOptions, { ...emptyContractOption, inspectors: [{ ...emptyContractInspector }] }]);
@@ -704,6 +712,64 @@ export default function ContractDashboard() {
   const handleOpenBaseBudget = () => {
     setBaseBudgetValue(dashboard?.contract.baseBudgetSpent || "");
     setShowBaseBudgetDialog(true);
+  };
+
+  // Create project linked to this contract
+  const createProjectMutation = useMutation({
+    mutationFn: async (data: { name: string; projectNumber: string; contractId: string; contractOptionId: string | null; inheritBillingRates: boolean }) => {
+      const res = await apiRequest("POST", "/api/projects", {
+        ...data,
+        companyId: activeCompany?.id,
+      });
+      return res.json();
+    },
+    onSuccess: (newProject) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/contracts", contractId, "dashboard"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+      setShowCreateProjectDialog(false);
+      setNewProjectData({ name: "", projectNumber: "", contractOptionId: "", inheritBillingRates: true });
+      toast({
+        title: "Project Created",
+        description: `"${newProject.name}" has been linked to this contract.`,
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleCreateProject = () => {
+    if (!newProjectData.name.trim()) {
+      toast({ title: "Error", description: "Project name is required", variant: "destructive" });
+      return;
+    }
+    if (!newProjectData.projectNumber.trim()) {
+      toast({ title: "Error", description: "Project number is required", variant: "destructive" });
+      return;
+    }
+    createProjectMutation.mutate({
+      name: newProjectData.name.trim(),
+      projectNumber: newProjectData.projectNumber.trim(),
+      contractId: contractId!,
+      contractOptionId: newProjectData.contractOptionId === "_none" ? null : newProjectData.contractOptionId,
+      inheritBillingRates: newProjectData.inheritBillingRates,
+    });
+  };
+
+  const handleOpenCreateProject = () => {
+    // Pre-select first awarded option if available (from contractDetails query)
+    const awardedOptions = contractDetails?.options?.filter((opt: { awardStatus: string }) => opt.awardStatus === "awarded") || [];
+    setNewProjectData({
+      name: "",
+      projectNumber: "",
+      contractOptionId: awardedOptions.length > 0 ? awardedOptions[0].id : "_none",
+      inheritBillingRates: true,
+    });
+    setShowCreateProjectDialog(true);
   };
 
   // Fetch full contract data for editing
@@ -2047,11 +2113,21 @@ export default function ContractDashboard() {
         {/* Projects Summary Section */}
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <ListChecks className="h-5 w-5" />
-              Linked Projects
-              <Badge variant="secondary" className="ml-2">{dashboard.projects.length}</Badge>
-            </CardTitle>
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <CardTitle className="flex items-center gap-2">
+                <ListChecks className="h-5 w-5" />
+                Linked Projects
+                <Badge variant="secondary" className="ml-2">{dashboard.projects.length}</Badge>
+              </CardTitle>
+              <Button 
+                size="sm" 
+                onClick={handleOpenCreateProject}
+                data-testid="button-add-project"
+              >
+                <Plus className="h-4 w-4 mr-1" />
+                Add Project
+              </Button>
+            </div>
             <CardDescription>
               Projects associated with this contract and their budget contributions
             </CardDescription>
@@ -2069,6 +2145,7 @@ export default function ContractDashboard() {
                       <TableHead>Project</TableHead>
                       <TableHead>Number</TableHead>
                       <TableHead>Linked Option</TableHead>
+                      <TableHead>Rates</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead className="text-right">Reports</TableHead>
                       <TableHead className="min-w-[200px]">Budget Progress</TableHead>
@@ -2103,6 +2180,14 @@ export default function ContractDashboard() {
                             ) : (
                               <span className="text-muted-foreground text-xs">-</span>
                             )}
+                          </TableCell>
+                          <TableCell>
+                            <Badge 
+                              variant={project.inheritBillingRates ? "secondary" : "outline"}
+                              className="text-xs"
+                            >
+                              {project.inheritBillingRates ? "Inherited" : "Custom"}
+                            </Badge>
                           </TableCell>
                           <TableCell>
                             <Badge 
@@ -2198,12 +2283,39 @@ export default function ContractDashboard() {
                     })}
                   </TableBody>
                 </Table>
-                {dashboard.projects.length > 1 && (
-                  <div className="mt-4 pt-4 border-t flex justify-between items-center">
-                    <span className="text-sm font-medium">Total Across All Projects</span>
-                    <span className="text-sm font-bold" data-testid="text-total-project-budget">
-                      {formatCurrency(dashboard.projects.reduce((sum, p) => sum + p.budgetSpent, 0))}
-                    </span>
+                {dashboard.projects.length > 0 && (
+                  <div className="mt-4 pt-4 border-t">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                      <div className="text-center">
+                        <p className="text-lg font-bold" data-testid="text-total-projects">
+                          {dashboard.projects.length}
+                        </p>
+                        <p className="text-xs text-muted-foreground">Projects</p>
+                      </div>
+                      <div className="text-center">
+                        <p className="text-lg font-bold" data-testid="text-total-reports">
+                          {dashboard.projects.reduce((sum, p) => sum + p.reportCount, 0)}
+                        </p>
+                        <p className="text-xs text-muted-foreground">Total Reports</p>
+                      </div>
+                      <div className="text-center">
+                        <p className="text-lg font-bold" data-testid="text-total-project-budget">
+                          {formatCurrency(dashboard.projects.reduce((sum, p) => sum + p.budgetSpent, 0))}
+                        </p>
+                        <p className="text-xs text-muted-foreground">Total Spent</p>
+                      </div>
+                      <div className="text-center">
+                        <p className="text-lg font-bold">
+                          {formatCurrency(dashboard.projects.reduce((sum, p) => sum + p.budgetAmount, 0))}
+                        </p>
+                        <p className="text-xs text-muted-foreground">Combined Budget</p>
+                      </div>
+                    </div>
+                    {dashboard.projects.filter(p => p.inheritBillingRates).length > 0 && (
+                      <p className="text-xs text-muted-foreground mt-3 text-center">
+                        {dashboard.projects.filter(p => p.inheritBillingRates).length} of {dashboard.projects.length} projects inherit billing rates from contract
+                      </p>
+                    )}
                   </div>
                 )}
               </div>
@@ -2893,6 +3005,96 @@ export default function ContractDashboard() {
               </Button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Create Project Dialog */}
+      <Dialog open={showCreateProjectDialog} onOpenChange={setShowCreateProjectDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Add Project to Contract</DialogTitle>
+            <DialogDescription>
+              Create a new project linked to "{dashboard?.contract.name}"
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="new-project-name">Project Name *</Label>
+              <Input
+                id="new-project-name"
+                value={newProjectData.name}
+                onChange={(e) => setNewProjectData({ ...newProjectData, name: e.target.value })}
+                placeholder="e.g., Phase 1 - Foundation"
+                data-testid="input-new-project-name"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="new-project-number">Project Number *</Label>
+              <Input
+                id="new-project-number"
+                value={newProjectData.projectNumber}
+                onChange={(e) => setNewProjectData({ ...newProjectData, projectNumber: e.target.value })}
+                placeholder="e.g., P-2024-001"
+                data-testid="input-new-project-number"
+              />
+            </div>
+            {contractDetails?.options && contractDetails.options.filter((opt: { awardStatus: string }) => opt.awardStatus === "awarded").length > 0 && (
+              <div className="space-y-2">
+                <Label>Link to Contract Option</Label>
+                <Select 
+                  value={newProjectData.contractOptionId} 
+                  onValueChange={(value) => setNewProjectData({ ...newProjectData, contractOptionId: value })}
+                >
+                  <SelectTrigger data-testid="select-new-project-option">
+                    <SelectValue placeholder="Select an option" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="_none">No Specific Option</SelectItem>
+                    {contractDetails.options
+                      .filter((opt: { awardStatus: string }) => opt.awardStatus === "awarded")
+                      .map((option: { id: string; optionNumber?: number; name?: string }) => (
+                        <SelectItem key={option.id} value={option.id}>
+                          Option {option.optionNumber}{option.name ? `: ${option.name}` : ''}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Link to a specific option for rate inheritance and budget tracking
+                </p>
+              </div>
+            )}
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="new-project-inherit-rates"
+                checked={newProjectData.inheritBillingRates}
+                onChange={(e) => setNewProjectData({ ...newProjectData, inheritBillingRates: e.target.checked })}
+                className="h-4 w-4 rounded border-input"
+                data-testid="checkbox-new-project-inherit-rates"
+              />
+              <Label htmlFor="new-project-inherit-rates" className="text-sm font-normal">
+                Inherit billing rates from linked contract option
+              </Label>
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setShowCreateProjectDialog(false)}
+              data-testid="button-cancel-new-project"
+            >
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleCreateProject}
+              disabled={createProjectMutation.isPending}
+              data-testid="button-create-project"
+            >
+              {createProjectMutation.isPending ? "Creating..." : "Create Project"}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </PageLayout>
