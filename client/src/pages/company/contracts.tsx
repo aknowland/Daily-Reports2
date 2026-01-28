@@ -826,6 +826,11 @@ export default function ContractsPage() {
     return ['bid_release', 'bid_received', 'under_review'].includes(status);
   };
 
+  // Only show bid due badges for pre-review statuses (not under_review or later)
+  const shouldShowBidDueBadge = (status: string) => {
+    return ['bid_release', 'bid_received'].includes(status);
+  };
+
   // Calculate schedule progress for a contract
   const getScheduleProgress = (contract: ContractWithProjects) => {
     const now = new Date();
@@ -1269,8 +1274,8 @@ export default function ContractsPage() {
                         <div className="flex items-center gap-2 mb-1 flex-wrap">
                           <h3 className="font-semibold text-lg">{contract.name}</h3>
                           {getStatusBadge(contract.status)}
-                          {/* Bid due date badge for bid-phase contracts */}
-                          {isInBidPhase(contract.status) && contract.bidDueDate && (() => {
+                          {/* Bid due date badge for pre-review bid-phase contracts only */}
+                          {shouldShowBidDueBadge(contract.status) && contract.bidDueDate && (() => {
                             const urgency = getBidDueUrgency(contract.bidDueDate);
                             return urgency ? (
                               <Badge 

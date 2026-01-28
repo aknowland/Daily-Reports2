@@ -622,6 +622,8 @@ export default function CompanyDashboard() {
                       
                       // Check if contract is in bid phase (should never show as overdue)
                       const isInBidPhase = ['bid_release', 'bid_received', 'under_review'].includes(contract.status);
+                      // Only show bid due badges for pre-review statuses (not under_review or later)
+                      const showBidDueBadge = ['bid_release', 'bid_received'].includes(contract.status);
                       
                       let daysInfo = '';
                       let scheduleStatus: 'upcoming' | 'active' | 'ending_soon' | 'overdue' | 'completed' = 'active';
@@ -646,7 +648,7 @@ export default function CompanyDashboard() {
                       }
                       const bidDue = contract.bidDueDate ? new Date(contract.bidDueDate) : null;
                       let bidDueInfo: { label: string; color: string } | null = null;
-                      if (isInBidPhase && bidDue) {
+                      if (showBidDueBadge && bidDue) {
                         const daysUntilDue = differenceInDays(bidDue, now);
                         if (daysUntilDue < 0) {
                           bidDueInfo = { label: `Overdue ${Math.abs(daysUntilDue)} days`, color: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' };
