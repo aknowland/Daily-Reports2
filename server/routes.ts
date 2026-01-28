@@ -1271,6 +1271,34 @@ export async function registerRoutes(
     }
   });
 
+  // ========== PROJECT LINKED PROPOSAL ==========
+  
+  // Get the proposal linked to this project (if any)
+  app.get("/api/projects/:id/linked-proposal", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const project = await storage.getProject(req.params.id);
+      
+      if (!project) {
+        return res.status(404).json({ message: "Project not found" });
+      }
+      
+      const profile = await storage.getUserProfile(userId);
+      const isMember = project.companyId && await storage.isUserMemberOfCompany(project.companyId, userId);
+      const isSysAdmin = isEffectiveSystemAdmin(profile);
+      
+      if (!isMember && !isSysAdmin) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      const proposal = await storage.getProposalByProjectId(req.params.id);
+      res.json(proposal || null);
+    } catch (error) {
+      console.error("Error fetching linked proposal:", error);
+      res.status(500).json({ message: "Failed to fetch linked proposal" });
+    }
+  });
+
   // ========== PROJECT BILLING RATES (Company → Client) ==========
   
   // Get project billing rates

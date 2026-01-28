@@ -297,6 +297,7 @@ export interface IStorage {
   // Proposals
   getProposals(companyId: string): Promise<ProposalWithDetails[]>;
   getProposal(id: string): Promise<ProposalWithDetails | undefined>;
+  getProposalByProjectId(projectId: string): Promise<ProposalWithDetails | undefined>;
   createProposal(data: InsertProposal): Promise<Proposal>;
   updateProposal(id: string, data: Partial<InsertProposal>): Promise<Proposal | undefined>;
   deleteProposal(id: string): Promise<boolean>;
@@ -2028,6 +2029,35 @@ export class DatabaseStorage implements IStorage {
 
   async getProposal(id: string): Promise<ProposalWithDetails | undefined> {
     const [proposal] = await db.select().from(proposals).where(eq(proposals.id, id));
+    if (!proposal) return undefined;
+    
+    let client: Client | undefined;
+    if (proposal.clientId) {
+      const [c] = await db.select().from(clients).where(eq(clients.id, proposal.clientId));
+      client = c;
+    }
+    
+    // Get options with inspectors
+    const optionsList = await db
+      .select()
+      .from(proposalOptions)
+      .where(eq(proposalOptions.proposalId, proposal.id))
+      .orderBy(proposalOptions.optionNumber);
+    
+    const optionsWithInspectors = [];
+    for (const option of optionsList) {
+      const inspectors = await db
+        .select()
+        .from(proposalOptionInspectors)
+        .where(eq(proposalOptionInspectors.optionId, option.id));
+      optionsWithInspectors.push({ ...option, inspectors });
+    }
+    
+    return { ...proposal, options: optionsWithInspectors, client };
+  }
+
+  async getProposalByProjectId(projectId: string): Promise<ProposalWithDetails | undefined> {
+    const [proposal] = await db.select().from(proposals).where(eq(proposals.projectId, projectId));
     if (!proposal) return undefined;
     
     let client: Client | undefined;
