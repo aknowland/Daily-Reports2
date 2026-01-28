@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { Home, FileText, Plus, Settings } from "lucide-react";
+import { Home, FileText, Plus, User } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface NavItem {
@@ -19,7 +19,7 @@ export function MobileNav({ isAdmin }: MobileNavProps) {
     { href: "/", label: "Home", icon: <Home className="w-5 h-5" /> },
     { href: "/reports/new", label: "New Report", icon: <Plus className="w-5 h-5" /> },
     { href: "/reports", label: "Reports", icon: <FileText className="w-5 h-5" /> },
-    { href: "/settings", label: "Settings", icon: <Settings className="w-5 h-5" /> },
+    { href: "/profile", label: "Profile", icon: <User className="w-5 h-5" /> },
   ];
 
   const adminItems: NavItem[] = [
