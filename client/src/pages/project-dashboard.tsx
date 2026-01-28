@@ -65,6 +65,7 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { DailyReportDialog } from "@/components/reports/daily-report-dialog";
 
 type ProjectDashboardData = {
   project: {
@@ -359,6 +360,7 @@ export default function ProjectDashboardPage() {
   // Inspector action dialogs
   const [timesheetDialogOpen, setTimesheetDialogOpen] = useState(false);
   const [invoiceDialogOpen, setInvoiceDialogOpen] = useState(false);
+  const [dailyReportDialogOpen, setDailyReportDialogOpen] = useState(false);
   const [selectedMonth, setSelectedMonth] = useState(String(new Date().getMonth() + 1));
   const [selectedYear, setSelectedYear] = useState(String(new Date().getFullYear()));
   const [isGenerating, setIsGenerating] = useState(false);
@@ -1040,13 +1042,11 @@ export default function ProjectDashboardPage() {
           <div className="flex items-center gap-2">
             <Button
               size="sm"
-              asChild
+              onClick={() => setDailyReportDialogOpen(true)}
               data-testid="button-new-daily-report-header"
             >
-              <Link href={`/reports/new?projectId=${id}`}>
-                <Plus className="w-4 h-4 mr-2" />
-                New Daily Report
-              </Link>
+              <Plus className="w-4 h-4 mr-2" />
+              New Daily Report
             </Button>
             {isEffectiveCompanyAdmin && (
               <Button
@@ -1357,13 +1357,11 @@ export default function ProjectDashboardPage() {
                 <Button 
                   variant="outline" 
                   className="w-full justify-start"
-                  asChild
+                  onClick={() => setDailyReportDialogOpen(true)}
                   data-testid="button-new-daily-report"
                 >
-                  <Link href={`/reports/new?projectId=${id}`}>
-                    <Plus className="w-4 h-4 mr-2" />
-                    New Daily Report
-                  </Link>
+                  <Plus className="w-4 h-4 mr-2" />
+                  New Daily Report
                 </Button>
                 <Button 
                   variant="outline" 
@@ -2407,6 +2405,16 @@ export default function ProjectDashboardPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Daily Report Dialog */}
+      <DailyReportDialog
+        open={dailyReportDialogOpen}
+        onOpenChange={setDailyReportDialogOpen}
+        project={project}
+        onSuccess={() => {
+          queryClient.invalidateQueries({ queryKey: ["/api/projects", id, "dashboard"] });
+        }}
+      />
     </PageLayout>
   );
 }
