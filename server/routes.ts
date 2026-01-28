@@ -4863,6 +4863,9 @@ export async function registerRoutes(
       let daysOverdue: number | null = null;
       let scheduleStatus: 'not_started' | 'on_track' | 'warning' | 'overdue' | 'complete' = 'not_started';
       
+      // Contracts in bid phase should never show as overdue
+      const isInBidPhase = ['bid_release', 'bid_received', 'under_review'].includes(contract.status);
+      
       if (contract.startDate && contract.substantialCompletionDate) {
         const startDate = new Date(contract.startDate);
         const endDate = new Date(contract.substantialCompletionDate);
@@ -4876,9 +4879,15 @@ export async function registerRoutes(
         } else if (now > endDate) {
           scheduleProgress = 100;
           daysOverdue = Math.ceil((now.getTime() - endDate.getTime()) / (1000 * 60 * 60 * 24));
-          scheduleStatus = contract.status === 'substantial_completion' || contract.status === 'final_closeout' 
-            ? 'complete' 
-            : 'overdue';
+          // Never show overdue for bid phase contracts (including under_review)
+          if (contract.status === 'substantial_completion' || contract.status === 'final_closeout') {
+            scheduleStatus = 'complete';
+          } else if (isInBidPhase) {
+            scheduleStatus = 'not_started';
+            daysOverdue = null;  // Clear overdue days for bid phase
+          } else {
+            scheduleStatus = 'overdue';
+          }
         } else {
           scheduleProgress = Math.min(100, Math.max(0, (elapsed / totalDuration) * 100));
           daysRemaining = Math.ceil((endDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));

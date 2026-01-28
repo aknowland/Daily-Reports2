@@ -620,6 +620,9 @@ export default function CompanyDashboard() {
                       const start = contract.schedule.startDate ? new Date(contract.schedule.startDate) : null;
                       const end = contract.schedule.endDate ? new Date(contract.schedule.endDate) : null;
                       
+                      // Check if contract is in bid phase (should never show as overdue)
+                      const isInBidPhase = ['bid_release', 'bid_received', 'under_review'].includes(contract.status);
+                      
                       let daysInfo = '';
                       let scheduleStatus: 'upcoming' | 'active' | 'ending_soon' | 'overdue' | 'completed' = 'active';
                       if (start && end) {
@@ -627,17 +630,20 @@ export default function CompanyDashboard() {
                           daysInfo = `Starts in ${differenceInDays(start, now)} days`;
                           scheduleStatus = 'upcoming';
                         } else if (now > end) {
-                          daysInfo = `Ended ${differenceInDays(now, end)} days ago`;
-                          scheduleStatus = 'overdue';
+                          // Don't show overdue for contracts in bid phase (including under_review)
+                          if (isInBidPhase) {
+                            daysInfo = '';
+                            scheduleStatus = 'upcoming';
+                          } else {
+                            daysInfo = `Ended ${differenceInDays(now, end)} days ago`;
+                            scheduleStatus = 'overdue';
+                          }
                         } else {
                           const remaining = differenceInDays(end, now);
                           daysInfo = `${remaining} days remaining`;
                           scheduleStatus = remaining <= 7 ? 'ending_soon' : 'active';
                         }
                       }
-                      
-                      // Bid due date calculation
-                      const isInBidPhase = ['bid_release', 'bid_received', 'under_review'].includes(contract.status);
                       const bidDue = contract.bidDueDate ? new Date(contract.bidDueDate) : null;
                       let bidDueInfo: { label: string; color: string } | null = null;
                       if (isInBidPhase && bidDue) {
