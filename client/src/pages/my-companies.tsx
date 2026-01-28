@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { useLocation } from "wouter";
 import { PageLayout } from "@/components/layout/page-layout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -33,6 +34,8 @@ import {
 import { Link } from "wouter";
 import type { Company, CompanyMember, JoinRequest } from "@shared/schema";
 
+const KNOWN_COMPANY_NAME = "Knowland Construction Services";
+
 interface CompanyWithMembership extends CompanyMember {
   company?: Company;
 }
@@ -52,6 +55,7 @@ interface JoinRequestWithUser extends JoinRequest {
 
 export default function MyCompaniesPage() {
   const { toast } = useToast();
+  const [, setLocation] = useLocation();
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [showJoinDialog, setShowJoinDialog] = useState(false);
   const [showManageRequestsDialog, setShowManageRequestsDialog] = useState(false);
@@ -114,16 +118,27 @@ export default function MyCompaniesPage() {
       
       return res.json();
     },
-    onSuccess: () => {
+    onSuccess: (data: { id: string; name: string }) => {
       queryClient.invalidateQueries({ queryKey: ["/api/my-companies"] });
       queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
       queryClient.invalidateQueries({ queryKey: ["/api/auth/profile"] });
       setShowCreateDialog(false);
+      
+      const createdName = data.name || newCompanyName;
       setNewCompanyName("");
-      toast({
-        title: "Company Created",
-        description: "Your company has been created successfully.",
-      });
+      
+      if (createdName !== KNOWN_COMPANY_NAME) {
+        toast({
+          title: "Company Created",
+          description: "Redirecting to subscription plans...",
+        });
+        setLocation(`/pricing?companyId=${data.id}&companyName=${encodeURIComponent(createdName)}`);
+      } else {
+        toast({
+          title: "Company Created",
+          description: "Your company has been created successfully.",
+        });
+      }
     },
     onError: (error: any) => {
       if (error.status === 409 && error.existingCompany) {

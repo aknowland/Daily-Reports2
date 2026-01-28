@@ -234,19 +234,8 @@ export default function DashboardPage() {
         isCompanyAdmin={isEffectiveCompanyAdmin}
       />
 
-      <NewUserSetup
-        open={showNewUserSetup}
-        onComplete={() => {
-          setShowNewUserSetup(false);
-          // Show onboarding after setup if not seen
-          if (profile && profile.hasSeenOnboarding === false) {
-            setShowOnboarding(true);
-          }
-        }}
-      />
-
       <OnboardingModal 
-        open={showOnboarding && !showNewUserSetup} 
+        open={showOnboarding} 
         onComplete={() => setShowOnboarding(false)} 
       />
     </PageLayout>

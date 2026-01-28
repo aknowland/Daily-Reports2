@@ -12848,6 +12848,93 @@ Transcript: "${transcript}"`;
     }
   });
 
+  // Create checkout session from pricing page (for new company subscriptions)
+  app.post("/api/stripe/checkout", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const { priceId, companyId } = req.body;
+      
+      if (!priceId) {
+        return res.status(400).json({ message: "Price ID is required" });
+      }
+      
+      const { stripeService } = await import("./stripeService");
+      const { getUncachableStripeClient } = await import("./stripeClient");
+      const profile = await storage.getUserProfile(userId);
+      
+      let resolvedPriceId = priceId;
+      if (priceId.startsWith('price_') && !priceId.startsWith('price_1')) {
+        const stripe = await getUncachableStripeClient();
+        const prices = await stripe.prices.list({ lookup_keys: [priceId], limit: 1 });
+        if (prices.data.length > 0) {
+          resolvedPriceId = prices.data[0].id;
+        } else {
+          return res.status(400).json({ message: `Price with lookup key '${priceId}' not found. Please run the seed script to create Stripe products.` });
+        }
+      }
+      
+      let customerId: string | undefined;
+      let metadata: Record<string, string> = {};
+      
+      if (companyId) {
+        const company = await storage.getCompany(companyId);
+        if (!company) {
+          return res.status(404).json({ message: "Company not found" });
+        }
+        
+        const isCompAdmin = await isEffectiveCompanyAdmin(userId, companyId, profile);
+        if (!isCompAdmin && !isEffectiveSystemAdmin(profile)) {
+          return res.status(403).json({ message: "Only company admins can manage company subscriptions" });
+        }
+        
+        customerId = company.stripeCustomerId || undefined;
+        if (!customerId) {
+          const customer = await stripeService.createCustomer(
+            company.email || profile?.email || '',
+            companyId,
+            company.name
+          );
+          await storage.updateCompany(companyId, { stripeCustomerId: customer.id });
+          customerId = customer.id;
+        }
+        metadata = { companyId, type: 'company' };
+      } else {
+        customerId = profile?.stripeCustomerId || undefined;
+        if (!customerId) {
+          const customer = await stripeService.createCustomer(
+            profile?.email || '',
+            userId,
+            `${profile?.firstName || ''} ${profile?.lastName || ''}`.trim() || 'User'
+          );
+          await storage.updateUserStripeInfo(userId, { stripeCustomerId: customer.id });
+          customerId = customer.id;
+        }
+        metadata = { userId, type: 'user' };
+      }
+      
+      const baseUrl = `${req.protocol}://${req.get('host')}`;
+      const successUrl = companyId 
+        ? `${baseUrl}/company/dashboard?subscription=success`
+        : `${baseUrl}/dashboard?subscription=success`;
+      const cancelUrl = companyId 
+        ? `${baseUrl}/pricing?companyId=${companyId}`
+        : `${baseUrl}/pricing`;
+      
+      const session = await stripeService.createCheckoutSession(
+        customerId,
+        resolvedPriceId,
+        successUrl,
+        cancelUrl,
+        metadata
+      );
+      
+      res.json({ url: session.url });
+    } catch (error: any) {
+      console.error("Error creating checkout session:", error);
+      res.status(500).json({ message: error.message || "Failed to create checkout session" });
+    }
+  });
+
   // Create checkout session for company subscription
   app.post("/api/subscription/company-checkout", isAuthenticated, async (req: any, res) => {
     try {
