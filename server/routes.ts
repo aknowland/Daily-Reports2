@@ -1,7 +1,7 @@
 import type { Express, RequestHandler } from "express";
 import { createServer, type Server } from "http";
-import { storage, db } from "./storage";
-import { sql } from "drizzle-orm";
+import { storage, db, projectComments, projectMembers, users } from "./storage";
+import { sql, eq, and, desc } from "drizzle-orm";
 import { setupAuth, isAuthenticated, registerAuthRoutes } from "./replit_integrations/auth";
 import { insertProjectSchema, insertDailyReportSchema, updateUserProfileSchema, WorkActivityRow, VisitorRow, insertContractSchema, insertClientSchema } from "@shared/schema";
 import { ObjectStorageService, registerObjectStorageRoutes } from "./replit_integrations/object_storage";
@@ -1434,6 +1434,263 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error updating project base hours:", error);
       res.status(500).json({ message: "Failed to update project base hours" });
+    }
+  });
+
+  // ========== PROJECT COMMENTS ==========
+  
+  // Get all comments for a project
+  app.get("/api/projects/:id/comments", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub as string;
+      const projectId = req.params.id;
+      
+      if (!userId) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+      
+      // Check user can access this project
+      const project = await storage.getProject(projectId);
+      if (!project) {
+        return res.status(404).json({ message: "Project not found" });
+      }
+      
+      // Check access: user must be company member or project member
+      const companyMember = await storage.getCompanyMember(project.companyId, userId);
+      const projectMember = await db.query.projectMembers.findFirst({
+        where: and(
+          eq(projectMembers.projectId, projectId),
+          eq(projectMembers.userId, userId)
+        )
+      });
+      
+      if (!companyMember && !projectMember) {
+        return res.status(403).json({ message: "You don't have access to this project" });
+      }
+      
+      const comments = await db.query.projectComments.findMany({
+        where: eq(projectComments.projectId, projectId),
+        orderBy: [desc(projectComments.createdAt)],
+      });
+      
+      // Get author details for each comment
+      const commentsWithAuthors = await Promise.all(
+        comments.map(async (comment) => {
+          const author = await db.query.users.findFirst({
+            where: eq(users.id, comment.authorId),
+            columns: { id: true, firstName: true, lastName: true, profileImageUrl: true }
+          });
+          return {
+            ...comment,
+            author: author || { id: comment.authorId, firstName: null, lastName: null, profileImageUrl: null }
+          };
+        })
+      );
+      
+      res.json(commentsWithAuthors);
+    } catch (error) {
+      console.error("Error fetching project comments:", error);
+      res.status(500).json({ message: "Failed to fetch comments" });
+    }
+  });
+  
+  // Schema for comment creation request body
+  const createCommentSchema = z.object({
+    content: z.string().transform(s => s.trim()).pipe(z.string().min(1, "Comment content is required").max(10000, "Comment is too long")),
+    mentions: z.array(z.string()).optional().default([]),
+  });
+  
+  // Add a comment to a project
+  app.post("/api/projects/:id/comments", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub as string;
+      const projectId = req.params.id;
+      
+      if (!userId) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+      
+      // Validate request body with Zod
+      const validationResult = createCommentSchema.safeParse(req.body);
+      if (!validationResult.success) {
+        return res.status(400).json({ 
+          message: "Invalid request body", 
+          errors: validationResult.error.flatten().fieldErrors 
+        });
+      }
+      
+      const { content, mentions } = validationResult.data;
+      
+      // Check user can access this project
+      const project = await storage.getProject(projectId);
+      if (!project) {
+        return res.status(404).json({ message: "Project not found" });
+      }
+      
+      // Ensure project has a company association
+      if (!project.companyId) {
+        return res.status(400).json({ message: "Project must be associated with a company to add comments" });
+      }
+      
+      // Check access: user must be company member or project member
+      const companyMember = await storage.getCompanyMember(project.companyId, userId);
+      const projectMember = await db.query.projectMembers.findFirst({
+        where: and(
+          eq(projectMembers.projectId, projectId),
+          eq(projectMembers.userId, userId)
+        )
+      });
+      
+      if (!companyMember && !projectMember) {
+        return res.status(403).json({ message: "You don't have access to this project" });
+      }
+      
+      // Create the comment
+      const [newComment] = await db.insert(projectComments).values({
+        projectId: projectId,
+        companyId: project.companyId,
+        authorId: userId,
+        content: content, // Already trimmed by Zod schema
+        mentions: mentions,
+      }).returning();
+      
+      // Get author details
+      const author = await db.query.users.findFirst({
+        where: eq(users.id, userId),
+        columns: { id: true, firstName: true, lastName: true, profileImageUrl: true }
+      });
+      
+      res.status(201).json({
+        ...newComment,
+        author: author || { id: userId, firstName: null, lastName: null, profileImageUrl: null }
+      });
+    } catch (error) {
+      console.error("Error creating project comment:", error);
+      res.status(500).json({ message: "Failed to create comment" });
+    }
+  });
+  
+  // Delete a comment (only author or admin can delete)
+  app.delete("/api/projects/:id/comments/:commentId", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub as string;
+      const { id: projectId, commentId } = req.params;
+      
+      if (!userId) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+      
+      // Check project exists
+      const project = await storage.getProject(projectId);
+      if (!project) {
+        return res.status(404).json({ message: "Project not found" });
+      }
+      
+      // Check comment exists
+      const comment = await db.query.projectComments.findFirst({
+        where: eq(projectComments.id, commentId)
+      });
+      
+      if (!comment) {
+        return res.status(404).json({ message: "Comment not found" });
+      }
+      
+      // Check if user is author or admin (roles: inspector, admin, owner, system_owner)
+      const companyMember = await storage.getCompanyMember(project.companyId, userId);
+      const isAdmin = companyMember?.role === "admin" || companyMember?.role === "owner" || companyMember?.role === "system_owner";
+      const isAuthor = comment.authorId === userId;
+      
+      if (!isAuthor && !isAdmin) {
+        return res.status(403).json({ message: "You can only delete your own comments" });
+      }
+      
+      await db.delete(projectComments).where(eq(projectComments.id, commentId));
+      
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting project comment:", error);
+      res.status(500).json({ message: "Failed to delete comment" });
+    }
+  });
+  
+  // Get team members for @mention suggestions
+  app.get("/api/projects/:id/team-members", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub as string;
+      const projectId = req.params.id;
+      
+      if (!userId) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+      
+      // Check project exists and user has access
+      const project = await storage.getProject(projectId);
+      if (!project) {
+        return res.status(404).json({ message: "Project not found" });
+      }
+      
+      const companyMember = await storage.getCompanyMember(project.companyId, userId);
+      const projectMember = await db.query.projectMembers.findFirst({
+        where: and(
+          eq(projectMembers.projectId, projectId),
+          eq(projectMembers.userId, userId)
+        )
+      });
+      
+      if (!companyMember && !projectMember) {
+        return res.status(403).json({ message: "You don't have access to this project" });
+      }
+      
+      // Get all project members
+      const members = await db.query.projectMembers.findMany({
+        where: eq(projectMembers.projectId, projectId),
+      });
+      
+      // Get user details for each member
+      const teamMembers = await Promise.all(
+        members.map(async (member) => {
+          const user = await db.query.users.findFirst({
+            where: eq(users.id, member.userId),
+            columns: { id: true, firstName: true, lastName: true, profileImageUrl: true }
+          });
+          const cm = await storage.getCompanyMember(project.companyId, member.userId);
+          return {
+            id: member.userId,
+            firstName: user?.firstName || null,
+            lastName: user?.lastName || null,
+            profileImageUrl: user?.profileImageUrl || null,
+            role: cm?.role || 'inspector'
+          };
+        })
+      );
+      
+      // Also get company admins who aren't project members (roles: admin, owner, system_owner)
+      const allCompanyMembers = await storage.getCompanyMembers(project.companyId);
+      const adminMembers = allCompanyMembers.filter(
+        cm => (cm.role === 'admin' || cm.role === 'owner' || cm.role === 'system_owner') && 
+              !members.some(m => m.userId === cm.userId)
+      );
+      
+      const adminUsers = await Promise.all(
+        adminMembers.map(async (admin) => {
+          const user = await db.query.users.findFirst({
+            where: eq(users.id, admin.userId),
+            columns: { id: true, firstName: true, lastName: true, profileImageUrl: true }
+          });
+          return {
+            id: admin.userId,
+            firstName: user?.firstName || null,
+            lastName: user?.lastName || null,
+            profileImageUrl: user?.profileImageUrl || null,
+            role: admin.role
+          };
+        })
+      );
+      
+      res.json([...teamMembers, ...adminUsers]);
+    } catch (error) {
+      console.error("Error fetching team members:", error);
+      res.status(500).json({ message: "Failed to fetch team members" });
     }
   });
 
