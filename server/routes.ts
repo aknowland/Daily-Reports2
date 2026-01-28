@@ -4799,7 +4799,13 @@ export async function registerRoutes(
       }
       
       // Total used hours = daily reports + manual entries + base hours
-      const totalUsedHours = budgetSummary.totalHours + contractManualHours.total + contractBaseHours.total;
+      // Base hours can come from two sources:
+      // 1. projectBaseHours entries (explicit per-inspector hours) - preferred when available
+      // 2. baseBudgetSpent / average billing rate (calculated from dollar amount) - used as fallback
+      // To avoid double-counting, only use baseBudgetHours when there are no projectBaseHours entries
+      const hasExplicitBaseHours = contractBaseHours.total > 0;
+      const baseBudgetHours = (!hasExplicitBaseHours && baseBudgetBreakdown?.baseHours) ? baseBudgetBreakdown.baseHours : 0;
+      const totalUsedHours = budgetSummary.totalHours + contractManualHours.total + contractBaseHours.total + baseBudgetHours;
       const remainingHours = Math.max(0, totalBudgetedHours - totalUsedHours);
       
       // === NEW DASHBOARD FEATURES ===
@@ -5086,6 +5092,15 @@ export async function registerRoutes(
                 overtime: contractBaseHours.overtime,
                 total: contractBaseHours.total,
               },
+              // Only include fromBaseBudget when it's actually being used (no explicit base hours entries)
+              // and when we have a valid calculation (averageRate > 0)
+              ...(baseBudgetHours > 0 && baseBudgetBreakdown && baseBudgetBreakdown.averageRate > 0 ? {
+                fromBaseBudget: {
+                  total: baseBudgetHours,
+                  averageRate: baseBudgetBreakdown.averageRate,
+                  baseBudgetAmount: baseBudgetBreakdown.baseBudget,
+                },
+              } : {}),
             },
           },
           scheduled: {
