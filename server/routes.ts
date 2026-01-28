@@ -349,13 +349,27 @@ export async function registerRoutes(
         return res.status(403).json({ message: "Access denied" });
       }
       
-      if (!fs.existsSync(filePath)) {
-        return next();
-      }
+      // Check if file exists locally; if not, we'll try object storage later for migrated files
+      const fileExistsLocally = fs.existsSync(filePath);
 
       // System admins can access all files (when in admin mode)
       if (isEffectiveSystemAdmin(profile)) {
-        return res.sendFile(filePath);
+        if (fileExistsLocally) {
+          return res.sendFile(filePath);
+        }
+        // Try object storage for migrated files
+        const pathParts = req.path.split('/');
+        if (pathParts[1] === 'uploads') {
+          const filename = pathParts[2];
+          try {
+            const objectPath = `/objects/photos/${filename}`;
+            const objectFile = await objectStorage.getObjectEntityFile(objectPath);
+            return await objectStorage.downloadObject(objectFile, res);
+          } catch (err) {
+            return res.status(404).json({ message: "File not found" });
+          }
+        }
+        return res.status(404).json({ message: "File not found" });
       }
 
       // Helper to check if user can access a report's files
@@ -384,7 +398,19 @@ export async function registerRoutes(
         if (photo) {
           const report = await storage.getReport(photo.reportId);
           if (report && await canAccessReportFile(report)) {
-            return res.sendFile(filePath);
+            // Try local file first, then object storage for migrated files
+            if (fileExistsLocally) {
+              return res.sendFile(filePath);
+            }
+            // Try object storage for migrated files
+            const objectPath = `/objects/photos/${filename}`;
+            try {
+              const objectFile = await objectStorage.getObjectEntityFile(objectPath);
+              return await objectStorage.downloadObject(objectFile, res);
+            } catch (err) {
+              console.error('Photo not found in object storage:', objectPath, err);
+              return res.status(404).json({ message: "Photo file not found" });
+            }
           }
         }
       } else if (pathParts[1] === 'signatures' || pathParts[1] === 'reports') {
