@@ -1709,8 +1709,14 @@ export default function ProjectDashboardPage() {
                             />
                           ) : (
                             <>
-                              {(comment.author.firstName?.[0] || '').toUpperCase()}
-                              {(comment.author.lastName?.[0] || '').toUpperCase()}
+                              {comment.author.firstName || comment.author.lastName ? (
+                                <>
+                                  {(comment.author.firstName?.[0] || '').toUpperCase()}
+                                  {(comment.author.lastName?.[0] || '').toUpperCase()}
+                                </>
+                              ) : (
+                                (comment.author.email?.[0] || '?').toUpperCase()
+                              )}
                             </>
                           )}
                         </div>
