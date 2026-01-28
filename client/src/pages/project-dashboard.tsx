@@ -263,6 +263,7 @@ type ProjectComment = {
     id: string;
     firstName: string | null;
     lastName: string | null;
+    email: string | null;
     profileImageUrl: string | null;
   };
 };
@@ -1718,7 +1719,7 @@ export default function ProjectDashboardPage() {
                         <div className="min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
                             <span className="font-medium text-sm">
-                              {[comment.author.firstName, comment.author.lastName].filter(Boolean).join(' ') || 'Unknown User'}
+                              {[comment.author.firstName, comment.author.lastName].filter(Boolean).join(' ') || comment.author.email?.split('@')[0] || 'Unknown User'}
                             </span>
                             <span className="text-xs text-muted-foreground">
                               {format(new Date(comment.createdAt), 'MMM d, yyyy h:mm a')}
