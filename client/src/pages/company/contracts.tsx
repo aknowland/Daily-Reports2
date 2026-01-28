@@ -72,7 +72,8 @@ import type { ContractWithProjects, Project, Client, ContractAttachment, Proposa
 import { ProposalDialog } from "@/components/proposal-dialog";
 import { ClientSelect } from "@/components/client-select";
 import { PurchaseOrderSelect } from "@/components/purchase-order-select";
-import { format } from "date-fns";
+import { format, differenceInDays } from "date-fns";
+import { Progress } from "@/components/ui/progress";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { calculateTotalHours, calculateWorkingDays, formatHoursDisplay, getHolidaysInRange } from "@/lib/working-days-calculator";
@@ -825,6 +826,64 @@ export default function ContractsPage() {
     return ['bid_release', 'bid_received', 'under_review'].includes(status);
   };
 
+  // Calculate schedule progress for a contract
+  const getScheduleProgress = (contract: ContractWithProjects) => {
+    const now = new Date();
+    const isComplete = contract.status === 'substantial_completion' || contract.status === 'final_closeout';
+    
+    if (isComplete) {
+      return { progress: 100, status: 'complete' as const, daysInfo: 'Completed' };
+    }
+    
+    if (isInBidPhase(contract.status)) {
+      if (contract.startDate) {
+        const startDate = new Date(contract.startDate);
+        const daysToStart = differenceInDays(startDate, now);
+        return { progress: 0, status: 'upcoming' as const, daysInfo: daysToStart > 0 ? `Starts in ${daysToStart} days` : null };
+      }
+      return { progress: 0, status: 'upcoming' as const, daysInfo: null };
+    }
+    
+    if (contract.startDate && contract.substantialCompletionDate) {
+      const startDate = new Date(contract.startDate);
+      const endDate = new Date(contract.substantialCompletionDate);
+      const totalDuration = endDate.getTime() - startDate.getTime();
+      const elapsed = now.getTime() - startDate.getTime();
+      
+      if (totalDuration <= 0) {
+        return { progress: 0, status: 'not_started' as const, daysInfo: null };
+      } else if (now < startDate) {
+        const daysToStart = differenceInDays(startDate, now);
+        return { progress: 0, status: 'upcoming' as const, daysInfo: `Starts in ${daysToStart} days` };
+      } else if (now > endDate) {
+        const daysOverdue = differenceInDays(now, endDate);
+        return { progress: 100, status: 'overdue' as const, daysInfo: `Ended ${daysOverdue} days ago` };
+      } else {
+        const progress = Math.min(100, Math.max(0, (elapsed / totalDuration) * 100));
+        const daysRemaining = differenceInDays(endDate, now);
+        return { 
+          progress, 
+          status: progress >= 80 ? 'warning' as const : 'on_track' as const, 
+          daysInfo: `${daysRemaining} days remaining` 
+        };
+      }
+    }
+    
+    return { progress: 0, status: 'not_started' as const, daysInfo: null };
+  };
+
+  // Get schedule status color
+  const getScheduleStatusColor = (status: string) => {
+    switch (status) {
+      case 'complete': return 'text-green-600 dark:text-green-400';
+      case 'on_track': return 'text-foreground';
+      case 'warning': return 'text-orange-600 dark:text-orange-400';
+      case 'overdue': return 'text-red-600 dark:text-red-400';
+      case 'upcoming': return 'text-blue-600 dark:text-blue-400';
+      default: return 'text-muted-foreground';
+    }
+  };
+
   // Status priority for sorting (lower = shows first)
   const getStatusPriority = (status: string): number => {
     const priorities: Record<string, number> = {
@@ -861,10 +920,12 @@ export default function ContractsPage() {
       );
     }
     
-    // Sort: bid-phase contracts by days until due (ascending), then others by status priority
+    // Sort: bid-phase by due date, in_execution by progress descending, others by status priority
     return result.sort((a, b) => {
       const aInBidPhase = isInBidPhase(a.status);
       const bInBidPhase = isInBidPhase(b.status);
+      const aInExecution = a.status === 'in_execution';
+      const bInExecution = b.status === 'in_execution';
       
       // Both in bid phase: sort by days until due (soonest first)
       if (aInBidPhase && bInBidPhase) {
@@ -884,6 +945,13 @@ export default function ContractsPage() {
       // Bid phase contracts come before non-bid phase
       if (aInBidPhase && !bInBidPhase) return -1;
       if (!aInBidPhase && bInBidPhase) return 1;
+      
+      // Both in execution: sort by progress descending (highest progress first)
+      if (aInExecution && bInExecution) {
+        const aProgress = getScheduleProgress(a).progress;
+        const bProgress = getScheduleProgress(b).progress;
+        return bProgress - aProgress; // Descending
+      }
       
       // Both not in bid phase: sort by status priority
       return getStatusPriority(a.status) - getStatusPriority(b.status);
@@ -1185,7 +1253,10 @@ export default function ContractsPage() {
             </Card>
           ) : (
             <div className="space-y-3">
-              {filteredContracts.map(contract => (
+              {filteredContracts.map(contract => {
+                const scheduleInfo = getScheduleProgress(contract);
+                
+                return (
                 <Card 
                   key={contract.id} 
                   className="hover-elevate cursor-pointer" 
@@ -1198,6 +1269,7 @@ export default function ContractsPage() {
                         <div className="flex items-center gap-2 mb-1 flex-wrap">
                           <h3 className="font-semibold text-lg">{contract.name}</h3>
                           {getStatusBadge(contract.status)}
+                          {/* Bid due date badge for bid-phase contracts */}
                           {isInBidPhase(contract.status) && contract.bidDueDate && (() => {
                             const urgency = getBidDueUrgency(contract.bidDueDate);
                             return urgency ? (
@@ -1210,6 +1282,16 @@ export default function ContractsPage() {
                               </Badge>
                             ) : null;
                           })()}
+                          {/* Days remaining/overdue badge for non-bid phase contracts */}
+                          {!isInBidPhase(contract.status) && scheduleInfo.daysInfo && (
+                            <Badge 
+                              variant="secondary" 
+                              className={`text-xs ${getScheduleStatusColor(scheduleInfo.status)}`}
+                              data-testid={`badge-schedule-${contract.id}`}
+                            >
+                              {scheduleInfo.daysInfo}
+                            </Badge>
+                          )}
                         </div>
                         <div className="text-sm text-muted-foreground space-y-1">
                           <div className="flex items-center gap-4 flex-wrap">
@@ -1230,6 +1312,15 @@ export default function ContractsPage() {
                               </span>
                             )}
                           </div>
+                          {/* Date range display */}
+                          {(contract.startDate || contract.substantialCompletionDate) && (
+                            <div className="flex items-center gap-1 text-xs">
+                              <Calendar className="w-3 h-3" />
+                              <span>{contract.startDate ? format(new Date(contract.startDate), "MMM d, yyyy") : "TBD"}</span>
+                              <span>→</span>
+                              <span>{contract.substantialCompletionDate ? format(new Date(contract.substantialCompletionDate), "MMM d, yyyy") : "TBD"}</span>
+                            </div>
+                          )}
                           {contract.projects && contract.projects.length > 0 && (
                             <div className="flex items-center gap-1 flex-wrap">
                               <span className="text-xs">Projects:</span>
@@ -1336,9 +1427,27 @@ export default function ContractsPage() {
                         )}
                       </div>
                     </div>
+                    
+                    {/* Schedule Progress Bar - show for non-bid phase contracts */}
+                    {!isInBidPhase(contract.status) && (contract.startDate || contract.substantialCompletionDate) && (
+                      <div className="mt-3 pt-3 border-t">
+                        <div className="flex items-center justify-between text-xs mb-1">
+                          <span className="text-muted-foreground">Schedule Progress</span>
+                          <span className={getScheduleStatusColor(scheduleInfo.status)}>
+                            {scheduleInfo.progress.toFixed(0)}%
+                          </span>
+                        </div>
+                        <Progress 
+                          value={scheduleInfo.progress} 
+                          className={`h-1.5 ${scheduleInfo.status === 'overdue' ? '[&>div]:bg-red-500' : ''}`}
+                          data-testid={`progress-schedule-${contract.id}`}
+                        />
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
-              ))}
+              );
+              })}
             </div>
           )}
         </TabsContent>
