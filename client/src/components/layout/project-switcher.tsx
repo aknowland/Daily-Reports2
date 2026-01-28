@@ -1,6 +1,6 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { FolderOpen, ChevronDown, Check } from "lucide-react";
+import { FolderOpen, ChevronDown, Check, ExternalLink } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -10,6 +10,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
+import { useLocation } from "wouter";
 import type { Project } from "@shared/schema";
 
 interface ProjectSwitcherProps {
@@ -17,6 +18,8 @@ interface ProjectSwitcherProps {
 }
 
 export function ProjectSwitcher({ activeProjectId }: ProjectSwitcherProps) {
+  const [, setLocation] = useLocation();
+  
   const { data: projects = [], isLoading } = useQuery<Project[]>({
     queryKey: ["/api/my-projects"],
   });
@@ -33,11 +36,15 @@ export function ProjectSwitcher({ activeProjectId }: ProjectSwitcherProps) {
     },
   });
 
+  const handleProjectClick = (project: Project) => {
+    switchMutation.mutate(project.id);
+    setLocation(`/project/${project.id}/dashboard`);
+  };
+
   if (isLoading) {
     return null;
   }
 
-  // Show a disabled button when there are no projects
   if (projects.length === 0) {
     return (
       <Button 
@@ -71,7 +78,7 @@ export function ProjectSwitcher({ activeProjectId }: ProjectSwitcherProps) {
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-56">
-        <DropdownMenuLabel>Switch Project</DropdownMenuLabel>
+        <DropdownMenuLabel>Go to Project</DropdownMenuLabel>
         <DropdownMenuSeparator />
         {projects.map((project) => {
           const isActive = project.id === activeProjectId;
@@ -79,20 +86,19 @@ export function ProjectSwitcher({ activeProjectId }: ProjectSwitcherProps) {
           return (
             <DropdownMenuItem
               key={project.id}
-              onClick={() => {
-                if (!isActive) {
-                  switchMutation.mutate(project.id);
-                }
-              }}
+              onClick={() => handleProjectClick(project)}
               className="cursor-pointer"
               data-testid={`dropdown-project-${project.id}`}
             >
               <div className="flex items-center justify-between w-full">
-                <div className="flex flex-col">
+                <div className="flex flex-col flex-1 min-w-0">
                   <span className="truncate font-medium">{project.name}</span>
                   <span className="text-xs text-muted-foreground">{project.projectNumber}</span>
                 </div>
-                {isActive && <Check className="w-4 h-4 text-primary shrink-0" />}
+                <div className="flex items-center gap-1 shrink-0">
+                  {isActive && <Check className="w-4 h-4 text-primary" />}
+                  <ExternalLink className="w-3 h-3 text-muted-foreground" />
+                </div>
               </div>
             </DropdownMenuItem>
           );

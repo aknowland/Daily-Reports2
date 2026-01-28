@@ -12486,6 +12486,27 @@ export async function registerRoutes(
     }
   });
 
+  // Update theme preference
+  app.patch("/api/profile/theme", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const { themePreference } = req.body;
+      
+      if (!["light", "dark"].includes(themePreference)) {
+        return res.status(400).json({ message: "themePreference must be 'light' or 'dark'" });
+      }
+      
+      const profile = await storage.createOrUpdateUserProfile({
+        userId,
+        themePreference,
+      });
+      res.json(profile);
+    } catch (error) {
+      console.error("Error updating theme preference:", error);
+      res.status(500).json({ message: "Failed to update theme preference" });
+    }
+  });
+
   // ========== VOICE TRANSCRIPTION ==========
   app.post("/api/transcribe", isAuthenticated, async (req: any, res) => {
     try {
