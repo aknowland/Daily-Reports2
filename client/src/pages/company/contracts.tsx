@@ -302,23 +302,84 @@ export default function ContractsPage() {
     return rate * hours;
   };
   
-  // Calculate total budget from contract's awarded options only (or all if none awarded yet)
-  const calculateContractTotalBudget = (contract: ContractWithProjects, awardedOnly: boolean = true): number => {
+  // Calculate total budget from contract's AWARDED options only
+  // Returns 0 if no options are awarded (budget is pending)
+  const calculateContractTotalBudget = (contract: ContractWithProjects): number => {
     if (!contract.options || contract.options.length === 0) {
       return parseFloat(contract.currentValue || contract.originalValue || "0") || 0;
     }
+    
+    // Only count awarded options - options are mutually exclusive
+    const awardedOptions = contract.options.filter(o => o.awardStatus === "awarded");
+    if (awardedOptions.length === 0) {
+      // No options awarded yet - budget is pending/TBD
+      return 0;
+    }
+    
     let total = 0;
-    for (const opt of contract.options) {
-      // If awardedOnly is true, only count options that are awarded (or all if none are awarded yet)
-      const hasAnyAwarded = contract.options.some(o => o.awardStatus === "awarded");
-      const shouldInclude = !awardedOnly || opt.awardStatus === "awarded" || !hasAnyAwarded;
-      if (shouldInclude) {
+    for (const opt of awardedOptions) {
+      for (const ins of opt.inspectors || []) {
+        total += (parseFloat(ins.rate) || 0) * (parseFloat(ins.hours) || 0);
+      }
+    }
+    return total;
+  };
+  
+  // Get budget display info for contracts with options
+  // Returns { isPending, budget, minBudget, maxBudget, optionCount }
+  const getContractBudgetInfo = (contract: ContractWithProjects): {
+    isPending: boolean;
+    budget: number;
+    minBudget: number;
+    maxBudget: number;
+    optionCount: number;
+  } => {
+    if (!contract.options || contract.options.length === 0) {
+      const budget = parseFloat(contract.currentValue || contract.originalValue || "0") || 0;
+      return { isPending: false, budget, minBudget: budget, maxBudget: budget, optionCount: 0 };
+    }
+    
+    const awardedOptions = contract.options.filter(o => o.awardStatus === "awarded");
+    // Only consider pending options (not not_awarded) for the range
+    const pendingOptions = contract.options.filter(o => o.awardStatus === "pending" || !o.awardStatus);
+    
+    if (awardedOptions.length > 0) {
+      // Has awarded options - calculate their total
+      let total = 0;
+      for (const opt of awardedOptions) {
         for (const ins of opt.inspectors || []) {
           total += (parseFloat(ins.rate) || 0) * (parseFloat(ins.hours) || 0);
         }
       }
+      return { isPending: false, budget: total, minBudget: total, maxBudget: total, optionCount: awardedOptions.length };
     }
-    return total;
+    
+    // No awarded options - check if there are pending options
+    if (pendingOptions.length === 0) {
+      // All options are not_awarded - no valid budget
+      const budget = parseFloat(contract.currentValue || contract.originalValue || "0") || 0;
+      return { isPending: false, budget, minBudget: budget, maxBudget: budget, optionCount: 0 };
+    }
+    
+    // Has pending options - show range from ONLY pending options
+    const optionTotals = pendingOptions.map(opt => {
+      let optTotal = 0;
+      for (const ins of opt.inspectors || []) {
+        optTotal += (parseFloat(ins.rate) || 0) * (parseFloat(ins.hours) || 0);
+      }
+      return optTotal;
+    });
+    
+    const minBudget = Math.min(...optionTotals);
+    const maxBudget = Math.max(...optionTotals);
+    
+    return { 
+      isPending: true, 
+      budget: 0, 
+      minBudget, 
+      maxBudget, 
+      optionCount: pendingOptions.length 
+    };
   };
   
   // Calculate budget from options by index selection (for award dialog preview)
@@ -1471,22 +1532,50 @@ export default function ContractsPage() {
                               ))}
                             </div>
                           )}
-                          {(contract.originalValue || contract.currentValue) && (
-                            <div className="flex items-center gap-4">
-                              {contract.originalValue && (
-                                <span className="flex items-center gap-1">
+                          {(() => {
+                            const budgetInfo = getContractBudgetInfo(contract);
+                            // Show budget info - either confirmed or pending range
+                            if (budgetInfo.isPending && contract.options && contract.options.length > 0) {
+                              return (
+                                <div className="flex items-center gap-2">
                                   <DollarSign className="w-3 h-3" />
-                                  Original: ${contract.originalValue}
-                                </span>
-                              )}
-                              {contract.currentValue && (
-                                <span className="flex items-center gap-1">
-                                  <DollarSign className="w-3 h-3" />
-                                  Current: ${contract.currentValue}
-                                </span>
-                              )}
-                            </div>
-                          )}
+                                  <span className="text-amber-600 dark:text-amber-400">
+                                    Pending Award: ${budgetInfo.minBudget.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                                    {budgetInfo.minBudget !== budgetInfo.maxBudget && (
+                                      <> - ${budgetInfo.maxBudget.toLocaleString('en-US', { minimumFractionDigits: 2 })}</>
+                                    )}
+                                  </span>
+                                </div>
+                              );
+                            } else if (budgetInfo.budget > 0) {
+                              return (
+                                <div className="flex items-center gap-4">
+                                  <span className="flex items-center gap-1">
+                                    <DollarSign className="w-3 h-3" />
+                                    Budget: ${budgetInfo.budget.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                                  </span>
+                                </div>
+                              );
+                            } else if (contract.originalValue || contract.currentValue) {
+                              return (
+                                <div className="flex items-center gap-4">
+                                  {contract.originalValue && (
+                                    <span className="flex items-center gap-1">
+                                      <DollarSign className="w-3 h-3" />
+                                      Original: ${contract.originalValue}
+                                    </span>
+                                  )}
+                                  {contract.currentValue && (
+                                    <span className="flex items-center gap-1">
+                                      <DollarSign className="w-3 h-3" />
+                                      Current: ${contract.currentValue}
+                                    </span>
+                                  )}
+                                </div>
+                              );
+                            }
+                            return null;
+                          })()}
                           {contract.options && contract.options.length > 0 && contract.options[0].inspectors && contract.options[0].inspectors.length > 0 && (
                             <div className="flex items-center gap-2 flex-wrap mt-1">
                               <Users className="w-3 h-3" />
@@ -1678,11 +1767,23 @@ export default function ContractsPage() {
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
-                        {contract.currentValue && (
-                          <Badge variant="outline" className="font-mono">
-                            ${parseFloat(contract.currentValue).toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                          </Badge>
-                        )}
+                        {(() => {
+                          const budgetInfo = getContractBudgetInfo(contract);
+                          if (budgetInfo.budget > 0) {
+                            return (
+                              <Badge variant="outline" className="font-mono">
+                                ${budgetInfo.budget.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                              </Badge>
+                            );
+                          } else if (contract.currentValue) {
+                            return (
+                              <Badge variant="outline" className="font-mono">
+                                ${parseFloat(contract.currentValue).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                              </Badge>
+                            );
+                          }
+                          return null;
+                        })()}
                         <Button
                           variant="ghost"
                           size="icon"
