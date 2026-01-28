@@ -1084,7 +1084,7 @@ export default function ContractsPage() {
           clientId: convertingProposal.clientId || null,
           purchaseOrderId: null,
           contractType: "time_and_materials",
-          status: isTBD ? "pending" : "awarded",
+          status: isTBD ? "under_review" : "awarded",
           originalValue: totalValue.toFixed(2),
           currentValue: totalValue.toFixed(2),
           startDate: convertingProposal.startDate ? new Date(convertingProposal.startDate) : null,
