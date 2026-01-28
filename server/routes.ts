@@ -725,16 +725,49 @@ export async function registerRoutes(
         inspectorHours[inspectorId].reportCount += 1;
       }
       
-      // Fetch inspector names
+      // Fetch IOR agreements for this project to get inspector names
+      const projectIorAgreements = await storage.getIorAgreementsByProject(req.params.id);
+      
+      // Build a map of inspector names from IOR agreements first
+      const inspectorNameMap = new Map<string, string>();
+      const iorInspectorIds = new Set<string>();
+      
+      for (const ior of projectIorAgreements) {
+        if (ior.inspectorId) {
+          iorInspectorIds.add(ior.inspectorId);
+          // Use consultant name from IOR if available, otherwise use inspector's profile name
+          if (ior.consultantName) {
+            inspectorNameMap.set(ior.inspectorId, ior.consultantName);
+          } else if (ior.inspector) {
+            const name = `${ior.inspector.firstName || ''} ${ior.inspector.lastName || ''}`.trim();
+            if (name) inspectorNameMap.set(ior.inspectorId, name);
+          }
+        }
+      }
+      
+      // Fetch user profiles for any inspectors not in IOR agreements
       const inspectorIds = Object.keys(inspectorHours).filter(id => id !== 'unknown');
-      const inspectorProfiles = await Promise.all(
-        inspectorIds.map(id => storage.getUserProfile(id))
-      );
-      const inspectorNameMap = new Map(
-        inspectorProfiles
-          .filter((p): p is NonNullable<typeof p> => p !== null && p !== undefined)
-          .map(p => [p.userId, `${p.firstName || ''} ${p.lastName || ''}`.trim() || 'Inspector'])
-      );
+      const allInspectorIds = [...new Set([...inspectorIds, ...Array.from(iorInspectorIds)])];
+      const missingProfileIds = allInspectorIds.filter(id => !inspectorNameMap.has(id));
+      
+      if (missingProfileIds.length > 0) {
+        const inspectorProfiles = await Promise.all(
+          missingProfileIds.map(id => storage.getUserProfile(id))
+        );
+        for (const p of inspectorProfiles) {
+          if (p) {
+            const name = `${p.firstName || ''} ${p.lastName || ''}`.trim() || 'Inspector';
+            inspectorNameMap.set(p.userId, name);
+          }
+        }
+      }
+      
+      // Ensure all IOR inspectors are included in inspectorHours (even with 0 hours)
+      for (const inspectorId of Array.from(iorInspectorIds)) {
+        if (!inspectorHours[inspectorId]) {
+          inspectorHours[inspectorId] = { inspectorId, regular: 0, overtime: 0, premium: 0, reportCount: 0 };
+        }
+      }
       
       // Team overview - show all inspector data for transparency
       const teamOverview = Object.values(inspectorHours)
