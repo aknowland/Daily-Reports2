@@ -149,12 +149,16 @@ type ContractFormData = {
   status: string;
   originalValue: string;
   currentValue: string;
+  budgetedHours: string;
   bidReleaseDate: string;
   bidDueDate: string;
   awardDate: string;
   startDate: string;
   substantialCompletionDate: string;
   finalCloseoutDate: string;
+  regularRate: string;
+  overtimeRate: string;
+  premiumRate: string;
   budgetTrackingMode: BudgetTrackingMode;
   notes: string;
 };
@@ -169,12 +173,16 @@ const emptyFormData: ContractFormData = {
   status: "bid_release",
   originalValue: "",
   currentValue: "",
+  budgetedHours: "",
   bidReleaseDate: "",
   bidDueDate: "",
   awardDate: "",
   startDate: "",
   substantialCompletionDate: "",
   finalCloseoutDate: "",
+  regularRate: "",
+  overtimeRate: "",
+  premiumRate: "",
   budgetTrackingMode: "daily_reports",
   notes: "",
 };
@@ -708,6 +716,7 @@ export default function ContractDashboard() {
     status: string;
     originalValue: string | null;
     currentValue: string | null;
+    budgetedHours: string | null;
     clientId: string | null;
     purchaseOrderId: string | null;
     bidReleaseDate: string | Date | null;
@@ -716,6 +725,9 @@ export default function ContractDashboard() {
     startDate: string | Date | null;
     substantialCompletionDate: string | Date | null;
     finalCloseoutDate: string | Date | null;
+    regularRate: string | null;
+    overtimeRate: string | null;
+    premiumRate: string | null;
     budgetTrackingMode: BudgetTrackingMode | null;
     notes: string | null;
     options?: Array<{
@@ -778,12 +790,16 @@ export default function ContractDashboard() {
         status: contractDetails.status || "bid_release",
         originalValue: contractDetails.originalValue || "",
         currentValue: contractDetails.currentValue || "",
+        budgetedHours: contractDetails.budgetedHours || "",
         bidReleaseDate: formatDateStr(contractDetails.bidReleaseDate),
         bidDueDate: formatDateStr(contractDetails.bidDueDate),
         awardDate: formatDateStr(contractDetails.awardDate),
         startDate: formatDateStr(contractDetails.startDate),
         substantialCompletionDate: formatDateStr(contractDetails.substantialCompletionDate),
         finalCloseoutDate: formatDateStr(contractDetails.finalCloseoutDate),
+        regularRate: contractDetails.regularRate || "",
+        overtimeRate: contractDetails.overtimeRate || "",
+        premiumRate: contractDetails.premiumRate || "",
         budgetTrackingMode: contractDetails.budgetTrackingMode || "daily_reports",
         notes: contractDetails.notes || "",
       });
@@ -2506,6 +2522,17 @@ export default function ContractDashboard() {
                   data-testid="input-edit-current-value"
                 />
               </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-budgetedHours">Budgeted Hours</Label>
+                <Input
+                  id="edit-budgetedHours"
+                  type="text"
+                  placeholder="e.g., 1000"
+                  value={editFormData.budgetedHours}
+                  onChange={(e) => setEditFormData({ ...editFormData, budgetedHours: e.target.value })}
+                  data-testid="input-edit-budgeted-hours"
+                />
+              </div>
             </div>
 
             <div className="border-t pt-4">
@@ -2569,6 +2596,45 @@ export default function ContractDashboard() {
                     value={editFormData.finalCloseoutDate}
                     onChange={(e) => setEditFormData({ ...editFormData, finalCloseoutDate: e.target.value })}
                     data-testid="input-edit-final-closeout-date"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="border-t pt-4">
+              <h4 className="font-medium mb-3">Default Billing Rates</h4>
+              <div className="grid grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="edit-regularRate">Regular Rate ($/hr)</Label>
+                  <Input
+                    id="edit-regularRate"
+                    type="text"
+                    placeholder="e.g., 125"
+                    value={editFormData.regularRate}
+                    onChange={(e) => setEditFormData({ ...editFormData, regularRate: e.target.value })}
+                    data-testid="input-edit-regular-rate"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-overtimeRate">Overtime Rate ($/hr)</Label>
+                  <Input
+                    id="edit-overtimeRate"
+                    type="text"
+                    placeholder="e.g., 187.50"
+                    value={editFormData.overtimeRate}
+                    onChange={(e) => setEditFormData({ ...editFormData, overtimeRate: e.target.value })}
+                    data-testid="input-edit-overtime-rate"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-premiumRate">Premium Rate ($/hr)</Label>
+                  <Input
+                    id="edit-premiumRate"
+                    type="text"
+                    placeholder="e.g., 250"
+                    value={editFormData.premiumRate}
+                    onChange={(e) => setEditFormData({ ...editFormData, premiumRate: e.target.value })}
+                    data-testid="input-edit-premium-rate"
                   />
                 </div>
               </div>
