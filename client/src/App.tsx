@@ -9,6 +9,7 @@ import { AdminModeProvider } from "@/hooks/use-admin-mode";
 import { ThemeProvider } from "@/hooks/use-theme";
 import { AdminRoute } from "@/components/layout/admin-route";
 import { AIChatBubble } from "@/components/chat/ai-chat-bubble";
+import { ProfileSetupPrompt } from "@/components/profile-setup-prompt";
 import { Loader2 } from "lucide-react";
 
 import NotFound from "@/pages/not-found";
@@ -119,6 +120,7 @@ function AppContent() {
         <>
           <AuthenticatedRoutes />
           <AIChatBubble />
+          <ProfileSetupPrompt />
         </>
       )}
     </Switch>
