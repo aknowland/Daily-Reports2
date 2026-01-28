@@ -795,6 +795,36 @@ export default function ContractsPage() {
     return option?.label || type;
   };
 
+  // Calculate days until bid due date and return urgency info
+  const getBidDueUrgency = (bidDueDate: Date | string | null) => {
+    if (!bidDueDate) return null;
+    
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+    const dueDate = new Date(bidDueDate);
+    dueDate.setHours(0, 0, 0, 0);
+    
+    const diffTime = dueDate.getTime() - now.getTime();
+    const daysUntil = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    
+    if (daysUntil < 0) {
+      return { days: daysUntil, label: "Overdue", color: "bg-red-600 text-white dark:bg-red-700" };
+    } else if (daysUntil <= 3) {
+      return { days: daysUntil, label: daysUntil === 0 ? "Due Today!" : daysUntil === 1 ? "Due Tomorrow!" : `Due in ${daysUntil} days!`, color: "bg-red-500 text-white dark:bg-red-600" };
+    } else if (daysUntil <= 7) {
+      return { days: daysUntil, label: `Due in ${daysUntil} days`, color: "bg-orange-500 text-white dark:bg-orange-600" };
+    } else if (daysUntil <= 14) {
+      return { days: daysUntil, label: `Due in ${daysUntil} days`, color: "bg-yellow-500 text-white dark:bg-yellow-600" };
+    } else {
+      return { days: daysUntil, label: `Due in ${daysUntil} days`, color: "bg-green-600 text-white dark:bg-green-700" };
+    }
+  };
+
+  // Check if contract is in bid phase
+  const isInBidPhase = (status: string) => {
+    return ['bid_release', 'bid_received', 'under_review'].includes(status);
+  };
+
   // Status priority for sorting (lower = shows first)
   const getStatusPriority = (status: string): number => {
     const priorities: Record<string, number> = {
@@ -831,7 +861,33 @@ export default function ContractsPage() {
       );
     }
     
-    return result.sort((a, b) => getStatusPriority(a.status) - getStatusPriority(b.status));
+    // Sort: bid-phase contracts by days until due (ascending), then others by status priority
+    return result.sort((a, b) => {
+      const aInBidPhase = isInBidPhase(a.status);
+      const bInBidPhase = isInBidPhase(b.status);
+      
+      // Both in bid phase: sort by days until due (soonest first)
+      if (aInBidPhase && bInBidPhase) {
+        const aUrgency = getBidDueUrgency(a.bidDueDate);
+        const bUrgency = getBidDueUrgency(b.bidDueDate);
+        
+        // Contracts with bid due dates come before those without
+        if (aUrgency && !bUrgency) return -1;
+        if (!aUrgency && bUrgency) return 1;
+        if (aUrgency && bUrgency) {
+          return aUrgency.days - bUrgency.days;
+        }
+        // Both have no due date, sort by status priority
+        return getStatusPriority(a.status) - getStatusPriority(b.status);
+      }
+      
+      // Bid phase contracts come before non-bid phase
+      if (aInBidPhase && !bInBidPhase) return -1;
+      if (!aInBidPhase && bInBidPhase) return 1;
+      
+      // Both not in bid phase: sort by status priority
+      return getStatusPriority(a.status) - getStatusPriority(b.status);
+    });
   })();
 
   const calendarEvents = contracts.flatMap(contract => {
@@ -1142,6 +1198,18 @@ export default function ContractsPage() {
                         <div className="flex items-center gap-2 mb-1 flex-wrap">
                           <h3 className="font-semibold text-lg">{contract.name}</h3>
                           {getStatusBadge(contract.status)}
+                          {isInBidPhase(contract.status) && contract.bidDueDate && (() => {
+                            const urgency = getBidDueUrgency(contract.bidDueDate);
+                            return urgency ? (
+                              <Badge 
+                                className={`${urgency.color} flex items-center gap-1`}
+                                data-testid={`badge-bid-due-${contract.id}`}
+                              >
+                                <Calendar className="w-3 h-3" />
+                                {urgency.label}
+                              </Badge>
+                            ) : null;
+                          })()}
                         </div>
                         <div className="text-sm text-muted-foreground space-y-1">
                           <div className="flex items-center gap-4 flex-wrap">
