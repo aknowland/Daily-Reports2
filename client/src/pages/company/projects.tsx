@@ -49,7 +49,7 @@ import {
 } from "lucide-react";
 import { Link, useSearch } from "wouter";
 import { useState, useMemo, useEffect } from "react";
-import type { Project, Contract, Client, ContractWithProjects, ContractOption, ProjectBillingRate, ContractOptionInspector } from "@shared/schema";
+import type { Project, Contract, Client, ContractWithProjects, ContractOption, ProjectBillingRate, ContractOptionInspector, Proposal, ProposalWithDetails } from "@shared/schema";
 import { ClientSelect } from "@/components/client-select";
 import { Switch } from "@/components/ui/switch";
 import { InspectorSelector } from "@/components/inspector-selector";
@@ -99,6 +99,7 @@ export default function CompanyProjectsPage() {
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [projectToDelete, setProjectToDelete] = useState<Project | null>(null);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
+  const [linkedProposal, setLinkedProposal] = useState<ProposalWithDetails | null>(null);
   const [autoEditHandled, setAutoEditHandled] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [formData, setFormData] = useState({
@@ -385,6 +386,7 @@ export default function CompanyProjectsPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
       queryClient.invalidateQueries({ queryKey: ["/api/contracts"] });
       setEditingProject(null);
+      setLinkedProposal(null);
       setFormData({ name: "", projectNumber: "", client: "", clientId: "", address: "", distributionEmails: "", contractId: "", contractOptionId: "", startDate: "", substantialCompletionDate: "", finalCloseoutDate: "", budgetAmount: "", budgetedHours: "", baseBudget: "", budgetTrackingMode: "", inheritBillingRates: true });
       setBillingRates([{ ...emptyBillingRate }]);
       setBaseHours([]);
@@ -426,6 +428,43 @@ export default function CompanyProjectsPage() {
 
   const handleEdit = async (project: Project) => {
     const inheritRates = (project as any).inheritBillingRates !== false; // default true
+    
+    // Fetch the linked proposal to get contract linkage if project doesn't have it directly
+    let proposalContractId = "";
+    let proposal: ProposalWithDetails | null = null;
+    try {
+      const proposalResponse = await fetch(`/api/projects/${project.id}/linked-proposal`, { credentials: "include" });
+      if (proposalResponse.ok) {
+        const proposalData = await proposalResponse.json();
+        if (proposalData) {
+          proposal = proposalData;
+          // If project doesn't have contractId but proposal does, use proposal's contractId
+          if (!project.contractId && proposalData.contractId) {
+            proposalContractId = proposalData.contractId;
+          }
+        }
+      }
+    } catch (e) {
+      console.error("Failed to load linked proposal", e);
+    }
+    setLinkedProposal(proposal);
+    
+    // Use project's contractId first, fall back to proposal's contractId
+    const effectiveContractId = project.contractId || proposalContractId;
+    
+    // Derive contractOptionId: if project has a contractId (direct or from proposal) but no contractOptionId,
+    // find the first awarded option on the contract
+    let effectiveContractOptionId = (project as any).contractOptionId || "";
+    if (effectiveContractId && !effectiveContractOptionId) {
+      const linkedContract = contracts.find(c => c.id === effectiveContractId);
+      if (linkedContract?.options) {
+        const awardedOption = linkedContract.options.find(opt => opt.awardStatus === "awarded");
+        if (awardedOption) {
+          effectiveContractOptionId = awardedOption.id;
+        }
+      }
+    }
+    
     setFormData({
       name: project.name,
       projectNumber: project.projectNumber,
@@ -433,8 +472,8 @@ export default function CompanyProjectsPage() {
       clientId: (project as any).clientId || "",
       address: project.address || "",
       distributionEmails: (project.distributionEmails as string[])?.join(", ") || "",
-      contractId: project.contractId || "",
-      contractOptionId: (project as any).contractOptionId || "",
+      contractId: effectiveContractId,
+      contractOptionId: effectiveContractOptionId,
       startDate: (project as any).startDate ? new Date((project as any).startDate).toISOString().split('T')[0] : "",
       substantialCompletionDate: (project as any).substantialCompletionDate ? new Date((project as any).substantialCompletionDate).toISOString().split('T')[0] : "",
       finalCloseoutDate: (project as any).finalCloseoutDate ? new Date((project as any).finalCloseoutDate).toISOString().split('T')[0] : "",
@@ -777,6 +816,7 @@ export default function CompanyProjectsPage() {
         if (!open) {
           setShowCreateDialog(false);
           setEditingProject(null);
+          setLinkedProposal(null);
           setFormData({ name: "", projectNumber: "", client: "", clientId: "", address: "", distributionEmails: "", contractId: "", contractOptionId: "", startDate: "", substantialCompletionDate: "", finalCloseoutDate: "", budgetAmount: "", budgetedHours: "", baseBudget: "", budgetTrackingMode: "", inheritBillingRates: true });
           setBillingRates([{ ...emptyBillingRate }]);
           setBaseHours([]);
@@ -878,6 +918,11 @@ export default function CompanyProjectsPage() {
               <p className="text-xs text-muted-foreground">
                 Link this project to a contract for billing rates
               </p>
+              {linkedProposal && formData.contractId && !editingProject?.contractId && (
+                <p className="text-xs text-blue-600 dark:text-blue-400">
+                  Contract linked via Proposal #{linkedProposal.proposalNumber}
+                </p>
+              )}
             </div>
             {formData.contractId && awardedOptions.length > 0 && (
               <div className="space-y-2">
@@ -901,38 +946,76 @@ export default function CompanyProjectsPage() {
                 <p className="text-xs text-muted-foreground">
                   Link to a specific awarded option for rate and budget tracking
                 </p>
+                {linkedProposal && formData.contractOptionId && !(editingProject as any)?.contractOptionId && (
+                  <p className="text-xs text-blue-600 dark:text-blue-400">
+                    Option auto-selected from contract (first awarded option)
+                  </p>
+                )}
               </div>
             )}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2 border-t">
-              <div className="space-y-2">
-                <Label htmlFor="startDate">Start Date</Label>
-                <Input
-                  id="startDate"
-                  type="date"
-                  value={formData.startDate}
-                  onChange={(e) => setFormData({ ...formData, startDate: e.target.value })}
-                  data-testid="input-start-date"
-                />
+            <div className="pt-2 border-t space-y-3">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <Label className="text-sm font-medium">Schedule Dates</Label>
+                {linkedProposal && (linkedProposal.startDate || linkedProposal.endDate) && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      const startDate = linkedProposal.startDate 
+                        ? new Date(linkedProposal.startDate).toISOString().split('T')[0] 
+                        : "";
+                      const endDate = linkedProposal.endDate 
+                        ? new Date(linkedProposal.endDate).toISOString().split('T')[0] 
+                        : "";
+                      setFormData({ 
+                        ...formData, 
+                        startDate: startDate || formData.startDate,
+                        finalCloseoutDate: endDate || formData.finalCloseoutDate,
+                      });
+                      toast({
+                        title: "Schedule Copied",
+                        description: `Copied dates from Proposal #${linkedProposal.proposalNumber}`,
+                      });
+                    }}
+                    data-testid="button-copy-schedule-from-proposal"
+                  >
+                    <FileText className="w-3 h-3 mr-1" />
+                    Copy Schedule from Proposal
+                  </Button>
+                )}
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="substantialCompletionDate">Substantial Completion</Label>
-                <Input
-                  id="substantialCompletionDate"
-                  type="date"
-                  value={formData.substantialCompletionDate}
-                  onChange={(e) => setFormData({ ...formData, substantialCompletionDate: e.target.value })}
-                  data-testid="input-substantial-completion-date"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="finalCloseoutDate">Final Closeout</Label>
-                <Input
-                  id="finalCloseoutDate"
-                  type="date"
-                  value={formData.finalCloseoutDate}
-                  onChange={(e) => setFormData({ ...formData, finalCloseoutDate: e.target.value })}
-                  data-testid="input-final-closeout-date"
-                />
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="startDate">Start Date</Label>
+                  <Input
+                    id="startDate"
+                    type="date"
+                    value={formData.startDate}
+                    onChange={(e) => setFormData({ ...formData, startDate: e.target.value })}
+                    data-testid="input-start-date"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="substantialCompletionDate">Substantial Completion</Label>
+                  <Input
+                    id="substantialCompletionDate"
+                    type="date"
+                    value={formData.substantialCompletionDate}
+                    onChange={(e) => setFormData({ ...formData, substantialCompletionDate: e.target.value })}
+                    data-testid="input-substantial-completion-date"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="finalCloseoutDate">Final Closeout</Label>
+                  <Input
+                    id="finalCloseoutDate"
+                    type="date"
+                    value={formData.finalCloseoutDate}
+                    onChange={(e) => setFormData({ ...formData, finalCloseoutDate: e.target.value })}
+                    data-testid="input-final-closeout-date"
+                  />
+                </div>
               </div>
             </div>
 
@@ -1054,18 +1137,50 @@ export default function CompanyProjectsPage() {
             ) : (
               // Custom billing rates editor
               <div className="space-y-3">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between flex-wrap gap-2">
                   <p className="text-xs text-muted-foreground">Define custom billing rates for this project:</p>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={addBillingRate}
-                    data-testid="button-add-billing-rate"
-                  >
-                    <Plus className="w-3 h-3 mr-1" />
-                    Add Rate
-                  </Button>
+                  <div className="flex gap-2">
+                    {linkedProposal && linkedProposal.options && linkedProposal.options.length > 0 && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          // Copy rates from the first proposal option that has inspectors
+                          const optionWithRates = linkedProposal.options?.find(opt => 
+                            opt.inspectors && opt.inspectors.length > 0
+                          );
+                          if (optionWithRates?.inspectors) {
+                            setBillingRates(optionWithRates.inspectors.map((ins: any) => ({
+                              title: ins.title || "",
+                              inspectorName: ins.inspectorName || "",
+                              rate: ins.rate || "",
+                              hours: ins.hours || "",
+                              scheduleType: (ins.scheduleType as "fullTime" | "partTime") || "fullTime",
+                            })));
+                            toast({
+                              title: "Rates Copied",
+                              description: `Copied ${optionWithRates.inspectors.length} rates from Proposal #${linkedProposal.proposalNumber}`,
+                            });
+                          }
+                        }}
+                        data-testid="button-copy-from-proposal"
+                      >
+                        <FileText className="w-3 h-3 mr-1" />
+                        Copy from Proposal
+                      </Button>
+                    )}
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={addBillingRate}
+                      data-testid="button-add-billing-rate"
+                    >
+                      <Plus className="w-3 h-3 mr-1" />
+                      Add Rate
+                    </Button>
+                  </div>
                 </div>
                 
                 {billingRates.map((rate, idx) => (
@@ -1348,6 +1463,7 @@ export default function CompanyProjectsPage() {
               onClick={() => {
                 setShowCreateDialog(false);
                 setEditingProject(null);
+                setLinkedProposal(null);
                 setFormData({ name: "", projectNumber: "", client: "", clientId: "", address: "", distributionEmails: "", contractId: "", contractOptionId: "", startDate: "", substantialCompletionDate: "", finalCloseoutDate: "", budgetAmount: "", budgetedHours: "", baseBudget: "", budgetTrackingMode: "", inheritBillingRates: true });
                 setBillingRates([{ ...emptyBillingRate }]);
                 setBaseHours([]);
