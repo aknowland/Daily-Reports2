@@ -196,6 +196,30 @@ export default function ContractsPage() {
   const [activeTab, setActiveTab] = useState("list");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
+  const [archivedSearchQuery, setArchivedSearchQuery] = useState("");
+  const [proposalSearchQuery, setProposalSearchQuery] = useState("");
+  // Pagination state
+  const [contractsDisplayCount, setContractsDisplayCount] = useState(10);
+  const [archivedDisplayCount, setArchivedDisplayCount] = useState(10);
+  const [proposalsDisplayCount, setProposalsDisplayCount] = useState(10);
+  
+  // Reset pagination when search/filter changes
+  const handleSearchChange = (value: string) => {
+    setSearchQuery(value);
+    setContractsDisplayCount(10);
+  };
+  const handleArchivedSearchChange = (value: string) => {
+    setArchivedSearchQuery(value);
+    setArchivedDisplayCount(10);
+  };
+  const handleProposalSearchChange = (value: string) => {
+    setProposalSearchQuery(value);
+    setProposalsDisplayCount(10);
+  };
+  const handleStatusFilterChange = (value: string) => {
+    setStatusFilter(value);
+    setContractsDisplayCount(10);
+  };
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -908,10 +932,22 @@ export default function ContractsPage() {
     return priorities[status] ?? 10;
   };
 
+  // Archived statuses (moved to Archive tab)
+  const archivedStatuses = ["not_awarded", "cancelled"];
+  
+  // Active contracts filter options (exclude archived statuses)
+  const ACTIVE_STATUS_OPTIONS = CONTRACT_STATUS_OPTIONS.filter(
+    s => !archivedStatuses.includes(s.value)
+  );
+
+  // Separate active and archived contracts
+  const activeContracts = contracts.filter(c => !archivedStatuses.includes(c.status));
+  const archivedContracts = contracts.filter(c => archivedStatuses.includes(c.status));
+
   const filteredContracts = (() => {
     let result = statusFilter === "all" 
-      ? contracts 
-      : contracts.filter(c => c.status === statusFilter);
+      ? activeContracts 
+      : activeContracts.filter(c => c.status === statusFilter);
     
     // Apply text search filter
     if (searchQuery.trim()) {
@@ -987,6 +1023,56 @@ export default function ContractsPage() {
       return getStatusPriority(a.status) - getStatusPriority(b.status);
     });
   })();
+
+  // Filtered archived contracts with search
+  const filteredArchivedContracts = (() => {
+    let result = archivedContracts;
+    
+    if (archivedSearchQuery.trim()) {
+      const query = archivedSearchQuery.toLowerCase();
+      result = result.filter((c) =>
+        c.name.toLowerCase().includes(query) ||
+        c.contractNumber?.toLowerCase().includes(query) ||
+        c.client?.name?.toLowerCase().includes(query) ||
+        c.description?.toLowerCase().includes(query) ||
+        c.projects?.some(p => p.name.toLowerCase().includes(query))
+      );
+    }
+    
+    // Sort by status (not_awarded first), then by name
+    return result.sort((a, b) => {
+      if (a.status !== b.status) {
+        return a.status === 'not_awarded' ? -1 : 1;
+      }
+      return a.name.localeCompare(b.name);
+    });
+  })();
+
+  // Filtered proposals with search
+  const filteredProposals = (() => {
+    let result = proposals;
+    
+    if (proposalSearchQuery.trim()) {
+      const query = proposalSearchQuery.toLowerCase();
+      result = result.filter((p) =>
+        p.projectName?.toLowerCase().includes(query) ||
+        p.proposalNumber?.toLowerCase().includes(query) ||
+        p.clientName?.toLowerCase().includes(query)
+      );
+    }
+    
+    // Sort by date (newest first)
+    return result.sort((a, b) => {
+      const aDate = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const bDate = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      return bDate - aDate;
+    });
+  })();
+
+  // Paginated results
+  const paginatedContracts = filteredContracts.slice(0, contractsDisplayCount);
+  const paginatedArchivedContracts = filteredArchivedContracts.slice(0, archivedDisplayCount);
+  const paginatedProposals = filteredProposals.slice(0, proposalsDisplayCount);
 
   const calendarEvents = contracts.flatMap(contract => {
     const events: { date: Date; title: string; type: string; contract: ContractWithProjects }[] = [];
@@ -1199,15 +1285,34 @@ export default function ContractsPage() {
           </div>
         )}
       </div>
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="mb-4">
+      <Tabs value={activeTab} onValueChange={(tab) => {
+        setActiveTab(tab);
+        // Reset pagination when switching tabs
+        if (tab === "list") setContractsDisplayCount(10);
+        if (tab === "archive") setArchivedDisplayCount(10);
+        if (tab === "proposals") setProposalsDisplayCount(10);
+      }} className="w-full">
+        <TabsList className="mb-4 flex-wrap">
           <TabsTrigger value="list" className="gap-2" data-testid="tab-list">
             <List className="w-4 h-4" />
             Contracts
+            {activeContracts.length > 0 && (
+              <Badge variant="secondary" className="ml-1 text-xs">{activeContracts.length}</Badge>
+            )}
           </TabsTrigger>
           <TabsTrigger value="proposals" className="gap-2" data-testid="tab-proposals">
             <FileText className="w-4 h-4" />
             Proposals
+            {proposals.length > 0 && (
+              <Badge variant="secondary" className="ml-1 text-xs">{proposals.length}</Badge>
+            )}
+          </TabsTrigger>
+          <TabsTrigger value="archive" className="gap-2" data-testid="tab-archive">
+            <FileText className="w-4 h-4" />
+            Archive
+            {archivedContracts.length > 0 && (
+              <Badge variant="secondary" className="ml-1 text-xs">{archivedContracts.length}</Badge>
+            )}
           </TabsTrigger>
           <TabsTrigger value="calendar" className="gap-2" data-testid="tab-calendar">
             <CalendarDays className="w-4 h-4" />
@@ -1223,18 +1328,18 @@ export default function ContractsPage() {
                 <Input
                   placeholder="Search contracts by name, number, client, or project..."
                   value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onChange={(e) => handleSearchChange(e.target.value)}
                   className="pl-9"
                   data-testid="input-search-contracts"
                 />
               </div>
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <Select value={statusFilter} onValueChange={handleStatusFilterChange}>
                 <SelectTrigger className="w-full sm:w-[200px]" data-testid="filter-status">
                   <SelectValue placeholder="Filter by status" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Statuses</SelectItem>
-                  {CONTRACT_STATUS_OPTIONS.map(status => (
+                  {ACTIVE_STATUS_OPTIONS.map(status => (
                     <SelectItem key={status.value} value={status.value}>{status.label}</SelectItem>
                   ))}
                 </SelectContent>
@@ -1283,7 +1388,7 @@ export default function ContractsPage() {
             </Card>
           ) : (
             <div className="space-y-3">
-              {filteredContracts.map(contract => {
+              {paginatedContracts.map(contract => {
                 const scheduleInfo = getScheduleProgress(contract);
                 
                 return (
@@ -1478,11 +1583,153 @@ export default function ContractsPage() {
                 </Card>
               );
               })}
+              {filteredContracts.length > contractsDisplayCount && (
+                <div className="flex justify-center pt-4">
+                  <Button
+                    variant="outline"
+                    onClick={() => setContractsDisplayCount(prev => prev + 10)}
+                    data-testid="button-show-more-contracts"
+                  >
+                    Show 10 More ({filteredContracts.length - contractsDisplayCount} remaining)
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
+        </TabsContent>
+
+        <TabsContent value="archive">
+          {archivedContracts.length > 0 && (
+            <div className="flex flex-col sm:flex-row gap-3 mb-4">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search archived contracts by name, number, client, or project..."
+                  value={archivedSearchQuery}
+                  onChange={(e) => handleArchivedSearchChange(e.target.value)}
+                  className="pl-9"
+                  data-testid="input-search-archived-contracts"
+                />
+              </div>
+            </div>
+          )}
+          
+          {archivedContracts.length === 0 ? (
+            <Card>
+              <CardContent className="p-6 text-center text-muted-foreground">
+                <FileText className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                <p>No archived contracts.</p>
+                <p className="text-sm mt-2">Contracts with "Not Awarded" or "Cancelled" status will appear here.</p>
+              </CardContent>
+            </Card>
+          ) : filteredArchivedContracts.length === 0 ? (
+            <Card>
+              <CardContent className="p-6 text-center text-muted-foreground">
+                <FileText className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                <p>No archived contracts found matching your search.</p>
+                <Button 
+                  variant="outline" 
+                  className="mt-4"
+                  onClick={() => setArchivedSearchQuery("")}
+                  data-testid="button-clear-archive-search"
+                >
+                  Clear Search
+                </Button>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="space-y-3">
+              {paginatedArchivedContracts.map(contract => (
+                <Card 
+                  key={contract.id} 
+                  className="hover-elevate cursor-pointer opacity-75" 
+                  data-testid={`archived-contract-${contract.id}`}
+                  onClick={() => setLocation(`/company/contracts/${contract.id}/dashboard`)}
+                >
+                  <CardContent className="p-4">
+                    <div className="flex items-start justify-between gap-4 flex-wrap">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1 flex-wrap">
+                          <h3 className="font-semibold text-lg">{contract.name}</h3>
+                          {getStatusBadge(contract.status)}
+                        </div>
+                        <div className="text-sm text-muted-foreground space-y-1">
+                          <div className="flex items-center gap-4 flex-wrap">
+                            <span className="flex items-center gap-1">
+                              <FileText className="w-3 h-3" />
+                              {contract.contractNumber}
+                            </span>
+                            {contract.client && (
+                              <span className="flex items-center gap-1">
+                                <Building2 className="w-3 h-3" />
+                                {contract.client.name}
+                              </span>
+                            )}
+                            {contract.contractType && (
+                              <span className="flex items-center gap-1">
+                                <Clock className="w-3 h-3" />
+                                {getContractTypeName(contract.contractType)}
+                              </span>
+                            )}
+                          </div>
+                          {contract.description && (
+                            <p className="text-xs line-clamp-1">{contract.description}</p>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {contract.currentValue && (
+                          <Badge variant="outline" className="font-mono">
+                            ${parseFloat(contract.currentValue).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                          </Badge>
+                        )}
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setLocation(`/company/contracts/${contract.id}/dashboard`);
+                          }}
+                          data-testid={`button-view-archived-${contract.id}`}
+                        >
+                          <LayoutDashboard className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+              {filteredArchivedContracts.length > archivedDisplayCount && (
+                <div className="flex justify-center pt-4">
+                  <Button
+                    variant="outline"
+                    onClick={() => setArchivedDisplayCount(prev => prev + 10)}
+                    data-testid="button-show-more-archived"
+                  >
+                    Show 10 More ({filteredArchivedContracts.length - archivedDisplayCount} remaining)
+                  </Button>
+                </div>
+              )}
             </div>
           )}
         </TabsContent>
 
         <TabsContent value="proposals">
+          {proposals.length > 0 && (
+            <div className="flex flex-col sm:flex-row gap-3 mb-4">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search proposals by project name, number, or client..."
+                  value={proposalSearchQuery}
+                  onChange={(e) => handleProposalSearchChange(e.target.value)}
+                  className="pl-9"
+                  data-testid="input-search-proposals"
+                />
+              </div>
+            </div>
+          )}
+          
           {proposalsLoading ? (
             <div className="space-y-3">
               {[1, 2, 3].map(i => (
@@ -1509,9 +1756,24 @@ export default function ContractsPage() {
                 )}
               </CardContent>
             </Card>
+          ) : filteredProposals.length === 0 ? (
+            <Card>
+              <CardContent className="p-6 text-center text-muted-foreground">
+                <FileText className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                <p>No proposals found matching your search.</p>
+                <Button 
+                  variant="outline" 
+                  className="mt-4"
+                  onClick={() => setProposalSearchQuery("")}
+                  data-testid="button-clear-proposal-search"
+                >
+                  Clear Search
+                </Button>
+              </CardContent>
+            </Card>
           ) : (
             <div className="space-y-3">
-              {proposals.map(proposal => {
+              {paginatedProposals.map(proposal => {
                 const grandTotal = proposal.options?.reduce((sum, opt) => {
                   const optTotal = opt.inspectors?.reduce((s, ins) => {
                     return s + (parseFloat(ins.rate) || 0) * (parseFloat(ins.hours) || 0);
@@ -1708,6 +1970,17 @@ export default function ContractsPage() {
                   </Card>
                 );
               })}
+              {filteredProposals.length > proposalsDisplayCount && (
+                <div className="flex justify-center pt-4">
+                  <Button
+                    variant="outline"
+                    onClick={() => setProposalsDisplayCount(prev => prev + 10)}
+                    data-testid="button-show-more-proposals"
+                  >
+                    Show 10 More ({filteredProposals.length - proposalsDisplayCount} remaining)
+                  </Button>
+                </div>
+              )}
             </div>
           )}
         </TabsContent>
