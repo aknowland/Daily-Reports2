@@ -16,6 +16,11 @@ The application is built with a modern web stack, utilizing **React, TypeScript,
 
 -   **Mobile-First Design**: UI/UX is optimized for touch interaction and field use.
 -   **Role-Based Access Control (RBAC)**: Supports a three-tier role hierarchy: Inspector, Company Admin, and System Admin, each with distinct permissions.
+    - Inspectors can only view projects they're assigned to and their own reports/photos/issues/safety incidents
+    - Company Admins see all data for their company including contracts and financial information
+    - System Admins have full access to all companies and data
+    - Project-wide budget totals are visible to all users (without individual names) for team coordination
+    - Contract access (dashboard, options, invoices) is restricted to admins only
 -   **Multi-Company Support**: Allows inspectors to work across multiple companies, with data filtered by the active company.
 -   **Voice-to-Text Integration**: Leverages OpenAI for speech-to-text transcription and AI-powered structured data extraction for various input fields.
 -   **Automated Report Generation**: Generates professional PDF reports with company branding and facilitates email distribution.
