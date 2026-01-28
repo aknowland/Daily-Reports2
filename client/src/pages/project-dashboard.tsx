@@ -47,6 +47,9 @@ import {
   Trash2,
   DollarSign,
   History,
+  MessageSquare,
+  Send,
+  X,
 } from "lucide-react";
 import { format } from "date-fns";
 import { Textarea } from "@/components/ui/textarea";
@@ -247,6 +250,31 @@ const emptyBillingRate: BillingRateEntry = {
   scheduleType: "fullTime",
 };
 
+// Comment types for the comments section
+type ProjectComment = {
+  id: string;
+  projectId: string;
+  companyId: string;
+  authorId: string;
+  content: string;
+  mentions: string[];
+  createdAt: string;
+  author: {
+    id: string;
+    firstName: string | null;
+    lastName: string | null;
+    profileImageUrl: string | null;
+  };
+};
+
+type TeamMember = {
+  id: string;
+  firstName: string | null;
+  lastName: string | null;
+  profileImageUrl: string | null;
+  role: string;
+};
+
 const emptyBaseHoursEntry: BaseHoursEntry = {
   inspectorName: "",
   regularHours: "",
@@ -324,7 +352,7 @@ const months = [
 export default function ProjectDashboardPage() {
   const { id } = useParams<{ id: string }>();
   const { toast } = useToast();
-  const { isAdmin, isCompanyAdmin, isEffectiveSystemAdmin, isEffectiveCompanyAdmin, activeCompany } = useAuth();
+  const { user, isAdmin, isCompanyAdmin, isEffectiveSystemAdmin, isEffectiveCompanyAdmin, activeCompany } = useAuth();
   const [isEmailPending, setIsEmailPending] = useState(false);
   
   // Inspector action dialogs
@@ -359,6 +387,11 @@ export default function ProjectDashboardPage() {
   });
   const [billingRates, setBillingRates] = useState<BillingRateEntry[]>([{ ...emptyBillingRate }]);
   const [baseHours, setBaseHours] = useState<BaseHoursEntry[]>([]);
+  
+  // Comments state
+  const [newComment, setNewComment] = useState("");
+  const [showMentions, setShowMentions] = useState(false);
+  const [mentionFilter, setMentionFilter] = useState("");
   
   const years = Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - i);
   
@@ -423,6 +456,134 @@ export default function ProjectDashboardPage() {
     queryKey: ['/api/projects', id],
     enabled: isEffectiveCompanyAdmin && editDialogOpen && !!id,
   });
+
+  // Fetch comments for the project
+  const { data: comments = [], isLoading: isCommentsLoading, isError: isCommentsError, refetch: refetchComments } = useQuery<ProjectComment[]>({
+    queryKey: ['/api/projects', id, 'comments'],
+    enabled: !!id,
+  });
+
+  // Fetch team members for @mentions
+  const { data: teamMembers = [] } = useQuery<TeamMember[]>({
+    queryKey: ['/api/projects', id, 'team-members'],
+    enabled: !!id,
+  });
+
+  // Add comment mutation
+  const addCommentMutation = useMutation({
+    mutationFn: async (data: { content: string; mentions: string[] }) => {
+      return apiRequest("POST", `/api/projects/${id}/comments`, data);
+    },
+    onSuccess: () => {
+      setNewComment("");
+      queryClient.invalidateQueries({ queryKey: ['/api/projects', id, 'comments'] });
+      toast({ title: "Comment added", description: "Your comment has been posted." });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to add comment", variant: "destructive" });
+    },
+  });
+
+  // Delete comment mutation
+  const deleteCommentMutation = useMutation({
+    mutationFn: async (commentId: string) => {
+      return apiRequest("DELETE", `/api/projects/${id}/comments/${commentId}`, {});
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/projects', id, 'comments'] });
+      toast({ title: "Comment deleted", description: "Your comment has been removed." });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to delete comment", variant: "destructive" });
+    },
+  });
+
+  // Helper to parse @mentions from comment content
+  const parseMentions = (content: string): string[] => {
+    const mentionRegex = /@\[([^\]]+)\]\(([^)]+)\)/g;
+    const mentions: string[] = [];
+    let match;
+    while ((match = mentionRegex.exec(content)) !== null) {
+      mentions.push(match[2]); // Push user ID
+    }
+    return mentions;
+  };
+
+  // Helper to render comment content with highlighted mentions
+  const renderCommentContent = (content: string) => {
+    const mentionRegex = /@\[([^\]]+)\]\(([^)]+)\)/g;
+    const parts: (string | JSX.Element)[] = [];
+    let lastIndex = 0;
+    let match;
+    let key = 0;
+    
+    while ((match = mentionRegex.exec(content)) !== null) {
+      if (match.index > lastIndex) {
+        parts.push(content.substring(lastIndex, match.index));
+      }
+      parts.push(
+        <span key={key++} className="bg-primary/10 text-primary rounded px-1 font-medium">
+          @{match[1]}
+        </span>
+      );
+      lastIndex = match.index + match[0].length;
+    }
+    
+    if (lastIndex < content.length) {
+      parts.push(content.substring(lastIndex));
+    }
+    
+    return parts.length > 0 ? parts : content;
+  };
+
+  // Handle @mention insertion
+  const handleMentionSelect = (member: TeamMember) => {
+    const name = [member.firstName, member.lastName].filter(Boolean).join(' ') || 'Unknown';
+    const mentionText = `@[${name}](${member.id}) `;
+    
+    // Find where to insert - replace the @filter text
+    const lastAtIndex = newComment.lastIndexOf('@');
+    if (lastAtIndex !== -1) {
+      setNewComment(newComment.substring(0, lastAtIndex) + mentionText);
+    } else {
+      setNewComment(newComment + mentionText);
+    }
+    setShowMentions(false);
+    setMentionFilter("");
+  };
+
+  // Handle comment input change with @mention detection
+  const handleCommentChange = (value: string) => {
+    setNewComment(value);
+    
+    // Check for @ trigger
+    const lastAtIndex = value.lastIndexOf('@');
+    if (lastAtIndex !== -1) {
+      const textAfterAt = value.substring(lastAtIndex + 1);
+      // Show mentions if we're right after @ or typing a filter
+      if (!textAfterAt.includes(' ') && !textAfterAt.includes('[')) {
+        setShowMentions(true);
+        setMentionFilter(textAfterAt.toLowerCase());
+      } else {
+        setShowMentions(false);
+      }
+    } else {
+      setShowMentions(false);
+    }
+  };
+
+  // Filter team members for mentions dropdown
+  const filteredMembers = teamMembers.filter(member => {
+    const name = [member.firstName, member.lastName].filter(Boolean).join(' ').toLowerCase();
+    return name.includes(mentionFilter);
+  });
+
+  // Handle submit comment
+  const handleSubmitComment = () => {
+    if (!newComment.trim()) return;
+    const mentions = parseMentions(newComment);
+    addCommentMutation.mutate({ content: newComment.trim(), mentions });
+  };
 
   // Selected contract and awarded options for edit form
   const selectedContract = useMemo(() => {
@@ -1456,6 +1617,141 @@ export default function ProjectDashboardPage() {
             </CardContent>
           </Card>
         )}
+
+        {/* Project Comments Section */}
+        <Card data-testid="card-project-comments" className="col-span-full">
+          <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Team Comments</CardTitle>
+            <MessageSquare className="w-4 h-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            {/* Comment Input */}
+            <div className="mb-4 relative">
+              <div className="flex gap-2">
+                <div className="flex-1 relative">
+                  <Textarea
+                    placeholder="Leave a comment... Type @ to mention team members"
+                    value={newComment}
+                    onChange={(e) => handleCommentChange(e.target.value)}
+                    className="min-h-[80px] resize-none"
+                    data-testid="input-comment"
+                  />
+                  
+                  {/* Mentions dropdown */}
+                  {showMentions && filteredMembers.length > 0 && (
+                    <div className="absolute bottom-full left-0 mb-1 w-full max-w-xs bg-popover border border-border rounded-md shadow-lg z-50 max-h-48 overflow-y-auto">
+                      {filteredMembers.map((member) => (
+                        <button
+                          key={member.id}
+                          className="w-full px-3 py-2 text-left text-sm hover:bg-muted flex items-center gap-2"
+                          onClick={() => handleMentionSelect(member)}
+                          data-testid={`mention-option-${member.id}`}
+                        >
+                          <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center text-xs font-medium">
+                            {(member.firstName?.[0] || '').toUpperCase()}{(member.lastName?.[0] || '').toUpperCase()}
+                          </div>
+                          <div>
+                            <div className="font-medium">
+                              {[member.firstName, member.lastName].filter(Boolean).join(' ') || 'Unknown'}
+                            </div>
+                            <div className="text-xs text-muted-foreground capitalize">{member.role}</div>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <Button
+                  size="sm"
+                  onClick={handleSubmitComment}
+                  disabled={!newComment.trim() || addCommentMutation.isPending}
+                  data-testid="button-submit-comment"
+                >
+                  <Send className="w-4 h-4" />
+                </Button>
+              </div>
+            </div>
+
+            {/* Comments List */}
+            {isCommentsLoading ? (
+              <div className="space-y-3">
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="p-3 bg-muted rounded-md animate-pulse">
+                    <div className="flex items-start gap-2">
+                      <div className="w-8 h-8 rounded-full bg-muted-foreground/20" />
+                      <div className="flex-1 space-y-2">
+                        <div className="h-4 w-24 bg-muted-foreground/20 rounded" />
+                        <div className="h-3 w-full bg-muted-foreground/20 rounded" />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : isCommentsError ? (
+              <p className="text-sm text-destructive text-center py-4">
+                Failed to load comments. Please try again later.
+              </p>
+            ) : comments.length > 0 ? (
+              <div className="space-y-3 max-h-80 overflow-y-auto">
+                {comments.map((comment) => (
+                  <div
+                    key={comment.id}
+                    className="p-3 bg-muted rounded-md"
+                    data-testid={`comment-${comment.id}`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-start gap-2">
+                        <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-xs font-medium flex-shrink-0">
+                          {comment.author.profileImageUrl ? (
+                            <img
+                              src={comment.author.profileImageUrl}
+                              alt="Avatar"
+                              className="w-full h-full rounded-full object-cover"
+                            />
+                          ) : (
+                            <>
+                              {(comment.author.firstName?.[0] || '').toUpperCase()}
+                              {(comment.author.lastName?.[0] || '').toUpperCase()}
+                            </>
+                          )}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-medium text-sm">
+                              {[comment.author.firstName, comment.author.lastName].filter(Boolean).join(' ') || 'Unknown User'}
+                            </span>
+                            <span className="text-xs text-muted-foreground">
+                              {format(new Date(comment.createdAt), 'MMM d, yyyy h:mm a')}
+                            </span>
+                          </div>
+                          <p className="text-sm mt-1 whitespace-pre-wrap break-words">
+                            {renderCommentContent(comment.content)}
+                          </p>
+                        </div>
+                      </div>
+                      {(comment.authorId === user?.id || isEffectiveCompanyAdmin) && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="flex-shrink-0 h-6 w-6"
+                          onClick={() => deleteCommentMutation.mutate(comment.id)}
+                          disabled={deleteCommentMutation.isPending}
+                          data-testid={`button-delete-comment-${comment.id}`}
+                        >
+                          <X className="w-3 h-3" />
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground text-center py-4">
+                No comments yet. Be the first to leave a comment!
+              </p>
+            )}
+          </CardContent>
+        </Card>
       </div>
 
       <Dialog open={timesheetDialogOpen} onOpenChange={setTimesheetDialogOpen}>

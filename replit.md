@@ -64,6 +64,7 @@ The application is built with a modern web stack, utilizing **React, TypeScript,
     - **Notifications Center**: Budget alerts and deadline warnings with severity indicators
     - **Inspector Workload**: Hours, projects, and reports per inspector
     - **Recent Activity Feed**: Last 10 daily reports with timestamps
+-   **Project Team Comments**: Project Dashboard includes a collapsible Team Communication section where inspectors and admins can post comments, view team discussion history, and use @mentions to tag team members. Comments support markdown-style mentions (`@[Name](userId)`) that are highlighted in the UI, and comments can be deleted by their author or an admin.
 -   **Summary Reports**: Comprehensive reporting accessible via dropdown menus on all dashboards:
     - **Report Types**: Weekly Summary (user selects week), Monthly Summary (user selects month), Current Status (today's snapshot)
     - **Dashboard Scopes**: 

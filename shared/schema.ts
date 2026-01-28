@@ -1070,3 +1070,44 @@ export type IorAgreementWithDetails = IorAgreement & {
   inspector?: User;
 };
 
+// Project comments table - for team communication on projects
+export const projectComments = pgTable("project_comments", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  projectId: varchar("project_id").references(() => projects.id, { onDelete: "cascade" }).notNull(),
+  companyId: varchar("company_id").references(() => companies.id, { onDelete: "cascade" }).notNull(),
+  authorId: varchar("author_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+  content: text("content").notNull(),
+  mentions: json("mentions").$type<string[]>().default([]), // Array of user IDs mentioned
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const projectCommentsRelations = relations(projectComments, ({ one }) => ({
+  project: one(projects, {
+    fields: [projectComments.projectId],
+    references: [projects.id],
+  }),
+  company: one(companies, {
+    fields: [projectComments.companyId],
+    references: [companies.id],
+  }),
+  author: one(users, {
+    fields: [projectComments.authorId],
+    references: [users.id],
+  }),
+}));
+
+export const insertProjectCommentSchema = createInsertSchema(projectComments).omit({ id: true, createdAt: true, updatedAt: true });
+
+export type ProjectComment = typeof projectComments.$inferSelect;
+export type InsertProjectComment = z.infer<typeof insertProjectCommentSchema>;
+
+export type ProjectCommentWithAuthor = ProjectComment & {
+  author: {
+    id: string;
+    firstName: string | null;
+    lastName: string | null;
+    profileImageUrl: string | null;
+  };
+};
+
