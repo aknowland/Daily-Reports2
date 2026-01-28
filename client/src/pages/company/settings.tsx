@@ -23,7 +23,6 @@ import {
   Bell,
   CheckCircle,
   RefreshCw,
-  Database,
 } from "lucide-react";
 import { Link } from "wouter";
 import { useState, useEffect, useRef } from "react";
@@ -379,7 +378,6 @@ export default function CompanySettingsPage() {
         </Card>
 
         <NotificationsCard />
-        <DemoDataCard />
       </div>
     </PageLayout>
   );
@@ -523,116 +521,3 @@ function NotificationsCard() {
   );
 }
 
-function DemoDataCard() {
-  const { toast } = useToast();
-  const [seedResult, setSeedResult] = useState<{
-    success: boolean;
-    message: string;
-    summary?: {
-      clients: number;
-      teamInspectors: number;
-      purchaseOrders: number;
-      contracts: number;
-      projects: number;
-      proposals: number;
-      dailyReports: number;
-      iorAgreements: number;
-    };
-  } | null>(null);
-
-  const seedDemoMutation = useMutation({
-    mutationFn: async () => {
-      const response = await apiRequest("POST", "/api/admin/seed-demo-data");
-      return response.json();
-    },
-    onSuccess: (data) => {
-      setSeedResult(data);
-      queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/contracts"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/proposals"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/clients"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/team-inspectors"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/purchase-orders"] });
-      toast({
-        title: "Demo Data Created",
-        description: `Created ${data.summary?.projects || 0} projects, ${data.summary?.contracts || 0} contracts, and ${data.summary?.dailyReports || 0} daily reports.`,
-      });
-    },
-    onError: (error: any) => {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to seed demo data.",
-        variant: "destructive",
-      });
-    },
-  });
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Database className="w-5 h-5" />
-          Demo Data
-        </CardTitle>
-        <CardDescription>
-          Generate sample projects, contracts, and reports to demonstrate the full capabilities of the application.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="p-4 bg-muted/50 rounded-lg border space-y-2">
-          <p className="text-sm font-medium">This will create:</p>
-          <ul className="text-sm text-muted-foreground list-disc list-inside space-y-1">
-            <li>10 clients with contact information</li>
-            <li>8 team inspector profiles</li>
-            <li>15 purchase orders</li>
-            <li>30 contracts with various statuses (bid, awarded, in execution, completed)</li>
-            <li>30+ projects linked to contracts</li>
-            <li>12 proposals (draft, sent, accepted)</li>
-            <li>Daily reports for active projects</li>
-            <li>IOR agreements</li>
-          </ul>
-        </div>
-
-        <Button
-          onClick={() => seedDemoMutation.mutate()}
-          disabled={seedDemoMutation.isPending}
-          className="w-full"
-          data-testid="button-seed-demo-data"
-        >
-          {seedDemoMutation.isPending ? (
-            <>
-              <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-              Generating Demo Data...
-            </>
-          ) : (
-            <>
-              <Database className="w-4 h-4 mr-2" />
-              Generate Demo Data
-            </>
-          )}
-        </Button>
-
-        {seedResult && (
-          <div className="text-sm space-y-2 pt-2 border-t">
-            <p className="font-medium flex items-center gap-2">
-              <CheckCircle className="w-4 h-4 text-green-600" />
-              Demo Data Created Successfully
-            </p>
-            {seedResult.summary && (
-              <div className="grid grid-cols-2 gap-2 text-muted-foreground">
-                <span>Clients: {seedResult.summary.clients}</span>
-                <span>Team Inspectors: {seedResult.summary.teamInspectors}</span>
-                <span>Purchase Orders: {seedResult.summary.purchaseOrders}</span>
-                <span>Contracts: {seedResult.summary.contracts}</span>
-                <span>Projects: {seedResult.summary.projects}</span>
-                <span>Proposals: {seedResult.summary.proposals}</span>
-                <span>Daily Reports: {seedResult.summary.dailyReports}</span>
-                <span>IOR Agreements: {seedResult.summary.iorAgreements}</span>
-              </div>
-            )}
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
