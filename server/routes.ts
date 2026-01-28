@@ -7994,17 +7994,34 @@ export async function registerRoutes(
       const startX = 50;
       const centerX = doc.page.width / 2;
 
-      // Helper to load images
+      // Helper to load images - handles both old /storage/uploads/ and new /objects/ paths
       const loadImageBuffer = async (imagePath: string): Promise<Buffer | null> => {
         try {
+          // Try object storage first for /objects/ paths
           if (imagePath.startsWith('/objects/')) {
             return await objectStorage.downloadBuffer(imagePath);
-          } else {
-            const localPath = path.join(process.cwd(), imagePath.replace(/^\//, ''));
-            if (fs.existsSync(localPath)) {
-              return fs.readFileSync(localPath);
+          }
+          
+          // For /storage/uploads/ paths, try object storage with converted path first
+          if (imagePath.startsWith('/storage/uploads/')) {
+            try {
+              // Try to find in object storage under photos folder
+              const filename = imagePath.split('/').pop();
+              const objectPath = `/objects/photos/${filename}`;
+              return await objectStorage.downloadBuffer(objectPath);
+            } catch (objErr) {
+              // Fall through to try local path
+              console.log('Image not found in object storage, trying local:', imagePath);
             }
           }
+          
+          // Fall back to local filesystem
+          const localPath = path.join(process.cwd(), imagePath.replace(/^\//, ''));
+          if (fs.existsSync(localPath)) {
+            return fs.readFileSync(localPath);
+          }
+          
+          console.log('Image not found locally either:', imagePath);
         } catch (err) {
           console.error('Error loading image:', imagePath, err);
         }
@@ -8580,17 +8597,34 @@ export async function registerRoutes(
       const startX = 50;
       const centerX = doc.page.width / 2;
       
-      // Helper to load images
+      // Helper to load images - handles both old /storage/uploads/ and new /objects/ paths
       const loadImageBuffer = async (imagePath: string): Promise<Buffer | null> => {
         try {
+          // Try object storage first for /objects/ paths
           if (imagePath.startsWith('/objects/')) {
             return await objectStorage.downloadBuffer(imagePath);
-          } else {
-            const localPath = path.join(process.cwd(), imagePath.replace(/^\//, ''));
-            if (fs.existsSync(localPath)) {
-              return fs.readFileSync(localPath);
+          }
+          
+          // For /storage/uploads/ paths, try object storage with converted path first
+          if (imagePath.startsWith('/storage/uploads/')) {
+            try {
+              // Try to find in object storage under photos folder
+              const filename = imagePath.split('/').pop();
+              const objectPath = `/objects/photos/${filename}`;
+              return await objectStorage.downloadBuffer(objectPath);
+            } catch (objErr) {
+              // Fall through to try local path
+              console.log('Image not found in object storage, trying local:', imagePath);
             }
           }
+          
+          // Fall back to local filesystem
+          const localPath = path.join(process.cwd(), imagePath.replace(/^\//, ''));
+          if (fs.existsSync(localPath)) {
+            return fs.readFileSync(localPath);
+          }
+          
+          console.log('Image not found locally either:', imagePath);
         } catch (err) {
           console.error('Error loading image:', imagePath, err);
         }
@@ -9346,17 +9380,34 @@ export async function registerRoutes(
       const startX = 25;
       const checkSize = 7;
 
-      // Helper to load images
+      // Helper to load images - handles both old /storage/uploads/ and new /objects/ paths
       const loadImageBuffer = async (imagePath: string): Promise<Buffer | null> => {
         try {
+          // Try object storage first for /objects/ paths
           if (imagePath.startsWith('/objects/')) {
             return await objectStorage.downloadBuffer(imagePath);
-          } else {
-            const localPath = path.join(process.cwd(), imagePath.replace(/^\//, ''));
-            if (fs.existsSync(localPath)) {
-              return fs.readFileSync(localPath);
+          }
+          
+          // For /storage/uploads/ paths, try object storage with converted path first
+          if (imagePath.startsWith('/storage/uploads/')) {
+            try {
+              // Try to find in object storage under photos folder
+              const filename = imagePath.split('/').pop();
+              const objectPath = `/objects/photos/${filename}`;
+              return await objectStorage.downloadBuffer(objectPath);
+            } catch (objErr) {
+              // Fall through to try local path
+              console.log('Image not found in object storage, trying local:', imagePath);
             }
           }
+          
+          // Fall back to local filesystem
+          const localPath = path.join(process.cwd(), imagePath.replace(/^\//, ''));
+          if (fs.existsSync(localPath)) {
+            return fs.readFileSync(localPath);
+          }
+          
+          console.log('Image not found locally either:', imagePath);
         } catch (err) {
           console.error('Error loading image:', imagePath, err);
         }
