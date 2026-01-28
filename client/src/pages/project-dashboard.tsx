@@ -876,6 +876,16 @@ export default function ProjectDashboardPage() {
             <h1 className="text-2xl font-bold truncate" data-testid="text-project-name">{project.name}</h1>
           </div>
           <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              asChild
+              data-testid="button-new-daily-report-header"
+            >
+              <Link href={`/create-report?projectId=${id}`}>
+                <Plus className="w-4 h-4 mr-2" />
+                New Daily Report
+              </Link>
+            </Button>
             {isEffectiveCompanyAdmin && (
               <Button
                 variant="outline"
@@ -1285,16 +1295,17 @@ export default function ProjectDashboardPage() {
                 Create reports and generate billing documents
               </div>
               <div className="space-y-3">
-                <Link href={`/create-report?projectId=${id}`}>
-                  <Button 
-                    variant="outline" 
-                    className="w-full justify-start"
-                    data-testid="button-new-daily-report"
-                  >
+                <Button 
+                  variant="outline" 
+                  className="w-full justify-start"
+                  asChild
+                  data-testid="button-new-daily-report"
+                >
+                  <Link href={`/create-report?projectId=${id}`}>
                     <Plus className="w-4 h-4 mr-2" />
                     New Daily Report
-                  </Button>
-                </Link>
+                  </Link>
+                </Button>
                 <Button 
                   variant="outline" 
                   className="w-full justify-start"
