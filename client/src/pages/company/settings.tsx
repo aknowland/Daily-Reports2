@@ -27,11 +27,13 @@ import {
 } from "lucide-react";
 import { Link } from "wouter";
 import { useState, useEffect, useRef } from "react";
+import { useLocation } from "wouter";
 import type { Company } from "@shared/schema";
 
 export default function CompanySettingsPage() {
   const { toast } = useToast();
   const { activeCompany, isCompanyAdmin, isEffectiveCompanyAdmin } = useAuth();
+  const [, navigate] = useLocation();
   const logoInputRef = useRef<HTMLInputElement>(null);
   const [formData, setFormData] = useState({
     name: "",
@@ -136,15 +138,21 @@ export default function CompanySettingsPage() {
     }
   };
 
+  // Redirect non-admins away from this page
+  useEffect(() => {
+    if (!isEffectiveCompanyAdmin || !activeCompany) {
+      navigate("/");
+    }
+  }, [isEffectiveCompanyAdmin, activeCompany, navigate]);
+
   if (!isEffectiveCompanyAdmin || !activeCompany) {
     return (
       <PageLayout title="Company Settings">
         <div className="container px-4 py-6 mx-auto max-w-screen-lg">
           <Card>
             <CardContent className="flex flex-col items-center justify-center py-12">
-              <AlertCircle className="w-12 h-12 text-destructive mb-4" />
-              <p className="text-lg font-medium">Access Denied</p>
-              <p className="text-muted-foreground">You must be a company admin to view this page</p>
+              <Loader2 className="w-12 h-12 text-muted-foreground animate-spin mb-4" />
+              <p className="text-lg font-medium">Redirecting...</p>
             </CardContent>
           </Card>
         </div>
