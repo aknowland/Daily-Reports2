@@ -638,10 +638,37 @@ export default function ProjectDashboardPage() {
     setBaseHours(baseHours.filter((_, i) => i !== index));
   };
 
+  // Find billing rate for an inspector by name (case-insensitive match)
+  const findInspectorRate = (inspectorName: string): number | null => {
+    if (!inspectorName) return null;
+    const normalizedName = inspectorName.toLowerCase().trim();
+    const matchingRate = billingRates.find(r => 
+      r.inspectorName?.toLowerCase().trim() === normalizedName
+    );
+    return matchingRate ? parseFloat(matchingRate.rate) || null : null;
+  };
+
   const updateBaseHoursEntry = (index: number, field: keyof BaseHoursEntry, value: string) => {
-    setBaseHours(baseHours.map((entry, i) => 
-      i === index ? { ...entry, [field]: value } : entry
-    ));
+    setBaseHours(baseHours.map((entry, i) => {
+      if (i !== index) return entry;
+      
+      const updatedEntry = { ...entry, [field]: value };
+      
+      // Auto-calculate hours when billed amount or inspector name changes
+      if (field === "billedAmount" || field === "inspectorName") {
+        const rate = findInspectorRate(updatedEntry.inspectorName);
+        const billedAmount = parseFloat(updatedEntry.billedAmount) || 0;
+        
+        if (rate && rate > 0 && billedAmount > 0) {
+          // Calculate total hours from billed amount
+          const calculatedHours = billedAmount / rate;
+          // Put all calculated hours as regular hours
+          updatedEntry.regularHours = calculatedHours.toFixed(1);
+        }
+      }
+      
+      return updatedEntry;
+    }));
   };
 
   const calculateBaseHoursTotal = () => {
@@ -2346,6 +2373,43 @@ export default function ProjectDashboardPage() {
                             onChange={(e) => updateBaseHoursEntry(idx, "inspectorName", e.target.value)}
                             data-testid={`input-base-inspector-${idx}`}
                           />
+                          {entry.inspectorName && (
+                            <div className="text-xs mt-1">
+                              {(() => {
+                                const rate = findInspectorRate(entry.inspectorName);
+                                if (rate) {
+                                  return <span className="text-green-600">Rate found: ${rate}/hr</span>;
+                                }
+                                return <span className="text-muted-foreground">No matching rate in billing rates</span>;
+                              })()}
+                            </div>
+                          )}
+                        </div>
+                        <div className="col-span-2">
+                          <Input
+                            placeholder="Already Billed ($)"
+                            type="number"
+                            value={entry.billedAmount}
+                            onChange={(e) => updateBaseHoursEntry(idx, "billedAmount", e.target.value)}
+                            data-testid={`input-base-billed-${idx}`}
+                          />
+                          {entry.billedAmount && parseFloat(entry.billedAmount) > 0 && (
+                            <div className="text-xs mt-1">
+                              {(() => {
+                                const rate = findInspectorRate(entry.inspectorName);
+                                const billedAmount = parseFloat(entry.billedAmount) || 0;
+                                if (rate && rate > 0) {
+                                  const hours = billedAmount / rate;
+                                  return (
+                                    <span className="text-muted-foreground">
+                                      ${billedAmount.toLocaleString()} ÷ ${rate}/hr = <span className="font-medium text-foreground">{hours.toFixed(1)} hrs</span>
+                                    </span>
+                                  );
+                                }
+                                return <span className="text-amber-600">Enter inspector name with billing rate for auto-calculation</span>;
+                              })()}
+                            </div>
+                          )}
                         </div>
                         <Input
                           placeholder="Regular Hours"
@@ -2361,15 +2425,6 @@ export default function ProjectDashboardPage() {
                           onChange={(e) => updateBaseHoursEntry(idx, "overtimeHours", e.target.value)}
                           data-testid={`input-base-overtime-${idx}`}
                         />
-                        <div className="col-span-2">
-                          <Input
-                            placeholder="Already Billed ($)"
-                            type="number"
-                            value={entry.billedAmount}
-                            onChange={(e) => updateBaseHoursEntry(idx, "billedAmount", e.target.value)}
-                            data-testid={`input-base-billed-${idx}`}
-                          />
-                        </div>
                       </div>
                     </Card>
                   ))}
