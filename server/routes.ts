@@ -1478,11 +1478,11 @@ export async function registerRoutes(
         comments.map(async (comment) => {
           const author = await db.query.users.findFirst({
             where: eq(users.id, comment.authorId),
-            columns: { id: true, firstName: true, lastName: true, profileImageUrl: true }
+            columns: { id: true, firstName: true, lastName: true, email: true, profileImageUrl: true }
           });
           return {
             ...comment,
-            author: author || { id: comment.authorId, firstName: null, lastName: null, profileImageUrl: null }
+            author: author || { id: comment.authorId, firstName: null, lastName: null, email: null, profileImageUrl: null }
           };
         })
       );

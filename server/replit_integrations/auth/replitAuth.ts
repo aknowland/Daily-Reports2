@@ -52,8 +52,19 @@ function updateUserSession(
 
 async function upsertUser(claims: any) {
   // Standard OIDC uses given_name/family_name, but some providers use first_name/last_name
-  const firstName = claims["given_name"] || claims["first_name"] || null;
-  const lastName = claims["family_name"] || claims["last_name"] || null;
+  let firstName = claims["given_name"] || claims["first_name"] || null;
+  let lastName = claims["family_name"] || claims["last_name"] || null;
+  
+  // If no first/last name, try to parse from the "name" claim
+  if (!firstName && !lastName && claims["name"]) {
+    const nameParts = claims["name"].trim().split(/\s+/);
+    if (nameParts.length >= 2) {
+      firstName = nameParts[0];
+      lastName = nameParts.slice(1).join(" ");
+    } else if (nameParts.length === 1) {
+      firstName = nameParts[0];
+    }
+  }
   
   await authStorage.upsertUser({
     id: claims["sub"],
