@@ -8,7 +8,6 @@ import { ReportCard } from "@/components/reports/report-card";
 import { ReportDetailPanel } from "@/components/reports/report-detail-panel";
 import { Skeleton } from "@/components/ui/skeleton";
 import { OnboardingModal } from "@/components/onboarding-modal";
-import { NewUserSetup } from "@/components/new-user-setup";
 import { SubscriptionBanner } from "@/components/ui/subscription-banner";
 import { useAuth } from "@/hooks/use-auth";
 import { 
@@ -25,7 +24,6 @@ export default function DashboardPage() {
   const { user, isAdmin, isCompanyAdmin, isEffectiveCompanyAdmin } = useAuth();
   const [, setLocation] = useLocation();
   const [showOnboarding, setShowOnboarding] = useState(false);
-  const [showNewUserSetup, setShowNewUserSetup] = useState(false);
   const [selectedReport, setSelectedReport] = useState<DailyReportWithDetails | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
 
@@ -44,19 +42,15 @@ export default function DashboardPage() {
     }
   }, [isEffectiveCompanyAdmin, myCompanies, setLocation]);
 
-  // Show new user setup if user has no company memberships
-  useEffect(() => {
-    if (myCompanies !== undefined && myCompanies.length === 0) {
-      setShowNewUserSetup(true);
-    }
-  }, [myCompanies]);
+  // Note: Users manually go to My Companies page to join/create companies
+  // No automatic prompt on first login
 
-  // Show onboarding only after setup is complete and user hasn't seen it
+  // Show onboarding if user hasn't seen it
   useEffect(() => {
-    if (profile && profile.hasSeenOnboarding === false && !showNewUserSetup) {
+    if (profile && profile.hasSeenOnboarding === false) {
       setShowOnboarding(true);
     }
-  }, [profile, showNewUserSetup]);
+  }, [profile]);
 
   const { data: reportsData, isLoading, error } = useQuery<{
     reports: DailyReportWithDetails[];
