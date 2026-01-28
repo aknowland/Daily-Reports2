@@ -5061,12 +5061,39 @@ export async function registerRoutes(
       // Cost = inspector pay rates × hours
       // Profit = Revenue - Cost
       
-      // Budgeted revenue: sum of all inspectors (rate × hours) from all awarded options
+      // Options are mutually exclusive - only awarded options contribute to budget
+      // Only pending options (not not_awarded) should show as "pending award"
+      const pendingOptions = contractRateOptions.filter(o => o.awardStatus === "pending" || !o.awardStatus);
+      const isPendingAward = awardedOptions.length === 0 && pendingOptions.length > 0;
+      
+      // Budgeted revenue: sum of all inspectors (rate × hours) from awarded options only
+      // Options are mutually exclusive - don't sum all options together
       let budgetedRevenue = 0;
-      for (const option of awardedOptions.length > 0 ? awardedOptions : (contractRateOptions.length > 0 ? [contractRateOptions[0]] : [])) {
-        if (option?.inspectors) {
-          for (const inspector of option.inspectors) {
-            budgetedRevenue += parseFloat(inspector.rate || '0') * parseFloat(inspector.hours || '0');
+      let budgetedRevenueRangeMin = 0;
+      let budgetedRevenueRangeMax = 0;
+      
+      if (isPendingAward) {
+        // Calculate each PENDING option's total revenue for range display
+        const optionRevenues = pendingOptions.map(opt => {
+          let revenue = 0;
+          if (opt?.inspectors) {
+            for (const inspector of opt.inspectors) {
+              revenue += parseFloat(inspector.rate || '0') * parseFloat(inspector.hours || '0');
+            }
+          }
+          return revenue;
+        });
+        if (optionRevenues.length > 0) {
+          budgetedRevenueRangeMin = Math.min(...optionRevenues);
+          budgetedRevenueRangeMax = Math.max(...optionRevenues);
+        }
+        budgetedRevenue = 0; // Revenue is pending
+      } else {
+        for (const option of awardedOptions) {
+          if (option?.inspectors) {
+            for (const inspector of option.inspectors) {
+              budgetedRevenue += parseFloat(inspector.rate || '0') * parseFloat(inspector.hours || '0');
+            }
           }
         }
       }
@@ -5112,13 +5139,38 @@ export async function registerRoutes(
         contractManualHours.total += regHrs + otHrs;
       }
       
-      // Calculate total budgeted hours from all awarded contract options (or first option if none awarded)
-      const optionsForHoursBudget = awardedOptions.length > 0 ? awardedOptions : (contractRateOptions.length > 0 ? [contractRateOptions[0]] : []);
+      // Calculate total budgeted hours from awarded contract options only
+      // Options are mutually exclusive - only awarded options contribute to budget
+      // pendingOptions and isPendingAward are already calculated above
       let totalBudgetedHours = 0;
-      for (const option of optionsForHoursBudget) {
-        if (option?.inspectors) {
-          for (const inspector of option.inspectors) {
-            totalBudgetedHours += parseFloat(inspector.hours || '0');
+      
+      // Calculate hours range for pending awards (min/max of ONLY pending options)
+      let budgetRangeMin = 0;
+      let budgetRangeMax = 0;
+      
+      if (isPendingAward) {
+        // Calculate each pending option's total hours
+        const optionHours = pendingOptions.map(opt => {
+          let hours = 0;
+          if (opt?.inspectors) {
+            for (const inspector of opt.inspectors) {
+              hours += parseFloat(inspector.hours || '0');
+            }
+          }
+          return hours;
+        });
+        if (optionHours.length > 0) {
+          budgetRangeMin = Math.min(...optionHours);
+          budgetRangeMax = Math.max(...optionHours);
+        }
+        totalBudgetedHours = 0; // Budget is pending
+      } else {
+        // Only count awarded options - they are mutually exclusive
+        for (const option of awardedOptions) {
+          if (option?.inspectors) {
+            for (const inspector of option.inspectors) {
+              totalBudgetedHours += parseFloat(inspector.hours || '0');
+            }
           }
         }
       }
@@ -5392,6 +5444,9 @@ export async function registerRoutes(
           progress: Math.round(budgetProgress * 100) / 100,
           status: budgetStatus,
           trackingMode,
+          isPendingAward,  // True when no options are awarded yet
+          budgetRange: isPendingAward ? { min: budgetedRevenueRangeMin, max: budgetedRevenueRangeMax } : null,
+          hoursRange: isPendingAward ? { min: budgetRangeMin, max: budgetRangeMax } : null,
           hours: {
             budgeted: totalBudgetedHours,
             used: totalUsedHours,

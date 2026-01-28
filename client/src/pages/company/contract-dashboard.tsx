@@ -219,6 +219,9 @@ type DashboardData = {
     progress: number;
     status: 'under' | 'on_track' | 'warning' | 'over';
     trackingMode: BudgetTrackingMode;
+    isPendingAward?: boolean;   // True when no options are awarded yet
+    budgetRange?: { min: number; max: number } | null;  // Range of budget values from pending options
+    hoursRange?: { min: number; max: number } | null;   // Range of hours from pending options
     hours: {
       budgeted: number;
       used: number;
@@ -1142,11 +1145,32 @@ export default function ContractDashboard() {
                 </div>
               </div>
 
+              {/* Pending Award Notice */}
+              {dashboard.budget.isPendingAward && (
+                <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-md p-3 mt-2">
+                  <p className="text-sm text-amber-700 dark:text-amber-400 font-medium">
+                    Award Pending
+                  </p>
+                  <p className="text-xs text-amber-600 dark:text-amber-500 mt-1">
+                    Budget will be determined when an option is awarded.
+                    {dashboard.budget.budgetRange && (
+                      <> Range: {formatCurrency(dashboard.budget.budgetRange.min)} - {formatCurrency(dashboard.budget.budgetRange.max)}</>
+                    )}
+                  </p>
+                </div>
+              )}
+
               <div className="grid grid-cols-3 gap-2 pt-4 border-t">
                 <div>
                   <p className="text-xs text-muted-foreground">Budget</p>
                   <p className="font-medium text-sm" data-testid="text-total-budget">
-                    {formatCurrency(dashboard.budget.totalBudget)}
+                    {dashboard.budget.isPendingAward ? (
+                      <span className="text-amber-600 dark:text-amber-400">
+                        {dashboard.budget.budgetRange 
+                          ? `${formatCurrency(dashboard.budget.budgetRange.min)}${dashboard.budget.budgetRange.min !== dashboard.budget.budgetRange.max ? ` - ${formatCurrency(dashboard.budget.budgetRange.max)}` : ''}`
+                          : 'Pending'}
+                      </span>
+                    ) : formatCurrency(dashboard.budget.totalBudget)}
                   </p>
                 </div>
                 <div>
@@ -1161,8 +1185,10 @@ export default function ContractDashboard() {
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground">Remaining</p>
-                  <p className={`font-medium text-sm ${dashboard.budget.remaining < 0 ? 'text-red-600 dark:text-red-400' : ''}`} data-testid="text-budget-remaining">
-                    {formatCurrency(dashboard.budget.remaining)}
+                  <p className={`font-medium text-sm ${!dashboard.budget.isPendingAward && dashboard.budget.remaining < 0 ? 'text-red-600 dark:text-red-400' : ''}`} data-testid="text-budget-remaining">
+                    {dashboard.budget.isPendingAward ? (
+                      <span className="text-muted-foreground">-</span>
+                    ) : formatCurrency(dashboard.budget.remaining)}
                   </p>
                 </div>
               </div>
