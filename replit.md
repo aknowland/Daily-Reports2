@@ -76,9 +76,17 @@ The application is built with a modern web stack, utilizing **React, TypeScript,
     - **Week Selection**: Calendar picker with quick selection buttons (This Week, Last Week, 2 Weeks Ago, etc.)
     - **Email Distribution**: All report types support email distribution to specified recipients
 
+## Recent Changes (January 2026)
+
+-   **Subscription Pricing Page**: 3-tier pricing (Starter $99/mo, Professional $299/mo, Enterprise $699/mo) with Stripe checkout integration
+-   **Company Creation Flow**: New companies redirect to pricing page after creation (except Knowland Construction Services)
+-   **Stripe Integration**: Products created with lookup keys (price_starter_monthly, price_professional_monthly, price_enterprise_monthly)
+-   **No Auto-Prompt for Company Creation**: Users manually navigate to My Companies page to join/create companies
+
 ## External Dependencies
 
 -   **Replit Auth**: User authentication using OpenID Connect.
 -   **Replit Object Storage**: Persistent cloud storage for photos, signatures, PDFs, and company logos.
 -   **OpenAI**: Speech-to-text transcription and AI-powered parsing of voice input.
 -   **Resend**: Email distribution for reports and other communications.
+-   **Stripe**: Payment processing for company subscriptions (sandbox mode).
