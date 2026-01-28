@@ -20,8 +20,8 @@ import { LogOut, User, Settings, HardHat, Menu, LayoutDashboard, FolderOpen, Use
 import { Link, useLocation } from "wouter";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
-import { CompanySwitcher } from "./company-switcher";
 import { ProjectSwitcher } from "./project-switcher";
+import { ThemeToggle } from "./theme-toggle";
 import { ModeToggle } from "./mode-toggle";
 import { useAdminMode } from "@/hooks/use-admin-mode";
 import { Separator } from "@/components/ui/separator";
@@ -216,8 +216,8 @@ export function Header({ title = "Field Daily Reports" }: HeaderProps) {
 
         <div className="flex items-center gap-2">
           {(isAdmin || isCompanyAdmin) && <ModeToggle />}
-          {user && <CompanySwitcher activeCompanyId={profile?.activeCompanyId} />}
           {user && <ProjectSwitcher activeProjectId={profile?.activeProjectId} />}
+          {user && <ThemeToggle />}
           {isLoading ? (
             <div className="w-9 h-9 rounded-full bg-muted animate-pulse" />
           ) : user ? (

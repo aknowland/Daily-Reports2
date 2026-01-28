@@ -1,4 +1,6 @@
-import { useState, useEffect, createContext, useContext, ReactNode } from "react";
+import { useState, useEffect, createContext, useContext, ReactNode, useCallback } from "react";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 
 type Theme = "light" | "dark";
 
@@ -6,6 +8,7 @@ type ThemeContextType = {
   theme: Theme;
   setTheme: (theme: Theme) => void;
   toggleTheme: () => void;
+  isLoading: boolean;
 };
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
@@ -20,6 +23,30 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     return "light";
   });
 
+  const { data: profile, isLoading: profileLoading } = useQuery<{ themePreference?: string | null }>({
+    queryKey: ["/api/profile"],
+    retry: false,
+    staleTime: 30000,
+  });
+
+  const themeMutation = useMutation({
+    mutationFn: async (newTheme: Theme) => {
+      return apiRequest("PATCH", "/api/profile/theme", { themePreference: newTheme });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/profile"] });
+    },
+  });
+
+  useEffect(() => {
+    if (profile?.themePreference && ["light", "dark"].includes(profile.themePreference)) {
+      const serverTheme = profile.themePreference as Theme;
+      if (serverTheme !== theme) {
+        setThemeState(serverTheme);
+      }
+    }
+  }, [profile?.themePreference]);
+
   useEffect(() => {
     const root = document.documentElement;
     if (theme === "dark") {
@@ -30,16 +57,18 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     localStorage.setItem("theme", theme);
   }, [theme]);
 
-  const setTheme = (newTheme: Theme) => {
+  const setTheme = useCallback((newTheme: Theme) => {
     setThemeState(newTheme);
-  };
+    themeMutation.mutate(newTheme);
+  }, [themeMutation]);
 
-  const toggleTheme = () => {
-    setThemeState(prev => prev === "dark" ? "light" : "dark");
-  };
+  const toggleTheme = useCallback(() => {
+    const newTheme = theme === "dark" ? "light" : "dark";
+    setTheme(newTheme);
+  }, [theme, setTheme]);
 
   return (
-    <ThemeContext.Provider value={{ theme, setTheme, toggleTheme }}>
+    <ThemeContext.Provider value={{ theme, setTheme, toggleTheme, isLoading: profileLoading || themeMutation.isPending }}>
       {children}
     </ThemeContext.Provider>
   );
