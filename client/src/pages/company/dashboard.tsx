@@ -636,6 +636,25 @@ export default function CompanyDashboard() {
                         }
                       }
                       
+                      // Bid due date calculation
+                      const isInBidPhase = ['bid_release', 'bid_received', 'under_review'].includes(contract.status);
+                      const bidDue = contract.bidDueDate ? new Date(contract.bidDueDate) : null;
+                      let bidDueInfo: { label: string; color: string } | null = null;
+                      if (isInBidPhase && bidDue) {
+                        const daysUntilDue = differenceInDays(bidDue, now);
+                        if (daysUntilDue < 0) {
+                          bidDueInfo = { label: `Overdue ${Math.abs(daysUntilDue)} days`, color: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' };
+                        } else if (daysUntilDue <= 3) {
+                          bidDueInfo = { label: `Due in ${daysUntilDue} days`, color: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' };
+                        } else if (daysUntilDue <= 7) {
+                          bidDueInfo = { label: `Due in ${daysUntilDue} days`, color: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400' };
+                        } else if (daysUntilDue <= 14) {
+                          bidDueInfo = { label: `Due in ${daysUntilDue} days`, color: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' };
+                        } else {
+                          bidDueInfo = { label: `Due in ${daysUntilDue} days`, color: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' };
+                        }
+                      }
+                      
                       const getScheduleStatusColor = (status: typeof scheduleStatus) => {
                         switch (status) {
                           case 'overdue': return 'text-red-600 dark:text-red-400';
@@ -656,9 +675,16 @@ export default function CompanyDashboard() {
                                 <div className={`w-2 h-2 rounded-full ${getStatusColor(contract.status)}`} />
                                 <span className="font-medium truncate">{contract.name}</span>
                               </div>
-                              <Badge variant="outline" className="text-xs shrink-0">
-                                {contract.status.replace(/_/g, ' ')}
-                              </Badge>
+                              <div className="flex items-center gap-1 shrink-0">
+                                <Badge variant="outline" className="text-xs">
+                                  {contract.status.replace(/_/g, ' ')}
+                                </Badge>
+                                {bidDueInfo && (
+                                  <Badge className={`text-xs ${bidDueInfo.color}`} data-testid={`badge-bid-due-${contract.id}`}>
+                                    {bidDueInfo.label}
+                                  </Badge>
+                                )}
+                              </div>
                             </div>
                             {contract.clientName && (
                               <div className="text-xs text-muted-foreground ml-4 mb-2 truncate">

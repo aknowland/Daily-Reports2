@@ -5362,6 +5362,7 @@ export async function registerRoutes(
   // Helper to preprocess contract data - converts date strings to Date objects
   const preprocessContractData = (data: any) => {
     const dateFields = ['bidReleaseDate', 'bidDueDate', 'awardDate', 'startDate', 'substantialCompletionDate', 'finalCloseoutDate'];
+    const numericFields = ['originalValue', 'currentValue', 'budgetedHours', 'regularRate', 'overtimeRate', 'premiumRate'];
     const processed = { ...data };
     
     for (const field of dateFields) {
@@ -5374,9 +5375,23 @@ export async function registerRoutes(
       }
     }
     
+    // Convert empty numeric fields to null
+    for (const field of numericFields) {
+      if (processed[field] !== undefined) {
+        if (processed[field] === '' || processed[field] === null) {
+          processed[field] = null;
+        }
+      }
+    }
+    
     // Convert empty clientId to null
     if (processed.clientId === '' || processed.clientId === 'none') {
       processed.clientId = null;
+    }
+    
+    // Convert empty purchaseOrderId to null
+    if (processed.purchaseOrderId === '' || processed.purchaseOrderId === 'none') {
+      processed.purchaseOrderId = null;
     }
     
     return processed;
