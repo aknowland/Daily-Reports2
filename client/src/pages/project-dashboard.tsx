@@ -881,7 +881,7 @@ export default function ProjectDashboardPage() {
               asChild
               data-testid="button-new-daily-report-header"
             >
-              <Link href={`/create-report?projectId=${id}`}>
+              <Link href={`/reports/new?projectId=${id}`}>
                 <Plus className="w-4 h-4 mr-2" />
                 New Daily Report
               </Link>
@@ -1301,7 +1301,7 @@ export default function ProjectDashboardPage() {
                   asChild
                   data-testid="button-new-daily-report"
                 >
-                  <Link href={`/create-report?projectId=${id}`}>
+                  <Link href={`/reports/new?projectId=${id}`}>
                     <Plus className="w-4 h-4 mr-2" />
                     New Daily Report
                   </Link>
