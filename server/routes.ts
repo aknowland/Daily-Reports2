@@ -510,12 +510,17 @@ export async function registerRoutes(
       
       const profile = await storage.getUserProfile(userId);
       const isSysAdmin = isEffectiveSystemAdmin(profile);
+      const isCompAdmin = project.companyId ? await isEffectiveCompanyAdmin(userId, project.companyId, profile) : false;
       const isMember = project.companyId ? await storage.isUserMemberOfCompany(project.companyId, userId) : false;
       const isProjectMember = await storage.isUserMemberOfProject(req.params.id, userId);
       
       if (!isMember && !isSysAdmin && !isProjectMember) {
         return res.status(403).json({ message: "Access denied" });
       }
+      
+      // Determine if user has admin access to this project (can see all data)
+      // Inspectors can only see their own reports, photos, issues, etc.
+      const hasAdminAccess = isSysAdmin || isCompAdmin;
       
       // Calculate schedule progress
       const now = new Date();
@@ -546,14 +551,24 @@ export async function registerRoutes(
       }
       
       // Get daily reports for this project
-      const dailyReports = await storage.getReportsByProject(req.params.id);
+      const allDailyReports = await storage.getReportsByProject(req.params.id);
       
-      // Calculate hours from daily reports (no dollar amounts - only hours)
+      // For inspectors (non-admins), filter to only show their own reports
+      // Admins see all reports
+      const dailyReports = hasAdminAccess 
+        ? allDailyReports 
+        : allDailyReports.filter(r => r.inspectorId === userId);
+      
+      // Use all reports for project-wide statistics (budget tracking, etc.)
+      // This ensures budget calculations are accurate regardless of user role
+      
+      // Calculate hours from ALL daily reports for budget tracking (no dollar amounts - only hours)
+      // This uses allDailyReports to ensure budget calculations are accurate
       let dailyReportRegularHours = 0;
       let dailyReportOvertimeHours = 0;
       let dailyReportPremiumHours = 0;
       
-      for (const report of dailyReports) {
+      for (const report of allDailyReports) {
         dailyReportRegularHours += parseFloat(report.regularHours || '0');
         dailyReportOvertimeHours += parseFloat(report.otHours || '0');
         dailyReportPremiumHours += parseFloat((report as any).premiumHours || '0');
@@ -686,20 +701,22 @@ export async function registerRoutes(
         })),
       };
       
-      // Weather Summary
+      // Weather Summary - for non-admins, only include data from their own reports
+      // Admins see project-wide weather stats
+      const weatherReportsToUse = hasAdminAccess ? allDailyReports : dailyReports;
       const weatherCounts: Record<string, number> = {};
-      for (const report of dailyReports) {
+      for (const report of weatherReportsToUse) {
         const weather = report.weatherType || 'unknown';
         weatherCounts[weather] = (weatherCounts[weather] || 0) + 1;
       }
       const weatherSummary = {
-        totalReports: dailyReports.length,
+        totalReports: weatherReportsToUse.length,
         breakdown: Object.entries(weatherCounts).map(([type, count]) => ({
           type,
           count,
-          percentage: dailyReports.length > 0 ? Math.round((count / dailyReports.length) * 100) : 0,
+          percentage: weatherReportsToUse.length > 0 ? Math.round((count / weatherReportsToUse.length) * 100) : 0,
         })).sort((a, b) => b.count - a.count),
-        recentWeather: dailyReports.slice(0, 7).map(r => ({
+        recentWeather: weatherReportsToUse.slice(0, 7).map(r => ({
           date: r.date,
           type: r.weatherType,
           notes: r.weatherNotes,
@@ -707,8 +724,11 @@ export async function registerRoutes(
       };
       
       // Inspector hours breakdown (only hours, no rates)
+      // For non-admins: only show their own hours
+      // For admins: show all inspector hours for project-wide totals
+      const hoursReportsToUse = hasAdminAccess ? allDailyReports : dailyReports;
       const inspectorHours: Record<string, { inspectorId: string; regular: number; overtime: number; premium: number; reportCount: number }> = {};
-      for (const report of dailyReports) {
+      for (const report of hoursReportsToUse) {
         const inspectorId = report.inspectorId || 'unknown';
         if (!inspectorHours[inspectorId]) {
           inspectorHours[inspectorId] = { inspectorId, regular: 0, overtime: 0, premium: 0, reportCount: 0 };
@@ -730,6 +750,7 @@ export async function registerRoutes(
           .map(p => [p.userId, `${p.firstName || ''} ${p.lastName || ''}`.trim() || 'Inspector'])
       );
       
+      // Team overview - for non-admins, only show their own data
       const teamOverview = Object.values(inspectorHours)
         .map(i => ({
           ...i,
@@ -909,7 +930,14 @@ export async function registerRoutes(
         };
       }
       
+      // Note: Budget/hours totals use project-wide data (allDailyReports) intentionally.
+      // This allows inspectors to understand true project budget status for coordination,
+      // without exposing individual inspector identities or personal data.
+      // Individual data (reports, photos, issues, teamOverview) is filtered per-user for non-admins.
+      
       res.json({
+        // Include access level so frontend can adjust UI appropriately
+        hasAdminAccess,
         project: {
           id: project.id,
           name: project.name,
@@ -3910,7 +3938,7 @@ export async function registerRoutes(
     other: "Other"
   };
 
-  // Get contracts for active company
+  // Get contracts for active company (admin-only - contracts contain financial data)
   app.get("/api/contracts", isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user?.claims?.sub;
@@ -3920,12 +3948,12 @@ export async function registerRoutes(
         return res.json([]);
       }
       
-      // Check user has access to this company
-      const isMember = await storage.isUserMemberOfCompany(profile.activeCompanyId, userId);
+      // Contracts contain financial data - restrict to admins only
       const isSysAdmin = isEffectiveSystemAdmin(profile);
+      const isCompAdmin = await isEffectiveCompanyAdmin(userId, profile.activeCompanyId, profile);
       
-      if (!isMember && !isSysAdmin) {
-        return res.status(403).json({ message: "Access denied" });
+      if (!isCompAdmin && !isSysAdmin) {
+        return res.status(403).json({ message: "Access denied - admin required" });
       }
       
       const contracts = await storage.getContracts(profile.activeCompanyId);
@@ -4420,11 +4448,12 @@ export async function registerRoutes(
       }
       
       const profile = await storage.getUserProfile(userId);
-      const isMember = await storage.isUserMemberOfCompany(contract.companyId, userId);
       const isSysAdmin = isEffectiveSystemAdmin(profile);
+      const isCompAdmin = await isEffectiveCompanyAdmin(userId, contract.companyId, profile);
       
-      if (!isMember && !isSysAdmin) {
-        return res.status(403).json({ message: "Access denied" });
+      // Contracts contain financial data - restrict to admins only
+      if (!isCompAdmin && !isSysAdmin) {
+        return res.status(403).json({ message: "Access denied - admin required" });
       }
       
       res.json(contract);
@@ -4445,11 +4474,12 @@ export async function registerRoutes(
       }
       
       const profile = await storage.getUserProfile(userId);
-      const isMember = await storage.isUserMemberOfCompany(contract.companyId, userId);
       const isSysAdmin = isEffectiveSystemAdmin(profile);
+      const isCompAdmin = await isEffectiveCompanyAdmin(userId, contract.companyId, profile);
       
-      if (!isMember && !isSysAdmin) {
-        return res.status(403).json({ message: "Access denied" });
+      // Contracts contain financial data - restrict to admins only
+      if (!isCompAdmin && !isSysAdmin) {
+        return res.status(403).json({ message: "Access denied - admin required" });
       }
       
       const projects = await storage.getProjectsByContract(req.params.id);
@@ -4580,11 +4610,12 @@ export async function registerRoutes(
       }
       
       const profile = await storage.getUserProfile(userId);
-      const isMember = await storage.isUserMemberOfCompany(contract.companyId, userId);
       const isSysAdmin = isEffectiveSystemAdmin(profile);
+      const isCompAdmin = await isEffectiveCompanyAdmin(userId, contract.companyId, profile);
       
-      if (!isMember && !isSysAdmin) {
-        return res.status(403).json({ message: "Access denied" });
+      // Contract dashboard contains financial data - restrict to admins only
+      if (!isCompAdmin && !isSysAdmin) {
+        return res.status(403).json({ message: "Access denied - admin required" });
       }
       
       // Calculate schedule progress
