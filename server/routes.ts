@@ -518,8 +518,7 @@ export async function registerRoutes(
         return res.status(403).json({ message: "Access denied" });
       }
       
-      // Determine if user has admin access to this project (can see all data)
-      // Inspectors can only see their own reports, photos, issues, etc.
+      // Determine if user has admin access for certain admin-only features
       const hasAdminAccess = isSysAdmin || isCompAdmin;
       
       // Calculate schedule progress
@@ -550,17 +549,9 @@ export async function registerRoutes(
         }
       }
       
-      // Get daily reports for this project
+      // Get daily reports for this project - show all reports for transparency
       const allDailyReports = await storage.getReportsByProject(req.params.id);
-      
-      // For inspectors (non-admins), filter to only show their own reports
-      // Admins see all reports
-      const dailyReports = hasAdminAccess 
-        ? allDailyReports 
-        : allDailyReports.filter(r => r.inspectorId === userId);
-      
-      // Use all reports for project-wide statistics (budget tracking, etc.)
-      // This ensures budget calculations are accurate regardless of user role
+      const dailyReports = allDailyReports; // All inspectors see all project data for transparency
       
       // Calculate hours from ALL daily reports for budget tracking (no dollar amounts - only hours)
       // This uses allDailyReports to ensure budget calculations are accurate
@@ -701,34 +692,29 @@ export async function registerRoutes(
         })),
       };
       
-      // Weather Summary - for non-admins, only include data from their own reports
-      // Admins see project-wide weather stats
-      const weatherReportsToUse = hasAdminAccess ? allDailyReports : dailyReports;
+      // Weather Summary - show all project weather data for transparency
       const weatherCounts: Record<string, number> = {};
-      for (const report of weatherReportsToUse) {
+      for (const report of allDailyReports) {
         const weather = report.weatherType || 'unknown';
         weatherCounts[weather] = (weatherCounts[weather] || 0) + 1;
       }
       const weatherSummary = {
-        totalReports: weatherReportsToUse.length,
+        totalReports: allDailyReports.length,
         breakdown: Object.entries(weatherCounts).map(([type, count]) => ({
           type,
           count,
-          percentage: weatherReportsToUse.length > 0 ? Math.round((count / weatherReportsToUse.length) * 100) : 0,
+          percentage: allDailyReports.length > 0 ? Math.round((count / allDailyReports.length) * 100) : 0,
         })).sort((a, b) => b.count - a.count),
-        recentWeather: weatherReportsToUse.slice(0, 7).map(r => ({
+        recentWeather: allDailyReports.slice(0, 7).map(r => ({
           date: r.date,
           type: r.weatherType,
           notes: r.weatherNotes,
         })),
       };
       
-      // Inspector hours breakdown (only hours, no rates)
-      // For non-admins: only show their own hours
-      // For admins: show all inspector hours for project-wide totals
-      const hoursReportsToUse = hasAdminAccess ? allDailyReports : dailyReports;
+      // Inspector hours breakdown (only hours, no rates) - show all for transparency
       const inspectorHours: Record<string, { inspectorId: string; regular: number; overtime: number; premium: number; reportCount: number }> = {};
-      for (const report of hoursReportsToUse) {
+      for (const report of allDailyReports) {
         const inspectorId = report.inspectorId || 'unknown';
         if (!inspectorHours[inspectorId]) {
           inspectorHours[inspectorId] = { inspectorId, regular: 0, overtime: 0, premium: 0, reportCount: 0 };
@@ -750,7 +736,7 @@ export async function registerRoutes(
           .map(p => [p.userId, `${p.firstName || ''} ${p.lastName || ''}`.trim() || 'Inspector'])
       );
       
-      // Team overview - for non-admins, only show their own data
+      // Team overview - show all inspector data for transparency
       const teamOverview = Object.values(inspectorHours)
         .map(i => ({
           ...i,
@@ -930,13 +916,8 @@ export async function registerRoutes(
         };
       }
       
-      // Note: Budget/hours totals use project-wide data (allDailyReports) intentionally.
-      // This allows inspectors to understand true project budget status for coordination,
-      // without exposing individual inspector identities or personal data.
-      // Individual data (reports, photos, issues, teamOverview) is filtered per-user for non-admins.
-      
+      // All project data is shown to all assigned inspectors for transparency
       res.json({
-        // Include access level so frontend can adjust UI appropriately
         hasAdminAccess,
         project: {
           id: project.id,
