@@ -621,15 +621,29 @@ export default function CompanyDashboard() {
                       const end = contract.schedule.endDate ? new Date(contract.schedule.endDate) : null;
                       
                       let daysInfo = '';
+                      let scheduleStatus: 'upcoming' | 'active' | 'ending_soon' | 'overdue' | 'completed' = 'active';
                       if (start && end) {
                         if (now < start) {
                           daysInfo = `Starts in ${differenceInDays(start, now)} days`;
+                          scheduleStatus = 'upcoming';
                         } else if (now > end) {
                           daysInfo = `Ended ${differenceInDays(now, end)} days ago`;
+                          scheduleStatus = 'overdue';
                         } else {
-                          daysInfo = `${differenceInDays(end, now)} days remaining`;
+                          const remaining = differenceInDays(end, now);
+                          daysInfo = `${remaining} days remaining`;
+                          scheduleStatus = remaining <= 7 ? 'ending_soon' : 'active';
                         }
                       }
+                      
+                      const getScheduleStatusColor = (status: typeof scheduleStatus) => {
+                        switch (status) {
+                          case 'overdue': return 'text-red-600 dark:text-red-400';
+                          case 'ending_soon': return 'text-amber-600 dark:text-amber-400';
+                          case 'upcoming': return 'text-blue-600 dark:text-blue-400';
+                          default: return 'text-muted-foreground';
+                        }
+                      };
                       
                       return (
                         <Link key={contract.id} href={`/company/contracts/${contract.id}/dashboard`}>
@@ -661,7 +675,7 @@ export default function CompanyDashboard() {
                                 <span>{formatDate(contract.schedule.endDate)}</span>
                               </div>
                               {daysInfo && (
-                                <Badge variant="secondary" className="text-xs shrink-0">
+                                <Badge variant="secondary" className={`text-xs shrink-0 ${getScheduleStatusColor(scheduleStatus)}`}>
                                   {daysInfo}
                                 </Badge>
                               )}
