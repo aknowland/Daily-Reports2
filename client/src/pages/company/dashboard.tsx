@@ -17,12 +17,14 @@ import {
   AlertCircle,
   ChevronRight,
   ChevronDown,
+  ChevronLeft,
   Receipt,
   DollarSign,
   Clock,
   CheckCircle2,
   TrendingUp,
   Calendar,
+  CalendarDays,
   Bell,
   Activity,
   AlertTriangle,
@@ -36,6 +38,8 @@ import {
   Search,
   Filter,
   X,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import {
@@ -47,7 +51,7 @@ import {
 } from "@/components/ui/select";
 import { Link } from "wouter";
 import { useState } from "react";
-import { format, differenceInDays, startOfMonth, endOfMonth, eachDayOfInterval, isWeekend, isSameMonth } from "date-fns";
+import { format, differenceInDays, startOfMonth, endOfMonth, eachDayOfInterval, isWeekend, isSameMonth, startOfWeek, endOfWeek, isSameDay, addMonths, subMonths } from "date-fns";
 
 type ContractDashboardSummary = {
   id: string;
@@ -198,6 +202,9 @@ export default function CompanyDashboard() {
   const [contractSearch, setContractSearch] = useState("");
   const [contractStatusFilter, setContractStatusFilter] = useState("all");
   const [isEmailPending, setIsEmailPending] = useState(false);
+  const [showCalendar, setShowCalendar] = useState(false);
+  const [calendarMonth, setCalendarMonth] = useState(new Date());
+  const [selectedCalendarDay, setSelectedCalendarDay] = useState<Date | null>(null);
 
   const handleDownloadReport = (type: ReportType, params: ReportParams) => {
     let url = '';
@@ -371,6 +378,21 @@ export default function CompanyDashboard() {
   const totalContracts = contractsSummary?.length || 0;
   const completionRate = totalContracts > 0 ? Math.round((completedContracts / totalContracts) * 100) : 0;
 
+  // Calendar events from contracts
+  const calendarEvents = (contractsSummary || []).flatMap(contract => {
+    const events: { date: Date; title: string; type: string; contract: ContractDashboardSummary }[] = [];
+    if (contract.bidDueDate) {
+      events.push({ date: new Date(contract.bidDueDate), title: `Bid Due: ${contract.name}`, type: "bid_due", contract });
+    }
+    if (contract.schedule.startDate) {
+      events.push({ date: new Date(contract.schedule.startDate), title: `Start: ${contract.name}`, type: "start", contract });
+    }
+    if (contract.schedule.endDate) {
+      events.push({ date: new Date(contract.schedule.endDate), title: `Completion: ${contract.name}`, type: "completion", contract });
+    }
+    return events;
+  }).sort((a, b) => a.date.getTime() - b.date.getTime());
+
   return (
     <PageLayout title="Company Dashboard">
       <div className="space-y-6 p-4 overflow-x-hidden">
@@ -383,14 +405,246 @@ export default function CompanyDashboard() {
               Overview of your company's activity
             </p>
           </div>
-          <SummaryReportDropdown
-            scope="company"
-            entityId={activeCompany?.id || ''}
-            onDownload={handleDownloadReport}
-            onEmail={handleEmailReport}
-            isEmailPending={isEmailPending}
-          />
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setShowCalendar(!showCalendar)}
+              data-testid="button-toggle-calendar"
+            >
+              {showCalendar ? <EyeOff className="w-4 h-4 mr-2" /> : <Eye className="w-4 h-4 mr-2" />}
+              {showCalendar ? "Hide Calendar" : "Show Calendar"}
+            </Button>
+            <SummaryReportDropdown
+              scope="company"
+              entityId={activeCompany?.id || ''}
+              onDownload={handleDownloadReport}
+              onEmail={handleEmailReport}
+              isEmailPending={isEmailPending}
+            />
+          </div>
         </div>
+
+        {/* Contract Calendar - Collapsible */}
+        {showCalendar && (
+          <Card data-testid="card-calendar">
+            <CardHeader>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <CardTitle className="flex items-center gap-2">
+                  <Calendar className="w-5 h-5" />
+                  Contract Calendar
+                </CardTitle>
+                <div className="flex items-center gap-2">
+                  <Button 
+                    variant="outline" 
+                    size="icon"
+                    onClick={() => setCalendarMonth(subMonths(calendarMonth, 1))}
+                    data-testid="button-prev-month"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </Button>
+                  <span className="font-medium min-w-[140px] text-center">
+                    {format(calendarMonth, "MMMM yyyy")}
+                  </span>
+                  <Button 
+                    variant="outline" 
+                    size="icon"
+                    onClick={() => setCalendarMonth(addMonths(calendarMonth, 1))}
+                    data-testid="button-next-month"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setCalendarMonth(new Date())}
+                    data-testid="button-today"
+                  >
+                    Today
+                  </Button>
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-4 mt-2 text-xs">
+                <div className="flex items-center gap-1">
+                  <div className="w-3 h-3 rounded bg-orange-200 dark:bg-orange-800" />
+                  <span>Bid Due</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <div className="w-3 h-3 rounded bg-green-200 dark:bg-green-800" />
+                  <span>Start Date</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <div className="w-3 h-3 rounded bg-blue-200 dark:bg-blue-800" />
+                  <span>Completion</span>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {contractsLoading ? (
+                <Skeleton className="h-[400px] w-full" />
+              ) : calendarEvents.length === 0 ? (
+                <p className="text-center text-muted-foreground py-4 mb-4 bg-muted/50 rounded-md">
+                  No contract dates scheduled. Add bid due dates, start dates, or completion dates to your contracts to see them here.
+                </p>
+              ) : null}
+              {(() => {
+                const monthStart = startOfMonth(calendarMonth);
+                const monthEnd = endOfMonth(calendarMonth);
+                const calendarStart = startOfWeek(monthStart);
+                const calendarEnd = endOfWeek(monthEnd);
+                const calendarDays = eachDayOfInterval({ start: calendarStart, end: calendarEnd });
+                const today = new Date();
+                
+                return (
+                  <div className="border rounded-md">
+                    <div className="grid grid-cols-7 border-b">
+                      {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
+                        <div key={day} className="p-2 text-center text-sm font-medium text-muted-foreground border-r last:border-r-0">
+                          {day}
+                        </div>
+                      ))}
+                    </div>
+                    <div className="grid grid-cols-7">
+                      {calendarDays.map((day, index) => {
+                        const dayEvents = calendarEvents.filter(event => isSameDay(event.date, day));
+                        const isCurrentMonth = isSameMonth(day, calendarMonth);
+                        const isToday = isSameDay(day, today);
+                        const isSelected = selectedCalendarDay && isSameDay(day, selectedCalendarDay);
+                        
+                        return (
+                          <div
+                            key={index}
+                            role="button"
+                            tabIndex={0}
+                            onClick={() => setSelectedCalendarDay(day)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault();
+                                setSelectedCalendarDay(day);
+                              }
+                            }}
+                            className={`min-h-[80px] sm:min-h-[100px] p-1 border-r border-b last:border-r-0 cursor-pointer hover-elevate ${
+                              !isCurrentMonth ? 'bg-muted/30' : ''
+                            } ${isToday ? 'bg-primary/5' : ''} ${isSelected ? 'ring-2 ring-primary ring-inset' : ''}`}
+                            data-testid={`calendar-day-${format(day, 'yyyy-MM-dd')}`}
+                          >
+                            <div className={`text-sm mb-1 ${
+                              isToday 
+                                ? 'bg-primary text-primary-foreground w-6 h-6 rounded-full flex items-center justify-center' 
+                                : !isCurrentMonth 
+                                  ? 'text-muted-foreground' 
+                                  : ''
+                            }`}>
+                              {format(day, 'd')}
+                            </div>
+                            <div className="space-y-1">
+                              {dayEvents.slice(0, 3).map((event, eventIndex) => (
+                                <Link
+                                  key={`${event.contract.id}-${event.type}-${eventIndex}`}
+                                  href={`/company/contracts/${event.contract.id}/dashboard`}
+                                  onClick={(e) => e.stopPropagation()}
+                                  className={`block text-xs p-1 rounded truncate cursor-pointer hover-elevate ${
+                                    event.type === 'bid_due' 
+                                      ? 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300' 
+                                      : event.type === 'start' 
+                                        ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300'
+                                        : 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300'
+                                  }`}
+                                  title={event.title}
+                                  data-testid={`calendar-event-${event.contract.id}-${event.type}`}
+                                >
+                                  {event.contract.name}
+                                </Link>
+                              ))}
+                              {dayEvents.length > 3 && (
+                                <div className="text-xs text-muted-foreground">
+                                  +{dayEvents.length - 3} more
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Day Summary Panel */}
+        {showCalendar && selectedCalendarDay && (
+          <Card data-testid="card-day-summary">
+            <CardHeader>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <CardTitle className="flex items-center gap-2">
+                  <CalendarDays className="w-5 h-5" />
+                  {format(selectedCalendarDay, "EEEE, MMMM d, yyyy")}
+                </CardTitle>
+                <Button 
+                  variant="ghost" 
+                  size="icon"
+                  onClick={() => setSelectedCalendarDay(null)}
+                  data-testid="button-close-day-panel"
+                >
+                  <X className="w-4 h-4" />
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {(() => {
+                const dayEvents = calendarEvents.filter(event => 
+                  isSameDay(event.date, selectedCalendarDay)
+                );
+                
+                if (dayEvents.length === 0) {
+                  return (
+                    <p className="text-center text-muted-foreground py-4">
+                      No contract dates scheduled for this day.
+                    </p>
+                  );
+                }
+                
+                return (
+                  <div className="space-y-3">
+                    {dayEvents.map((event, index) => (
+                      <Link
+                        key={`${event.contract.id}-${event.type}-${index}`}
+                        href={`/company/contracts/${event.contract.id}/dashboard`}
+                        className="block"
+                        data-testid={`day-panel-event-${event.contract.id}-${event.type}`}
+                      >
+                        <Card className="hover-elevate">
+                          <CardContent className="p-3">
+                            <div className="flex flex-wrap items-start justify-between gap-2">
+                              <div className="flex items-start gap-2 flex-1 min-w-0">
+                                <div className={`w-1 self-stretch shrink-0 ${
+                                  event.type === 'bid_due' 
+                                    ? 'bg-orange-500' 
+                                    : event.type === 'start' 
+                                      ? 'bg-green-500'
+                                      : 'bg-blue-500'
+                                }`} />
+                                <div className="flex-1 min-w-0">
+                                  <div className="font-medium truncate">{event.contract.name}</div>
+                                  <div className="text-sm text-muted-foreground">{event.contract.contractNumber}</div>
+                                  <Badge variant="outline" className="mt-1">
+                                    {event.type === 'bid_due' ? 'Bid Due' : event.type === 'start' ? 'Start Date' : 'Completion'}
+                                  </Badge>
+                                </div>
+                              </div>
+                              <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
+                            </div>
+                          </CardContent>
+                        </Card>
+                      </Link>
+                    ))}
+                  </div>
+                );
+              })()}
+            </CardContent>
+          </Card>
+        )}
 
         {/* KPI Cards */}
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
