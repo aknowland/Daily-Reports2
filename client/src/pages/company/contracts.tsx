@@ -2178,7 +2178,15 @@ export default function ContractsPage() {
                         return (
                           <div
                             key={index}
+                            role="button"
+                            tabIndex={0}
                             onClick={() => setSelectedCalendarDay(day)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault();
+                                setSelectedCalendarDay(day);
+                              }
+                            }}
                             className={`min-h-[100px] p-1 border-r border-b last:border-r-0 cursor-pointer hover-elevate ${
                               !isCurrentMonth ? 'bg-muted/30' : ''
                             } ${isToday ? 'bg-primary/5' : ''} ${isSelected ? 'ring-2 ring-primary ring-inset' : ''}`}
@@ -2263,50 +2271,56 @@ export default function ContractsPage() {
                           key={`${event.contract.id}-${event.type}-${index}`}
                           href={`/company/contracts/${event.contract.id}/dashboard`}
                           className="block"
+                          data-testid={`day-panel-event-${event.contract.id}-${event.type}`}
                         >
-                          <div className={`p-3 rounded-lg border hover-elevate ${
-                            event.type === 'bid_due' 
-                              ? 'border-l-4 border-l-orange-500' 
-                              : event.type === 'start' 
-                                ? 'border-l-4 border-l-green-500'
-                                : 'border-l-4 border-l-blue-500'
-                          }`}>
-                            <div className="flex items-start justify-between gap-2">
-                              <div className="flex-1 min-w-0">
-                                <div className="font-medium truncate">{event.contract.name}</div>
-                                <div className="text-sm text-muted-foreground">{event.contract.contractNumber}</div>
+                          <Card className="hover-elevate">
+                            <CardContent className="p-3">
+                              <div className="flex flex-wrap items-start justify-between gap-2">
+                                <div className="flex items-start gap-2 flex-1 min-w-0">
+                                  <div className={`w-1 self-stretch shrink-0 ${
+                                    event.type === 'bid_due' 
+                                      ? 'bg-orange-500' 
+                                      : event.type === 'start' 
+                                        ? 'bg-green-500'
+                                        : 'bg-blue-500'
+                                  }`} />
+                                  <div className="flex-1 min-w-0">
+                                    <div className="font-medium truncate">{event.contract.name}</div>
+                                    <div className="text-sm text-muted-foreground">{event.contract.contractNumber}</div>
+                                  </div>
+                                </div>
+                                <Badge variant="outline" className={`shrink-0 ${
+                                  event.type === 'bid_due' 
+                                    ? 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300' 
+                                    : event.type === 'start' 
+                                      ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300'
+                                      : 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300'
+                                }`}>
+                                  {event.type === 'bid_due' ? 'Bid Due' : event.type === 'start' ? 'Start Date' : 'Completion'}
+                                </Badge>
                               </div>
-                              <Badge variant="outline" className={`shrink-0 ${
-                                event.type === 'bid_due' 
-                                  ? 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300' 
-                                  : event.type === 'start' 
-                                    ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300'
-                                    : 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300'
-                              }`}>
-                                {event.type === 'bid_due' ? 'Bid Due' : event.type === 'start' ? 'Start Date' : 'Completion'}
-                              </Badge>
-                            </div>
-                            {event.contract.description && (
-                              <p className="text-sm text-muted-foreground mt-2 line-clamp-2">
-                                {event.contract.description}
-                              </p>
-                            )}
-                            <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
-                              {event.contract.clientId && (
-                                <span className="flex items-center gap-1">
-                                  <Building2 className="w-3 h-3" />
-                                  Client assigned
-                                </span>
+                              {event.contract.description && (
+                                <p className="text-sm text-muted-foreground mt-2 line-clamp-2 ml-3">
+                                  {event.contract.description}
+                                </p>
                               )}
-                              {event.contract.projects && event.contract.projects.length > 0 && (
-                                <span className="flex items-center gap-1">
-                                  <FileText className="w-3 h-3" />
-                                  {event.contract.projects.length} project{event.contract.projects.length !== 1 ? 's' : ''}
-                                </span>
-                              )}
-                              {getStatusBadge(event.contract.status)}
-                            </div>
-                          </div>
+                              <div className="flex flex-wrap items-center gap-2 mt-2 text-xs text-muted-foreground ml-3">
+                                {event.contract.clientId && (
+                                  <span className="flex items-center gap-1">
+                                    <Building2 className="w-3 h-3" />
+                                    Client assigned
+                                  </span>
+                                )}
+                                {event.contract.projects && event.contract.projects.length > 0 && (
+                                  <span className="flex items-center gap-1">
+                                    <FileText className="w-3 h-3" />
+                                    {event.contract.projects.length} project{event.contract.projects.length !== 1 ? 's' : ''}
+                                  </span>
+                                )}
+                                {getStatusBadge(event.contract.status)}
+                              </div>
+                            </CardContent>
+                          </Card>
                         </Link>
                       ))}
                     </div>
