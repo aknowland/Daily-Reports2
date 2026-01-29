@@ -1132,7 +1132,7 @@ export default function CompanyDashboard() {
                     {companyDashboard.atRiskProjects.map((project) => (
                       <Link 
                         key={project.id} 
-                        href={`/projects/${project.id}/dashboard`}
+                        href={`/project/${project.id}/dashboard`}
                       >
                         <div 
                           className={`p-3 rounded-lg border cursor-pointer hover-elevate ${

@@ -731,7 +731,7 @@ export default function CompanyProjectsPage() {
           <div className="grid gap-4 md:grid-cols-2">
             {filteredProjects.map((project) => {
               // Navigate to project dashboard
-              const projectLink = `/projects/${project.id}/dashboard`;
+              const projectLink = `/project/${project.id}/dashboard`;
               
               return (
               <Card key={project.id} className="hover-elevate" data-testid={`card-project-${project.id}`}>
