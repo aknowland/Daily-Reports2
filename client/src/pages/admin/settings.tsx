@@ -21,7 +21,10 @@ import {
   Shield,
   ShieldCheck,
   Users,
+  Download,
+  Network,
 } from "lucide-react";
+import architectureDiagram from "@assets/field-daily-reports-architecture-diagram.png";
 import { Link } from "wouter";
 import { Switch } from "@/components/ui/switch";
 import type { Company, User, UserProfile } from "@shared/schema";
@@ -495,6 +498,44 @@ export default function AdminSettingsPage() {
             </div>
           </CardContent>
         </Card>
+
+        {isSystemAdmin && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Network className="w-5 h-5" />
+                System Architecture
+              </CardTitle>
+              <CardDescription>
+                Visual diagram showing how the system components connect
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="border rounded-lg overflow-hidden bg-slate-800 dark:bg-slate-900">
+                <img
+                  src={architectureDiagram}
+                  alt="Field Daily Reports System Architecture Diagram"
+                  className="w-full h-auto"
+                  data-testid="img-architecture-diagram"
+                />
+              </div>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-sm text-muted-foreground">
+                  Shows user roles, entity relationships, and workflow connections
+                </p>
+                <Button
+                  variant="outline"
+                  asChild
+                >
+                  <a href={architectureDiagram} download="field-daily-reports-architecture.png" data-testid="button-download-diagram">
+                    <Download className="w-4 h-4 mr-2" />
+                    Download
+                  </a>
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
       </div>
     </PageLayout>
   );
