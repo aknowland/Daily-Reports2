@@ -12,7 +12,10 @@ import {
   ChevronRight,
   TrendingUp,
   AlertCircle,
+  Download,
+  Network,
 } from "lucide-react";
+import architectureDiagram from "@assets/field-daily-reports-architecture-diagram.png";
 import type { DailyReportWithDetails, Project } from "@shared/schema";
 import type { User } from "@shared/models/auth";
 
@@ -208,6 +211,39 @@ export default function AdminDashboardPage() {
                 ))}
               </div>
             )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg flex items-center gap-2">
+              <Network className="w-5 h-5" />
+              System Architecture
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Visual diagram showing user roles, entity relationships, and workflow connections
+            </p>
+            <div className="border rounded-lg overflow-hidden bg-slate-800 dark:bg-slate-900">
+              <img
+                src={architectureDiagram}
+                alt="Field Daily Reports System Architecture Diagram"
+                className="w-full h-auto"
+                data-testid="img-architecture-diagram"
+              />
+            </div>
+            <div className="flex justify-end">
+              <Button
+                variant="outline"
+                asChild
+              >
+                <a href={architectureDiagram} download="field-daily-reports-architecture.png" data-testid="button-download-diagram">
+                  <Download className="w-4 h-4 mr-2" />
+                  Download Diagram
+                </a>
+              </Button>
+            </div>
           </CardContent>
         </Card>
       </div>
