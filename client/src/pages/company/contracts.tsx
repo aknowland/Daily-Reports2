@@ -58,6 +58,8 @@ import {
   LayoutDashboard,
   ArrowLeft,
   Search,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import {
@@ -72,7 +74,7 @@ import type { ContractWithProjects, Project, Client, ContractAttachment, Proposa
 import { ProposalDialog } from "@/components/proposal-dialog";
 import { ClientSelect } from "@/components/client-select";
 import { PurchaseOrderSelect } from "@/components/purchase-order-select";
-import { format, differenceInDays } from "date-fns";
+import { format, differenceInDays, startOfMonth, endOfMonth, eachDayOfInterval, startOfWeek, endOfWeek, isSameMonth, isSameDay, addMonths, subMonths } from "date-fns";
 import { Progress } from "@/components/ui/progress";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -239,6 +241,8 @@ export default function ContractsPage() {
   
   // Award options dialog state - for partial awards
   const [showAwardOptionsDialog, setShowAwardOptionsDialog] = useState(false);
+  // Calendar month navigation
+  const [calendarMonth, setCalendarMonth] = useState(new Date());
   const [pendingAwardContract, setPendingAwardContract] = useState<{
     formData: ContractFormData;
     options: ContractOptionEntry[];
@@ -2089,35 +2093,128 @@ export default function ContractsPage() {
         <TabsContent value="calendar">
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Calendar className="w-5 h-5" />
-                Upcoming Dates
-              </CardTitle>
+              <div className="flex items-center justify-between">
+                <CardTitle className="flex items-center gap-2">
+                  <Calendar className="w-5 h-5" />
+                  Contract Calendar
+                </CardTitle>
+                <div className="flex items-center gap-2">
+                  <Button 
+                    variant="outline" 
+                    size="icon"
+                    onClick={() => setCalendarMonth(subMonths(calendarMonth, 1))}
+                    data-testid="button-prev-month"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </Button>
+                  <span className="font-medium min-w-[140px] text-center">
+                    {format(calendarMonth, "MMMM yyyy")}
+                  </span>
+                  <Button 
+                    variant="outline" 
+                    size="icon"
+                    onClick={() => setCalendarMonth(addMonths(calendarMonth, 1))}
+                    data-testid="button-next-month"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setCalendarMonth(new Date())}
+                    data-testid="button-today"
+                  >
+                    Today
+                  </Button>
+                </div>
+              </div>
+              <div className="flex items-center gap-4 mt-2 text-xs">
+                <div className="flex items-center gap-1">
+                  <div className="w-3 h-3 rounded bg-orange-200 dark:bg-orange-800" />
+                  <span>Bid Due</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <div className="w-3 h-3 rounded bg-green-200 dark:bg-green-800" />
+                  <span>Start Date</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <div className="w-3 h-3 rounded bg-blue-200 dark:bg-blue-800" />
+                  <span>Completion</span>
+                </div>
+              </div>
             </CardHeader>
             <CardContent>
-              {calendarEvents.length === 0 ? (
-                <p className="text-center text-muted-foreground py-8">No upcoming dates scheduled.</p>
-              ) : (
-                <div className="space-y-3">
-                  {calendarEvents.map((event, index) => (
-                    <div 
-                      key={`${event.contract.id}-${event.type}-${index}`}
-                      className="flex items-center gap-4 p-3 rounded-lg border"
-                    >
-                      <div className="text-center min-w-[60px]">
-                        <div className="text-2xl font-bold">{format(event.date, "d")}</div>
-                        <div className="text-xs text-muted-foreground">{format(event.date, "MMM yyyy")}</div>
-                      </div>
-                      <div className="flex-1">
-                        <div className="font-medium">{event.title}</div>
-                        <div className="text-sm text-muted-foreground">
-                          {getStatusBadge(event.contract.status)}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+              {calendarEvents.length === 0 && (
+                <p className="text-center text-muted-foreground py-4 mb-4 bg-muted/50 rounded-md">
+                  No contract dates scheduled. Add bid due dates, start dates, or completion dates to your contracts to see them here.
+                </p>
               )}
+              {(() => {
+                const monthStart = startOfMonth(calendarMonth);
+                const monthEnd = endOfMonth(calendarMonth);
+                const calendarStart = startOfWeek(monthStart);
+                const calendarEnd = endOfWeek(monthEnd);
+                const calendarDays = eachDayOfInterval({ start: calendarStart, end: calendarEnd });
+                const today = new Date();
+                
+                return (
+                  <div className="border rounded-md">
+                    <div className="grid grid-cols-7 border-b">
+                      {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
+                        <div key={day} className="p-2 text-center text-sm font-medium text-muted-foreground border-r last:border-r-0">
+                          {day}
+                        </div>
+                      ))}
+                    </div>
+                    <div className="grid grid-cols-7">
+                      {calendarDays.map((day, index) => {
+                        const dayEvents = calendarEvents.filter(event => isSameDay(event.date, day));
+                        const isCurrentMonth = isSameMonth(day, calendarMonth);
+                        const isToday = isSameDay(day, today);
+                        
+                        return (
+                          <div
+                            key={index}
+                            className={`min-h-[100px] p-1 border-r border-b last:border-r-0 ${
+                              !isCurrentMonth ? 'bg-muted/30' : ''
+                            } ${isToday ? 'bg-primary/5' : ''}`}
+                            data-testid={`calendar-day-${format(day, 'yyyy-MM-dd')}`}
+                          >
+                            <div className={`text-sm mb-1 ${
+                              isToday 
+                                ? 'bg-primary text-primary-foreground w-6 h-6 rounded-full flex items-center justify-center' 
+                                : !isCurrentMonth 
+                                  ? 'text-muted-foreground' 
+                                  : ''
+                            }`}>
+                              {format(day, 'd')}
+                            </div>
+                            <div className="space-y-1">
+                              {dayEvents.map((event, eventIndex) => (
+                                <Link
+                                  key={`${event.contract.id}-${event.type}-${eventIndex}`}
+                                  href={`/company/contracts/${event.contract.id}/dashboard`}
+                                  className={`block text-xs p-1 rounded truncate cursor-pointer hover-elevate ${
+                                    event.type === 'bid_due' 
+                                      ? 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300' 
+                                      : event.type === 'start' 
+                                        ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300'
+                                        : 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300'
+                                  }`}
+                                  title={event.title}
+                                  data-testid={`calendar-event-${event.contract.id}-${event.type}`}
+                                >
+                                  {event.contract.name}
+                                </Link>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
             </CardContent>
           </Card>
         </TabsContent>
