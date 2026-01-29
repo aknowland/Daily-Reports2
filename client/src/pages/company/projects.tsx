@@ -730,10 +730,8 @@ export default function CompanyProjectsPage() {
         ) : (
           <div className="grid gap-4 md:grid-cols-2">
             {filteredProjects.map((project) => {
-              // Navigate to contract dashboard if linked, otherwise to reports
-              const projectLink = project.contractId 
-                ? `/company/contracts/${project.contractId}/dashboard`
-                : `/reports?project=${project.id}`;
+              // Navigate to project dashboard
+              const projectLink = `/projects/${project.id}/dashboard`;
               
               return (
               <Card key={project.id} className="hover-elevate" data-testid={`card-project-${project.id}`}>
