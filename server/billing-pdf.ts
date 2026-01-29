@@ -832,9 +832,12 @@ export function aggregateManualEntriesToTimesheetData(
     dailyHours,
   }];
 
-  const inspectorName = inspectorProfile 
-    ? `${inspectorProfile.firstName || ''} ${inspectorProfile.lastName || ''}`.trim() 
-    : 'Unknown Inspector';
+  // Use inspectorName from manual entries if available, otherwise fall back to profile
+  const entryWithName = entries.find(e => e.inspectorName && e.inspectorName.trim());
+  const inspectorName = entryWithName?.inspectorName?.trim()
+    || (inspectorProfile 
+        ? `${inspectorProfile.firstName || ''} ${inspectorProfile.lastName || ''}`.trim() 
+        : 'Unknown Inspector');
 
   return {
     companyName: company?.name || 'Company',

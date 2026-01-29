@@ -365,7 +365,8 @@ export default function ProjectDashboardPage() {
   const [selectedYear, setSelectedYear] = useState(String(new Date().getFullYear()));
   const [isGenerating, setIsGenerating] = useState(false);
   const [timesheetMode, setTimesheetMode] = useState<'daily_reports' | 'manual'>('daily_reports');
-  const [manualEntries, setManualEntries] = useState<Record<string, { regularHours: string; otHours: string }>>({});
+  const [manualEntries, setManualEntries] = useState<Record<string, { regularHours: string; otHours: string; inspectorName?: string }>>({});
+  const [manualEntryInspectorName, setManualEntryInspectorName] = useState<string>('');
   const [isSavingEntries, setIsSavingEntries] = useState(false);
   
   // Edit project dialog state
@@ -426,21 +427,32 @@ export default function ProjectDashboardPage() {
   // Populate manual entries from fetched data
   useEffect(() => {
     if (existingManualEntries && Array.isArray(existingManualEntries)) {
-      const entriesMap: Record<string, { regularHours: string; otHours: string }> = {};
+      const entriesMap: Record<string, { regularHours: string; otHours: string; inspectorName?: string }> = {};
+      let foundName = '';
       existingManualEntries.forEach((entry: any) => {
         const dateKey = format(new Date(entry.date), 'yyyy-MM-dd');
         entriesMap[dateKey] = {
           regularHours: entry.regularHours || '',
           otHours: entry.otHours || '',
+          inspectorName: entry.inspectorName || '',
         };
+        // Use the first found inspector name
+        if (!foundName && entry.inspectorName) {
+          foundName = entry.inspectorName;
+        }
       });
       setManualEntries(entriesMap);
+      // Set the inspector name from existing entries if we found one
+      if (foundName) {
+        setManualEntryInspectorName(foundName);
+      }
     }
   }, [existingManualEntries]);
 
   // Reset manual entries when month/year changes
   useEffect(() => {
     setManualEntries({});
+    setManualEntryInspectorName('');
   }, [selectedMonth, selectedYear]);
 
   const { data, isLoading, error } = useQuery<ProjectDashboardData>({
@@ -879,6 +891,7 @@ export default function ProjectDashboardPage() {
           date: dateKey,
           regularHours: entry.regularHours || null,
           otHours: entry.otHours || null,
+          inspectorName: manualEntryInspectorName || null,
         }));
 
       const response = await apiRequest('POST', '/api/manual-time-entries/bulk', {
@@ -920,6 +933,7 @@ export default function ProjectDashboardPage() {
             date: dateKey,
             regularHours: entry.regularHours || null,
             otHours: entry.otHours || null,
+            inspectorName: manualEntryInspectorName || null,
           }));
 
         const response = await apiRequest('POST', '/api/manual-time-entries/bulk', {
@@ -1861,6 +1875,16 @@ export default function ProjectDashboardPage() {
               
               <TabsContent value="manual" className="mt-4">
                 <div className="space-y-3">
+                  <div className="space-y-2">
+                    <Label htmlFor="inspectorName">Inspector Name (for timesheet)</Label>
+                    <Input
+                      id="inspectorName"
+                      placeholder="Enter name to appear on timesheet"
+                      value={manualEntryInspectorName}
+                      onChange={(e) => setManualEntryInspectorName(e.target.value)}
+                      data-testid="input-inspector-name"
+                    />
+                  </div>
                   <div className="text-sm text-muted-foreground mb-2">
                     Enter hours for each day. Leave blank for days not worked.
                   </div>
