@@ -309,6 +309,7 @@ export const manualTimeEntries = pgTable("manual_time_entries", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   projectId: varchar("project_id").references(() => projects.id, { onDelete: "cascade" }).notNull(),
   inspectorId: varchar("inspector_id").notNull(),
+  inspectorName: varchar("inspector_name"), // Name to display on timesheets (overrides profile lookup)
   date: timestamp("date").notNull(),
   regularHours: varchar("regular_hours"), // Decimal string (e.g., "8.00")
   otHours: varchar("ot_hours"), // Overtime hours (e.g., "2.50")

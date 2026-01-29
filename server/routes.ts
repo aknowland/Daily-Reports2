@@ -10215,6 +10215,7 @@ export async function registerRoutes(
             regularHours: entry.regularHours || null,
             otHours: entry.otHours || null,
             notes: entry.notes || null,
+            inspectorName: entry.inspectorName || null,
           });
           results.push(updated);
         } else if (entry.regularHours || entry.otHours) {
@@ -10226,6 +10227,7 @@ export async function registerRoutes(
             regularHours: entry.regularHours || null,
             otHours: entry.otHours || null,
             notes: entry.notes || null,
+            inspectorName: entry.inspectorName || null,
           });
           results.push(created);
         }
