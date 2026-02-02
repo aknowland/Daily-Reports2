@@ -52,6 +52,7 @@ import {
 import { Link } from "wouter";
 import { useState } from "react";
 import { format, differenceInDays, startOfMonth, endOfMonth, eachDayOfInterval, isWeekend, isSameMonth, startOfWeek, endOfWeek, isSameDay, addMonths, subMonths } from "date-fns";
+import { parseDateSafe } from "@/lib/timezone";
 
 type ContractDashboardSummary = {
   id: string;
@@ -176,7 +177,7 @@ const formatCurrency = (amount: number) => {
 const formatDate = (dateStr: string | null) => {
   if (!dateStr) return '-';
   try {
-    return format(new Date(dateStr), 'MMM d');
+    return format(parseDateSafe(dateStr), 'MMM d');
   } catch {
     return '-';
   }

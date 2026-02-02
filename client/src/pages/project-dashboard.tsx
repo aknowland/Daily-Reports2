@@ -53,6 +53,7 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 import { Textarea } from "@/components/ui/textarea";
+import { parseDateSafe } from "@/lib/timezone";
 import { Switch } from "@/components/ui/switch";
 import { ClientSelect } from "@/components/client-select";
 import {
@@ -430,7 +431,7 @@ export default function ProjectDashboardPage() {
       const entriesMap: Record<string, { regularHours: string; otHours: string; inspectorName?: string }> = {};
       let foundName = '';
       existingManualEntries.forEach((entry: any) => {
-        const dateKey = format(new Date(entry.date), 'yyyy-MM-dd');
+        const dateKey = format(parseDateSafe(entry.date), 'yyyy-MM-dd');
         entriesMap[dateKey] = {
           regularHours: entry.regularHours || '',
           otHours: entry.otHours || '',
@@ -1169,13 +1170,13 @@ export default function ProjectDashboardPage() {
                   {schedule.startDate && (
                     <div>
                       <span className="font-medium">Start:</span>{' '}
-                      {format(new Date(schedule.startDate), 'MMM d, yyyy')}
+                      {format(parseDateSafe(schedule.startDate), 'MMM d, yyyy')}
                     </div>
                   )}
                   {schedule.endDate && (
                     <div>
                       <span className="font-medium">End:</span>{' '}
-                      {format(new Date(schedule.endDate), 'MMM d, yyyy')}
+                      {format(parseDateSafe(schedule.endDate), 'MMM d, yyyy')}
                     </div>
                   )}
                 </div>
@@ -1316,7 +1317,7 @@ export default function ProjectDashboardPage() {
                     href={`/reports/${report.id}`}
                     className="flex items-center justify-between text-xs p-2 bg-muted rounded hover-elevate cursor-pointer"
                   >
-                    <span>{format(new Date(report.date), 'MMM d, yyyy')}</span>
+                    <span>{format(parseDateSafe(report.date), 'MMM d, yyyy')}</span>
                     <div className="flex items-center gap-2">
                       {getWeatherIcon(report.weatherType)}
                       <Badge variant="outline" className="text-xs">
@@ -1543,7 +1544,7 @@ export default function ProjectDashboardPage() {
                     <div key={issue.id} className="text-sm p-2 bg-muted rounded">
                       <div className="flex items-center justify-between mb-1">
                         <span className="text-xs text-muted-foreground">
-                          {format(new Date(issue.date), 'MMM d, yyyy')}
+                          {format(parseDateSafe(issue.date), 'MMM d, yyyy')}
                         </span>
                       </div>
                       <p className="text-xs line-clamp-2">{issue.details || 'No details provided'}</p>
@@ -1576,7 +1577,7 @@ export default function ProjectDashboardPage() {
                     <div key={incident.id} className="text-sm p-2 bg-red-50 dark:bg-red-950 rounded border border-red-200 dark:border-red-800">
                       <div className="flex items-center justify-between mb-1">
                         <span className="text-xs text-muted-foreground">
-                          {format(new Date(incident.date), 'MMM d, yyyy')}
+                          {format(parseDateSafe(incident.date), 'MMM d, yyyy')}
                         </span>
                       </div>
                       <p className="text-xs line-clamp-2">{incident.details || 'No details provided'}</p>
@@ -1613,7 +1614,7 @@ export default function ProjectDashboardPage() {
                         <p className="font-medium truncate">{activity.title}</p>
                         <p className="text-xs text-muted-foreground">{activity.description}</p>
                         <p className="text-xs text-muted-foreground">
-                          {format(new Date(activity.date), 'MMM d, yyyy h:mm a')}
+                          {format(parseDateSafe(activity.date), 'MMM d, yyyy h:mm a')}
                         </p>
                       </div>
                       <Badge variant="outline" className="text-xs">
@@ -1782,7 +1783,7 @@ export default function ProjectDashboardPage() {
                               {[comment.author.firstName, comment.author.lastName].filter(Boolean).join(' ') || comment.author.email?.split('@')[0] || 'Unknown User'}
                             </span>
                             <span className="text-xs text-muted-foreground">
-                              {format(new Date(comment.createdAt), 'MMM d, yyyy h:mm a')}
+                              {format(parseDateSafe(comment.createdAt), 'MMM d, yyyy h:mm a')}
                             </span>
                           </div>
                           <p className="text-sm mt-1 whitespace-pre-wrap break-words">
