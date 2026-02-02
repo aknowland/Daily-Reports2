@@ -276,7 +276,7 @@ export default function ReportFormPage() {
         ...formData,
         projectId: formData.projectId || null, // Send null for personal reports
         customProjectName: formData.projectId ? null : (formData.customProjectName || null), // Only save custom name if no project selected
-        date: new Date(formData.date).toISOString(),
+        date: formData.date, // Keep as YYYY-MM-DD string to avoid timezone shifts
         status,
         inspectorId: user?.id,
       };

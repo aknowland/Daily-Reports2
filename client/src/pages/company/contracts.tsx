@@ -80,6 +80,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { calculateTotalHours, calculateWorkingDays, formatHoursDisplay, getHolidaysInRange } from "@/lib/working-days-calculator";
 import { Users, Info, Eye } from "lucide-react";
+import { parseDateSafe } from "@/lib/timezone";
 
 type ContractInspectorEntry = {
   title: string;
@@ -541,12 +542,12 @@ export default function ContractsPage() {
         ...data,
         clientId: data.clientId || null,
         purchaseOrderId: data.purchaseOrderId || null,
-        bidReleaseDate: data.bidReleaseDate ? new Date(data.bidReleaseDate) : null,
-        bidDueDate: data.bidDueDate ? new Date(data.bidDueDate) : null,
-        awardDate: data.awardDate ? new Date(data.awardDate) : null,
-        startDate: data.startDate ? new Date(data.startDate) : null,
-        substantialCompletionDate: data.substantialCompletionDate ? new Date(data.substantialCompletionDate) : null,
-        finalCloseoutDate: data.finalCloseoutDate ? new Date(data.finalCloseoutDate) : null,
+        bidReleaseDate: data.bidReleaseDate || null, // Keep as YYYY-MM-DD string
+        bidDueDate: data.bidDueDate || null,
+        awardDate: data.awardDate || null,
+        startDate: data.startDate || null,
+        substantialCompletionDate: data.substantialCompletionDate || null,
+        finalCloseoutDate: data.finalCloseoutDate || null,
         options: data.options.map(opt => ({
           name: opt.name,
           awardStatus: opt.awardStatus || "pending", // Include award status for partial awards
@@ -580,12 +581,12 @@ export default function ContractsPage() {
         ...data,
         clientId: data.clientId || null,
         purchaseOrderId: data.purchaseOrderId || null,
-        bidReleaseDate: data.bidReleaseDate ? new Date(data.bidReleaseDate) : null,
-        bidDueDate: data.bidDueDate ? new Date(data.bidDueDate) : null,
-        awardDate: data.awardDate ? new Date(data.awardDate) : null,
-        startDate: data.startDate ? new Date(data.startDate) : null,
-        substantialCompletionDate: data.substantialCompletionDate ? new Date(data.substantialCompletionDate) : null,
-        finalCloseoutDate: data.finalCloseoutDate ? new Date(data.finalCloseoutDate) : null,
+        bidReleaseDate: data.bidReleaseDate || null, // Keep as YYYY-MM-DD string
+        bidDueDate: data.bidDueDate || null,
+        awardDate: data.awardDate || null,
+        startDate: data.startDate || null,
+        substantialCompletionDate: data.substantialCompletionDate || null,
+        finalCloseoutDate: data.finalCloseoutDate || null,
         options: data.options.map(opt => ({
           name: opt.name,
           awardStatus: opt.awardStatus || "pending", // Include award status for partial awards
@@ -840,12 +841,12 @@ export default function ContractsPage() {
       originalValue: contract.originalValue || "",
       currentValue: contract.currentValue || "",
       budgetedHours: contract.budgetedHours || "",
-      bidReleaseDate: contract.bidReleaseDate ? format(new Date(contract.bidReleaseDate), "yyyy-MM-dd") : "",
-      bidDueDate: contract.bidDueDate ? format(new Date(contract.bidDueDate), "yyyy-MM-dd") : "",
-      awardDate: contract.awardDate ? format(new Date(contract.awardDate), "yyyy-MM-dd") : "",
-      startDate: contract.startDate ? format(new Date(contract.startDate), "yyyy-MM-dd") : "",
-      substantialCompletionDate: contract.substantialCompletionDate ? format(new Date(contract.substantialCompletionDate), "yyyy-MM-dd") : "",
-      finalCloseoutDate: contract.finalCloseoutDate ? format(new Date(contract.finalCloseoutDate), "yyyy-MM-dd") : "",
+      bidReleaseDate: contract.bidReleaseDate ? format(parseDateSafe(contract.bidReleaseDate), "yyyy-MM-dd") : "",
+      bidDueDate: contract.bidDueDate ? format(parseDateSafe(contract.bidDueDate), "yyyy-MM-dd") : "",
+      awardDate: contract.awardDate ? format(parseDateSafe(contract.awardDate), "yyyy-MM-dd") : "",
+      startDate: contract.startDate ? format(parseDateSafe(contract.startDate), "yyyy-MM-dd") : "",
+      substantialCompletionDate: contract.substantialCompletionDate ? format(parseDateSafe(contract.substantialCompletionDate), "yyyy-MM-dd") : "",
+      finalCloseoutDate: contract.finalCloseoutDate ? format(parseDateSafe(contract.finalCloseoutDate), "yyyy-MM-dd") : "",
       regularRate: contract.regularRate || "",
       overtimeRate: contract.overtimeRate || "",
       premiumRate: contract.premiumRate || "",
@@ -1518,9 +1519,9 @@ export default function ContractsPage() {
                           {(contract.startDate || contract.substantialCompletionDate) && (
                             <div className="flex items-center gap-1 text-xs">
                               <Calendar className="w-3 h-3" />
-                              <span>{contract.startDate ? format(new Date(contract.startDate), "MMM d, yyyy") : "TBD"}</span>
+                              <span>{contract.startDate ? format(parseDateSafe(contract.startDate), "MMM d, yyyy") : "TBD"}</span>
                               <span>→</span>
-                              <span>{contract.substantialCompletionDate ? format(new Date(contract.substantialCompletionDate), "MMM d, yyyy") : "TBD"}</span>
+                              <span>{contract.substantialCompletionDate ? format(parseDateSafe(contract.substantialCompletionDate), "MMM d, yyyy") : "TBD"}</span>
                             </div>
                           )}
                           {contract.projects && contract.projects.length > 0 && (
@@ -1907,7 +1908,7 @@ export default function ContractsPage() {
                           <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground flex-wrap">
                             <span>#{proposal.proposalNumber}</span>
                             {proposal.startDate && (
-                              <span>{format(new Date(proposal.startDate), "MMM d, yyyy")} - {proposal.endDate ? format(new Date(proposal.endDate), "MMM d, yyyy") : 'TBD'}</span>
+                              <span>{format(parseDateSafe(proposal.startDate), "MMM d, yyyy")} - {proposal.endDate ? format(parseDateSafe(proposal.endDate), "MMM d, yyyy") : 'TBD'}</span>
                             )}
                             <span className="font-medium text-foreground">
                               ${grandTotal.toLocaleString('en-US', { minimumFractionDigits: 2 })}

@@ -61,6 +61,7 @@ import {
 import { Receipt, Trash2, Edit, Calendar } from "lucide-react";
 import { format } from "date-fns";
 import { queryClient } from "@/lib/queryClient";
+import { parseDateSafe } from "@/lib/timezone";
 
 const MONTH_OPTIONS = [
   { value: "1", label: "January" },
@@ -312,8 +313,8 @@ export default function BillingManagementPage() {
       clientId: po.clientId || "",
       amount: po.totalAmount || "",
       description: po.description || "",
-      issueDate: po.issueDate ? format(new Date(po.issueDate), "yyyy-MM-dd") : "",
-      expirationDate: po.expirationDate ? format(new Date(po.expirationDate), "yyyy-MM-dd") : "",
+      issueDate: po.issueDate ? format(parseDateSafe(po.issueDate), "yyyy-MM-dd") : "",
+      expirationDate: po.expirationDate ? format(parseDateSafe(po.expirationDate), "yyyy-MM-dd") : "",
       status: po.status,
     });
     setShowPODialog(true);
@@ -827,7 +828,7 @@ export default function BillingManagementPage() {
                               ${parseFloat(invoice.totalAmount || "0").toLocaleString()}
                             </TableCell>
                             <TableCell>
-                              {invoice.dueDate ? format(new Date(invoice.dueDate), "MMM d, yyyy") : "-"}
+                              {invoice.dueDate ? format(parseDateSafe(invoice.dueDate), "MMM d, yyyy") : "-"}
                             </TableCell>
                             <TableCell>
                               <Badge variant={statusConfig.variant} className="gap-1">
@@ -1050,10 +1051,10 @@ export default function BillingManagementPage() {
                           {po.totalAmount ? `$${parseFloat(po.totalAmount).toLocaleString()}` : "-"}
                         </TableCell>
                         <TableCell>
-                          {po.issueDate ? format(new Date(po.issueDate), "MMM d, yyyy") : "-"}
+                          {po.issueDate ? format(parseDateSafe(po.issueDate), "MMM d, yyyy") : "-"}
                         </TableCell>
                         <TableCell>
-                          {po.expirationDate ? format(new Date(po.expirationDate), "MMM d, yyyy") : "-"}
+                          {po.expirationDate ? format(parseDateSafe(po.expirationDate), "MMM d, yyyy") : "-"}
                         </TableCell>
                         <TableCell>
                           <Badge

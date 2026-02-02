@@ -371,8 +371,8 @@ export function ProposalDialog({ open, onOpenChange, editingProposal }: Proposal
     try {
       const payload = {
         ...formData,
-        startDate: formData.startDate ? new Date(formData.startDate).toISOString() : null,
-        endDate: formData.endDate ? new Date(formData.endDate).toISOString() : null,
+        startDate: formData.startDate || null, // Keep as YYYY-MM-DD string to avoid timezone shifts
+        endDate: formData.endDate || null,
         options: options.map(opt => ({
           name: opt.name,
           inspectors: opt.inspectors.filter(ins => ins.title.trim() || ins.rate.trim()),

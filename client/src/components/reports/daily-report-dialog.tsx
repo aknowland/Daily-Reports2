@@ -229,7 +229,7 @@ export function DailyReportDialog({ open, onOpenChange, project, onSuccess }: Da
         ...formData,
         projectId: formData.projectId || null,
         customProjectName: formData.projectId ? null : (formData.customProjectName || null),
-        date: new Date(formData.date).toISOString(),
+        date: formData.date, // Keep as YYYY-MM-DD string to avoid timezone shifts
         status,
         inspectorId: user?.id,
       };

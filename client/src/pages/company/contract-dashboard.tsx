@@ -80,6 +80,7 @@ import {
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { format } from "date-fns";
+import { parseDateSafe } from "@/lib/timezone";
 
 type BudgetTrackingMode = 'daily_reports' | 'scheduled' | 'hybrid';
 
@@ -493,7 +494,7 @@ const formatCurrency = (amount: number | string | null) => {
 const formatDate = (dateStr: string | null) => {
   if (!dateStr) return '-';
   try {
-    return format(new Date(dateStr), 'MMM d, yyyy');
+    return format(parseDateSafe(dateStr), 'MMM d, yyyy');
   } catch {
     return '-';
   }
@@ -1094,9 +1095,9 @@ export default function ContractDashboard() {
                               />
                             </div>
                             <div className="flex justify-between text-xs text-muted-foreground">
-                              <span>{project.startDate ? format(new Date(project.startDate), "MMM d, yyyy") : "No start"}</span>
+                              <span>{project.startDate ? format(parseDateSafe(project.startDate), "MMM d, yyyy") : "No start"}</span>
                               <span>{project.scheduleProgress.toFixed(0)}%</span>
-                              <span>{project.substantialCompletionDate ? format(new Date(project.substantialCompletionDate), "MMM d, yyyy") : "No end"}</span>
+                              <span>{project.substantialCompletionDate ? format(parseDateSafe(project.substantialCompletionDate), "MMM d, yyyy") : "No end"}</span>
                             </div>
                           </div>
                         </Link>
@@ -1754,7 +1755,7 @@ export default function ContractDashboard() {
                           {milestone.label}
                         </p>
                         <p className="text-xs text-muted-foreground">
-                          {format(new Date(milestone.date), 'MMM d, yyyy')}
+                          {format(parseDateSafe(milestone.date), 'MMM d, yyyy')}
                         </p>
                       </div>
                     </div>
@@ -1802,7 +1803,7 @@ export default function ContractDashboard() {
                         <p className="text-sm font-medium truncate">{activity.title}</p>
                         <p className="text-xs text-muted-foreground">{activity.description}</p>
                         <p className="text-xs text-muted-foreground mt-1">
-                          {format(new Date(activity.date), 'MMM d, yyyy h:mm a')}
+                          {format(parseDateSafe(activity.date), 'MMM d, yyyy h:mm a')}
                         </p>
                       </div>
                       {activity.status && (
