@@ -288,21 +288,27 @@ export async function registerRoutes(
       } else if (folder === 'signatures' || folder === 'reports') {
         // Signature and PDF files are named with report ID
         const reportId = filename?.replace(/\.(png|pdf)$/, '');
+        console.log(`[PDF Debug] Requesting ${folder}/${filename}, reportId=${reportId}, objectPath=${objectPath}`);
         if (reportId) {
           const report = await storage.getReport(reportId);
+          console.log(`[PDF Debug] Report lookup: found=${!!report}, inspectorId=${report?.inspectorId}, projectId=${report?.projectId}`);
           if (report && await canAccessReportFile(report)) {
             try {
+              console.log(`[PDF Debug] Access granted, fetching from object storage...`);
               const objectFile = await objectStorage.getObjectEntityFile(objectPath);
               // Disable caching for PDFs to ensure latest version is served
               const isPdf = filename?.endsWith('.pdf');
+              console.log(`[PDF Debug] Streaming file, isPdf=${isPdf}`);
               return await objectStorage.downloadObject(objectFile, res, isPdf ? 0 : 3600);
             } catch (err: any) {
-              console.error("Error serving signature/PDF:", objectPath, err?.message || err);
+              console.error("[PDF Debug] Error serving signature/PDF:", objectPath, err?.message || err);
               if (err?.name === 'ObjectNotFoundError') {
                 return res.status(404).json({ message: "File not found. Please regenerate the PDF." });
               }
               return res.status(500).json({ message: "Failed to serve file" });
             }
+          } else {
+            console.log(`[PDF Debug] Access denied - report exists: ${!!report}`);
           }
         }
       } else if (folder === 'logos') {
@@ -10091,9 +10097,14 @@ export async function registerRoutes(
       await storage.updateReport(req.params.id, { pdfPath });
 
       res.json({ pdfUrl: pdfPath, message: "PDF generated successfully" });
-    } catch (error) {
-      console.error("Error generating PDF:", error);
-      res.status(500).json({ message: "Failed to generate PDF" });
+    } catch (error: any) {
+      console.error("[PDF Generation Error]", {
+        reportId: req.params.id,
+        errorName: error?.name,
+        errorMessage: error?.message,
+        errorStack: error?.stack?.slice(0, 500),
+      });
+      res.status(500).json({ message: "Failed to generate PDF: " + (error?.message || "Unknown error") });
     }
   });
 
@@ -10130,6 +10141,74 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error deleting PDF:", error);
       res.status(500).json({ message: "Failed to delete PDF" });
+    }
+  });
+
+  // Diagnostic endpoint to check PDF status in object storage
+  app.get("/api/reports/:id/pdf-status", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+
+      const report = await storage.getReport(req.params.id);
+      if (!report) {
+        return res.status(404).json({ message: "Report not found" });
+      }
+
+      // Check permissions (respects inspector mode): admin or owner
+      const isOwner = report.inspectorId === userId;
+      let hasAdminAccess = isEffectiveSystemAdmin(profile);
+      if (!hasAdminAccess && report.project?.companyId) {
+        hasAdminAccess = await isEffectiveCompanyAdmin(userId, report.project.companyId, profile);
+      }
+
+      if (!hasAdminAccess && !isOwner) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const diagnostics: any = {
+        reportId: req.params.id,
+        pdfPath: report.pdfPath,
+        projectName: report.project?.name || report.customProjectName || 'Unknown',
+        reportDate: report.date,
+        hasStoredPdfPath: !!report.pdfPath,
+      };
+
+      if (report.pdfPath) {
+        try {
+          const exists = await objectStorage.objectExists(report.pdfPath);
+          diagnostics.objectStorageExists = exists;
+          if (!exists) {
+            diagnostics.error = "PDF path exists in database but file not found in object storage";
+          }
+        } catch (err: any) {
+          diagnostics.objectStorageExists = false;
+          diagnostics.objectStorageError = err?.message || String(err);
+        }
+      }
+
+      // Check photos too
+      const photos = await storage.getPhotosByReportId(req.params.id);
+      diagnostics.photoCount = photos.length;
+      
+      if (photos.length > 0) {
+        const photoStatuses = await Promise.all(
+          photos.slice(0, 5).map(async (photo) => {
+            try {
+              const exists = await objectStorage.objectExists(photo.filePath);
+              return { id: photo.id, path: photo.filePath, exists };
+            } catch (err: any) {
+              return { id: photo.id, path: photo.filePath, exists: false, error: err?.message };
+            }
+          })
+        );
+        diagnostics.photoSamples = photoStatuses;
+      }
+
+      res.json(diagnostics);
+    } catch (error: any) {
+      console.error("Error checking PDF status:", error);
+      res.status(500).json({ message: "Failed to check PDF status", error: error?.message });
     }
   });
 
