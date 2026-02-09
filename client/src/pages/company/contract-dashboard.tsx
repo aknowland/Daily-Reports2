@@ -79,6 +79,7 @@ import {
   History,
 } from "lucide-react";
 import { useState, useEffect } from "react";
+import { PhotoLightbox } from "@/components/photo-lightbox";
 import { format } from "date-fns";
 import { parseDateSafe } from "@/lib/timezone";
 
@@ -518,6 +519,9 @@ export default function ContractDashboard() {
   const params = useParams<{ contractId: string }>();
   const contractId = params.contractId;
   const [, setLocation] = useLocation();
+  const [contractLightboxOpen, setContractLightboxOpen] = useState(false);
+  const [contractLightboxIndex, setContractLightboxIndex] = useState(0);
+  const [showAllContractPhotos, setShowAllContractPhotos] = useState(false);
   const [showBudgetOverrideDialog, setShowBudgetOverrideDialog] = useState(false);
   const [budgetOverrideValue, setBudgetOverrideValue] = useState("");
   const [showBaseBudgetDialog, setShowBaseBudgetDialog] = useState(false);
@@ -1970,7 +1974,7 @@ export default function ContractDashboard() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Image className="h-5 w-5" />
-              Recent Photos
+              Recent Photos {dashboard.photoGallery.length > 0 && `(${dashboard.photoGallery.length})`}
             </CardTitle>
             <CardDescription>Latest photos from daily reports</CardDescription>
           </CardHeader>
@@ -1978,29 +1982,66 @@ export default function ContractDashboard() {
             {dashboard.photoGallery.length === 0 ? (
               <p className="text-sm text-muted-foreground">No photos uploaded yet</p>
             ) : (
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
-                {dashboard.photoGallery.map((photo) => (
-                  <div key={photo.id} className="relative group" data-testid={`photo-${photo.id}`}>
-                    <div className="aspect-square rounded-lg overflow-hidden border bg-muted">
-                      <img 
-                        src={photo.path} 
-                        alt={photo.caption || 'Site photo'} 
-                        className="w-full h-full object-cover transition-transform group-hover:scale-105"
-                        loading="lazy"
-                      />
-                    </div>
-                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg flex items-end p-2">
-                      <div className="text-white text-xs">
-                        <p className="font-medium truncate">{photo.projectName}</p>
-                        <p className="text-white/80">{photo.reportDate}</p>
+              <>
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                  {(showAllContractPhotos ? dashboard.photoGallery : dashboard.photoGallery.slice(0, 12)).map((photo) => (
+                    <div
+                      key={photo.id}
+                      className="relative group cursor-pointer"
+                      data-testid={`photo-${photo.id}`}
+                      onClick={() => {
+                        const fullIdx = dashboard.photoGallery.findIndex(p => p.id === photo.id);
+                        setContractLightboxIndex(fullIdx >= 0 ? fullIdx : 0);
+                        setContractLightboxOpen(true);
+                      }}
+                    >
+                      <div className="aspect-square rounded-lg overflow-hidden border bg-muted">
+                        <img 
+                          src={photo.path} 
+                          alt={photo.caption || 'Site photo'} 
+                          className="w-full h-full object-cover transition-transform group-hover:scale-105"
+                          loading="lazy"
+                        />
+                      </div>
+                      <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg flex items-end p-2">
+                        <div className="text-white text-xs">
+                          <p className="font-medium truncate">{photo.projectName}</p>
+                          <p className="text-white/80">{photo.reportDate}</p>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+                {dashboard.photoGallery.length > 12 && !showAllContractPhotos && (
+                  <Button
+                    variant="outline"
+                    className="w-full mt-3"
+                    onClick={() => setShowAllContractPhotos(true)}
+                    data-testid="button-view-all-contract-photos"
+                  >
+                    View All {dashboard.photoGallery.length} Photos
+                  </Button>
+                )}
+                {showAllContractPhotos && dashboard.photoGallery.length > 12 && (
+                  <Button
+                    variant="ghost"
+                    className="w-full mt-3"
+                    onClick={() => setShowAllContractPhotos(false)}
+                    data-testid="button-show-fewer-contract-photos"
+                  >
+                    Show Fewer
+                  </Button>
+                )}
+              </>
             )}
           </CardContent>
         </Card>
+        <PhotoLightbox
+          photos={dashboard.photoGallery}
+          initialIndex={contractLightboxIndex}
+          open={contractLightboxOpen}
+          onOpenChange={setContractLightboxOpen}
+        />
 
         <div className="grid gap-6 md:grid-cols-2">
           <Card>
