@@ -67,6 +67,7 @@ import {
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DailyReportDialog } from "@/components/reports/daily-report-dialog";
+import { PhotoLightbox } from "@/components/photo-lightbox";
 
 type ProjectDashboardData = {
   project: {
@@ -395,6 +396,9 @@ export default function ProjectDashboardPage() {
   
   // Comments state
   const [newComment, setNewComment] = useState("");
+  const [lightboxOpen, setLightboxOpen] = useState(false);
+  const [lightboxIndex, setLightboxIndex] = useState(0);
+  const [showAllPhotos, setShowAllPhotos] = useState(false);
   const [showMentions, setShowMentions] = useState(false);
   const [mentionFilter, setMentionFilter] = useState("");
   
@@ -1194,113 +1198,6 @@ export default function ProjectDashboardPage() {
             </CardContent>
           </Card>
 
-          <Card data-testid="card-hours-budget">
-            <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Hours Budget</CardTitle>
-              <div className="flex items-center gap-2">
-                <Badge variant={hours.status === 'under' || hours.status === 'on_track' ? 'default' : hours.status === 'warning' ? 'secondary' : 'destructive'}>
-                  {hours.status === 'under' ? 'On Track' : hours.status.replace('_', ' ')}
-                </Badge>
-                <Clock className="w-4 h-4 text-muted-foreground" />
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                {/* Hours Budget Summary - Budgeted / Used / Remaining */}
-                <div className="grid grid-cols-3 gap-2 text-sm">
-                  <div className="p-2 bg-muted/50 rounded text-center">
-                    <p className="text-xs text-muted-foreground">Budgeted</p>
-                    <p className="text-lg font-bold" data-testid="text-budgeted-hours">{hours.budgeted.toFixed(1)}</p>
-                  </div>
-                  <div className="p-2 bg-muted/50 rounded text-center">
-                    <p className="text-xs text-muted-foreground">Used</p>
-                    <p className="text-lg font-bold" data-testid="text-used-hours">{hours.used.toFixed(1)}</p>
-                  </div>
-                  <div className={`p-2 rounded text-center ${
-                    hours.budgeted > 0 && (hours.remaining / hours.budgeted) <= 0.1 
-                      ? 'bg-red-50 dark:bg-red-950' 
-                      : hours.budgeted > 0 && (hours.remaining / hours.budgeted) < 0.2 
-                        ? 'bg-orange-50 dark:bg-orange-950' 
-                        : 'bg-green-50 dark:bg-green-950'
-                  }`}>
-                    <p className="text-xs text-muted-foreground">Remaining</p>
-                    <p className={`text-lg font-bold ${
-                      hours.budgeted > 0 && (hours.remaining / hours.budgeted) <= 0.1 
-                        ? 'text-red-700 dark:text-red-400' 
-                        : hours.budgeted > 0 && (hours.remaining / hours.budgeted) < 0.2 
-                          ? 'text-orange-700 dark:text-orange-400' 
-                          : 'text-green-700 dark:text-green-400'
-                    }`} data-testid="text-remaining-hours">
-                      {hours.remaining.toFixed(1)}
-                    </p>
-                  </div>
-                </div>
-                
-                {hours.budgeted > 0 && (
-                  <div>
-                    <div className="flex justify-between text-xs text-muted-foreground mb-1">
-                      <span>Hours Progress</span>
-                      <span>{hours.progress.toFixed(1)}%</span>
-                    </div>
-                    <Progress 
-                      value={Math.min(hours.progress, 100)} 
-                      className={`h-2 ${hours.progress > 100 ? '[&>div]:bg-red-500' : ''}`}
-                    />
-                  </div>
-                )}
-                
-                {/* Hours Breakdown by Type */}
-                <div className="pt-2">
-                  <div className="text-xs text-muted-foreground mb-2">Hours by Type</div>
-                  <div className="grid grid-cols-3 gap-2 text-xs">
-                    <div className="text-center p-2 bg-muted rounded">
-                      <div className="font-medium">{hours.breakdown.regular.toFixed(1)}</div>
-                      <div className="text-muted-foreground">Regular</div>
-                    </div>
-                    <div className="text-center p-2 bg-muted rounded">
-                      <div className="font-medium">{hours.breakdown.overtime.toFixed(1)}</div>
-                      <div className="text-muted-foreground">OT</div>
-                    </div>
-                    <div className="text-center p-2 bg-muted rounded">
-                      <div className="font-medium">{hours.breakdown.premium.toFixed(1)}</div>
-                      <div className="text-muted-foreground">Premium</div>
-                    </div>
-                  </div>
-                </div>
-                
-                {hours.sources && (hours.sources.dailyReports.total > 0 || hours.sources.manualEntries.total > 0 || (hours.sources.baseHours?.total || 0) > 0) && (
-                  <div className="pt-3 border-t border-border">
-                    <div className="text-xs font-medium text-muted-foreground mb-2">Hours by Source</div>
-                    <div className={`grid gap-2 text-xs ${hours.sources.baseHours?.total ? 'grid-cols-3' : 'grid-cols-2'}`}>
-                      <div className="p-2 bg-blue-50 dark:bg-blue-950 rounded">
-                        <div className="flex items-center gap-1 mb-1">
-                          <FileText className="w-3 h-3" />
-                          <span className="font-medium">Daily Reports</span>
-                        </div>
-                        <div className="text-lg font-bold">{hours.sources.dailyReports.total.toFixed(1)} hrs</div>
-                      </div>
-                      <div className="p-2 bg-green-50 dark:bg-green-950 rounded">
-                        <div className="flex items-center gap-1 mb-1">
-                          <Clock className="w-3 h-3" />
-                          <span className="font-medium">Manual Entries</span>
-                        </div>
-                        <div className="text-lg font-bold">{hours.sources.manualEntries.total.toFixed(1)} hrs</div>
-                      </div>
-                      {hours.sources.baseHours && hours.sources.baseHours.total > 0 && (
-                        <div className="p-2 bg-orange-50 dark:bg-orange-950 rounded">
-                          <div className="flex items-center gap-1 mb-1">
-                            <History className="w-3 h-3" />
-                            <span className="font-medium">Base Hours</span>
-                          </div>
-                          <div className="text-lg font-bold">{hours.sources.baseHours.total.toFixed(1)} hrs</div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
 
           <Card data-testid="card-daily-reports">
             <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
@@ -1632,28 +1529,60 @@ export default function ProjectDashboardPage() {
           {photoGallery.length > 0 && (
             <Card data-testid="card-photos">
               <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Recent Photos</CardTitle>
+                <CardTitle className="text-sm font-medium">Recent Photos ({photoGallery.length})</CardTitle>
                 <Image className="w-4 h-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
                 <div className="grid grid-cols-3 gap-2">
-                  {photoGallery.slice(0, 6).map((photo) => (
+                  {(showAllPhotos ? photoGallery : photoGallery.slice(0, 12)).map((photo) => (
                     <div
                       key={photo.id}
-                      className="aspect-square bg-muted rounded overflow-hidden"
+                      className="aspect-square bg-muted rounded-md overflow-hidden cursor-pointer"
+                      onClick={() => {
+                        const fullIndex = photoGallery.findIndex(p => p.id === photo.id);
+                        setLightboxIndex(fullIndex >= 0 ? fullIndex : 0);
+                        setLightboxOpen(true);
+                      }}
+                      data-testid={`photo-thumb-${photo.id}`}
                     >
                       <img
                         src={photo.path}
                         alt={photo.caption || 'Project photo'}
-                        className="w-full h-full object-cover"
+                        className="w-full h-full object-cover transition-transform hover:scale-105"
                         loading="lazy"
                       />
                     </div>
                   ))}
                 </div>
+                {photoGallery.length > 12 && !showAllPhotos && (
+                  <Button
+                    variant="outline"
+                    className="w-full mt-3"
+                    onClick={() => setShowAllPhotos(true)}
+                    data-testid="button-view-all-photos"
+                  >
+                    View All {photoGallery.length} Photos
+                  </Button>
+                )}
+                {showAllPhotos && photoGallery.length > 12 && (
+                  <Button
+                    variant="ghost"
+                    className="w-full mt-3"
+                    onClick={() => setShowAllPhotos(false)}
+                    data-testid="button-show-fewer-photos"
+                  >
+                    Show Fewer
+                  </Button>
+                )}
               </CardContent>
             </Card>
           )}
+          <PhotoLightbox
+            photos={photoGallery}
+            initialIndex={lightboxIndex}
+            open={lightboxOpen}
+            onOpenChange={setLightboxOpen}
+          />
         </div>
 
         {project.distributionEmails && project.distributionEmails.length > 0 && (
