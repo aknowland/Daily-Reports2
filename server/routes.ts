@@ -8173,7 +8173,7 @@ export async function registerRoutes(
         try {
           const logoBuffer = await loadImageBuffer(company.logoPath);
           if (logoBuffer) {
-            doc.image(logoBuffer, startX, 15, { width: 205, height: 77, fit: [205, 77] });
+            doc.image(logoBuffer, startX, 15, { width: 230, height: 86, fit: [230, 86] });
           }
         } catch (err) {
           console.error('Error adding company logo to proposal:', err);
@@ -8782,7 +8782,7 @@ export async function registerRoutes(
         try {
           const logoBuffer = await loadImageBuffer(company.logoPath);
           if (logoBuffer) {
-            doc.image(logoBuffer, startX, 15, { width: 205, height: 77, fit: [205, 77] });
+            doc.image(logoBuffer, startX, 15, { width: 230, height: 86, fit: [230, 86] });
           }
         } catch (err) {
           console.error('Error adding company logo:', err);
@@ -9578,7 +9578,7 @@ export async function registerRoutes(
         try {
           const logoBuffer = await loadImageBuffer(company.logoPath);
           if (logoBuffer) {
-            doc.image(logoBuffer, startX, 8, { width: 232, height: 87, fit: [232, 87] });
+            doc.image(logoBuffer, startX, 8, { width: 260, height: 97, fit: [260, 97] });
           }
         } catch (err) {
           console.error('Error adding company logo:', err);
