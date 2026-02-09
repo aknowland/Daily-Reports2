@@ -95,11 +95,42 @@ export function ReportDetailPanel({
   const [showAssignProject, setShowAssignProject] = useState(false);
   const [selectedProjectId, setSelectedProjectId] = useState<string>("");
   const [showEmailDialog, setShowEmailDialog] = useState(false);
+  const [deletingPhotoId, setDeletingPhotoId] = useState<string | null>(null);
+
+  const { data: fullReport } = useQuery<ReportWithDetails>({
+    queryKey: ["/api/reports", report?.id],
+    enabled: open && !!report?.id,
+  });
+
+  const displayReport = fullReport || report;
 
   // Fetch projects for assignment dropdown
   const { data: projects } = useQuery<Project[]>({
     queryKey: ["/api/projects"],
     enabled: showAssignProject,
+  });
+
+  const deletePhotoMutation = useMutation({
+    mutationFn: async (photoId: string) => {
+      await apiRequest("DELETE", `/api/photos/${photoId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/reports", report?.id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/reports"] });
+      setDeletingPhotoId(null);
+      toast({
+        title: "Photo Deleted",
+        description: "The photo has been removed from this report.",
+      });
+    },
+    onError: (error) => {
+      setDeletingPhotoId(null);
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to delete photo",
+        variant: "destructive",
+      });
+    },
   });
 
   const assignProjectMutation = useMutation({
@@ -191,12 +222,13 @@ export function ReportDetailPanel({
   if (!report) return null;
 
   // Permission logic
-  const isOwner = currentUserId === report.inspectorId;
-  const canEdit = isAdmin || isCompanyAdmin || (isOwner && report.status === "draft");
+  const isOwner = currentUserId === displayReport?.inspectorId;
+  const canEdit = isAdmin || isCompanyAdmin || (isOwner && displayReport?.status === "draft");
   const canDelete = isAdmin || isCompanyAdmin;
+  const canDeletePhoto = isAdmin || isCompanyAdmin || isOwner;
 
-  const workActivities = (report.workActivities as WorkActivityRow[]) || [];
-  const visitors = (report.visitors as VisitorRow[]) || [];
+  const workActivities = (displayReport?.workActivities as WorkActivityRow[]) || [];
+  const visitors = (displayReport?.visitors as VisitorRow[]) || [];
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -205,25 +237,25 @@ export function ReportDetailPanel({
           <div className="flex items-start justify-between gap-4 pr-8">
             <div className="space-y-1">
               <SheetTitle className="text-xl">
-                {report.project?.name || report.customProjectName || "Unassigned Report"}
+                {displayReport?.project?.name || displayReport?.customProjectName || "Unassigned Report"}
               </SheetTitle>
-              {report.project ? (
+              {displayReport?.project ? (
                 <SheetDescription className="flex items-center gap-2">
                   <Hash className="w-3 h-3" />
-                  {report.project?.projectNumber}
-                  {report.project?.client && ` • ${report.project.client}`}
+                  {displayReport?.project?.projectNumber}
+                  {displayReport?.project?.client && ` • ${displayReport.project.client}`}
                 </SheetDescription>
-              ) : report.customProjectName ? (
+              ) : displayReport?.customProjectName ? (
                 <SheetDescription className="text-muted-foreground">
                   Custom project (not assigned)
                 </SheetDescription>
-              ) : !report.projectId ? (
+              ) : !displayReport?.projectId ? (
                 <SheetDescription className="text-muted-foreground">
                   Not assigned to a project
                 </SheetDescription>
               ) : null}
             </div>
-            <StatusBadge status={report.status || "draft"} />
+            <StatusBadge status={displayReport?.status || "draft"} />
           </div>
           <div className="flex flex-wrap gap-2 pt-2">
             {canEdit && (
@@ -234,7 +266,7 @@ export function ReportDetailPanel({
                 </Link>
               </Button>
             )}
-            {!report.projectId && isOwner && (
+            {!displayReport?.projectId && isOwner && (
               <Button 
                 variant="outline" 
                 size="sm" 
@@ -245,7 +277,7 @@ export function ReportDetailPanel({
                 Assign Project
               </Button>
             )}
-            {report.pdfPath ? (
+            {displayReport?.pdfPath ? (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="outline" size="sm" data-testid="button-pdf-actions">
@@ -394,37 +426,37 @@ export function ReportDetailPanel({
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
                   <p className="text-muted-foreground">Date</p>
-                  <p className="font-medium">{formatPacificDate(report.date, "MMMM d, yyyy")}</p>
+                  <p className="font-medium">{displayReport?.date ? formatPacificDate(displayReport.date, "MMMM d, yyyy") : ""}</p>
                 </div>
                 <div>
                   <p className="text-muted-foreground">Inspector</p>
-                  <p className="font-medium">{report.inspectorName || "Unknown"}</p>
+                  <p className="font-medium">{displayReport?.inspectorName || "Unknown"}</p>
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4 text-sm">
-                {report.project?.client && (
+                {displayReport?.project?.client && (
                   <div>
                     <p className="text-muted-foreground">Client</p>
-                    <p className="font-medium">{report.project.client}</p>
+                    <p className="font-medium">{displayReport.project.client}</p>
                   </div>
                 )}
                 <div className="flex items-start gap-2">
                   <Cloud className="w-4 h-4 mt-0.5 text-muted-foreground" />
                   <div>
                     <p className="text-muted-foreground">Weather</p>
-                    <p className="font-medium capitalize">{report.weatherType}</p>
-                    {report.weatherNotes && (
-                      <p className="text-muted-foreground text-xs">{report.weatherNotes}</p>
+                    <p className="font-medium capitalize">{displayReport?.weatherType}</p>
+                    {displayReport?.weatherNotes && (
+                      <p className="text-muted-foreground text-xs">{displayReport.weatherNotes}</p>
                     )}
                   </div>
                 </div>
               </div>
-              {report.project?.address && (
+              {displayReport?.project?.address && (
                 <div className="flex items-start gap-2 text-sm">
                   <MapPin className="w-4 h-4 mt-0.5 text-muted-foreground" />
                   <div>
                     <p className="text-muted-foreground">Location</p>
-                    <p className="font-medium">{report.project.address}</p>
+                    <p className="font-medium">{displayReport.project.address}</p>
                   </div>
                 </div>
               )}
@@ -450,43 +482,43 @@ export function ReportDetailPanel({
               </section>
             )}
 
-            {report.inspections && (
+            {displayReport?.inspections && (
               <section className="space-y-3">
                 <h3 className="font-semibold flex items-center gap-2">
                   <ClipboardCheck className="w-4 h-4" />
                   Inspections
                 </h3>
-                <p className="text-sm whitespace-pre-wrap">{report.inspections}</p>
+                <p className="text-sm whitespace-pre-wrap">{displayReport.inspections}</p>
               </section>
             )}
 
-            {report.workPerformed && (
+            {displayReport?.workPerformed && (
               <section className="space-y-3">
                 <h3 className="font-semibold flex items-center gap-2">
                   <MessageSquare className="w-4 h-4" />
                   Additional Notes
                 </h3>
-                <p className="text-sm whitespace-pre-wrap">{report.workPerformed}</p>
+                <p className="text-sm whitespace-pre-wrap">{displayReport.workPerformed}</p>
               </section>
             )}
 
-            {report.equipment && (
+            {displayReport?.equipment && (
               <section className="space-y-3">
                 <h3 className="font-semibold flex items-center gap-2">
                   <Wrench className="w-4 h-4" />
                   Equipment
                 </h3>
-                <p className="text-sm whitespace-pre-wrap">{report.equipment}</p>
+                <p className="text-sm whitespace-pre-wrap">{displayReport.equipment}</p>
               </section>
             )}
 
-            {report.materialsDelivered && (
+            {displayReport?.materialsDelivered && (
               <section className="space-y-3">
                 <h3 className="font-semibold flex items-center gap-2">
                   <Package className="w-4 h-4" />
                   Materials Delivered
                 </h3>
-                <p className="text-sm whitespace-pre-wrap">{report.materialsDelivered}</p>
+                <p className="text-sm whitespace-pre-wrap">{displayReport.materialsDelivered}</p>
               </section>
             )}
 
@@ -508,46 +540,62 @@ export function ReportDetailPanel({
               </section>
             )}
 
-            {(report.issuesFlag || report.safetyFlag) && (
+            {(displayReport?.issuesFlag || displayReport?.safetyFlag) && (
               <section className="space-y-3">
                 <h3 className="font-semibold flex items-center gap-2">
                   <AlertTriangle className="w-4 h-4 text-orange-500" />
                   Issues & Safety
                 </h3>
-                {report.issuesFlag && (
+                {displayReport?.issuesFlag && (
                   <div className="p-3 bg-orange-50 dark:bg-orange-900/20 rounded-lg border border-orange-200 dark:border-orange-800 text-sm">
                     <p className="font-medium text-orange-800 dark:text-orange-300">Delays/Issues Reported</p>
-                    <p className="mt-1">{report.issuesDetails}</p>
+                    <p className="mt-1">{displayReport.issuesDetails}</p>
                   </div>
                 )}
-                {report.safetyFlag && (
+                {displayReport?.safetyFlag && (
                   <div className="p-3 bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-200 dark:border-red-800 text-sm">
                     <div className="flex items-center gap-2">
                       <Shield className="w-4 h-4 text-red-600 dark:text-red-400" />
                       <p className="font-medium text-red-800 dark:text-red-300">Safety Incident Reported</p>
                     </div>
-                    <p className="mt-1">{report.safetyDetails}</p>
+                    <p className="mt-1">{displayReport.safetyDetails}</p>
                   </div>
                 )}
               </section>
             )}
 
-            {report.photos && report.photos.length > 0 && (
+            {displayReport?.photos && displayReport.photos.length > 0 && (
               <section className="space-y-3">
                 <h3 className="font-semibold flex items-center gap-2">
                   <Image className="w-4 h-4" />
-                  Photos ({report.photos.length})
+                  Photos ({displayReport.photos.length})
                 </h3>
                 <div className="grid grid-cols-2 gap-2">
-                  {report.photos.map((photo) => (
+                  {displayReport.photos.map((photo) => (
                     <div key={photo.id} className="space-y-1">
-                      <div className="aspect-square rounded-lg overflow-hidden bg-muted">
+                      <div className="relative aspect-square rounded-lg overflow-hidden bg-muted group">
                         <img
                           src={photo.filePath}
                           alt={photo.caption || "Report photo"}
-                          className="w-full h-full object-cover cursor-pointer hover:scale-105 transition-transform"
+                          className="w-full h-full object-cover cursor-pointer"
                           onClick={() => window.open(photo.filePath, "_blank")}
+                          data-testid={`img-photo-${photo.id}`}
                         />
+                        {canDeletePhoto && (
+                          <Button
+                            size="icon"
+                            variant="destructive"
+                            className="absolute top-1 right-1 h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity"
+                            style={{ visibility: 'visible' }}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setDeletingPhotoId(photo.id);
+                            }}
+                            data-testid={`button-delete-photo-${photo.id}`}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </Button>
+                        )}
                       </div>
                       {photo.caption && (
                         <p className="text-xs text-muted-foreground">{photo.caption}</p>
@@ -558,7 +606,7 @@ export function ReportDetailPanel({
               </section>
             )}
 
-            {report.signaturePath && (
+            {displayReport?.signaturePath && (
               <section className="space-y-3">
                 <h3 className="font-semibold flex items-center gap-2">
                   <PenTool className="w-4 h-4" />
@@ -566,14 +614,14 @@ export function ReportDetailPanel({
                 </h3>
                 <div className="bg-white border rounded-lg p-3 max-w-xs">
                   <img
-                    src={report.signaturePath}
+                    src={displayReport.signaturePath}
                     alt="Inspector signature"
                     className="max-h-20 mx-auto"
                   />
                 </div>
-                {report.signedAt && (
+                {displayReport?.signedAt && (
                   <p className="text-xs text-muted-foreground">
-                    Signed on {formatPacificDate(report.signedAt, "MMMM d, yyyy 'at' h:mm a")}
+                    Signed on {formatPacificDate(displayReport.signedAt, "MMMM d, yyyy 'at' h:mm a")}
                   </p>
                 )}
               </section>
@@ -584,7 +632,7 @@ export function ReportDetailPanel({
                 <FileText className="w-4 h-4" />
                 PDF Document
               </h3>
-              {report.pdfPath ? (
+              {displayReport?.pdfPath ? (
                 <>
                   <div className="border rounded-lg overflow-hidden bg-muted">
                     <iframe
@@ -678,10 +726,39 @@ export function ReportDetailPanel({
           open={showEmailDialog}
           onOpenChange={setShowEmailDialog}
           reportId={report.id}
-          projectName={report.project?.name || report.customProjectName || undefined}
-          defaultEmails={report.project?.distributionEmails as string[] || []}
+          projectName={displayReport?.project?.name || displayReport?.customProjectName || undefined}
+          defaultEmails={displayReport?.project?.distributionEmails as string[] || []}
         />
       )}
+
+      <AlertDialog open={!!deletingPhotoId} onOpenChange={(open) => { if (!open) setDeletingPhotoId(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Photo</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete this photo? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (deletingPhotoId) {
+                  deletePhotoMutation.mutate(deletingPhotoId);
+                }
+              }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={deletePhotoMutation.isPending}
+              data-testid="button-confirm-delete-photo"
+            >
+              {deletePhotoMutation.isPending ? (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              ) : null}
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Sheet>
   );
 }

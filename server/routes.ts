@@ -9057,6 +9057,12 @@ export async function registerRoutes(
         if (project?.companyId && await isEffectiveCompanyAdmin(userId, project.companyId, profile)) {
           return res.json(report);
         }
+        
+        // Project team members can access reports for their project
+        const isMember = await isUserMemberOfProject(userId, report.projectId);
+        if (isMember) {
+          return res.json(report);
+        }
       }
       
       return res.status(403).json({ message: "Access denied" });
