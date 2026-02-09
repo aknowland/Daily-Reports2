@@ -1112,3 +1112,86 @@ export type ProjectCommentWithAuthor = ProjectComment & {
   };
 };
 
+// Meeting type enum
+export const meetingTypeEnum = pgEnum("meeting_type", [
+  "progress",
+  "safety",
+  "coordination",
+  "oac",
+  "pre_construction",
+  "other"
+]);
+
+// Meeting status enum
+export const meetingStatusEnum = pgEnum("meeting_status", [
+  "draft",
+  "approved",
+  "distributed"
+]);
+
+// Meetings table
+export const meetings = pgTable("meetings", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  projectId: varchar("project_id").references(() => projects.id, { onDelete: "cascade" }).notNull(),
+  companyId: varchar("company_id").references(() => companies.id, { onDelete: "cascade" }).notNull(),
+  meetingNumber: varchar("meeting_number").notNull(),
+  meetingType: meetingTypeEnum("meeting_type").notNull(),
+  meetingDate: varchar("meeting_date").notNull(),
+  startTime: varchar("start_time"),
+  endTime: varchar("end_time"),
+  location: text("location"),
+  preparedBy: text("prepared_by"),
+  attendees: text("attendees"),
+  absentees: text("absentees"),
+  agenda: text("agenda"),
+  discussionItems: text("discussion_items"),
+  decisions: text("decisions"),
+  nextMeetingDate: varchar("next_meeting_date"),
+  notes: text("notes"),
+  meetingStatus: meetingStatusEnum("meeting_status").default("draft").notNull(),
+  previousMeetingId: varchar("previous_meeting_id"),
+  seriesId: varchar("series_id"),
+  approvedBy: varchar("approved_by"),
+  approvedAt: timestamp("approved_at"),
+  distributedAt: timestamp("distributed_at"),
+  audioFileKey: varchar("audio_file_key"),
+  transcription: text("transcription"),
+  aiSummary: text("ai_summary"),
+  aiActionItems: text("ai_action_items"),
+  aiDecisions: text("ai_decisions"),
+  aiKeyPoints: text("ai_key_points"),
+  aiGenerationStatus: varchar("ai_generation_status"),
+  aiGeneratedAt: timestamp("ai_generated_at"),
+  pdfPath: varchar("pdf_path"),
+  createdBy: varchar("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const meetingsRelations = relations(meetings, ({ one }) => ({
+  project: one(projects, {
+    fields: [meetings.projectId],
+    references: [projects.id],
+  }),
+  company: one(companies, {
+    fields: [meetings.companyId],
+    references: [companies.id],
+  }),
+  creator: one(users, {
+    fields: [meetings.createdBy],
+    references: [users.id],
+  }),
+}));
+
+export const insertMeetingSchema = createInsertSchema(meetings).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  approvedAt: true,
+  distributedAt: true,
+  aiGeneratedAt: true,
+});
+
+export type Meeting = typeof meetings.$inferSelect;
+export type InsertMeeting = z.infer<typeof insertMeetingSchema>;
+
