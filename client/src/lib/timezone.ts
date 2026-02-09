@@ -41,3 +41,16 @@ export function formatDisplayDate(date: Date | string): string {
 export function formatDisplayDateTime(date: Date | string): string {
   return formatPacificDate(date, "MMM d, yyyy 'at' h:mm a");
 }
+
+/**
+ * Safely convert a date value to a yyyy-MM-dd string for HTML date inputs.
+ * If the value is already a yyyy-MM-dd string, returns it directly.
+ * Otherwise parses with parseDateSafe and formats with date-fns.
+ */
+export function toDateInputValue(date: Date | string | null | undefined): string {
+  if (!date) return "";
+  if (typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    return date;
+  }
+  return formatDate(parseDateSafe(date), 'yyyy-MM-dd');
+}

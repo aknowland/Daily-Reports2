@@ -164,9 +164,21 @@ const createProjectSchema = z.object({
   address: z.string().optional(),
   distributionEmails: z.array(z.string().email()).optional().default([]),
   defaultFolderPath: z.string().optional(),
-  startDate: z.string().or(z.date()).transform(val => val ? new Date(val) : null).nullable().optional(),
-  substantialCompletionDate: z.string().or(z.date()).transform(val => val ? new Date(val) : null).nullable().optional(),
-  finalCloseoutDate: z.string().or(z.date()).transform(val => val ? new Date(val) : null).nullable().optional(),
+  startDate: z.string().or(z.date()).transform(val => {
+    if (!val) return null;
+    if (typeof val === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(val)) return new Date(val + 'T12:00:00');
+    return new Date(val);
+  }).nullable().optional(),
+  substantialCompletionDate: z.string().or(z.date()).transform(val => {
+    if (!val) return null;
+    if (typeof val === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(val)) return new Date(val + 'T12:00:00');
+    return new Date(val);
+  }).nullable().optional(),
+  finalCloseoutDate: z.string().or(z.date()).transform(val => {
+    if (!val) return null;
+    if (typeof val === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(val)) return new Date(val + 'T12:00:00');
+    return new Date(val);
+  }).nullable().optional(),
   budgetAmount: z.string().or(z.number()).transform(val => val ? String(val) : null).nullable().optional(),
   budgetedHours: z.string().or(z.number()).transform(val => val ? String(val) : null).nullable().optional(),
   baseBudget: z.string().or(z.number()).transform(val => val ? String(val) : null).nullable().optional(),
@@ -5771,7 +5783,11 @@ export async function registerRoutes(
         if (processed[field] === '' || processed[field] === null) {
           processed[field] = null;
         } else if (typeof processed[field] === 'string') {
-          processed[field] = new Date(processed[field]);
+          if (/^\d{4}-\d{2}-\d{2}$/.test(processed[field])) {
+            processed[field] = new Date(processed[field] + 'T12:00:00');
+          } else {
+            processed[field] = new Date(processed[field]);
+          }
         }
       }
     }
@@ -7409,8 +7425,8 @@ export async function registerRoutes(
       const poData = {
         ...otherFields,
         companyId: profile.activeCompanyId,
-        issueDate: issueDate ? new Date(issueDate) : null,
-        expirationDate: expirationDate ? new Date(expirationDate) : null,
+        issueDate: issueDate ? new Date(typeof issueDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(issueDate) ? issueDate + 'T12:00:00' : issueDate) : null,
+        expirationDate: expirationDate ? new Date(typeof expirationDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(expirationDate) ? expirationDate + 'T12:00:00' : expirationDate) : null,
       };
       
       const purchaseOrder = await storage.createPurchaseOrder(poData);
@@ -7444,10 +7460,10 @@ export async function registerRoutes(
       const { issueDate, expirationDate, ...otherFields } = req.body;
       const updateData: any = { ...otherFields };
       if (issueDate !== undefined) {
-        updateData.issueDate = issueDate ? new Date(issueDate) : null;
+        updateData.issueDate = issueDate ? new Date(typeof issueDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(issueDate) ? issueDate + 'T12:00:00' : issueDate) : null;
       }
       if (expirationDate !== undefined) {
-        updateData.expirationDate = expirationDate ? new Date(expirationDate) : null;
+        updateData.expirationDate = expirationDate ? new Date(typeof expirationDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(expirationDate) ? expirationDate + 'T12:00:00' : expirationDate) : null;
       }
       
       const updated = await storage.updatePurchaseOrder(req.params.id, updateData);
@@ -7946,8 +7962,8 @@ export async function registerRoutes(
         companyId: profile.activeCompanyId,
         proposalNumber,
         createdById: userId,
-        startDate: proposalData.startDate ? new Date(proposalData.startDate) : null,
-        endDate: proposalData.endDate ? new Date(proposalData.endDate) : null,
+        startDate: proposalData.startDate || null,
+        endDate: proposalData.endDate || null,
         clientId: proposalData.clientId || null, // Convert empty string to null
         contractId: proposalData.contractId || null, // Link to contract
         projectId: proposalData.projectId || null, // Link to project
@@ -8008,11 +8024,11 @@ export async function registerRoutes(
       
       const { options, ...proposalData } = req.body;
       
-      // Convert date strings to Date objects and handle nullable fields
+      // Handle nullable fields - keep dates as strings to avoid timezone shifts
       const processedData = {
         ...proposalData,
-        startDate: proposalData.startDate ? new Date(proposalData.startDate) : null,
-        endDate: proposalData.endDate ? new Date(proposalData.endDate) : null,
+        startDate: proposalData.startDate || null,
+        endDate: proposalData.endDate || null,
         clientId: proposalData.clientId || null, // Convert empty string to null
         contractId: proposalData.contractId || null, // Link to contract
         projectId: proposalData.projectId || null, // Link to project
@@ -8199,8 +8215,14 @@ export async function registerRoutes(
       addRow('PROJECT', proposal.projectName);
       
       // Duration - calculate schedule summary based on per-inspector schedules
-      const startDateStr = proposal.startDate ? new Date(proposal.startDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : 'TBD';
-      const endDateStr = proposal.endDate ? new Date(proposal.endDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : 'TBD';
+      const parseDateStr = (d: any) => {
+        if (!d) return null;
+        const s = typeof d === 'string' ? d : String(d);
+        if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return new Date(s + 'T12:00:00');
+        return new Date(s);
+      };
+      const startDateStr = proposal.startDate ? parseDateStr(proposal.startDate)!.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : 'TBD';
+      const endDateStr = proposal.endDate ? parseDateStr(proposal.endDate)!.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : 'TBD';
       
       // Determine schedule summary from per-inspector schedules
       const allInspectors = proposal.options?.flatMap(opt => opt.inspectors || []) || [];

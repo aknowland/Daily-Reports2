@@ -84,8 +84,8 @@ export function PurchaseOrderSelect({
         totalAmount: data.totalAmount || null,
         description: data.description || null,
         status: "active",
-        issueDate: data.issueDate ? new Date(data.issueDate) : null,
-        expirationDate: data.expirationDate ? new Date(data.expirationDate) : null,
+        issueDate: data.issueDate || null,
+        expirationDate: data.expirationDate || null,
       });
       return response.json();
     },

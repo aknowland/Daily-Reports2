@@ -24,6 +24,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { InspectorSelector } from "@/components/inspector-selector";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { toDateInputValue } from "@/lib/timezone";
 
 // Rate lookup types for contract billing rates and IOR pay rates
 type RateLookupData = {
@@ -203,8 +204,8 @@ export function ProposalDialog({ open, onOpenChange, editingProposal }: Proposal
         projectId: (editingProposal as any).projectId || "",
         projectName: editingProposal.projectName,
         projectManager: editingProposal.projectManager || "",
-        startDate: editingProposal.startDate ? new Date(editingProposal.startDate).toISOString().split('T')[0] : "",
-        endDate: editingProposal.endDate ? new Date(editingProposal.endDate).toISOString().split('T')[0] : "",
+        startDate: toDateInputValue(editingProposal.startDate),
+        endDate: toDateInputValue(editingProposal.endDate),
         totalHours: editingProposal.totalHours || "",
         scheduleType: (editingProposal.scheduleType as ScheduleType) || "fullTime",
         rateEscalationNote: editingProposal.rateEscalationNote || "",
@@ -251,8 +252,8 @@ export function ProposalDialog({ open, onOpenChange, editingProposal }: Proposal
           // Auto-populate from contract
           clientName: clientName || prev.clientName,
           clientId: contractClientId || prev.clientId,
-          startDate: contract.startDate ? new Date(contract.startDate).toISOString().split('T')[0] : prev.startDate,
-          endDate: contract.substantialCompletionDate ? new Date(contract.substantialCompletionDate).toISOString().split('T')[0] : prev.endDate,
+          startDate: toDateInputValue(contract.startDate) || prev.startDate,
+          endDate: toDateInputValue(contract.substantialCompletionDate) || prev.endDate,
         };
       });
     } else {

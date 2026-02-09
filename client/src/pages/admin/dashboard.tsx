@@ -18,6 +18,7 @@ import {
 import architectureDiagram from "@assets/field-daily-reports-architecture-diagram.png";
 import type { DailyReportWithDetails, Project } from "@shared/schema";
 import type { User } from "@shared/models/auth";
+import { parseDateSafe } from "@/lib/timezone";
 
 export default function AdminDashboardPage() {
   const { data: reportsData, isLoading: loadingReports } = useQuery<{
@@ -201,7 +202,7 @@ export default function AdminDashboardPage() {
                         <div>
                           <p className="font-medium text-sm">{report.project?.name || report.customProjectName || "Unassigned Report"}</p>
                           <p className="text-xs text-muted-foreground">
-                            {report.inspectorName} - {new Date(report.date).toLocaleDateString()}
+                            {report.inspectorName} - {parseDateSafe(report.date).toLocaleDateString()}
                           </p>
                         </div>
                       </div>

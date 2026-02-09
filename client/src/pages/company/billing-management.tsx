@@ -206,8 +206,8 @@ export default function BillingManagementPage() {
           totalAmount: data.amount,
           description: data.description,
           status: data.status,
-          issueDate: data.issueDate ? new Date(data.issueDate) : null,
-          expirationDate: data.expirationDate ? new Date(data.expirationDate) : null,
+          issueDate: data.issueDate || null,
+          expirationDate: data.expirationDate || null,
         }),
       });
       if (!response.ok) {
@@ -239,8 +239,8 @@ export default function BillingManagementPage() {
           totalAmount: data.amount,
           description: data.description,
           status: data.status,
-          issueDate: data.issueDate ? new Date(data.issueDate) : null,
-          expirationDate: data.expirationDate ? new Date(data.expirationDate) : null,
+          issueDate: data.issueDate || null,
+          expirationDate: data.expirationDate || null,
         }),
       });
       if (!response.ok) throw new Error("Failed to update purchase order");
