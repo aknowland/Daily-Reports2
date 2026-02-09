@@ -257,7 +257,7 @@ export function ReportDetailPanel({
                 <DropdownMenuContent align="start">
                   <DropdownMenuItem asChild>
                     <a 
-                      href={`${report.pdfPath}?t=${new Date(report.updatedAt || Date.now()).getTime()}`} 
+                      href={`/api/reports/${report.id}/pdf`} 
                       target="_blank" 
                       rel="noopener noreferrer"
                       className="flex items-center cursor-pointer"
@@ -269,7 +269,7 @@ export function ReportDetailPanel({
                   </DropdownMenuItem>
                   <DropdownMenuItem asChild>
                     <a 
-                      href={`${report.pdfPath}?t=${new Date(report.updatedAt || Date.now()).getTime()}`} 
+                      href={`/api/reports/${report.id}/pdf?download=true`} 
                       download
                       className="flex items-center cursor-pointer"
                       data-testid="menu-download-pdf"
@@ -588,7 +588,7 @@ export function ReportDetailPanel({
                 <>
                   <div className="border rounded-lg overflow-hidden bg-muted">
                     <iframe
-                      src={`${report.pdfPath}?t=${new Date(report.updatedAt || Date.now()).getTime()}`}
+                      src={`/api/reports/${report.id}/pdf`}
                       className="w-full h-[400px]"
                       title="Report PDF Preview"
                       data-testid="iframe-pdf-preview"

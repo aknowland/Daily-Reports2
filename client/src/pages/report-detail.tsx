@@ -68,9 +68,9 @@ export default function ReportDetailPage() {
       const response = await apiRequest("POST", `/api/reports/${id}/pdf`);
       return response.json();
     },
-    onSuccess: (data) => {
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/reports", id] });
-      window.open(data.pdfUrl, "_blank");
+      window.open(`/api/reports/${id}/pdf`, "_blank");
       toast({
         title: "PDF Generated",
         description: "Your PDF has been generated and will open in a new tab",
@@ -233,7 +233,7 @@ export default function ReportDetailPage() {
           </Button>
           {report.pdfPath && (
             <Button variant="outline" asChild data-testid="button-download-pdf">
-              <a href={`${report.pdfPath}?t=${new Date(report.updatedAt || Date.now()).getTime()}`} download>
+              <a href={`/api/reports/${id}/pdf?download=true`} download>
                 <Download className="w-4 h-4 mr-2" />
                 Download
               </a>
