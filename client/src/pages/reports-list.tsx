@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link, useSearch, useLocation } from "wouter";
 import { format } from "date-fns";
-import { formatPacificDate } from "@/lib/timezone";
+import { formatPacificDate, parseDateSafe } from "@/lib/timezone";
 import { PageLayout } from "@/components/layout/page-layout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -144,7 +144,7 @@ export default function ReportsListPage() {
     if (r.status !== "submitted") return false;
     if (!dateRange?.from) return false;
     
-    const reportDate = new Date(r.date);
+    const reportDate = parseDateSafe(r.date);
     if (reportDate < dateRange.from) return false;
     if (dateRange.to && reportDate > dateRange.to) return false;
     return true;

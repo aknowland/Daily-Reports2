@@ -329,23 +329,23 @@ export default function CompanyDashboard() {
       // Within same priority, apply appropriate secondary sorting
       if (aPriority === 1) {
         // Bid Released/Received: sort by bid due date (soonest first)
-        const aDue = a.bidDueDate ? new Date(a.bidDueDate).getTime() : Infinity;
-        const bDue = b.bidDueDate ? new Date(b.bidDueDate).getTime() : Infinity;
+        const aDue = a.bidDueDate ? parseDateSafe(a.bidDueDate).getTime() : Infinity;
+        const bDue = b.bidDueDate ? parseDateSafe(b.bidDueDate).getTime() : Infinity;
         return aDue - bDue;
       }
       
       if (aPriority === 2) {
         // Under Review: sort by bid due date (oldest first - ascending order)
         // Contracts without bid due date go to end of this group
-        const aDue = a.bidDueDate ? new Date(a.bidDueDate).getTime() : Infinity;
-        const bDue = b.bidDueDate ? new Date(b.bidDueDate).getTime() : Infinity;
+        const aDue = a.bidDueDate ? parseDateSafe(a.bidDueDate).getTime() : Infinity;
+        const bDue = b.bidDueDate ? parseDateSafe(b.bidDueDate).getTime() : Infinity;
         return aDue - bDue;
       }
       
       if (aPriority === 3) {
         // Awarded/Pre-construction: sort by start date (earliest first)
-        const aStart = a.schedule.startDate ? new Date(a.schedule.startDate).getTime() : Infinity;
-        const bStart = b.schedule.startDate ? new Date(b.schedule.startDate).getTime() : Infinity;
+        const aStart = a.schedule.startDate ? parseDateSafe(a.schedule.startDate).getTime() : Infinity;
+        const bStart = b.schedule.startDate ? parseDateSafe(b.schedule.startDate).getTime() : Infinity;
         return aStart - bStart;
       }
       
@@ -383,13 +383,13 @@ export default function CompanyDashboard() {
   const calendarEvents = (contractsSummary || []).flatMap(contract => {
     const events: { date: Date; title: string; type: string; contract: ContractDashboardSummary }[] = [];
     if (contract.bidDueDate) {
-      events.push({ date: new Date(contract.bidDueDate), title: `Bid Due: ${contract.name}`, type: "bid_due", contract });
+      events.push({ date: parseDateSafe(contract.bidDueDate), title: `Bid Due: ${contract.name}`, type: "bid_due", contract });
     }
     if (contract.schedule.startDate) {
-      events.push({ date: new Date(contract.schedule.startDate), title: `Start: ${contract.name}`, type: "start", contract });
+      events.push({ date: parseDateSafe(contract.schedule.startDate), title: `Start: ${contract.name}`, type: "start", contract });
     }
     if (contract.schedule.endDate) {
-      events.push({ date: new Date(contract.schedule.endDate), title: `Completion: ${contract.name}`, type: "completion", contract });
+      events.push({ date: parseDateSafe(contract.schedule.endDate), title: `Completion: ${contract.name}`, type: "completion", contract });
     }
     return events;
   }).sort((a, b) => a.date.getTime() - b.date.getTime());
@@ -892,8 +892,8 @@ export default function CompanyDashboard() {
                   <div className="space-y-3 max-h-[600px] overflow-y-auto overflow-x-hidden pr-1">
                     {displayedContracts.map((contract) => {
                       const now = new Date();
-                      const start = contract.schedule.startDate ? new Date(contract.schedule.startDate) : null;
-                      const end = contract.schedule.endDate ? new Date(contract.schedule.endDate) : null;
+                      const start = contract.schedule.startDate ? parseDateSafe(contract.schedule.startDate) : null;
+                      const end = contract.schedule.endDate ? parseDateSafe(contract.schedule.endDate) : null;
                       
                       // Check if contract is in bid phase (should never show as overdue)
                       const isInBidPhase = ['bid_release', 'bid_received', 'under_review'].includes(contract.status);
@@ -921,7 +921,7 @@ export default function CompanyDashboard() {
                           scheduleStatus = remaining <= 7 ? 'ending_soon' : 'active';
                         }
                       }
-                      const bidDue = contract.bidDueDate ? new Date(contract.bidDueDate) : null;
+                      const bidDue = contract.bidDueDate ? parseDateSafe(contract.bidDueDate) : null;
                       let bidDueInfo: { label: string; color: string } | null = null;
                       if (showBidDueBadge && bidDue) {
                         const daysUntilDue = differenceInDays(bidDue, now);
@@ -1273,7 +1273,7 @@ export default function CompanyDashboard() {
                         <div className="min-w-0 flex-1">
                           <p className="text-sm truncate">{activity.title}</p>
                           <p className="text-xs text-muted-foreground">
-                            {format(new Date(activity.date), 'MMM d, h:mm a')}
+                            {format(parseDateSafe(activity.date), 'MMM d, h:mm a')}
                           </p>
                         </div>
                         <Badge 

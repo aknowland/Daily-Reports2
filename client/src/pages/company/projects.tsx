@@ -54,6 +54,7 @@ import { ClientSelect } from "@/components/client-select";
 import { Switch } from "@/components/ui/switch";
 import { InspectorSelector } from "@/components/inspector-selector";
 import { DollarSign, Users } from "lucide-react";
+import { parseDateSafe, toDateInputValue } from "@/lib/timezone";
 
 type BillingRateEntry = {
   title: string;
@@ -235,9 +236,9 @@ export default function CompanyProjectsPage() {
     // Get project status priority based on dates (lower = shows first)
     const getProjectStatusPriority = (project: Project): number => {
       const now = new Date();
-      const startDate = project.startDate ? new Date(project.startDate) : null;
-      const completionDate = project.substantialCompletionDate ? new Date(project.substantialCompletionDate) : null;
-      const closeoutDate = project.finalCloseoutDate ? new Date(project.finalCloseoutDate) : null;
+      const startDate = project.startDate ? parseDateSafe(project.startDate) : null;
+      const completionDate = project.substantialCompletionDate ? parseDateSafe(project.substantialCompletionDate) : null;
+      const closeoutDate = project.finalCloseoutDate ? parseDateSafe(project.finalCloseoutDate) : null;
       
       // Completed projects (past closeout or completion date)
       if (closeoutDate && closeoutDate < now) return 3;
@@ -961,10 +962,10 @@ export default function CompanyProjectsPage() {
                     size="sm"
                     onClick={() => {
                       const startDate = linkedProposal.startDate 
-                        ? new Date(linkedProposal.startDate).toISOString().split('T')[0] 
+                        ? toDateInputValue(linkedProposal.startDate) 
                         : "";
                       const endDate = linkedProposal.endDate 
-                        ? new Date(linkedProposal.endDate).toISOString().split('T')[0] 
+                        ? toDateInputValue(linkedProposal.endDate) 
                         : "";
                       setFormData({ 
                         ...formData, 

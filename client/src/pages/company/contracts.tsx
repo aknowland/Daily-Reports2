@@ -792,12 +792,12 @@ export default function ContractsPage() {
           ...formData,
           clientId: formData.clientId || null,
           purchaseOrderId: formData.purchaseOrderId || null,
-          bidReleaseDate: formData.bidReleaseDate ? new Date(formData.bidReleaseDate) : null,
-          bidDueDate: formData.bidDueDate ? new Date(formData.bidDueDate) : null,
-          awardDate: formData.awardDate ? new Date(formData.awardDate) : null,
-          startDate: formData.startDate ? new Date(formData.startDate) : null,
-          substantialCompletionDate: formData.substantialCompletionDate ? new Date(formData.substantialCompletionDate) : null,
-          finalCloseoutDate: formData.finalCloseoutDate ? new Date(formData.finalCloseoutDate) : null,
+          bidReleaseDate: formData.bidReleaseDate || null,
+          bidDueDate: formData.bidDueDate || null,
+          awardDate: formData.awardDate || null,
+          startDate: formData.startDate || null,
+          substantialCompletionDate: formData.substantialCompletionDate || null,
+          finalCloseoutDate: formData.finalCloseoutDate || null,
           options: contractOptions.map(opt => ({
             name: opt.name,
             inspectors: opt.inspectors.filter(ins => ins.title.trim() || ins.inspectorName.trim() || ins.rate.trim()),
@@ -894,7 +894,7 @@ export default function ContractsPage() {
     
     const now = new Date();
     now.setHours(0, 0, 0, 0);
-    const dueDate = new Date(bidDueDate);
+    const dueDate = parseDateSafe(bidDueDate);
     dueDate.setHours(0, 0, 0, 0);
     
     const diffTime = dueDate.getTime() - now.getTime();
@@ -934,7 +934,7 @@ export default function ContractsPage() {
     
     if (isInBidPhase(contract.status)) {
       if (contract.startDate) {
-        const startDate = new Date(contract.startDate);
+        const startDate = parseDateSafe(contract.startDate);
         const daysToStart = differenceInDays(startDate, now);
         return { progress: 0, status: 'upcoming' as const, daysInfo: daysToStart > 0 ? `Starts in ${daysToStart} days` : null };
       }
@@ -942,8 +942,8 @@ export default function ContractsPage() {
     }
     
     if (contract.startDate && contract.substantialCompletionDate) {
-      const startDate = new Date(contract.startDate);
-      const endDate = new Date(contract.substantialCompletionDate);
+      const startDate = parseDateSafe(contract.startDate);
+      const endDate = parseDateSafe(contract.substantialCompletionDate);
       const totalDuration = endDate.getTime() - startDate.getTime();
       const elapsed = now.getTime() - startDate.getTime();
       
@@ -1060,23 +1060,23 @@ export default function ContractsPage() {
       // Within same priority, apply appropriate secondary sorting
       if (aPriority === 1) {
         // Bid Released/Received: sort by bid due date (soonest first)
-        const aDue = a.bidDueDate ? new Date(a.bidDueDate).getTime() : Infinity;
-        const bDue = b.bidDueDate ? new Date(b.bidDueDate).getTime() : Infinity;
+        const aDue = a.bidDueDate ? parseDateSafe(a.bidDueDate).getTime() : Infinity;
+        const bDue = b.bidDueDate ? parseDateSafe(b.bidDueDate).getTime() : Infinity;
         return aDue - bDue;
       }
       
       if (aPriority === 2) {
         // Under Review: sort by bid due date (oldest first - ascending order)
         // Contracts without bid due date go to end of this group
-        const aDue = a.bidDueDate ? new Date(a.bidDueDate).getTime() : Infinity;
-        const bDue = b.bidDueDate ? new Date(b.bidDueDate).getTime() : Infinity;
+        const aDue = a.bidDueDate ? parseDateSafe(a.bidDueDate).getTime() : Infinity;
+        const bDue = b.bidDueDate ? parseDateSafe(b.bidDueDate).getTime() : Infinity;
         return aDue - bDue;
       }
       
       if (aPriority === 3) {
         // Awarded/Pre-construction: sort by start date (earliest first)
-        const aStart = a.startDate ? new Date(a.startDate).getTime() : Infinity;
-        const bStart = b.startDate ? new Date(b.startDate).getTime() : Infinity;
+        const aStart = a.startDate ? parseDateSafe(a.startDate).getTime() : Infinity;
+        const bStart = b.startDate ? parseDateSafe(b.startDate).getTime() : Infinity;
         return aStart - bStart;
       }
       
@@ -1145,13 +1145,13 @@ export default function ContractsPage() {
   const calendarEvents = contracts.flatMap(contract => {
     const events: { date: Date; title: string; type: string; contract: ContractWithProjects }[] = [];
     if (contract.bidDueDate) {
-      events.push({ date: new Date(contract.bidDueDate), title: `Bid Due: ${contract.name}`, type: "bid_due", contract });
+      events.push({ date: parseDateSafe(contract.bidDueDate), title: `Bid Due: ${contract.name}`, type: "bid_due", contract });
     }
     if (contract.startDate) {
-      events.push({ date: new Date(contract.startDate), title: `Start: ${contract.name}`, type: "start", contract });
+      events.push({ date: parseDateSafe(contract.startDate), title: `Start: ${contract.name}`, type: "start", contract });
     }
     if (contract.substantialCompletionDate) {
-      events.push({ date: new Date(contract.substantialCompletionDate), title: `Completion: ${contract.name}`, type: "completion", contract });
+      events.push({ date: parseDateSafe(contract.substantialCompletionDate), title: `Completion: ${contract.name}`, type: "completion", contract });
     }
     return events;
   }).sort((a, b) => a.date.getTime() - b.date.getTime());
@@ -1241,8 +1241,8 @@ export default function ContractsPage() {
           status: isTBD ? "under_review" : "awarded",
           originalValue: totalValue.toFixed(2),
           currentValue: totalValue.toFixed(2),
-          startDate: convertingProposal.startDate ? new Date(convertingProposal.startDate) : null,
-          substantialCompletionDate: convertingProposal.endDate ? new Date(convertingProposal.endDate) : null,
+          startDate: convertingProposal.startDate || null,
+          substantialCompletionDate: convertingProposal.endDate || null,
           regularRate: regularRate,
           overtimeRate: "",
           premiumRate: "",
