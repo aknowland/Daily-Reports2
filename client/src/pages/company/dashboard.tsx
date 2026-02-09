@@ -1182,7 +1182,7 @@ export default function CompanyDashboard() {
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
                     <Users className="h-5 w-5 text-primary" />
-                    <CardTitle>Inspector Workload</CardTitle>
+                    <CardTitle>Inspector Workload <span className="text-sm font-normal text-muted-foreground">(Last 30 Days)</span></CardTitle>
                   </div>
                   <Link href="/company/team">
                     <Button variant="ghost" size="sm" className="h-8 gap-1">

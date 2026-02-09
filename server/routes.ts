@@ -4460,10 +4460,18 @@ export async function registerRoutes(
         storage.getReports({ companyId }),
       ]);
       
-      // 1. Inspector Workload - hours per inspector
+      // 1. Inspector Workload - hours per inspector (last 30 days only)
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
       const inspectorWorkload: Record<string, { userId: string; name: string; regularHours: number; overtimeHours: number; reportCount: number; projectIds: Set<string> }> = {};
       
-      for (const report of allReports) {
+      const recentReports = allReports.filter(report => {
+        if (!report.date) return false;
+        const reportDate = new Date(report.date);
+        return reportDate >= thirtyDaysAgo;
+      });
+      
+      for (const report of recentReports) {
         const inspectorId = report.inspectorId;
         if (!inspectorWorkload[inspectorId]) {
           inspectorWorkload[inspectorId] = { 
