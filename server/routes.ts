@@ -266,6 +266,8 @@ export async function registerRoutes(
       const canAccessReportFile = async (report: any): Promise<boolean> => {
         if (report.inspectorId === userId) return true;
         if (report.projectId) {
+          const isMember = await storage.isUserMemberOfProject(report.projectId, userId);
+          if (isMember) return true;
           const project = await storage.getProject(report.projectId);
           if (project?.companyId && await isEffectiveCompanyAdmin(userId, project.companyId, profile)) {
             return true;
@@ -9588,7 +9590,8 @@ export async function registerRoutes(
       // Form grid boxes - right side
       const gridX = 380;
       const gridTop = 72;
-      const reportDate = new Date(report.date);
+      const reportDateVal = typeof report.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(report.date) ? report.date + 'T12:00:00' : report.date;
+      const reportDate = report.date instanceof Date ? report.date : new Date(reportDateVal);
       const dateStr = reportDate.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: '2-digit' });
       // Time cell shows when report was submitted (signedAt); if not signed, show "--"
       const timeStr = report.signedAt 
@@ -10163,6 +10166,96 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error deleting PDF:", error);
       res.status(500).json({ message: "Failed to delete PDF" });
+    }
+  });
+
+  // Stream PDF for viewing/downloading (avoids auth issues with direct /objects/ URLs)
+  app.get("/api/reports/:id/pdf", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+
+      const report = await storage.getReport(req.params.id);
+      if (!report) {
+        return res.status(404).json({ message: "Report not found" });
+      }
+
+      if (!report.pdfPath) {
+        return res.status(404).json({ message: "No PDF available. Please generate the PDF first." });
+      }
+
+      // Check permissions: owner, project member, or company admin
+      const isOwner = report.inspectorId === userId;
+      let hasAccess = isOwner || isEffectiveSystemAdmin(profile);
+      if (!hasAccess && report.projectId) {
+        const isMember = await storage.isUserMemberOfProject(report.projectId, userId);
+        if (isMember) hasAccess = true;
+        if (!hasAccess) {
+          const project = await storage.getProject(report.projectId);
+          if (project?.companyId) {
+            hasAccess = await isEffectiveCompanyAdmin(userId, project.companyId, profile);
+          }
+        }
+      }
+
+      if (!hasAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const download = req.query.download === 'true';
+      const setDownloadHeaders = () => {
+        if (download) {
+          const dateVal = typeof report.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(report.date as string) ? (report.date as string) + 'T12:00:00' : report.date;
+          const reportDate = report.date instanceof Date ? report.date : new Date(dateVal as string);
+          const dateStr = reportDate.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' }).replace(/\//g, '-');
+          const projectName = report.project?.name || 'Report';
+          const sanitizedName = projectName.replace(/[^a-zA-Z0-9\s-]/g, '').replace(/\s+/g, '_');
+          res.set('Content-Disposition', `attachment; filename="${sanitizedName}_${dateStr}.pdf"`);
+        } else {
+          res.set('Content-Disposition', 'inline');
+        }
+        res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+      };
+
+      // Handle /objects/ paths via object storage
+      if (report.pdfPath.startsWith('/objects/')) {
+        try {
+          const objectFile = await objectStorage.getObjectEntityFile(report.pdfPath);
+          setDownloadHeaders();
+          return await objectStorage.downloadObject(objectFile, res, 0);
+        } catch (err: any) {
+          console.error("Error streaming PDF from object storage:", report.pdfPath, err?.message || err);
+          if (err?.name === 'ObjectNotFoundError') {
+            return res.status(404).json({ message: "PDF file not found in storage. Please regenerate the PDF." });
+          }
+          return res.status(500).json({ message: "Failed to serve PDF" });
+        }
+      }
+
+      // Handle legacy /storage/ paths - try object storage first, then local filesystem
+      if (report.pdfPath.startsWith('/storage/')) {
+        const filename = report.pdfPath.split('/').pop();
+        const objectPath = `/objects/reports/${filename}`;
+        try {
+          const objectFile = await objectStorage.getObjectEntityFile(objectPath);
+          setDownloadHeaders();
+          return await objectStorage.downloadObject(objectFile, res, 0);
+        } catch (objErr) {
+          // Fall through to local filesystem
+        }
+        const localPath = path.join(process.cwd(), report.pdfPath.replace(/^\//, ''));
+        if (fs.existsSync(localPath)) {
+          setDownloadHeaders();
+          res.set('Content-Type', 'application/pdf');
+          return fs.createReadStream(localPath).pipe(res);
+        }
+        return res.status(404).json({ message: "PDF file not found. Please regenerate the PDF." });
+      }
+
+      return res.status(404).json({ message: "Invalid PDF path. Please regenerate the PDF." });
+    } catch (error) {
+      console.error("Error in PDF download endpoint:", error);
+      return res.status(500).json({ message: "Failed to download PDF" });
     }
   });
 
