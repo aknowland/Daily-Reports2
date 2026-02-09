@@ -152,6 +152,12 @@ const companyLogoUpload = multer({
   },
 });
 
+// Multer config for audio files
+const audioUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 100 * 1024 * 1024 }, // 100MB for audio
+});
+
 // Validation schemas
 const createProjectSchema = z.object({
   name: z.string().min(1, "Name is required"),
@@ -13699,6 +13705,463 @@ Transcript: "${transcript}"`;
     } catch (error) {
       console.error("Error seeding demo data:", error);
       res.status(500).json({ message: "Failed to seed demo data", error: String(error) });
+    }
+  });
+
+  // ============ MEETINGS ROUTES ============
+
+  // Get meetings for the active company (admin only)
+  app.get("/api/meetings", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      if (!profile?.activeCompanyId) {
+        return res.status(400).json({ message: "No active company" });
+      }
+
+      const isAdmin = await isEffectiveCompanyAdmin(userId, profile.activeCompanyId, profile);
+      if (!isAdmin && !isEffectiveSystemAdmin(profile)) {
+        return res.status(403).json({ message: "Only company admins can view meetings" });
+      }
+
+      const projectId = req.query.projectId as string | undefined;
+      const meetingsList = await storage.getMeetings(profile.activeCompanyId, { projectId });
+      res.json(meetingsList);
+    } catch (error) {
+      console.error("Error fetching meetings:", error);
+      res.status(500).json({ message: "Failed to fetch meetings" });
+    }
+  });
+
+  // Get a single meeting by ID (admin only)
+  app.get("/api/meetings/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      const meeting = await storage.getMeeting(req.params.id);
+      if (!meeting) {
+        return res.status(404).json({ message: "Meeting not found" });
+      }
+
+      if (!profile?.activeCompanyId) {
+        return res.status(400).json({ message: "No active company" });
+      }
+
+      const isAdmin = await isEffectiveCompanyAdmin(userId, meeting.companyId, profile);
+      if (!isAdmin && !isEffectiveSystemAdmin(profile)) {
+        return res.status(403).json({ message: "Only company admins can view meetings" });
+      }
+
+      res.json(meeting);
+    } catch (error) {
+      console.error("Error fetching meeting:", error);
+      res.status(500).json({ message: "Failed to fetch meeting" });
+    }
+  });
+
+  // Create a new meeting (admin only)
+  app.post("/api/meetings", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      if (!profile?.activeCompanyId) {
+        return res.status(400).json({ message: "No active company" });
+      }
+
+      const isAdmin = await isEffectiveCompanyAdmin(userId, profile.activeCompanyId, profile);
+      if (!isAdmin && !isEffectiveSystemAdmin(profile)) {
+        return res.status(403).json({ message: "Only company admins can create meetings" });
+      }
+
+      const meetingTypes = ["progress", "safety", "coordination", "oac", "pre_construction", "other"];
+      if (!req.body.meetingType || !meetingTypes.includes(req.body.meetingType)) {
+        return res.status(400).json({ message: "Invalid meeting type" });
+      }
+      if (!req.body.projectId) {
+        return res.status(400).json({ message: "Project ID is required" });
+      }
+      if (!req.body.meetingDate) {
+        return res.status(400).json({ message: "Meeting date is required" });
+      }
+
+      const meetingNumber = await storage.getNextMeetingNumber(profile.activeCompanyId, req.body.meetingType);
+
+      const allowedFields = [
+        "meetingType", "projectId", "meetingDate", "startTime", "endTime",
+        "location", "attendees", "absentees", "agenda", "discussionItems",
+        "decisions", "notes", "preparedBy", "nextMeetingDate", "meetingStatus",
+      ];
+      const sanitized: any = {};
+      for (const key of allowedFields) {
+        if (req.body[key] !== undefined) {
+          sanitized[key] = req.body[key];
+        }
+      }
+
+      const meeting = await storage.createMeeting({
+        ...sanitized,
+        companyId: profile.activeCompanyId,
+        meetingNumber,
+        createdBy: userId,
+      });
+
+      res.status(201).json(meeting);
+    } catch (error) {
+      console.error("Error creating meeting:", error);
+      res.status(500).json({ message: "Failed to create meeting" });
+    }
+  });
+
+  // Update a meeting (admin only)
+  app.patch("/api/meetings/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      const meeting = await storage.getMeeting(req.params.id);
+      if (!meeting) {
+        return res.status(404).json({ message: "Meeting not found" });
+      }
+
+      const isAdmin = await isEffectiveCompanyAdmin(userId, meeting.companyId, profile);
+      if (!isAdmin && !isEffectiveSystemAdmin(profile)) {
+        return res.status(403).json({ message: "Only company admins can edit meetings" });
+      }
+
+      const allowedUpdateFields = [
+        "meetingType", "projectId", "meetingDate", "startTime", "endTime",
+        "location", "attendees", "absentees", "agenda", "discussionItems",
+        "decisions", "notes", "preparedBy", "nextMeetingDate", "meetingStatus",
+      ];
+      const sanitized: any = {};
+      for (const key of allowedUpdateFields) {
+        if (req.body[key] !== undefined) {
+          sanitized[key] = req.body[key];
+        }
+      }
+
+      const updated = await storage.updateMeeting(req.params.id, sanitized);
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating meeting:", error);
+      res.status(500).json({ message: "Failed to update meeting" });
+    }
+  });
+
+  // Delete a meeting (admin only)
+  app.delete("/api/meetings/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      const meeting = await storage.getMeeting(req.params.id);
+      if (!meeting) {
+        return res.status(404).json({ message: "Meeting not found" });
+      }
+
+      const isAdmin = await isEffectiveCompanyAdmin(userId, meeting.companyId, profile);
+      if (!isAdmin && !isEffectiveSystemAdmin(profile)) {
+        return res.status(403).json({ message: "Only company admins can delete meetings" });
+      }
+
+      await storage.deleteMeeting(req.params.id);
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting meeting:", error);
+      res.status(500).json({ message: "Failed to delete meeting" });
+    }
+  });
+
+  // Upload audio and generate AI transcription/summary for a meeting
+  app.post("/api/meetings/:id/audio", isAuthenticated, audioUpload.single("audio"), async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      const meeting = await storage.getMeeting(req.params.id);
+      if (!meeting) {
+        return res.status(404).json({ message: "Meeting not found" });
+      }
+
+      const isAdmin = await isEffectiveCompanyAdmin(userId, meeting.companyId, profile);
+      if (!isAdmin && !isEffectiveSystemAdmin(profile)) {
+        return res.status(403).json({ message: "Only company admins can upload audio" });
+      }
+
+      if (!req.file) {
+        return res.status(400).json({ message: "No audio file provided" });
+      }
+
+      // Upload audio to object storage
+      const audioKey = await objectStorage.uploadBuffer({
+        buffer: req.file.buffer,
+        filename: `meetings/${meeting.companyId}/${meeting.id}/audio-${Date.now()}${path.extname(req.file.originalname)}`,
+        contentType: req.file.mimetype,
+        folder: "meetings",
+      });
+
+      // Update meeting with audio file key and set status to processing
+      await storage.updateMeeting(meeting.id, {
+        audioFileKey: audioKey,
+        aiGenerationStatus: "processing",
+      });
+
+      // Start AI processing in the background
+      (async () => {
+        try {
+          const OpenAI = (await import("openai")).default;
+          const openai = new OpenAI();
+
+          // Transcribe the audio using toFile for Node.js compatibility
+          const { toFile } = await import("openai");
+          const audioFile = await toFile(req.file.buffer, req.file.originalname, { type: req.file.mimetype });
+          const transcription = await openai.audio.transcriptions.create({
+            file: audioFile,
+            model: "whisper-1",
+          });
+
+          const transcriptionText = transcription.text;
+
+          // Generate AI summary, action items, decisions, and key points
+          const completion = await openai.chat.completions.create({
+            model: "gpt-4o",
+            messages: [
+              {
+                role: "system",
+                content: `You are a construction meeting minutes assistant. Analyze the meeting transcription and extract structured information. Respond in JSON format with these fields:
+- summary: A concise 2-3 paragraph summary of the meeting
+- actionItems: A bulleted list of action items with assignees if mentioned
+- decisions: A bulleted list of key decisions made
+- keyPoints: A bulleted list of key discussion points and takeaways`
+              },
+              {
+                role: "user",
+                content: `Meeting Type: ${meeting.meetingType}\nMeeting Date: ${meeting.meetingDate}\n\nTranscription:\n${transcriptionText}`
+              }
+            ],
+            response_format: { type: "json_object" },
+          });
+
+          const aiResult = JSON.parse(completion.choices[0]?.message?.content || "{}");
+
+          await storage.updateMeeting(meeting.id, {
+            transcription: transcriptionText,
+            aiSummary: aiResult.summary || null,
+            aiActionItems: aiResult.actionItems || null,
+            aiDecisions: aiResult.decisions || null,
+            aiKeyPoints: aiResult.keyPoints || null,
+            aiGenerationStatus: "completed",
+          });
+        } catch (aiError) {
+          console.error("AI processing error for meeting:", aiError);
+          await storage.updateMeeting(meeting.id, {
+            aiGenerationStatus: "failed",
+          });
+        }
+      })();
+
+      res.json({ message: "Audio uploaded, AI processing started" });
+    } catch (error) {
+      console.error("Error uploading meeting audio:", error);
+      res.status(500).json({ message: "Failed to upload audio" });
+    }
+  });
+
+  // Generate meeting minutes PDF
+  app.post("/api/meetings/:id/pdf", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      const meeting = await storage.getMeeting(req.params.id);
+      if (!meeting) {
+        return res.status(404).json({ message: "Meeting not found" });
+      }
+
+      const isAdmin = await isEffectiveCompanyAdmin(userId, meeting.companyId, profile);
+      if (!isAdmin && !isEffectiveSystemAdmin(profile)) {
+        return res.status(403).json({ message: "Only company admins can generate meeting PDFs" });
+      }
+
+      const project = await storage.getProject(meeting.projectId);
+      const company = await storage.getCompany(meeting.companyId);
+
+      const loadImageBuffer = async (imagePath: string): Promise<Buffer | null> => {
+        try {
+          if (imagePath.startsWith('/objects/')) {
+            return await objectStorage.downloadBuffer(imagePath);
+          }
+          if (imagePath.startsWith('/storage/uploads/')) {
+            try {
+              const filename = imagePath.split('/').pop();
+              const objectPath = `/objects/photos/${filename}`;
+              return await objectStorage.downloadBuffer(objectPath);
+            } catch (objErr) {
+              return null;
+            }
+          }
+          return null;
+        } catch (err) {
+          console.error('Error loading image:', err);
+          return null;
+        }
+      };
+
+      const PDFDocument = (await import("pdfkit")).default;
+      const doc = new PDFDocument({ size: "LETTER", margin: 50 });
+
+      const buffers: Buffer[] = [];
+      doc.on("data", (chunk: Buffer) => buffers.push(chunk));
+
+      const pdfPromise = new Promise<Buffer>((resolve) => {
+        doc.on("end", () => resolve(Buffer.concat(buffers)));
+      });
+
+      const pageWidth = 512;
+      const startX = 50;
+      let y = 50;
+
+      // Company logo
+      if (company?.logoPath) {
+        try {
+          const logoBuffer = await loadImageBuffer(company.logoPath);
+          if (logoBuffer) {
+            doc.image(logoBuffer, startX, y, { width: 230, height: 86, fit: [230, 86] });
+            y += 90;
+          }
+        } catch (err) {
+          console.error("Error adding company logo to meeting PDF:", err);
+        }
+      }
+
+      // Title
+      doc.fontSize(16).font("Helvetica-Bold").text("MEETING MINUTES", startX, y, { width: pageWidth, align: "center" });
+      y += 30;
+
+      // Meeting info box
+      const meetingTypeLabels: Record<string, string> = {
+        progress: "Progress Meeting",
+        safety: "Safety Meeting",
+        coordination: "Coordination Meeting",
+        oac: "OAC Meeting",
+        pre_construction: "Pre-Construction Meeting",
+        other: "Meeting",
+      };
+
+      doc.fontSize(10).font("Helvetica-Bold");
+      doc.text(`Meeting: ${meetingTypeLabels[meeting.meetingType] || meeting.meetingType}`, startX, y);
+      doc.text(`Number: ${meeting.meetingNumber}`, startX + 260, y);
+      y += 16;
+
+      doc.font("Helvetica");
+      doc.text(`Project: ${project?.name || "N/A"}`, startX, y);
+      y += 14;
+      doc.text(`Date: ${meeting.meetingDate}`, startX, y);
+      doc.text(`Time: ${meeting.startTime || ""} - ${meeting.endTime || ""}`, startX + 260, y);
+      y += 14;
+      doc.text(`Location: ${meeting.location || "N/A"}`, startX, y);
+      y += 14;
+      doc.text(`Prepared By: ${meeting.preparedBy || "N/A"}`, startX, y);
+      y += 20;
+
+      // Horizontal line
+      doc.moveTo(startX, y).lineTo(startX + pageWidth, y).stroke();
+      y += 10;
+
+      // Helper for sections
+      const addSection = (title: string, content: string | null) => {
+        if (!content) return;
+        if (y > 680) {
+          doc.addPage();
+          y = 50;
+        }
+        doc.fontSize(11).font("Helvetica-Bold").text(title, startX, y);
+        y += 16;
+        doc.fontSize(10).font("Helvetica").text(content, startX, y, { width: pageWidth });
+        y = doc.y + 12;
+      };
+
+      addSection("ATTENDEES", meeting.attendees);
+      if (meeting.absentees) addSection("ABSENT", meeting.absentees);
+      addSection("AGENDA", meeting.agenda);
+      addSection("DISCUSSION", meeting.discussionItems);
+      addSection("DECISIONS", meeting.decisions);
+      addSection("NOTES", meeting.notes);
+
+      if (meeting.nextMeetingDate) {
+        addSection("NEXT MEETING", `Scheduled for: ${meeting.nextMeetingDate}`);
+      }
+
+      // AI Generated Content
+      if (meeting.aiSummary || meeting.aiActionItems || meeting.aiDecisions || meeting.aiKeyPoints) {
+        if (y > 680) {
+          doc.addPage();
+          y = 50;
+        }
+        doc.moveTo(startX, y).lineTo(startX + pageWidth, y).stroke();
+        y += 10;
+        doc.fontSize(12).font("Helvetica-Bold").text("AI-GENERATED INSIGHTS", startX, y);
+        y += 20;
+
+        addSection("SUMMARY", meeting.aiSummary);
+        addSection("ACTION ITEMS", meeting.aiActionItems);
+        addSection("KEY DECISIONS", meeting.aiDecisions);
+        addSection("KEY POINTS", meeting.aiKeyPoints);
+      }
+
+      // Footer
+      doc.fontSize(8).font("Helvetica")
+        .text(`Generated on ${new Date().toLocaleDateString()}`, startX, 730, { width: pageWidth, align: "center" });
+
+      doc.end();
+
+      const pdfBuffer = await pdfPromise;
+
+      // Save to object storage
+      const pdfKey = await objectStorage.uploadBuffer({
+        buffer: pdfBuffer,
+        filename: `${meeting.id}/minutes-${meeting.meetingNumber}.pdf`,
+        contentType: "application/pdf",
+        folder: "meetings",
+      });
+      await storage.updateMeeting(meeting.id, { pdfPath: pdfKey });
+
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `attachment; filename="Meeting-Minutes-${meeting.meetingNumber}.pdf"`);
+      res.send(pdfBuffer);
+    } catch (error) {
+      console.error("Error generating meeting PDF:", error);
+      res.status(500).json({ message: "Failed to generate meeting PDF" });
+    }
+  });
+
+  // View meeting PDF
+  app.get("/api/meetings/:id/pdf", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      const meeting = await storage.getMeeting(req.params.id);
+      if (!meeting) {
+        return res.status(404).json({ message: "Meeting not found" });
+      }
+
+      const isAdmin = await isEffectiveCompanyAdmin(userId, meeting.companyId, profile);
+      if (!isAdmin && !isEffectiveSystemAdmin(profile)) {
+        return res.status(403).json({ message: "Only company admins can view meeting PDFs" });
+      }
+
+      if (!meeting.pdfPath) {
+        return res.status(404).json({ message: "No PDF generated yet" });
+      }
+
+      const pdfBuffer = await objectStorage.downloadBuffer(meeting.pdfPath);
+      if (!pdfBuffer) {
+        return res.status(404).json({ message: "PDF file not found" });
+      }
+
+      const isDownload = req.query.download === "true";
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `${isDownload ? "attachment" : "inline"}; filename="Meeting-Minutes-${meeting.meetingNumber}.pdf"`);
+      res.send(pdfBuffer);
+    } catch (error) {
+      console.error("Error viewing meeting PDF:", error);
+      res.status(500).json({ message: "Failed to view meeting PDF" });
     }
   });
 

@@ -16,7 +16,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
-import { LogOut, User, Settings, HardHat, Menu, LayoutDashboard, FolderOpen, Users, UserPlus, Building2, FilePlus, Shield, FileText, Receipt, Briefcase, MessageSquare } from "lucide-react";
+import { LogOut, User, Settings, HardHat, Menu, LayoutDashboard, FolderOpen, Users, UserPlus, Building2, FilePlus, Shield, FileText, Receipt, Briefcase, MessageSquare, CalendarCheck } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
@@ -70,6 +70,7 @@ export function Header({ title = "Field Daily Reports" }: HeaderProps) {
     { href: "/company/clients", label: "Clients", icon: Briefcase },
     { href: "/company/contracts", label: "Contracts", icon: FileText },
     { href: "/company/billing-management", label: "Billing", icon: Receipt },
+    { href: "/company/meetings", label: "Meetings", icon: CalendarCheck },
     { href: "/company/chat", label: "AI Assistant", icon: MessageSquare },
     { href: "/company/settings", label: "Company Settings", icon: Settings },
   ];
@@ -282,6 +283,12 @@ export function Header({ title = "Field Daily Reports" }: HeaderProps) {
                       <Link href="/company/contracts" className="cursor-pointer">
                         <FileText className="mr-2 h-4 w-4" />
                         Contracts
+                      </Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                      <Link href="/company/meetings" className="cursor-pointer">
+                        <CalendarCheck className="mr-2 h-4 w-4" />
+                        Meetings
                       </Link>
                     </DropdownMenuItem>
                     <DropdownMenuItem asChild>

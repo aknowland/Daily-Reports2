@@ -1,7 +1,7 @@
 import { 
   projects, dailyReports, photos, distributionLogs, appSettings, userProfiles, projectMembers, invites,
   companies, companyMembers, joinRequests, invoices, contracts, clients, contractAttachments, contractOptions, contractOptionInspectors, timesheets, monthlyReportBundles,
-  proposals, proposalOptions, proposalOptionInspectors, iorAgreements, purchaseOrders, contractNotifications, budgetNotifications, projectBudgetNotifications, pendingMemberAssignments, teamInspectors, manualTimeEntries, projectBillingRates, projectBaseHours, projectComments,
+  proposals, proposalOptions, proposalOptionInspectors, iorAgreements, purchaseOrders, contractNotifications, budgetNotifications, projectBudgetNotifications, pendingMemberAssignments, teamInspectors, manualTimeEntries, projectBillingRates, projectBaseHours, projectComments, meetings,
   type Project, type InsertProject,
   type ProjectBillingRate, type InsertProjectBillingRate,
   type ProjectBaseHours, type InsertProjectBaseHours,
@@ -35,13 +35,14 @@ import {
   type IorAgreement, type InsertIorAgreement, type IorAgreementWithDetails,
   type PendingMemberAssignment, type InsertPendingMemberAssignment,
   type TeamInspector, type InsertTeamInspector,
+  type Meeting, type InsertMeeting,
 } from "@shared/schema";
 import { users, type User } from "@shared/models/auth";
 import { db } from "./db";
 import { eq, desc, asc, and, or, sql, inArray, isNull, gte, lte } from "drizzle-orm";
 
 // Re-export db and schema tables for use in other modules
-export { db, projectComments, projectMembers, users };
+export { db, projectComments, projectMembers, users, meetings };
 
 // Initialize database sequences (ensures they exist on fresh deployments)
 export async function initDatabaseSequences() {
@@ -333,6 +334,14 @@ export interface IStorage {
   getProjectsByContract(contractId: string): Promise<Project[]>;
   getIorAgreementsByProject(projectId: string): Promise<IorAgreementWithDetails[]>;
   getReportsByContractProjects(contractId: string): Promise<(DailyReport & { projectName?: string })[]>;
+
+  // Meetings
+  getMeetings(companyId: string, options?: { projectId?: string }): Promise<Meeting[]>;
+  getMeeting(id: string): Promise<Meeting | undefined>;
+  createMeeting(data: InsertMeeting): Promise<Meeting>;
+  updateMeeting(id: string, data: Partial<InsertMeeting>): Promise<Meeting | undefined>;
+  deleteMeeting(id: string): Promise<boolean>;
+  getNextMeetingNumber(companyId: string, meetingType: string): Promise<string>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -2350,6 +2359,58 @@ export class DatabaseStorage implements IStorage {
       ...r,
       projectName: r.projectId ? projectMap.get(r.projectId) : undefined,
     }));
+  }
+
+  // Meetings
+  async getMeetings(companyId: string, options?: { projectId?: string }): Promise<Meeting[]> {
+    const conditions = [eq(meetings.companyId, companyId)];
+    if (options?.projectId) {
+      conditions.push(eq(meetings.projectId, options.projectId));
+    }
+    return await db
+      .select()
+      .from(meetings)
+      .where(and(...conditions))
+      .orderBy(desc(meetings.meetingDate));
+  }
+
+  async getMeeting(id: string): Promise<Meeting | undefined> {
+    const [meeting] = await db.select().from(meetings).where(eq(meetings.id, id));
+    return meeting;
+  }
+
+  async createMeeting(data: InsertMeeting): Promise<Meeting> {
+    const [meeting] = await db.insert(meetings).values(data).returning();
+    return meeting;
+  }
+
+  async updateMeeting(id: string, data: Partial<InsertMeeting>): Promise<Meeting | undefined> {
+    const [meeting] = await db
+      .update(meetings)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(meetings.id, id))
+      .returning();
+    return meeting;
+  }
+
+  async deleteMeeting(id: string): Promise<boolean> {
+    const result = await db.delete(meetings).where(eq(meetings.id, id));
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  async getNextMeetingNumber(companyId: string, meetingType: string): Promise<string> {
+    const [result] = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(meetings)
+      .where(
+        and(
+          eq(meetings.companyId, companyId),
+          eq(meetings.meetingType, meetingType as any)
+        )
+      );
+    const nextNumber = (result?.count ?? 0) + 1;
+    const prefix = meetingType.toUpperCase();
+    return `${prefix}-${String(nextNumber).padStart(3, "0")}`;
   }
 }
 

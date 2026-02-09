@@ -77,6 +77,13 @@ The application is built with a modern web stack, utilizing **React, TypeScript,
     - **Week Selection**: Calendar picker with quick selection buttons (This Week, Last Week, 2 Weeks Ago, etc.)
     - **Email Distribution**: All report types support email distribution to specified recipients
 
+## Recent Changes (February 2026)
+
+-   **Meetings Module**: Full CRUD for meeting minutes management at `/company/meetings` (admin-only). Supports meeting types: Progress, Safety, Coordination, OAC, Pre-Construction, Other. Auto-generates meeting numbers (e.g., PROGRESS-001). Features audio upload with OpenAI Whisper transcription, GPT-4 AI summary/action items/decisions/key points extraction, meeting minutes PDF generation, and detail view with real-time AI processing status polling.
+-   **Photo Lightbox**: Full-size photo preview with left/right navigation, keyboard controls, download button, and photo counter on project and contract dashboards
+-   **Photo Display Limit**: Increased from 6 to 12 photos on dashboards with "View All" toggle
+-   **Hours Budget Card Removed**: Inspectors no longer see budget/financial information on project dashboard
+
 ## Recent Changes (January 2026)
 
 -   **Subscription Pricing Page**: 3-tier pricing (Starter $99/mo, Professional $299/mo, Enterprise $699/mo) with Stripe checkout integration
