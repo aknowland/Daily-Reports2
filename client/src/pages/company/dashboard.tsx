@@ -1057,7 +1057,7 @@ export default function CompanyDashboard() {
                   
                   return (
                     <div className="space-y-1">
-                      <div className="flex items-center gap-4 text-xs text-muted-foreground mb-3">
+                      <div className="flex items-center gap-4 text-xs text-muted-foreground mb-3 flex-wrap">
                         <div className="flex items-center gap-1.5">
                           <div className="w-3 h-3 rounded-sm bg-blue-500 dark:bg-blue-400" />
                           <span>Schedule</span>
@@ -1076,6 +1076,7 @@ export default function CompanyDashboard() {
                         </div>
                       </div>
                       
+                      <div className="max-h-[280px] overflow-y-auto">
                       {filtered.map((project) => (
                         <div key={project.id} className="py-2 border-b last:border-b-0" data-testid={`row-project-progress-${project.id}`}>
                           <div className="flex items-center justify-between gap-2 mb-1.5 flex-wrap">
@@ -1149,6 +1150,7 @@ export default function CompanyDashboard() {
                           </div>
                         </div>
                       ))}
+                      </div>
                     </div>
                   );
                 })()}
