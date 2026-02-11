@@ -1,7 +1,7 @@
 import { 
   projects, dailyReports, photos, distributionLogs, appSettings, userProfiles, projectMembers, invites,
   companies, companyMembers, joinRequests, invoices, contracts, clients, contractAttachments, contractOptions, contractOptionInspectors, timesheets, monthlyReportBundles,
-  proposals, proposalOptions, proposalOptionInspectors, iorAgreements, purchaseOrders, contractNotifications, budgetNotifications, projectBudgetNotifications, pendingMemberAssignments, teamInspectors, manualTimeEntries, projectBillingRates, projectBaseHours, projectComments, meetings,
+  proposals, proposalOptions, proposalOptionInspectors, iorAgreements, purchaseOrders, contractNotifications, budgetNotifications, projectBudgetNotifications, pendingMemberAssignments, teamInspectors, manualTimeEntries, projectBillingRates, projectBaseHours, projectComments, meetings, dismissedAlerts,
   type Project, type InsertProject,
   type ProjectBillingRate, type InsertProjectBillingRate,
   type ProjectBaseHours, type InsertProjectBaseHours,
@@ -342,6 +342,10 @@ export interface IStorage {
   updateMeeting(id: string, data: Partial<InsertMeeting>): Promise<Meeting | undefined>;
   deleteMeeting(id: string): Promise<boolean>;
   getNextMeetingNumber(companyId: string, meetingType: string): Promise<string>;
+  
+  // Dismissed Alerts
+  getDismissedAlerts(userId: string, companyId: string): Promise<string[]>;
+  dismissAlert(userId: string, alertId: string, companyId: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -2411,6 +2415,26 @@ export class DatabaseStorage implements IStorage {
     const nextNumber = (result?.count ?? 0) + 1;
     const prefix = meetingType.toUpperCase();
     return `${prefix}-${String(nextNumber).padStart(3, "0")}`;
+  }
+
+  async getDismissedAlerts(userId: string, companyId: string): Promise<string[]> {
+    const results = await db
+      .select({ alertId: dismissedAlerts.alertId })
+      .from(dismissedAlerts)
+      .where(
+        and(
+          eq(dismissedAlerts.userId, userId),
+          eq(dismissedAlerts.companyId, companyId)
+        )
+      );
+    return results.map(r => r.alertId);
+  }
+
+  async dismissAlert(userId: string, alertId: string, companyId: string): Promise<void> {
+    await db
+      .insert(dismissedAlerts)
+      .values({ userId, alertId, companyId })
+      .onConflictDoNothing();
   }
 }
 

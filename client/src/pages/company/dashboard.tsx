@@ -8,7 +8,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { SummaryReportDropdown, ReportType, ReportParams } from "@/components/summary-report-dropdown";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useMutation } from "@tanstack/react-query";
 import { 
   FileText, 
   Users, 
@@ -222,6 +223,15 @@ export default function CompanyDashboard() {
   const [calendarMonth, setCalendarMonth] = useState(new Date());
   const [selectedCalendarDay, setSelectedCalendarDay] = useState<Date | null>(null);
   const [progressContractFilter, setProgressContractFilter] = useState("all");
+  
+  const dismissAlertMutation = useMutation({
+    mutationFn: async (alertId: string) => {
+      await apiRequest("POST", `/api/alerts/${alertId}/dismiss`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/company/dashboard"] });
+    },
+  });
 
   const handleDownloadReport = (type: ReportType, params: ReportParams) => {
     let url = '';
@@ -1260,33 +1270,45 @@ export default function CompanyDashboard() {
                 ) : companyDashboard?.alerts && companyDashboard.alerts.length > 0 ? (
                   <div className="space-y-2 max-h-80 overflow-y-auto">
                     {companyDashboard.alerts.map((alert) => (
-                      <Link 
-                        key={alert.id} 
-                        href={alert.contractId ? `/company/contracts/${alert.contractId}/dashboard` : '#'}
+                      <div 
+                        key={alert.id}
+                        className={`p-3 rounded-lg border group hover-elevate ${
+                          alert.severity === 'critical' ? 'border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950' :
+                          alert.severity === 'warning' ? 'border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950' :
+                          'border-blue-200 bg-blue-50 dark:border-blue-900 dark:bg-blue-950'
+                        }`}
+                        data-testid={`alert-${alert.id}`}
                       >
-                        <div 
-                          className={`p-3 rounded-lg border cursor-pointer hover-elevate ${
-                            alert.severity === 'critical' ? 'border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950' :
-                            alert.severity === 'warning' ? 'border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950' :
-                            'border-blue-200 bg-blue-50 dark:border-blue-900 dark:bg-blue-950'
-                          }`}
-                          data-testid={`alert-${alert.id}`}
-                        >
-                          <div className="flex items-start gap-2">
-                            {alert.severity === 'critical' ? (
-                              <AlertCircle className="h-4 w-4 text-red-600 dark:text-red-400 mt-0.5 shrink-0" />
-                            ) : alert.severity === 'warning' ? (
-                              <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
-                            ) : (
-                              <Bell className="h-4 w-4 text-blue-600 dark:text-blue-400 mt-0.5 shrink-0" />
-                            )}
-                            <div className="min-w-0">
-                              <p className="text-sm font-medium">{alert.title}</p>
-                              <p className="text-xs text-muted-foreground truncate">{alert.message}</p>
-                            </div>
-                          </div>
+                        <div className="flex items-start gap-2">
+                          {alert.severity === 'critical' ? (
+                            <AlertCircle className="h-4 w-4 text-red-600 dark:text-red-400 mt-0.5 shrink-0" />
+                          ) : alert.severity === 'warning' ? (
+                            <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
+                          ) : (
+                            <Bell className="h-4 w-4 text-blue-600 dark:text-blue-400 mt-0.5 shrink-0" />
+                          )}
+                          <Link 
+                            href={alert.contractId ? `/company/contracts/${alert.contractId}/dashboard` : '#'}
+                            className="min-w-0 flex-1 cursor-pointer"
+                          >
+                            <p className="text-sm font-medium hover:underline">{alert.title}</p>
+                            <p className="text-xs text-muted-foreground truncate">{alert.message}</p>
+                          </Link>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity invisible group-hover:visible px-1.5 no-default-hover-elevate"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              dismissAlertMutation.mutate(alert.id);
+                            }}
+                            data-testid={`button-dismiss-alert-${alert.id}`}
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </Button>
                         </div>
-                      </Link>
+                      </div>
                     ))}
                   </div>
                 ) : (
