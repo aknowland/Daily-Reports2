@@ -83,6 +83,9 @@ The application is built with a modern web stack, utilizing **React, TypeScript,
 -   **Photo Lightbox**: Full-size photo preview with left/right navigation, keyboard controls, download button, and photo counter on project and contract dashboards
 -   **Photo Display Limit**: Increased from 6 to 12 photos on dashboards with "View All" toggle
 -   **Hours Budget Card Removed**: Inspectors no longer see budget/financial information on project dashboard
+-   **Company Dashboard Notes**: Team Notes section with @mention support for tagging company members. Admin-only CRUD with `company_notes` table, `@[Name](userId)` mention format with highlighted rendering.
+-   **Inspector Workload Filtering**: Enhanced Inspector Workload card with Day/Week/Month/Year period filter. Each inspector row is expandable to show per-project hours breakdown (regular, OT, report count). Uses separate `/api/company/inspector-workload` endpoint.
+-   **Dismissable Dashboard Notifications**: X button on hover to dismiss alerts, stored in `dismissed_alerts` table per user+company.
 
 ## Recent Changes (January 2026)
 

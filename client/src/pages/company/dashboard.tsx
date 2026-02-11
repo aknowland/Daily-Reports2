@@ -41,7 +41,11 @@ import {
   X,
   Eye,
   EyeOff,
+  MessageSquare,
+  Send,
+  Trash2,
 } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -223,6 +227,11 @@ export default function CompanyDashboard() {
   const [calendarMonth, setCalendarMonth] = useState(new Date());
   const [selectedCalendarDay, setSelectedCalendarDay] = useState<Date | null>(null);
   const [progressContractFilter, setProgressContractFilter] = useState("all");
+  const [newNote, setNewNote] = useState("");
+  const [showMentions, setShowMentions] = useState(false);
+  const [mentionFilter, setMentionFilter] = useState("");
+  const [workloadPeriod, setWorkloadPeriod] = useState("month");
+  const [expandedInspectors, setExpandedInspectors] = useState<Set<string>>(new Set());
   
   const dismissAlertMutation = useMutation({
     mutationFn: async (alertId: string) => {
@@ -321,6 +330,145 @@ export default function CompanyDashboard() {
   }>({
     queryKey: ["/api/invoices/stats"],
   });
+
+  const { data: companyNotes = [], isLoading: notesLoading } = useQuery<any[]>({
+    queryKey: ["/api/company/notes"],
+    enabled: !!activeCompany?.id,
+  });
+
+  const { data: companyMembers = [] } = useQuery<any[]>({
+    queryKey: ["/api/companies", activeCompany?.id, "members"],
+    queryFn: async () => {
+      const response = await fetch(`/api/companies/${activeCompany?.id}/members`, { credentials: "include" });
+      if (!response.ok) return [];
+      return response.json();
+    },
+    enabled: !!activeCompany?.id,
+  });
+
+  const { data: inspectorWorkloadData = [], isLoading: workloadLoading } = useQuery<any[]>({
+    queryKey: ["/api/company/inspector-workload", workloadPeriod],
+    queryFn: async () => {
+      const response = await fetch(`/api/company/inspector-workload?period=${workloadPeriod}`, { credentials: "include" });
+      if (!response.ok) return [];
+      return response.json();
+    },
+    enabled: !!activeCompany?.id,
+  });
+
+  const addNoteMutation = useMutation({
+    mutationFn: async (data: { content: string; mentions: string[] }) => {
+      return apiRequest("POST", "/api/company/notes", data);
+    },
+    onSuccess: () => {
+      setNewNote("");
+      queryClient.invalidateQueries({ queryKey: ["/api/company/notes"] });
+      toast({ title: "Note added", description: "Your note has been posted." });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to add note", variant: "destructive" });
+    },
+  });
+
+  const deleteNoteMutation = useMutation({
+    mutationFn: async (noteId: string) => {
+      return apiRequest("DELETE", `/api/company/notes/${noteId}`, {});
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/company/notes"] });
+      toast({ title: "Note deleted", description: "The note has been removed." });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to delete note", variant: "destructive" });
+    },
+  });
+
+  const parseNoteMentions = (content: string): string[] => {
+    const mentionRegex = /@\[([^\]]+)\]\(([^)]+)\)/g;
+    const mentions: string[] = [];
+    let match;
+    while ((match = mentionRegex.exec(content)) !== null) {
+      mentions.push(match[2]);
+    }
+    return mentions;
+  };
+
+  const renderNoteContent = (content: string) => {
+    const mentionRegex = /@\[([^\]]+)\]\(([^)]+)\)/g;
+    const parts: (string | JSX.Element)[] = [];
+    let lastIndex = 0;
+    let match;
+    let key = 0;
+    while ((match = mentionRegex.exec(content)) !== null) {
+      if (match.index > lastIndex) {
+        parts.push(content.substring(lastIndex, match.index));
+      }
+      parts.push(
+        <span key={key++} className="bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 rounded px-1 font-medium">
+          @{match[1]}
+        </span>
+      );
+      lastIndex = match.index + match[0].length;
+    }
+    if (lastIndex < content.length) {
+      parts.push(content.substring(lastIndex));
+    }
+    return parts.length > 0 ? parts : content;
+  };
+
+  const handleNoteMentionSelect = (member: any) => {
+    const name = [member.user?.firstName, member.user?.lastName].filter(Boolean).join(' ') || 'Unknown';
+    const mentionText = `@[${name}](${member.user?.id}) `;
+    const lastAtIndex = newNote.lastIndexOf('@');
+    if (lastAtIndex !== -1) {
+      setNewNote(newNote.substring(0, lastAtIndex) + mentionText);
+    } else {
+      setNewNote(newNote + mentionText);
+    }
+    setShowMentions(false);
+    setMentionFilter("");
+  };
+
+  const handleNoteChange = (value: string) => {
+    setNewNote(value);
+    const lastAtIndex = value.lastIndexOf('@');
+    if (lastAtIndex !== -1) {
+      const textAfterAt = value.substring(lastAtIndex + 1);
+      if (!textAfterAt.includes(' ') && !textAfterAt.includes('[')) {
+        setShowMentions(true);
+        setMentionFilter(textAfterAt.toLowerCase());
+      } else {
+        setShowMentions(false);
+      }
+    } else {
+      setShowMentions(false);
+    }
+  };
+
+  const filteredCompanyMembers = companyMembers.filter((member: any) => {
+    const name = [member.user?.firstName, member.user?.lastName].filter(Boolean).join(' ').toLowerCase();
+    return name.includes(mentionFilter);
+  });
+
+  const handleSubmitNote = () => {
+    if (!newNote.trim()) return;
+    const mentions = parseNoteMentions(newNote);
+    addNoteMutation.mutate({ content: newNote.trim(), mentions });
+  };
+
+  const toggleInspectorExpanded = (userId: string) => {
+    setExpandedInspectors(prev => {
+      const next = new Set(prev);
+      if (next.has(userId)) {
+        next.delete(userId);
+      } else {
+        next.add(userId);
+      }
+      return next;
+    });
+  };
+
+  const workloadPeriodLabel = { day: "Today", week: "This Week", month: "This Month", year: "This Year" }[workloadPeriod] || "This Month";
 
   // Priority-based sorting for contracts
   // Order: 1) Bid Released/Received by upcoming bid due date, 2) Under Review by bid due date (oldest first), 
@@ -1389,54 +1537,90 @@ export default function CompanyDashboard() {
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
                     <Users className="h-5 w-5 text-primary" />
-                    <CardTitle>Inspector Workload <span className="text-sm font-normal text-muted-foreground">(Last 30 Days)</span></CardTitle>
+                    <CardTitle>Inspector Workload <span className="text-sm font-normal text-muted-foreground">({workloadPeriodLabel})</span></CardTitle>
                   </div>
-                  <Link href="/company/team">
-                    <Button variant="ghost" size="sm" className="h-8 gap-1">
-                      Manage <ChevronRight className="h-4 w-4" />
-                    </Button>
-                  </Link>
+                  <div className="flex items-center gap-2">
+                    <Select value={workloadPeriod} onValueChange={setWorkloadPeriod}>
+                      <SelectTrigger className="w-[110px]" data-testid="select-workload-period">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="day">Day</SelectItem>
+                        <SelectItem value="week">Week</SelectItem>
+                        <SelectItem value="month">Month</SelectItem>
+                        <SelectItem value="year">Year</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Link href="/company/team">
+                      <Button variant="ghost" size="sm" className="h-8 gap-1">
+                        Manage <ChevronRight className="h-4 w-4" />
+                      </Button>
+                    </Link>
+                  </div>
                 </div>
               </CardHeader>
               <CardContent>
-                {dashboardLoading ? (
+                {workloadLoading ? (
                   <div className="space-y-2">
                     {[1, 2, 3, 4].map(i => (
                       <Skeleton key={i} className="h-12 w-full" />
                     ))}
                   </div>
-                ) : companyDashboard?.inspectorWorkload && companyDashboard.inspectorWorkload.length > 0 ? (
-                  <div className="space-y-3">
-                    {companyDashboard.inspectorWorkload.slice(0, 6).map((inspector) => (
-                      <div 
-                        key={inspector.userId} 
-                        className="flex items-center justify-between gap-2"
-                        data-testid={`inspector-${inspector.userId}`}
-                      >
-                        <div className="min-w-0">
-                          <p className="font-medium truncate">{inspector.name}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {inspector.projectCount} project{inspector.projectCount !== 1 ? 's' : ''} · {inspector.reportCount} reports
-                          </p>
-                        </div>
-                        <div className="text-right shrink-0">
-                          <p className="font-medium">{inspector.totalHours}h</p>
-                          <p className="text-xs text-muted-foreground">
-                            {inspector.overtimeHours > 0 && (
-                              <span className="text-amber-600 dark:text-amber-400">+{inspector.overtimeHours}h OT</span>
+                ) : inspectorWorkloadData.length > 0 ? (
+                  <div className="space-y-2">
+                    {inspectorWorkloadData.map((inspector: any) => (
+                      <div key={inspector.userId} data-testid={`inspector-${inspector.userId}`}>
+                        <div
+                          className="flex items-center justify-between gap-2 p-2 rounded-lg cursor-pointer hover-elevate"
+                          onClick={() => toggleInspectorExpanded(inspector.userId)}
+                          data-testid={`button-expand-inspector-${inspector.userId}`}
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            {expandedInspectors.has(inspector.userId) ? (
+                              <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+                            ) : (
+                              <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
                             )}
-                          </p>
+                            <div className="min-w-0">
+                              <p className="font-medium truncate">{inspector.name}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {inspector.projectCount} project{inspector.projectCount !== 1 ? 's' : ''} · {inspector.reportCount} reports
+                              </p>
+                            </div>
+                          </div>
+                          <div className="text-right shrink-0">
+                            <p className="font-medium">{inspector.totalHours}h</p>
+                            <p className="text-xs text-muted-foreground">
+                              {inspector.overtimeHours > 0 && (
+                                <span className="text-amber-600 dark:text-amber-400">+{inspector.overtimeHours}h OT</span>
+                              )}
+                            </p>
+                          </div>
                         </div>
+                        {expandedInspectors.has(inspector.userId) && inspector.projectBreakdown && (
+                          <div className="ml-8 mt-1 mb-2 space-y-1">
+                            {inspector.projectBreakdown.map((project: any) => (
+                              <div
+                                key={project.projectId}
+                                className="flex items-center justify-between gap-2 text-sm p-2 rounded bg-muted/50"
+                                data-testid={`workload-project-${inspector.userId}-${project.projectId}`}
+                              >
+                                <div className="min-w-0">
+                                  <p className="truncate">{project.projectName}</p>
+                                  <p className="text-xs text-muted-foreground">{project.reportCount} reports</p>
+                                </div>
+                                <div className="text-right shrink-0 text-xs">
+                                  <p>{project.regularHours}h reg</p>
+                                  {project.overtimeHours > 0 && (
+                                    <p className="text-amber-600 dark:text-amber-400">+{project.overtimeHours}h OT</p>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     ))}
-                    {companyDashboard.inspectorWorkload.length > 6 && (
-                      <Link href="/company/team">
-                        <Button variant="ghost" size="sm" className="w-full">
-                          View All {companyDashboard.inspectorWorkload.length} Inspectors
-                          <ChevronRight className="h-4 w-4 ml-1" />
-                        </Button>
-                      </Link>
-                    )}
                   </div>
                 ) : (
                   <div className="py-8 text-center text-muted-foreground">
@@ -1588,6 +1772,130 @@ export default function CompanyDashboard() {
                 </p>
               </div>
             </div>
+          </CardContent>
+        </Card>
+
+        {/* Team Notes */}
+        <Card data-testid="card-team-notes">
+          <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Team Notes</CardTitle>
+            <MessageSquare className="w-4 h-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="mb-4 relative">
+              <div className="flex gap-2">
+                <div className="flex-1 relative">
+                  <Textarea
+                    placeholder="Leave a note... Type @ to mention team members"
+                    value={newNote}
+                    onChange={(e) => handleNoteChange(e.target.value)}
+                    className="min-h-[80px] resize-none"
+                    data-testid="input-note"
+                  />
+                  {showMentions && filteredCompanyMembers.length > 0 && (
+                    <div className="absolute bottom-full left-0 mb-1 w-full max-w-xs bg-popover border border-border rounded-md shadow-lg z-50 max-h-48 overflow-y-auto">
+                      {filteredCompanyMembers.map((member: any) => (
+                        <button
+                          key={member.user?.id}
+                          className="w-full px-3 py-2 text-left text-sm hover-elevate flex items-center gap-2"
+                          onClick={() => handleNoteMentionSelect(member)}
+                          data-testid={`mention-option-${member.user?.id}`}
+                        >
+                          <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center text-xs font-medium">
+                            {(member.user?.firstName?.[0] || '').toUpperCase()}{(member.user?.lastName?.[0] || '').toUpperCase()}
+                          </div>
+                          <div>
+                            <div className="font-medium">
+                              {[member.user?.firstName, member.user?.lastName].filter(Boolean).join(' ') || 'Unknown'}
+                            </div>
+                            <div className="text-xs text-muted-foreground capitalize">{member.role}</div>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <Button
+                  size="sm"
+                  onClick={handleSubmitNote}
+                  disabled={!newNote.trim() || addNoteMutation.isPending}
+                  data-testid="button-submit-note"
+                >
+                  <Send className="w-4 h-4" />
+                </Button>
+              </div>
+            </div>
+            {notesLoading ? (
+              <div className="space-y-3">
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="p-3 bg-muted rounded-md animate-pulse">
+                    <div className="flex items-start gap-2">
+                      <div className="w-8 h-8 rounded-full bg-muted-foreground/20" />
+                      <div className="flex-1 space-y-2">
+                        <div className="h-4 w-24 bg-muted-foreground/20 rounded" />
+                        <div className="h-3 w-full bg-muted-foreground/20 rounded" />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : companyNotes.length > 0 ? (
+              <div className="space-y-3 max-h-80 overflow-y-auto">
+                {companyNotes.map((note: any) => (
+                  <div
+                    key={note.id}
+                    className="p-3 bg-muted rounded-md"
+                    data-testid={`note-${note.id}`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-start gap-2">
+                        <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-xs font-medium flex-shrink-0">
+                          {note.author?.profileImageUrl ? (
+                            <img
+                              src={note.author.profileImageUrl}
+                              alt="Avatar"
+                              className="w-full h-full rounded-full object-cover"
+                            />
+                          ) : (
+                            <>
+                              {(note.author?.firstName?.[0] || '').toUpperCase()}
+                              {(note.author?.lastName?.[0] || '').toUpperCase()}
+                            </>
+                          )}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-medium text-sm">
+                              {[note.author?.firstName, note.author?.lastName].filter(Boolean).join(' ') || 'Unknown User'}
+                            </span>
+                            <span className="text-xs text-muted-foreground">
+                              {note.createdAt ? format(parseDateSafe(note.createdAt), 'MMM d, yyyy h:mm a') : ''}
+                            </span>
+                          </div>
+                          <p className="text-sm mt-1 whitespace-pre-wrap break-words">
+                            {renderNoteContent(note.content)}
+                          </p>
+                        </div>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="flex-shrink-0 h-6 w-6"
+                        onClick={() => deleteNoteMutation.mutate(note.id)}
+                        disabled={deleteNoteMutation.isPending}
+                        data-testid={`button-delete-note-${note.id}`}
+                      >
+                        <X className="w-3 h-3" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground text-center py-4">
+                No notes yet. Be the first to leave a note!
+              </p>
+            )}
           </CardContent>
         </Card>
 
