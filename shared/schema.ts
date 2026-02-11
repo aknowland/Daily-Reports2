@@ -1183,6 +1183,19 @@ export const meetingsRelations = relations(meetings, ({ one }) => ({
   }),
 }));
 
+// Dismissed Alerts table - tracks which dashboard alerts a user has dismissed
+export const dismissedAlerts = pgTable("dismissed_alerts", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  alertId: varchar("alert_id").notNull(),
+  companyId: varchar("company_id").references(() => companies.id, { onDelete: "cascade" }).notNull(),
+  dismissedAt: timestamp("dismissed_at").defaultNow(),
+}, (table) => ({
+  uniqueUserAlert: unique().on(table.userId, table.alertId, table.companyId),
+}));
+
+export type DismissedAlert = typeof dismissedAlerts.$inferSelect;
+
 export const insertMeetingSchema = createInsertSchema(meetings).omit({
   id: true,
   createdAt: true,

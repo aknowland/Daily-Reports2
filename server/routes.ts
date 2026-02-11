@@ -4590,6 +4590,11 @@ export async function registerRoutes(
         return new Date(a.date).getTime() - new Date(b.date).getTime();
       });
       
+      // Filter out dismissed alerts
+      const dismissedAlertIds = await storage.getDismissedAlerts(userId, companyId);
+      const dismissedSet = new Set(dismissedAlertIds);
+      const filteredAlerts = alerts.filter(a => !dismissedSet.has(a.id));
+      
       // 4. Recent Activity - latest reports submitted
       const recentActivity = allReports
         .sort((a, b) => new Date(b.createdAt || b.date).getTime() - new Date(a.createdAt || a.date).getTime())
@@ -4853,7 +4858,7 @@ export async function registerRoutes(
         },
         inspectorWorkload: inspectorWorkloadList,
         contractTimeline,
-        alerts: alerts.slice(0, 20),
+        alerts: filteredAlerts.slice(0, 20),
         recentActivity,
         revenueAnalytics,
         atRiskProjects,
@@ -4862,6 +4867,23 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error fetching company dashboard:", error);
       res.status(500).json({ message: "Failed to fetch company dashboard" });
+    }
+  });
+
+  // Dismiss a dashboard alert
+  app.post("/api/alerts/:alertId/dismiss", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      if (!profile?.activeCompanyId) {
+        return res.status(400).json({ message: "No active company" });
+      }
+      const { alertId } = req.params;
+      await storage.dismissAlert(userId, alertId, profile.activeCompanyId);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error dismissing alert:", error);
+      res.status(500).json({ message: "Failed to dismiss alert" });
     }
   });
 
