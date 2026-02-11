@@ -9971,23 +9971,30 @@ export async function registerRoutes(
       const inspectorProfile = await storage.getUserProfile(report.inspectorId);
 
       // ===== HEADER - Logo left, Company name right =====
+      // Company name and contact info - upper right
+      const companyName = (company?.name || 'FIELD DAILY REPORTS').toUpperCase();
+      const contactLine = [company?.address, company?.phone, company?.email].filter(Boolean).join('  |  ');
+      const headerTextY = 12;
+      doc.fontSize(11).font('Helvetica-Bold').text(companyName, 280, headerTextY, { width: 290, align: 'right' });
+      if (contactLine) {
+        doc.fontSize(7.5).font('Helvetica').text(contactLine, 280, headerTextY + 14, { width: 290, align: 'right' });
+      }
+
+      // Logo - aligned to same vertical center as company text block (10% larger than original)
+      const logoFitW = 286;
+      const logoFitH = 107;
       if (company?.logoPath) {
         try {
           const logoBuffer = await loadImageBuffer(company.logoPath);
           if (logoBuffer) {
-            doc.image(logoBuffer, startX, 8, { width: 260, height: 97, fit: [260, 97] });
+            const textBlockHeight = contactLine ? 24 : 14;
+            const textBlockCenterY = headerTextY + textBlockHeight / 2;
+            const logoY = Math.max(4, textBlockCenterY - logoFitH / 2);
+            doc.image(logoBuffer, startX, logoY, { fit: [logoFitW, logoFitH] });
           }
         } catch (err) {
           console.error('Error adding company logo:', err);
         }
-      }
-
-      // Company name and contact - upper right
-      const companyName = (company?.name || 'FIELD DAILY REPORTS').toUpperCase();
-      doc.fontSize(11).font('Helvetica-Bold').text(companyName, 280, 12, { width: 290, align: 'right' });
-      const contactLine = [company?.address, company?.phone, company?.email].filter(Boolean).join('  |  ');
-      if (contactLine) {
-        doc.fontSize(7.5).font('Helvetica').text(contactLine, 280, 26, { width: 290, align: 'right' });
       }
 
       // Form grid boxes - right side
