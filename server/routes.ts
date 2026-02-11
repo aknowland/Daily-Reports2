@@ -9980,14 +9980,14 @@ export async function registerRoutes(
         doc.fontSize(7.5).font('Helvetica').text(contactLine, 280, headerTextY + 14, { width: 290, align: 'right' });
       }
 
-      // Logo - top-aligned with company text, 8% larger
+      // Logo - visually aligned with company text header, 8% larger
       const logoFitW = 309;
       const logoFitH = 116;
       if (company?.logoPath) {
         try {
           const logoBuffer = await loadImageBuffer(company.logoPath);
           if (logoBuffer) {
-            doc.image(logoBuffer, startX, headerTextY, { fit: [logoFitW, logoFitH] });
+            doc.image(logoBuffer, startX, headerTextY - 8, { fit: [logoFitW, logoFitH] });
           }
         } catch (err) {
           console.error('Error adding company logo:', err);
