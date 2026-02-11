@@ -70,6 +70,7 @@ import { DailyReportDialog } from "@/components/reports/daily-report-dialog";
 import { PhotoLightbox } from "@/components/photo-lightbox";
 
 type ProjectDashboardData = {
+  hasAdminAccess: boolean;
   project: {
     id: string;
     name: string;
@@ -1085,7 +1086,7 @@ export default function ProjectDashboardPage() {
     );
   }
 
-  const { project, schedule, hours, dailyReports, activityTimeline, photoGallery, issuesSummary, safetySummary, weatherSummary, teamOverview, upcomingMilestones, forecast } = data;
+  const { hasAdminAccess, project, schedule, hours, dailyReports, activityTimeline, photoGallery, issuesSummary, safetySummary, weatherSummary, teamOverview, upcomingMilestones, forecast } = data;
 
   return (
     <PageLayout title={project.name}>
@@ -1163,13 +1164,37 @@ export default function ProjectDashboardPage() {
             </CardHeader>
             <CardContent>
               <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-2xl font-bold">{Math.round(schedule.progress)}%</span>
-                  <Badge variant={schedule.status === 'on_track' ? 'default' : schedule.status === 'warning' ? 'secondary' : schedule.status === 'overdue' ? 'destructive' : 'outline'}>
-                    {schedule.status.replace('_', ' ')}
-                  </Badge>
-                </div>
-                <Progress value={schedule.progress} className={getScheduleStatusColor(schedule.status)} />
+                {hours.budgeted > 0 ? (
+                  <>
+                    <div className="flex items-center justify-between">
+                      <span className="text-2xl font-bold">{Math.round(hours.progress)}%</span>
+                      <Badge variant={hours.status === 'on_track' ? 'default' : hours.status === 'warning' ? 'secondary' : hours.status === 'over' ? 'destructive' : 'outline'}>
+                        {hours.status === 'under' ? 'under budget' : hours.status === 'over' ? 'over budget' : hours.status.replace('_', ' ')}
+                      </Badge>
+                    </div>
+                    <Progress value={Math.min(hours.progress, 100)} className={hours.status === 'over' ? '[&>div]:bg-red-500' : hours.status === 'warning' ? '[&>div]:bg-yellow-500' : ''} />
+                    <div className="flex items-center justify-between text-sm text-muted-foreground">
+                      <span>{hours.used.toFixed(1)} hrs used</span>
+                      <span>{hours.budgeted.toFixed(1)} hrs budgeted</span>
+                    </div>
+                    <div className="text-sm">
+                      <span className={`font-medium ${hours.remaining > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                        {hours.remaining.toFixed(1)}
+                      </span>{' '}
+                      hours remaining
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="flex items-center justify-between">
+                      <span className="text-2xl font-bold">{Math.round(schedule.progress)}%</span>
+                      <Badge variant={schedule.status === 'on_track' ? 'default' : schedule.status === 'warning' ? 'secondary' : schedule.status === 'overdue' ? 'destructive' : 'outline'}>
+                        {schedule.status.replace('_', ' ')}
+                      </Badge>
+                    </div>
+                    <Progress value={schedule.progress} className={getScheduleStatusColor(schedule.status)} />
+                  </>
+                )}
                 <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
                   {schedule.startDate && (
                     <div>
@@ -1198,6 +1223,71 @@ export default function ProjectDashboardPage() {
             </CardContent>
           </Card>
 
+
+          {hasAdminAccess && hours.budgeted > 0 && (
+            <Card data-testid="card-hours-breakdown">
+              <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Hours Breakdown</CardTitle>
+                <Clock className="w-4 h-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  {hours.sources?.dailyReports && hours.sources.dailyReports.total > 0 && (
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="font-medium">Daily Reports</span>
+                        <span className="font-bold">{hours.sources.dailyReports.total.toFixed(1)} hrs</span>
+                      </div>
+                      <div className="flex items-center gap-3 text-xs text-muted-foreground pl-3">
+                        <span>Reg: {hours.sources.dailyReports.regular.toFixed(1)}</span>
+                        <span>OT: {hours.sources.dailyReports.overtime.toFixed(1)}</span>
+                        {hours.sources.dailyReports.premium > 0 && (
+                          <span>Premium: {hours.sources.dailyReports.premium.toFixed(1)}</span>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                  {hours.sources?.manualEntries && hours.sources.manualEntries.total > 0 && (
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="font-medium">Manual Entries</span>
+                        <span className="font-bold">{hours.sources.manualEntries.total.toFixed(1)} hrs</span>
+                      </div>
+                      <div className="flex items-center gap-3 text-xs text-muted-foreground pl-3">
+                        <span>Reg: {hours.sources.manualEntries.regular.toFixed(1)}</span>
+                        <span>OT: {hours.sources.manualEntries.overtime.toFixed(1)}</span>
+                      </div>
+                    </div>
+                  )}
+                  {hours.sources?.baseHours && hours.sources.baseHours.total > 0 && (
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="font-medium">Base Hours</span>
+                        <span className="font-bold">{hours.sources.baseHours.total.toFixed(1)} hrs</span>
+                      </div>
+                      <div className="flex items-center gap-3 text-xs text-muted-foreground pl-3">
+                        <span>Reg: {hours.sources.baseHours.regular.toFixed(1)}</span>
+                        <span>OT: {hours.sources.baseHours.overtime.toFixed(1)}</span>
+                      </div>
+                    </div>
+                  )}
+                  <div className="border-t pt-2">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="font-medium">Total</span>
+                      <span className="font-bold">{hours.used.toFixed(1)} hrs</span>
+                    </div>
+                    <div className="flex items-center gap-3 text-xs text-muted-foreground pl-3">
+                      <span>Reg: {hours.breakdown.regular.toFixed(1)}</span>
+                      <span>OT: {hours.breakdown.overtime.toFixed(1)}</span>
+                      {hours.breakdown.premium > 0 && (
+                        <span>Premium: {hours.breakdown.premium.toFixed(1)}</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           <Card data-testid="card-daily-reports">
             <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">

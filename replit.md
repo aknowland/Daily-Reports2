@@ -79,6 +79,8 @@ The application is built with a modern web stack, utilizing **React, TypeScript,
 
 ## Recent Changes (February 2026)
 
+-   **Hours-Based Schedule Progress**: Project Dashboard Schedule Progress card now shows hours-based progress (hours used / budgeted hours) when budget data is available, with fallback to calendar-based progress. Draft reports are included in hours tracking.
+-   **Admin-Only Hours Breakdown**: New Hours Breakdown card on Project Dashboard (visible to Company/System Admins only) showing hours by source (Daily Reports, Manual Entries, Base Hours) with regular/overtime/premium split.
 -   **Meetings Module**: Full CRUD for meeting minutes management at `/company/meetings` (admin-only). Supports meeting types: Progress, Safety, Coordination, OAC, Pre-Construction, Other. Auto-generates meeting numbers (e.g., PROGRESS-001). Features audio upload with OpenAI Whisper transcription, GPT-4 AI summary/action items/decisions/key points extraction, meeting minutes PDF generation, and detail view with real-time AI processing status polling.
 -   **Photo Lightbox**: Full-size photo preview with left/right navigation, keyboard controls, download button, and photo counter on project and contract dashboards
 -   **Photo Display Limit**: Increased from 6 to 12 photos on dashboards with "View All" toggle
