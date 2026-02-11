@@ -141,6 +141,21 @@ type CompanyDashboardData = {
     status: 'orange' | 'red';
     recommendation: string;
   }[];
+  projectProgress?: {
+    id: string;
+    name: string;
+    projectNumber: string;
+    contractId: string | null;
+    contractName: string | null;
+    scheduleProgress: number;
+    budgetProgress: number;
+    scheduleStatus: 'on_track' | 'warning' | 'over';
+    budgetStatus: 'on_track' | 'warning' | 'over';
+    startDate: string | null;
+    endDate: string | null;
+    budgetedHours: number;
+    usedHours: number;
+  }[];
 };
 
 const getStatusColor = (status: string) => {
@@ -206,6 +221,7 @@ export default function CompanyDashboard() {
   const [showCalendar, setShowCalendar] = useState(false);
   const [calendarMonth, setCalendarMonth] = useState(new Date());
   const [selectedCalendarDay, setSelectedCalendarDay] = useState<Date | null>(null);
+  const [progressContractFilter, setProgressContractFilter] = useState("all");
 
   const handleDownloadReport = (type: ReportType, params: ReportParams) => {
     let url = '';
@@ -809,6 +825,175 @@ export default function CompanyDashboard() {
                     No revenue data available
                   </div>
                 )}
+              </CardContent>
+            </Card>
+
+            {/* Project Progress Chart */}
+            <Card data-testid="card-project-progress">
+              <CardHeader>
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <div className="flex items-center gap-2">
+                    <TrendingUp className="h-5 w-5 text-primary" />
+                    <CardTitle>Project Progress</CardTitle>
+                  </div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Select value={progressContractFilter} onValueChange={setProgressContractFilter}>
+                      <SelectTrigger className="w-[180px]" data-testid="select-progress-contract-filter">
+                        <SelectValue placeholder="All Contracts" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Contracts</SelectItem>
+                        <SelectItem value="unlinked">No Contract</SelectItem>
+                        {(() => {
+                          const contractNames = new Map<string, string>();
+                          companyDashboard?.projectProgress?.forEach(p => {
+                            if (p.contractId && p.contractName) {
+                              contractNames.set(p.contractId, p.contractName);
+                            }
+                          });
+                          return Array.from(contractNames.entries()).map(([id, name]) => (
+                            <SelectItem key={id} value={id}>{name}</SelectItem>
+                          ));
+                        })()}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <CardDescription>Schedule and budget progress for active projects</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {dashboardLoading ? (
+                  <div className="space-y-4">
+                    {[1,2,3].map(i => <Skeleton key={i} className="h-12 w-full" />)}
+                  </div>
+                ) : (() => {
+                  const filtered = (companyDashboard?.projectProgress || []).filter(p => {
+                    if (progressContractFilter === "all") return true;
+                    if (progressContractFilter === "unlinked") return !p.contractId;
+                    return p.contractId === progressContractFilter;
+                  });
+                  
+                  if (filtered.length === 0) {
+                    return (
+                      <div className="h-32 flex items-center justify-center text-muted-foreground">
+                        No projects to display
+                      </div>
+                    );
+                  }
+                  
+                  const getBarColor = (status: string) => {
+                    switch (status) {
+                      case 'over': return 'bg-red-500 dark:bg-red-400';
+                      case 'warning': return 'bg-amber-500 dark:bg-amber-400';
+                      default: return 'bg-blue-500 dark:bg-blue-400';
+                    }
+                  };
+                  
+                  const getBudgetBarColor = (status: string) => {
+                    switch (status) {
+                      case 'over': return 'bg-red-500 dark:bg-red-400';
+                      case 'warning': return 'bg-amber-500 dark:bg-amber-400';
+                      default: return 'bg-emerald-500 dark:bg-emerald-400';
+                    }
+                  };
+                  
+                  return (
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-4 text-xs text-muted-foreground mb-3">
+                        <div className="flex items-center gap-1.5">
+                          <div className="w-3 h-3 rounded-sm bg-blue-500 dark:bg-blue-400" />
+                          <span>Schedule</span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <div className="w-3 h-3 rounded-sm bg-emerald-500 dark:bg-emerald-400" />
+                          <span>Budget</span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <div className="w-3 h-3 rounded-sm bg-amber-500 dark:bg-amber-400" />
+                          <span>Warning (80%+)</span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <div className="w-3 h-3 rounded-sm bg-red-500 dark:bg-red-400" />
+                          <span>Over (100%+)</span>
+                        </div>
+                      </div>
+                      
+                      {filtered.map((project) => (
+                        <div key={project.id} className="py-2 border-b last:border-b-0" data-testid={`row-project-progress-${project.id}`}>
+                          <div className="flex items-center justify-between gap-2 mb-1.5 flex-wrap">
+                            <Link href={`/projects/${project.id}`}>
+                              <span className="text-sm font-medium hover:underline cursor-pointer" data-testid={`text-project-name-${project.id}`}>
+                                {project.name}
+                              </span>
+                            </Link>
+                            {project.contractName && (
+                              <Badge variant="outline" className="text-xs">
+                                {project.contractName}
+                              </Badge>
+                            )}
+                          </div>
+                          
+                          <div className="space-y-1.5">
+                            <div className="flex items-center gap-2">
+                              <span className="text-[11px] text-muted-foreground w-16 shrink-0">Schedule</span>
+                              <div className="flex-1 h-4 bg-muted rounded-sm overflow-hidden relative">
+                                <div 
+                                  className={`h-full rounded-sm transition-all ${getBarColor(project.scheduleStatus)}`}
+                                  style={{ width: `${Math.min(project.scheduleProgress, 100)}%` }}
+                                />
+                                {project.scheduleProgress > 100 && (
+                                  <div 
+                                    className="absolute top-0 h-full bg-red-500/30 dark:bg-red-400/30 border-l-2 border-red-600 dark:border-red-300"
+                                    style={{ left: '100%', width: `${Math.min(project.scheduleProgress - 100, 50)}%` }}
+                                  />
+                                )}
+                              </div>
+                              <span className={`text-xs font-medium w-10 text-right ${project.scheduleStatus === 'over' ? 'text-red-600 dark:text-red-400' : project.scheduleStatus === 'warning' ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'}`}>
+                                {project.scheduleProgress.toFixed(0)}%
+                              </span>
+                            </div>
+                            
+                            <div className="flex items-center gap-2">
+                              <span className="text-[11px] text-muted-foreground w-16 shrink-0">Budget</span>
+                              <div className="flex-1 h-4 bg-muted rounded-sm overflow-hidden relative">
+                                {project.budgetedHours > 0 ? (
+                                  <>
+                                    <div 
+                                      className={`h-full rounded-sm transition-all ${getBudgetBarColor(project.budgetStatus)}`}
+                                      style={{ width: `${Math.min(project.budgetProgress, 100)}%` }}
+                                    />
+                                    {project.budgetProgress > 100 && (
+                                      <div 
+                                        className="absolute top-0 h-full bg-red-500/30 dark:bg-red-400/30 border-l-2 border-red-600 dark:border-red-300"
+                                        style={{ left: '100%', width: `${Math.min(project.budgetProgress - 100, 50)}%` }}
+                                      />
+                                    )}
+                                  </>
+                                ) : (
+                                  <div className="h-full flex items-center justify-center">
+                                    <span className="text-[10px] text-muted-foreground">No budget set</span>
+                                  </div>
+                                )}
+                              </div>
+                              <span className={`text-xs font-medium w-10 text-right ${project.budgetStatus === 'over' ? 'text-red-600 dark:text-red-400' : project.budgetStatus === 'warning' ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'}`}>
+                                {project.budgetedHours > 0 ? `${project.budgetProgress.toFixed(0)}%` : '—'}
+                              </span>
+                            </div>
+                          </div>
+                          
+                          <div className="flex items-center gap-3 mt-1 text-[10px] text-muted-foreground flex-wrap">
+                            {project.startDate && project.endDate && (
+                              <span>{format(new Date(project.startDate), 'MMM d, yyyy')} — {format(new Date(project.endDate), 'MMM d, yyyy')}</span>
+                            )}
+                            {project.budgetedHours > 0 && (
+                              <span>{project.usedHours}h / {project.budgetedHours}h</span>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()}
               </CardContent>
             </Card>
 

@@ -4743,6 +4743,102 @@ export async function registerRoutes(
         return a.percentRemaining - b.percentRemaining;
       });
       
+      // 8. Project Progress - schedule and budget progress for all active projects
+      const projectProgress: {
+        id: string;
+        name: string;
+        projectNumber: string;
+        contractId: string | null;
+        contractName: string | null;
+        scheduleProgress: number;
+        budgetProgress: number;
+        scheduleStatus: 'on_track' | 'warning' | 'over';
+        budgetStatus: 'on_track' | 'warning' | 'over';
+        startDate: string | null;
+        endDate: string | null;
+        budgetedHours: number;
+        usedHours: number;
+      }[] = [];
+      
+      for (const project of projects) {
+        const pAny = project as any;
+        
+        let scheduleProgress = 0;
+        const pStart = project.startDate ? new Date(project.startDate) : null;
+        const pEnd = project.substantialCompletionDate ? new Date(project.substantialCompletionDate) : null;
+        
+        if (pStart && pEnd && pEnd.getTime() > pStart.getTime()) {
+          const totalDuration = pEnd.getTime() - pStart.getTime();
+          const elapsed = now.getTime() - pStart.getTime();
+          scheduleProgress = Math.max(0, Math.min(150, (elapsed / totalDuration) * 100));
+        } else if (pStart && !pEnd) {
+          scheduleProgress = 0;
+        }
+        
+        let budgetedHours = 0;
+        let contractName: string | null = null;
+        let contractId: string | null = pAny.contractId || null;
+        
+        if (contractId) {
+          const contract = contracts.find(c => c.id === contractId);
+          if (contract) {
+            contractName = contract.name;
+          }
+          const contractOptions = await storage.getContractOptions(contractId);
+          const linkedOption = pAny.contractOptionId 
+            ? contractOptions.find((opt: any) => opt.id === pAny.contractOptionId)
+            : contractOptions[0];
+          if (linkedOption?.inspectors) {
+            budgetedHours = linkedOption.inspectors.reduce((sum: number, i: any) => sum + parseFloat(i.hours || '0'), 0);
+          }
+        }
+        if (budgetedHours <= 0 && pAny.budgetedHours) {
+          budgetedHours = parseFloat(pAny.budgetedHours);
+        }
+        
+        const projectReports = allReports.filter(r => r.projectId === project.id);
+        let usedHours = 0;
+        for (const report of projectReports) {
+          usedHours += parseFloat(report.regularHours || '0');
+          usedHours += parseFloat(report.otHours || '0');
+        }
+        
+        const manualEntries = await storage.getAllManualTimeEntriesForProject(project.id);
+        for (const entry of manualEntries) {
+          usedHours += parseFloat(entry.regularHours || '0');
+          usedHours += parseFloat(entry.otHours || '0');
+        }
+        
+        const baseHoursEntries = await storage.getProjectBaseHours(project.id);
+        for (const bh of baseHoursEntries) {
+          usedHours += parseFloat(bh.regularHours || '0');
+          usedHours += parseFloat(bh.otHours || '0');
+        }
+        
+        const budgetProgress = budgetedHours > 0 ? Math.min(150, (usedHours / budgetedHours) * 100) : 0;
+        
+        const scheduleStatus = scheduleProgress > 100 ? 'over' : scheduleProgress > 80 ? 'warning' : 'on_track';
+        const budgetStatus = budgetProgress > 100 ? 'over' : budgetProgress > 80 ? 'warning' : 'on_track';
+        
+        projectProgress.push({
+          id: project.id,
+          name: project.name,
+          projectNumber: project.projectNumber,
+          contractId,
+          contractName,
+          scheduleProgress: Math.round(scheduleProgress * 10) / 10,
+          budgetProgress: Math.round(budgetProgress * 10) / 10,
+          scheduleStatus,
+          budgetStatus,
+          startDate: pStart ? pStart.toISOString() : null,
+          endDate: pEnd ? pEnd.toISOString() : null,
+          budgetedHours: Math.round(budgetedHours * 10) / 10,
+          usedHours: Math.round(usedHours * 10) / 10,
+        });
+      }
+      
+      projectProgress.sort((a, b) => b.scheduleProgress - a.scheduleProgress);
+      
       res.json({
         summary: {
           activeContracts,
@@ -4761,6 +4857,7 @@ export async function registerRoutes(
         recentActivity,
         revenueAnalytics,
         atRiskProjects,
+        projectProgress,
       });
     } catch (error) {
       console.error("Error fetching company dashboard:", error);
