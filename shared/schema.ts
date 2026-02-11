@@ -1196,6 +1196,43 @@ export const dismissedAlerts = pgTable("dismissed_alerts", {
 
 export type DismissedAlert = typeof dismissedAlerts.$inferSelect;
 
+// Company Notes - company-level comments/notes on the dashboard
+export const companyNotes = pgTable("company_notes", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").references(() => companies.id, { onDelete: "cascade" }).notNull(),
+  authorId: varchar("author_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+  content: text("content").notNull(),
+  mentions: json("mentions").$type<string[]>().default([]),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const companyNotesRelations = relations(companyNotes, ({ one }) => ({
+  company: one(companies, {
+    fields: [companyNotes.companyId],
+    references: [companies.id],
+  }),
+  author: one(users, {
+    fields: [companyNotes.authorId],
+    references: [users.id],
+  }),
+}));
+
+export const insertCompanyNoteSchema = createInsertSchema(companyNotes).omit({ id: true, createdAt: true, updatedAt: true });
+
+export type CompanyNote = typeof companyNotes.$inferSelect;
+export type InsertCompanyNote = z.infer<typeof insertCompanyNoteSchema>;
+
+export type CompanyNoteWithAuthor = CompanyNote & {
+  author: {
+    id: string;
+    firstName: string | null;
+    lastName: string | null;
+    email: string | null;
+    profileImageUrl: string | null;
+  };
+};
+
 export const insertMeetingSchema = createInsertSchema(meetings).omit({
   id: true,
   createdAt: true,

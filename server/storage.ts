@@ -1,7 +1,7 @@
 import { 
   projects, dailyReports, photos, distributionLogs, appSettings, userProfiles, projectMembers, invites,
   companies, companyMembers, joinRequests, invoices, contracts, clients, contractAttachments, contractOptions, contractOptionInspectors, timesheets, monthlyReportBundles,
-  proposals, proposalOptions, proposalOptionInspectors, iorAgreements, purchaseOrders, contractNotifications, budgetNotifications, projectBudgetNotifications, pendingMemberAssignments, teamInspectors, manualTimeEntries, projectBillingRates, projectBaseHours, projectComments, meetings, dismissedAlerts,
+  proposals, proposalOptions, proposalOptionInspectors, iorAgreements, purchaseOrders, contractNotifications, budgetNotifications, projectBudgetNotifications, pendingMemberAssignments, teamInspectors, manualTimeEntries, projectBillingRates, projectBaseHours, projectComments, meetings, dismissedAlerts, companyNotes,
   type Project, type InsertProject,
   type ProjectBillingRate, type InsertProjectBillingRate,
   type ProjectBaseHours, type InsertProjectBaseHours,
@@ -42,7 +42,7 @@ import { db } from "./db";
 import { eq, desc, asc, and, or, sql, inArray, isNull, gte, lte } from "drizzle-orm";
 
 // Re-export db and schema tables for use in other modules
-export { db, projectComments, projectMembers, users, meetings };
+export { db, projectComments, projectMembers, users, meetings, companyNotes };
 
 // Initialize database sequences (ensures they exist on fresh deployments)
 export async function initDatabaseSequences() {
