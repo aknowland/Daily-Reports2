@@ -9980,17 +9980,14 @@ export async function registerRoutes(
         doc.fontSize(7.5).font('Helvetica').text(contactLine, 280, headerTextY + 14, { width: 290, align: 'right' });
       }
 
-      // Logo - aligned to same vertical center as company text block (10% larger than original)
-      const logoFitW = 286;
-      const logoFitH = 107;
+      // Logo - top-aligned with company text, 8% larger
+      const logoFitW = 309;
+      const logoFitH = 116;
       if (company?.logoPath) {
         try {
           const logoBuffer = await loadImageBuffer(company.logoPath);
           if (logoBuffer) {
-            const textBlockHeight = contactLine ? 24 : 14;
-            const textBlockCenterY = headerTextY + textBlockHeight / 2;
-            const logoY = Math.max(4, textBlockCenterY - logoFitH / 2);
-            doc.image(logoBuffer, startX, logoY, { fit: [logoFitW, logoFitH] });
+            doc.image(logoBuffer, startX, headerTextY, { fit: [logoFitW, logoFitH] });
           }
         } catch (err) {
           console.error('Error adding company logo:', err);
