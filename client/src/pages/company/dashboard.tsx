@@ -1688,6 +1688,132 @@ export default function CompanyDashboard() {
                 )}
               </CardContent>
             </Card>
+
+            {/* Team Notes */}
+            <Card data-testid="card-team-notes">
+              <CardHeader>
+                <div className="flex items-center gap-2">
+                  <MessageSquare className="h-5 w-5 text-primary" />
+                  <CardTitle>Team Notes</CardTitle>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="mb-4 relative">
+                  <div className="flex gap-2">
+                    <div className="flex-1 relative">
+                      <Textarea
+                        placeholder="Leave a note... Type @ to mention team members"
+                        value={newNote}
+                        onChange={(e) => handleNoteChange(e.target.value)}
+                        className="min-h-[80px] resize-none"
+                        data-testid="input-note"
+                      />
+                      {showMentions && filteredCompanyMembers.length > 0 && (
+                        <div className="absolute bottom-full left-0 mb-1 w-full max-w-xs bg-popover border border-border rounded-md shadow-lg z-50 max-h-48 overflow-y-auto">
+                          {filteredCompanyMembers.map((member: any) => (
+                            <button
+                              key={member.user?.id}
+                              className="w-full px-3 py-2 text-left text-sm hover-elevate flex items-center gap-2"
+                              onClick={() => handleNoteMentionSelect(member)}
+                              data-testid={`mention-option-${member.user?.id}`}
+                            >
+                              <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center text-xs font-medium">
+                                {(member.user?.firstName?.[0] || '').toUpperCase()}{(member.user?.lastName?.[0] || '').toUpperCase()}
+                              </div>
+                              <div>
+                                <div className="font-medium">
+                                  {[member.user?.firstName, member.user?.lastName].filter(Boolean).join(' ') || 'Unknown'}
+                                </div>
+                                <div className="text-xs text-muted-foreground capitalize">{member.role}</div>
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <Button
+                      size="sm"
+                      onClick={handleSubmitNote}
+                      disabled={!newNote.trim() || addNoteMutation.isPending}
+                      data-testid="button-submit-note"
+                    >
+                      <Send className="w-4 h-4" />
+                    </Button>
+                  </div>
+                </div>
+                {notesLoading ? (
+                  <div className="space-y-3">
+                    {[1, 2, 3].map((i) => (
+                      <div key={i} className="p-3 bg-muted rounded-md animate-pulse">
+                        <div className="flex items-start gap-2">
+                          <div className="w-8 h-8 rounded-full bg-muted-foreground/20" />
+                          <div className="flex-1 space-y-2">
+                            <div className="h-4 w-24 bg-muted-foreground/20 rounded" />
+                            <div className="h-3 w-full bg-muted-foreground/20 rounded" />
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : companyNotes.length > 0 ? (
+                  <div className="space-y-3 max-h-96 overflow-y-auto">
+                    {companyNotes.map((note: any) => (
+                      <div
+                        key={note.id}
+                        className="p-3 bg-muted rounded-md"
+                        data-testid={`note-${note.id}`}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex items-start gap-2">
+                            <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-xs font-medium flex-shrink-0">
+                              {note.author?.profileImageUrl ? (
+                                <img
+                                  src={note.author.profileImageUrl}
+                                  alt="Avatar"
+                                  className="w-full h-full rounded-full object-cover"
+                                />
+                              ) : (
+                                <>
+                                  {(note.author?.firstName?.[0] || '').toUpperCase()}
+                                  {(note.author?.lastName?.[0] || '').toUpperCase()}
+                                </>
+                              )}
+                            </div>
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-medium text-sm">
+                                  {[note.author?.firstName, note.author?.lastName].filter(Boolean).join(' ') || 'Unknown User'}
+                                </span>
+                                <span className="text-xs text-muted-foreground">
+                                  {note.createdAt ? format(parseDateSafe(note.createdAt), 'MMM d, yyyy h:mm a') : ''}
+                                </span>
+                              </div>
+                              <p className="text-sm mt-1 whitespace-pre-wrap break-words">
+                                {renderNoteContent(note.content)}
+                              </p>
+                            </div>
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="flex-shrink-0 h-6 w-6"
+                            onClick={() => deleteNoteMutation.mutate(note.id)}
+                            disabled={deleteNoteMutation.isPending}
+                            data-testid={`button-delete-note-${note.id}`}
+                          >
+                            <X className="w-3 h-3" />
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground text-center py-4">
+                    No notes yet. Be the first to leave a note!
+                  </p>
+                )}
+              </CardContent>
+            </Card>
           </div>
         </div>
 
@@ -1774,130 +1900,6 @@ export default function CompanyDashboard() {
                 </p>
               </div>
             </div>
-          </CardContent>
-        </Card>
-
-        {/* Team Notes */}
-        <Card data-testid="card-team-notes">
-          <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Team Notes</CardTitle>
-            <MessageSquare className="w-4 h-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="mb-4 relative">
-              <div className="flex gap-2">
-                <div className="flex-1 relative">
-                  <Textarea
-                    placeholder="Leave a note... Type @ to mention team members"
-                    value={newNote}
-                    onChange={(e) => handleNoteChange(e.target.value)}
-                    className="min-h-[80px] resize-none"
-                    data-testid="input-note"
-                  />
-                  {showMentions && filteredCompanyMembers.length > 0 && (
-                    <div className="absolute bottom-full left-0 mb-1 w-full max-w-xs bg-popover border border-border rounded-md shadow-lg z-50 max-h-48 overflow-y-auto">
-                      {filteredCompanyMembers.map((member: any) => (
-                        <button
-                          key={member.user?.id}
-                          className="w-full px-3 py-2 text-left text-sm hover-elevate flex items-center gap-2"
-                          onClick={() => handleNoteMentionSelect(member)}
-                          data-testid={`mention-option-${member.user?.id}`}
-                        >
-                          <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center text-xs font-medium">
-                            {(member.user?.firstName?.[0] || '').toUpperCase()}{(member.user?.lastName?.[0] || '').toUpperCase()}
-                          </div>
-                          <div>
-                            <div className="font-medium">
-                              {[member.user?.firstName, member.user?.lastName].filter(Boolean).join(' ') || 'Unknown'}
-                            </div>
-                            <div className="text-xs text-muted-foreground capitalize">{member.role}</div>
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-                <Button
-                  size="sm"
-                  onClick={handleSubmitNote}
-                  disabled={!newNote.trim() || addNoteMutation.isPending}
-                  data-testid="button-submit-note"
-                >
-                  <Send className="w-4 h-4" />
-                </Button>
-              </div>
-            </div>
-            {notesLoading ? (
-              <div className="space-y-3">
-                {[1, 2, 3].map((i) => (
-                  <div key={i} className="p-3 bg-muted rounded-md animate-pulse">
-                    <div className="flex items-start gap-2">
-                      <div className="w-8 h-8 rounded-full bg-muted-foreground/20" />
-                      <div className="flex-1 space-y-2">
-                        <div className="h-4 w-24 bg-muted-foreground/20 rounded" />
-                        <div className="h-3 w-full bg-muted-foreground/20 rounded" />
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : companyNotes.length > 0 ? (
-              <div className="space-y-3 max-h-80 overflow-y-auto">
-                {companyNotes.map((note: any) => (
-                  <div
-                    key={note.id}
-                    className="p-3 bg-muted rounded-md"
-                    data-testid={`note-${note.id}`}
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex items-start gap-2">
-                        <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-xs font-medium flex-shrink-0">
-                          {note.author?.profileImageUrl ? (
-                            <img
-                              src={note.author.profileImageUrl}
-                              alt="Avatar"
-                              className="w-full h-full rounded-full object-cover"
-                            />
-                          ) : (
-                            <>
-                              {(note.author?.firstName?.[0] || '').toUpperCase()}
-                              {(note.author?.lastName?.[0] || '').toUpperCase()}
-                            </>
-                          )}
-                        </div>
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="font-medium text-sm">
-                              {[note.author?.firstName, note.author?.lastName].filter(Boolean).join(' ') || 'Unknown User'}
-                            </span>
-                            <span className="text-xs text-muted-foreground">
-                              {note.createdAt ? format(parseDateSafe(note.createdAt), 'MMM d, yyyy h:mm a') : ''}
-                            </span>
-                          </div>
-                          <p className="text-sm mt-1 whitespace-pre-wrap break-words">
-                            {renderNoteContent(note.content)}
-                          </p>
-                        </div>
-                      </div>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="flex-shrink-0 h-6 w-6"
-                        onClick={() => deleteNoteMutation.mutate(note.id)}
-                        disabled={deleteNoteMutation.isPending}
-                        data-testid={`button-delete-note-${note.id}`}
-                      >
-                        <X className="w-3 h-3" />
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground text-center py-4">
-                No notes yet. Be the first to leave a note!
-              </p>
-            )}
           </CardContent>
         </Card>
 

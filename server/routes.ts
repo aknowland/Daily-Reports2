@@ -4918,9 +4918,18 @@ export async function registerRoutes(
             where: eq(users.id, note.authorId),
             columns: { id: true, firstName: true, lastName: true, email: true, profileImageUrl: true }
           });
+          const profile = await storage.getUserProfile(note.authorId);
+          const firstName = profile?.firstName || author?.firstName || null;
+          const lastName = profile?.lastName || author?.lastName || null;
           return {
             ...note,
-            author: author || { id: note.authorId, firstName: null, lastName: null, email: null, profileImageUrl: null }
+            author: {
+              id: note.authorId,
+              firstName,
+              lastName,
+              email: profile?.email || author?.email || null,
+              profileImageUrl: author?.profileImageUrl || null
+            }
           };
         })
       );
@@ -4963,10 +4972,17 @@ export async function registerRoutes(
         where: eq(users.id, userId),
         columns: { id: true, firstName: true, lastName: true, email: true, profileImageUrl: true }
       });
+      const authorProfile = await storage.getUserProfile(userId);
 
       res.status(201).json({
         ...newNote,
-        author: author || { id: userId, firstName: null, lastName: null, email: null, profileImageUrl: null }
+        author: {
+          id: userId,
+          firstName: authorProfile?.firstName || author?.firstName || null,
+          lastName: authorProfile?.lastName || author?.lastName || null,
+          email: authorProfile?.email || author?.email || null,
+          profileImageUrl: author?.profileImageUrl || null
+        }
       });
     } catch (error) {
       console.error("Error creating company note:", error);
