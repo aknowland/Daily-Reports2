@@ -9995,9 +9995,18 @@ export async function registerRoutes(
       // Form grid boxes - right side
       const gridX = 380;
       const gridTop = 72;
-      const reportDateVal = typeof report.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(report.date) ? report.date + 'T12:00:00' : report.date;
-      const reportDate = report.date instanceof Date ? report.date : new Date(reportDateVal);
-      const dateStr = reportDate.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: '2-digit' });
+      let dateStr = '--';
+      if (report.date instanceof Date) {
+        const m = String(report.date.getUTCMonth() + 1).padStart(2, '0');
+        const d = String(report.date.getUTCDate()).padStart(2, '0');
+        const y = String(report.date.getUTCFullYear()).slice(-2);
+        dateStr = `${m}/${d}/${y}`;
+      } else if (typeof report.date === 'string') {
+        const match = report.date.match(/^(\d{4})-(\d{2})-(\d{2})/);
+        if (match) {
+          dateStr = `${match[2]}/${match[3]}/${match[1].slice(-2)}`;
+        }
+      }
       // Time cell shows when report was submitted (signedAt); if not signed, show "--"
       const timeStr = report.signedAt 
         ? new Date(report.signedAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
@@ -11411,10 +11420,12 @@ export async function registerRoutes(
 
       // Get project and company info for email
       const project = report.project;
-      const reportDate = new Date(report.date).toLocaleDateString('en-US', {
+      const reportDateObj = report.date instanceof Date ? report.date : new Date(report.date);
+      const reportDate = reportDateObj.toLocaleDateString('en-US', {
         year: 'numeric',
         month: 'long',
-        day: 'numeric'
+        day: 'numeric',
+        timeZone: 'UTC'
       });
 
       // Create distribution log first
