@@ -13688,11 +13688,19 @@ export async function registerRoutes(
 
       const company = inspector.companyId ? await storage.getCompany(inspector.companyId) : null;
 
+      let companyLogoBuffer: Buffer | null = null;
+      if (company?.logoPath) {
+        try {
+          companyLogoBuffer = await objectStorage.downloadBuffer(company.logoPath);
+        } catch (e) {}
+      }
+
       const pdfBuffer = await generateResumePDF({
         profile: fakeProfile,
         projects: [],
         companies: company ? [company] : [],
         photoBuffer,
+        companyLogoBuffer,
         companyName: company?.name,
       });
 
@@ -13746,8 +13754,14 @@ export async function registerRoutes(
       }
 
       let companyName: string | undefined;
+      let companyLogoBuffer: Buffer | null = null;
       if (companies.length > 0) {
         companyName = companies[0].name;
+        if (companies[0].logoPath) {
+          try {
+            companyLogoBuffer = await objectStorage.downloadBuffer(companies[0].logoPath);
+          } catch (e) {}
+        }
       }
 
       const pdfBuffer = await generateResumePDF({
@@ -13755,6 +13769,7 @@ export async function registerRoutes(
         projects,
         companies,
         photoBuffer,
+        companyLogoBuffer,
         companyName,
       });
 
