@@ -145,14 +145,18 @@ function drawBadgeHeader(
   badgeInnerY += photoH;
 
   doc.rect(badgeX + badgePad, badgeInnerY, badgeW - badgePad * 2, nameBarH).fill(goldColor);
-  doc.fillColor("#ffffff").font("Helvetica-Bold").fontSize(6.5);
-  doc.text(fullName, badgeX + badgePad + 1, badgeInnerY + 3, { width: badgeW - badgePad * 2 - 2, align: "center" });
+  const nameFontSize = 7.5;
+  doc.fillColor("#ffffff").font("Helvetica-Bold").fontSize(nameFontSize);
+  const nameTextY = badgeInnerY + (nameBarH - nameFontSize) / 2;
+  doc.text(fullName, badgeX + badgePad + 1, nameTextY, { width: badgeW - badgePad * 2 - 2, align: "center" });
   badgeInnerY += nameBarH;
 
   doc.rect(badgeX + badgePad, badgeInnerY, badgeW - badgePad * 2, titleBarH).fill("#3d3926");
   const titleText = inspectorClass || jobTitle;
-  doc.fillColor(goldColor).font("Helvetica").fontSize(5);
-  doc.text(titleText, badgeX + badgePad + 1, badgeInnerY + 3, { width: badgeW - badgePad * 2 - 2, align: "center" });
+  const titleFontSize = 5.5;
+  doc.fillColor(goldColor).font("Helvetica").fontSize(titleFontSize);
+  const titleTextY = badgeInnerY + (titleBarH - titleFontSize) / 2;
+  doc.text(titleText, badgeX + badgePad + 1, titleTextY, { width: badgeW - badgePad * 2 - 2, align: "center" });
 
   const textX = badgeX + badgeW + 20;
   const textW = pageW - textX - 30;
