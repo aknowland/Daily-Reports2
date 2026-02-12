@@ -13519,7 +13519,7 @@ export async function registerRoutes(
       // Normalize empty strings to null
       const normalize = (val: string | null | undefined) => val?.trim() || null;
       
-      const profile = await storage.createOrUpdateUserProfile({
+      const profileData: any = {
         userId,
         firstName: normalize(data.firstName),
         lastName: normalize(data.lastName),
@@ -13536,7 +13536,8 @@ export async function registerRoutes(
         contractorPhone: normalize(data.contractorPhone),
         contractorEmail: normalize(data.contractorEmail),
         jobHistory: data.jobHistory || [],
-      });
+      };
+      const profile = await storage.createOrUpdateUserProfile(profileData);
       
       res.json(profile);
     } catch (error) {
