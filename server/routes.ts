@@ -11902,6 +11902,8 @@ export async function registerRoutes(
   // - "company_admin": Company Administrator (admin within a specific company) - stored as "inspector" profile role + admin company membership
   const createInviteSchema = z.object({
     email: z.string().email("Valid email is required"),
+    firstName: z.string().optional(),
+    lastName: z.string().optional(),
     role: z.enum(["inspector", "admin", "company_admin"]).default("inspector"),
     companyId: z.string().optional(),
     projectIds: z.array(z.string()).optional().default([]),
@@ -11973,7 +11975,7 @@ export async function registerRoutes(
         });
       }
 
-      const { email, role, companyId, projectIds, expiresAt } = result.data;
+      const { email, firstName, lastName, role, companyId, projectIds, expiresAt } = result.data;
       const userId = req.user?.claims?.sub;
       const profile = await storage.getUserProfile(userId);
       
@@ -12053,6 +12055,8 @@ export async function registerRoutes(
       
       const invite = await storage.createInvite({
         email,
+        firstName: firstName || null,
+        lastName: lastName || null,
         role: dbRole,
         isCompanyAdmin: isCompanyAdminInvite,
         companyId: normalizedCompanyId,
@@ -12253,6 +12257,8 @@ export async function registerRoutes(
         role: profileRole,
         activeCompanyId: invite.companyId || undefined,
         email: invite.email,
+        ...(invite.firstName ? { firstName: invite.firstName } : {}),
+        ...(invite.lastName ? { lastName: invite.lastName } : {}),
       });
 
       const projectIds = (invite.projectIds as string[]) || [];

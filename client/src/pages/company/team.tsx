@@ -102,6 +102,8 @@ export default function CompanyTeamPage() {
   const [teamInspectorSearchQuery, setTeamInspectorSearchQuery] = useState("");
   const [inviteForm, setInviteForm] = useState({
     email: "",
+    firstName: "",
+    lastName: "",
     role: "inspector" as "inspector" | "admin",
     projectIds: [] as string[],
   });
@@ -260,7 +262,7 @@ export default function CompanyTeamPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/invites"] });
       setShowInviteDialog(false);
-      setInviteForm({ email: "", role: "inspector", projectIds: [] });
+      setInviteForm({ email: "", firstName: "", lastName: "", role: "inspector", projectIds: [] });
       toast({
         title: "Invitation Sent",
         description: "The invitation has been sent successfully.",
@@ -627,6 +629,29 @@ export default function CompanyTeamPage() {
                       />
                     </div>
 
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-2">
+                        <Label htmlFor="invite-first-name">First Name</Label>
+                        <Input
+                          id="invite-first-name"
+                          placeholder="First name"
+                          value={inviteForm.firstName}
+                          onChange={(e) => setInviteForm({ ...inviteForm, firstName: e.target.value })}
+                          data-testid="input-invite-first-name"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="invite-last-name">Last Name</Label>
+                        <Input
+                          id="invite-last-name"
+                          placeholder="Last name"
+                          value={inviteForm.lastName}
+                          onChange={(e) => setInviteForm({ ...inviteForm, lastName: e.target.value })}
+                          data-testid="input-invite-last-name"
+                        />
+                      </div>
+                    </div>
+
                     {!isKnowlandCompany && (
                       <div className="rounded-md border bg-muted/50 p-3 space-y-2">
                         <div className="flex items-center gap-2 text-sm font-medium">
@@ -901,9 +926,16 @@ export default function CompanyTeamPage() {
                     <CardContent className="p-4">
                       <div className="flex items-center justify-between gap-4">
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 flex-wrap">
                             <Mail className="w-4 h-4 text-muted-foreground" />
-                            <p className="font-medium truncate">{invite.email}</p>
+                            <p className="font-medium truncate">
+                              {invite.firstName || invite.lastName
+                                ? `${invite.firstName || ''} ${invite.lastName || ''}`.trim()
+                                : invite.email}
+                            </p>
+                            {(invite.firstName || invite.lastName) && (
+                              <span className="text-sm text-muted-foreground truncate">{invite.email}</span>
+                            )}
                             <Badge variant="outline" className="text-xs no-default-hover-elevate no-default-active-elevate">
                               {invite.role === "admin" ? (
                                 <><Shield className="w-3 h-3 mr-1" />Company Admin</>
