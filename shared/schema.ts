@@ -331,6 +331,8 @@ export const appSettings = pgTable("app_settings", {
 export const invites = pgTable("invites", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   email: varchar("email").notNull(),
+  firstName: varchar("first_name"),
+  lastName: varchar("last_name"),
   role: userRoleEnum("role").default("inspector").notNull(),
   isCompanyAdmin: boolean("is_company_admin").default(false), // True if inviting as company admin (not system admin)
   companyId: varchar("company_id").references(() => companies.id, { onDelete: "cascade" }),
