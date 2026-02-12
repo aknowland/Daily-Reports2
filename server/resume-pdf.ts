@@ -257,6 +257,22 @@ export async function generateResumePDF(data: ResumeData): Promise<Buffer> {
         }
       }
 
+      if (data.profile.licenseNumber || data.profile.licenseState) {
+        if (drawLeftSection("License")) {
+          if (data.profile.licenseNumber) {
+            doc.fillColor(textColor).font("Helvetica-Bold").fontSize(8.5);
+            doc.text(data.profile.licenseNumber, leftColX + 4, leftY, { width: leftColWidth - 4 });
+            leftY = doc.y + 3;
+          }
+          if (data.profile.licenseState) {
+            doc.fillColor(lightText).font("Helvetica").fontSize(8);
+            doc.text(data.profile.licenseState, leftColX + 4, leftY, { width: leftColWidth - 4 });
+            leftY = doc.y + 3;
+          }
+          leftY += 10;
+        }
+      }
+
       const education = data.profile.education as Array<{ degree: string; school: string; status?: string }> | null;
       if (education && education.length > 0) {
         if (drawLeftSection("Education")) {
@@ -279,19 +295,28 @@ export async function generateResumePDF(data: ResumeData): Promise<Buffer> {
         }
       }
 
-      if (data.profile.licenseNumber || data.profile.licenseState) {
-        if (drawLeftSection("License")) {
-          if (data.profile.licenseNumber) {
-            doc.fillColor(textColor).font("Helvetica-Bold").fontSize(8.5);
-            doc.text(data.profile.licenseNumber, leftColX + 4, leftY, { width: leftColWidth - 4 });
-            leftY = doc.y + 3;
+      const references = data.profile.references as Array<{ name: string; title: string; organization: string; email?: string; phone?: string }> | null;
+      if (references && references.length > 0) {
+        if (drawLeftSection("References")) {
+          for (const ref of references) {
+            if (leftY > doc.page.height - 60) break;
+            doc.fillColor(primaryColor).font("Helvetica-Bold").fontSize(8.5);
+            doc.text(ref.name, leftColX + 4, leftY, { width: leftColWidth - 4 });
+            leftY = doc.y + 2;
+            doc.fillColor(textColor).font("Helvetica").fontSize(8);
+            doc.text(`${ref.title}, ${ref.organization}`, leftColX + 4, leftY, { width: leftColWidth - 4 });
+            leftY = doc.y + 2;
+            const refContact: string[] = [];
+            if (ref.email) refContact.push(ref.email);
+            if (ref.phone) refContact.push(ref.phone);
+            if (refContact.length > 0) {
+              doc.fillColor(lightText).font("Helvetica").fontSize(7.5);
+              doc.text(refContact.join("  |  "), leftColX + 4, leftY, { width: leftColWidth - 4 });
+              leftY = doc.y + 2;
+            }
+            leftY += 6;
           }
-          if (data.profile.licenseState) {
-            doc.fillColor(lightText).font("Helvetica").fontSize(8);
-            doc.text(data.profile.licenseState, leftColX + 4, leftY, { width: leftColWidth - 4 });
-            leftY = doc.y + 3;
-          }
-          leftY += 10;
+          leftY += 6;
         }
       }
 
@@ -400,67 +425,6 @@ export async function generateResumePDF(data: ResumeData): Promise<Buffer> {
           }
 
           currentY += 10;
-        }
-      }
-
-      const references = data.profile.references as Array<{ name: string; title: string; organization: string; email?: string; phone?: string }> | null;
-      if (references && references.length > 0) {
-        const refStartY = Math.max(currentY, leftY) + 14;
-        if (refStartY > doc.page.height - 120) {
-          doc.addPage();
-          currentY = 50;
-        } else {
-          currentY = refStartY;
-        }
-
-        doc.fillColor(accentColor)
-          .font("Helvetica-Bold")
-          .fontSize(11)
-          .text("REFERENCES", leftColX, currentY, { width: pageWidth, characterSpacing: 0.8 });
-        currentY += 16;
-        doc.moveTo(leftColX, currentY - 2).lineTo(leftColX + pageWidth, currentY - 2).lineWidth(1.5).strokeColor(goldColor).stroke();
-        currentY += 8;
-
-        const refColWidth = (pageWidth - 20) / 2;
-        let refX = leftColX;
-        let refRowStartY = currentY;
-
-        for (let i = 0; i < references.length; i++) {
-          const ref = references[i];
-
-          if (i > 0 && i % 2 === 0) {
-            refX = leftColX;
-            refRowStartY = currentY + 4;
-            if (refRowStartY > doc.page.height - 80) {
-              doc.addPage();
-              refRowStartY = 50;
-            }
-          }
-
-          const colX = (i % 2 === 0) ? leftColX : leftColX + refColWidth + 20;
-          let refY = (i % 2 === 0) ? refRowStartY : refRowStartY;
-
-          doc.fillColor(primaryColor).font("Helvetica-Bold").fontSize(9.5);
-          doc.text(ref.name, colX, refY, { width: refColWidth });
-          refY = doc.y + 1;
-
-          doc.fillColor(textColor).font("Helvetica").fontSize(8.5);
-          doc.text(`${ref.title}, ${ref.organization}`, colX, refY, { width: refColWidth });
-          refY = doc.y + 1;
-
-          const refContact: string[] = [];
-          if (ref.email) refContact.push(ref.email);
-          if (ref.phone) refContact.push(ref.phone);
-          if (refContact.length > 0) {
-            doc.fillColor(lightText).font("Helvetica").fontSize(8);
-            doc.text(refContact.join("  |  "), colX, refY, { width: refColWidth });
-            refY = doc.y + 1;
-          }
-          refY += 4;
-
-          if (i % 2 === 0 || refY > currentY) {
-            currentY = refY;
-          }
         }
       }
 
