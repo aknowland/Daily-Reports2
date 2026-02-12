@@ -110,11 +110,15 @@ export const teamInspectors = pgTable("team_inspectors", {
   projectHistory: json("project_history").$type<{projectId: string; projectName: string; role?: string; startDate?: string; endDate?: string}[]>().default([]),
   // Additional profile info
   notes: text("notes"),
-  resumePath: varchar("resume_path"), // Path to uploaded resume file
+  resumePath: varchar("resume_path"),
+  profilePhotoPath: varchar("profile_photo_path"),
+  bio: text("bio"),
+  education: json("education").$type<{degree: string; school: string; status?: string}[]>().default([]),
+  references: json("references").$type<{name: string; title: string; organization: string; email?: string; phone?: string}[]>().default([]),
   // Account linking - when they create a real account
   linkedUserId: varchar("linked_user_id").references(() => users.id, { onDelete: "set null" }),
   // Status tracking
-  status: varchar("status").default("pending").notNull(), // pending, active (merged with user account)
+  status: varchar("status").default("pending").notNull(),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [
@@ -137,6 +141,10 @@ export const userProfiles = pgTable("user_profiles", {
   licenseNumber: varchar("license_number"),
   licenseState: varchar("license_state"),
   certifications: json("certifications").$type<string[]>().default([]),
+  profilePhotoPath: varchar("profile_photo_path"),
+  bio: text("bio"),
+  education: json("education").$type<{degree: string; school: string; status?: string}[]>().default([]),
+  references: json("references").$type<{name: string; title: string; organization: string; email?: string; phone?: string}[]>().default([]),
   // Independent contractor fields
   contractorCompanyName: varchar("contractor_company_name"),
   contractorAddress: text("contractor_address"),
@@ -766,6 +774,9 @@ export const updateUserProfileSchema = createInsertSchema(userProfiles)
     licenseNumber: true,
     licenseState: true,
     certifications: true,
+    bio: true,
+    education: true,
+    references: true,
     contractorCompanyName: true,
     contractorAddress: true,
     contractorPhone: true,

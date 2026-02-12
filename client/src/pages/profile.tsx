@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -34,7 +34,13 @@ import {
   CreditCard,
   ChevronRight,
   Moon,
-  Sun
+  Sun,
+  FileText,
+  GraduationCap,
+  Users,
+  Camera,
+  Trash2,
+  FileDown
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { useTheme } from "@/hooks/use-theme";
@@ -48,6 +54,11 @@ export default function ProfilePage() {
   const { theme, setTheme } = useTheme();
   const [certifications, setCertifications] = useState<string[]>([]);
   const [newCertification, setNewCertification] = useState("");
+  const [education, setEducation] = useState<{degree: string; school: string; status?: string}[]>([]);
+  const [newEducation, setNewEducation] = useState<{degree: string; school: string; status: string}>({degree: "", school: "", status: ""});
+  const [references, setReferences] = useState<{name: string; title: string; organization: string; email?: string; phone?: string}[]>([]);
+  const [newReference, setNewReference] = useState<{name: string; title: string; organization: string; email: string; phone: string}>({name: "", title: "", organization: "", email: "", phone: ""});
+  const photoInputRef = useRef<HTMLInputElement>(null);
 
   const { data: profile, isLoading } = useQuery<UserProfile>({
     queryKey: ["/api/profile"],
@@ -63,6 +74,7 @@ export default function ProfilePage() {
       licenseNumber: "",
       licenseState: "",
       certifications: [],
+      bio: "",
       contractorCompanyName: "",
       contractorAddress: "",
       contractorPhone: "",
@@ -80,12 +92,15 @@ export default function ProfilePage() {
         licenseNumber: profile.licenseNumber || "",
         licenseState: profile.licenseState || "",
         certifications: profile.certifications || [],
+        bio: profile.bio || "",
         contractorCompanyName: profile.contractorCompanyName || "",
         contractorAddress: profile.contractorAddress || "",
         contractorPhone: profile.contractorPhone || "",
         contractorEmail: profile.contractorEmail || "",
       });
       setCertifications(profile.certifications || []);
+      setEducation(profile.education || []);
+      setReferences(profile.references || []);
     }
   }, [profile, form, user]);
 
@@ -94,6 +109,8 @@ export default function ProfilePage() {
       return apiRequest("PATCH", "/api/profile", {
         ...data,
         certifications,
+        education,
+        references,
       });
     },
     onSuccess: () => {
@@ -111,6 +128,30 @@ export default function ProfilePage() {
         description: "Failed to update profile. Please try again.",
         variant: "destructive",
       });
+    },
+  });
+
+  const photoUploadMutation = useMutation({
+    mutationFn: async (file: File) => {
+      const formData = new FormData();
+      formData.append("photo", file);
+      const res = await fetch("/api/profile/photo", { method: "POST", body: formData, credentials: "include" });
+      if (!res.ok) throw new Error("Upload failed");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/profile"] });
+      toast({ title: "Photo Uploaded", description: "Your profile photo has been updated." });
+    },
+  });
+
+  const photoDeleteMutation = useMutation({
+    mutationFn: async () => {
+      return apiRequest("DELETE", "/api/profile/photo");
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/profile"] });
+      toast({ title: "Photo Removed", description: "Your profile photo has been removed." });
     },
   });
 
@@ -149,6 +190,45 @@ export default function ProfilePage() {
     }
   };
 
+  const addEducation = () => {
+    if (newEducation.degree.trim() && newEducation.school.trim()) {
+      setEducation([...education, {
+        degree: newEducation.degree.trim(),
+        school: newEducation.school.trim(),
+        status: newEducation.status.trim() || undefined,
+      }]);
+      setNewEducation({degree: "", school: "", status: ""});
+    }
+  };
+
+  const removeEducation = (index: number) => {
+    setEducation(education.filter((_, i) => i !== index));
+  };
+
+  const addReference = () => {
+    if (newReference.name.trim() && newReference.title.trim() && newReference.organization.trim()) {
+      setReferences([...references, {
+        name: newReference.name.trim(),
+        title: newReference.title.trim(),
+        organization: newReference.organization.trim(),
+        email: newReference.email.trim() || undefined,
+        phone: newReference.phone.trim() || undefined,
+      }]);
+      setNewReference({name: "", title: "", organization: "", email: "", phone: ""});
+    }
+  };
+
+  const removeReference = (index: number) => {
+    setReferences(references.filter((_, i) => i !== index));
+  };
+
+  const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      photoUploadMutation.mutate(file);
+    }
+  };
+
   const onSubmit = (data: UpdateUserProfile) => {
     updateMutation.mutate(data);
   };
@@ -166,13 +246,24 @@ export default function ProfilePage() {
   return (
     <PageLayout title="Profile">
       <div className="max-w-2xl mx-auto space-y-6">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center justify-between flex-wrap gap-2">
           <Button variant="ghost" size="sm" asChild data-testid="button-back">
             <Link href="/">
               <ArrowLeft className="w-4 h-4 mr-1" />
               Back to Dashboard
             </Link>
           </Button>
+          {profile && (
+            <Button
+              variant="default"
+              size="sm"
+              onClick={() => window.open(`/api/resume/generate/${profile.userId}`, '_blank')}
+              data-testid="button-generate-resume"
+            >
+              <FileDown className="w-4 h-4 mr-1" />
+              Generate Resume
+            </Button>
+          )}
         </div>
         <Card data-testid="card-user-info">
           <CardHeader>
@@ -451,6 +542,289 @@ export default function ProfilePage() {
                       No certifications added yet. Add your professional certifications above.
                     </p>
                   )}
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card data-testid="card-profile-photo">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2" data-testid="title-profile-photo">
+                  <Camera className="w-5 h-5" />
+                  Profile Photo
+                </CardTitle>
+                <CardDescription data-testid="desc-profile-photo">
+                  Upload a portrait photo for your resume
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex items-center gap-6">
+                  <Avatar className="h-24 w-24" data-testid="avatar-profile-photo">
+                    {profile?.profilePhotoPath ? (
+                      <AvatarImage src={profile.profilePhotoPath} alt="Profile photo" />
+                    ) : null}
+                    <AvatarFallback className="bg-primary text-primary-foreground text-2xl font-medium">
+                      {getInitials()}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="flex flex-col gap-2">
+                    <input
+                      ref={photoInputRef}
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={handlePhotoChange}
+                      data-testid="input-photo-upload"
+                    />
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      onClick={() => photoInputRef.current?.click()}
+                      disabled={photoUploadMutation.isPending}
+                      data-testid="button-upload-photo"
+                    >
+                      {photoUploadMutation.isPending ? (
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      ) : (
+                        <Camera className="w-4 h-4 mr-2" />
+                      )}
+                      Upload Photo
+                    </Button>
+                    {profile?.profilePhotoPath && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        onClick={() => photoDeleteMutation.mutate()}
+                        disabled={photoDeleteMutation.isPending}
+                        data-testid="button-remove-photo"
+                      >
+                        {photoDeleteMutation.isPending ? (
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        ) : (
+                          <Trash2 className="w-4 h-4 mr-2" />
+                        )}
+                        Remove Photo
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card data-testid="card-profile-summary">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2" data-testid="title-profile-summary">
+                  <FileText className="w-5 h-5" />
+                  Profile Summary
+                </CardTitle>
+                <CardDescription data-testid="desc-profile-summary">
+                  A brief professional summary for your resume
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <FormField
+                  control={form.control}
+                  name="bio"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel data-testid="label-bio">Bio</FormLabel>
+                      <FormControl>
+                        <Textarea
+                          placeholder="Write a brief professional summary..."
+                          rows={4}
+                          {...field}
+                          value={field.value || ""}
+                          data-testid="input-bio"
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </CardContent>
+            </Card>
+
+            <Card data-testid="card-education">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2" data-testid="title-education">
+                  <GraduationCap className="w-5 h-5" />
+                  Education
+                </CardTitle>
+                <CardDescription data-testid="desc-education">
+                  Your educational background
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {education.length > 0 && (
+                  <div className="space-y-3" data-testid="list-education">
+                    {education.map((edu, index) => (
+                      <div key={index} className="flex items-start justify-between gap-2 p-3 rounded-md border" data-testid={`education-item-${index}`}>
+                        <div className="flex-1">
+                          <div className="font-medium text-sm" data-testid={`text-education-degree-${index}`}>{edu.degree}</div>
+                          <div className="text-sm text-muted-foreground" data-testid={`text-education-school-${index}`}>{edu.school}</div>
+                          {edu.status && (
+                            <Badge variant="secondary" className="mt-1" data-testid={`badge-education-status-${index}`}>
+                              {edu.status}
+                            </Badge>
+                          )}
+                        </div>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => removeEducation(index)}
+                          data-testid={`button-remove-education-${index}`}
+                        >
+                          <X className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {education.length === 0 && (
+                  <p className="text-sm text-muted-foreground" data-testid="text-no-education">
+                    No education entries added yet.
+                  </p>
+                )}
+
+                <Separator />
+
+                <div className="space-y-3">
+                  <div className="text-sm font-medium">Add Education</div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <Input
+                      placeholder="Degree (e.g., B.S. Civil Engineering)"
+                      value={newEducation.degree}
+                      onChange={(e) => setNewEducation({...newEducation, degree: e.target.value})}
+                      data-testid="input-new-education-degree"
+                    />
+                    <Input
+                      placeholder="School"
+                      value={newEducation.school}
+                      onChange={(e) => setNewEducation({...newEducation, school: e.target.value})}
+                      data-testid="input-new-education-school"
+                    />
+                  </div>
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="e.g., In Progress"
+                      value={newEducation.status}
+                      onChange={(e) => setNewEducation({...newEducation, status: e.target.value})}
+                      data-testid="input-new-education-status"
+                    />
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="icon"
+                      onClick={addEducation}
+                      disabled={!newEducation.degree.trim() || !newEducation.school.trim()}
+                      data-testid="button-add-education"
+                    >
+                      <Plus className="w-4 h-4" />
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card data-testid="card-references">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2" data-testid="title-references">
+                  <Users className="w-5 h-5" />
+                  References
+                </CardTitle>
+                <CardDescription data-testid="desc-references">
+                  Professional references for your resume
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {references.length > 0 && (
+                  <div className="space-y-3" data-testid="list-references">
+                    {references.map((ref, index) => (
+                      <div key={index} className="flex items-start justify-between gap-2 p-3 rounded-md border" data-testid={`reference-item-${index}`}>
+                        <div className="flex-1">
+                          <div className="font-medium text-sm" data-testid={`text-reference-name-${index}`}>{ref.name}</div>
+                          <div className="text-sm text-muted-foreground" data-testid={`text-reference-title-${index}`}>{ref.title}</div>
+                          <div className="text-sm text-muted-foreground" data-testid={`text-reference-org-${index}`}>{ref.organization}</div>
+                          {ref.email && (
+                            <div className="text-xs text-muted-foreground mt-1" data-testid={`text-reference-email-${index}`}>
+                              <Mail className="w-3 h-3 inline mr-1" />{ref.email}
+                            </div>
+                          )}
+                          {ref.phone && (
+                            <div className="text-xs text-muted-foreground" data-testid={`text-reference-phone-${index}`}>
+                              {ref.phone}
+                            </div>
+                          )}
+                        </div>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => removeReference(index)}
+                          data-testid={`button-remove-reference-${index}`}
+                        >
+                          <X className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {references.length === 0 && (
+                  <p className="text-sm text-muted-foreground" data-testid="text-no-references">
+                    No references added yet.
+                  </p>
+                )}
+
+                <Separator />
+
+                <div className="space-y-3">
+                  <div className="text-sm font-medium">Add Reference</div>
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <Input
+                      placeholder="Name"
+                      value={newReference.name}
+                      onChange={(e) => setNewReference({...newReference, name: e.target.value})}
+                      data-testid="input-new-reference-name"
+                    />
+                    <Input
+                      placeholder="Title"
+                      value={newReference.title}
+                      onChange={(e) => setNewReference({...newReference, title: e.target.value})}
+                      data-testid="input-new-reference-title"
+                    />
+                    <Input
+                      placeholder="Organization"
+                      value={newReference.organization}
+                      onChange={(e) => setNewReference({...newReference, organization: e.target.value})}
+                      data-testid="input-new-reference-organization"
+                    />
+                  </div>
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="Email (optional)"
+                      type="email"
+                      value={newReference.email}
+                      onChange={(e) => setNewReference({...newReference, email: e.target.value})}
+                      data-testid="input-new-reference-email"
+                    />
+                    <Input
+                      placeholder="Phone (optional)"
+                      type="tel"
+                      value={newReference.phone}
+                      onChange={(e) => setNewReference({...newReference, phone: e.target.value})}
+                      data-testid="input-new-reference-phone"
+                    />
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="icon"
+                      onClick={addReference}
+                      disabled={!newReference.name.trim() || !newReference.title.trim() || !newReference.organization.trim()}
+                      data-testid="button-add-reference"
+                    >
+                      <Plus className="w-4 h-4" />
+                    </Button>
+                  </div>
                 </div>
               </CardContent>
             </Card>

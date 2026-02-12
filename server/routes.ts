@@ -15,6 +15,7 @@ import { PDFDocument as PDFLibDocument } from "pdf-lib";
 import { format } from "date-fns";
 import { speechToText, openai } from "./replit_integrations/audio/client";
 import { generateTimesheetPdf, aggregateReportsToTimesheetData, aggregateManualEntriesToTimesheetData, generateInvoicePdf, InvoiceData, generateInspectorInvoicePdf, InspectorInvoiceData, generateMonthlySummaryPdf, generateWeeklySummaryPdf, generateCurrentStatusPdf } from "./billing-pdf";
+import { generateResumePDF } from "./resume-pdf";
 import { sendEmail } from "./replit_integrations/email/client";
 import { registerChatRoutes } from "./replit_integrations/chat";
 import { calculateScheduledBudget, calculateBaseBudgetBreakdown, type InspectorRate, type ScheduledBudgetResult, type BaseBudgetBreakdown, type BudgetTrackingMode } from "./budget-utils";
@@ -330,6 +331,16 @@ export async function registerRoutes(
           } else {
             console.log(`[PDF Debug] Access denied - report exists: ${!!report}`);
           }
+        }
+      } else if (folder === 'profile-photos') {
+        try {
+          const objectFile = await objectStorage.getObjectEntityFile(objectPath);
+          return await objectStorage.downloadObject(objectFile, res, 3600);
+        } catch (err: any) {
+          if (err?.name === 'ObjectNotFoundError') {
+            return res.status(404).json({ message: "Profile photo not found" });
+          }
+          return res.status(500).json({ message: "Failed to serve profile photo" });
         }
       } else if (folder === 'logos') {
         // Company logos - allow access for authenticated users who are members of the company
@@ -13516,6 +13527,9 @@ export async function registerRoutes(
         licenseNumber: normalize(data.licenseNumber),
         licenseState: normalize(data.licenseState),
         certifications: data.certifications || [],
+        bio: data.bio !== undefined ? (data.bio?.trim() || null) : undefined,
+        education: data.education || undefined,
+        references: data.references || undefined,
         contractorCompanyName: normalize(data.contractorCompanyName),
         contractorAddress: normalize(data.contractorAddress),
         contractorPhone: normalize(data.contractorPhone),
@@ -13526,6 +13540,170 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error updating profile:", error);
       res.status(500).json({ message: "Failed to update profile" });
+    }
+  });
+
+  // Profile photo upload
+  app.post("/api/profile/photo", isAuthenticated, photoUpload.single("photo"), async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      if (!req.file) {
+        return res.status(400).json({ message: "No photo file provided" });
+      }
+      const ext = path.extname(req.file.originalname) || ".jpg";
+      const filename = `${randomUUID()}${ext}`;
+      const objectPath = await objectStorage.uploadBuffer({
+        buffer: req.file.buffer,
+        filename,
+        contentType: req.file.mimetype,
+        folder: "profile-photos",
+      });
+      await storage.createOrUpdateUserProfile({
+        userId,
+        profilePhotoPath: objectPath,
+      });
+      res.json({ profilePhotoPath: objectPath });
+    } catch (error) {
+      console.error("Error uploading profile photo:", error);
+      res.status(500).json({ message: "Failed to upload profile photo" });
+    }
+  });
+
+  // Profile photo delete
+  app.delete("/api/profile/photo", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      await storage.createOrUpdateUserProfile({
+        userId,
+        profilePhotoPath: null,
+      });
+      res.json({ message: "Photo removed" });
+    } catch (error) {
+      console.error("Error removing profile photo:", error);
+      res.status(500).json({ message: "Failed to remove profile photo" });
+    }
+  });
+
+  // Generate resume PDF for a team inspector (non-user) - must be before :userId route
+  app.get("/api/resume/generate/team/:inspectorId", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const inspectorId = req.params.inspectorId;
+
+      const profile = await storage.getUserProfile(userId);
+      const isAdmin = profile?.role === "admin" || profile?.role === "owner" || profile?.role === "system_owner";
+      if (!isAdmin) {
+        return res.status(403).json({ message: "Only admins can generate team member resumes" });
+      }
+
+      const inspector = await storage.getTeamInspector(inspectorId);
+      if (!inspector) {
+        return res.status(404).json({ message: "Team inspector not found" });
+      }
+
+      const fakeProfile: any = {
+        firstName: inspector.firstName,
+        lastName: inspector.lastName,
+        email: inspector.email,
+        phone: inspector.phone,
+        title: inspector.title,
+        licenseNumber: inspector.licenseNumber,
+        licenseState: inspector.licenseState,
+        certifications: inspector.certifications,
+        bio: inspector.bio,
+        education: inspector.education,
+        references: inspector.references,
+        profilePhotoPath: inspector.profilePhotoPath,
+      };
+
+      let photoBuffer: Buffer | null = null;
+      if (inspector.profilePhotoPath) {
+        try {
+          photoBuffer = await objectStorage.downloadBuffer(inspector.profilePhotoPath);
+        } catch (e) {
+          // Photo download failed
+        }
+      }
+
+      const company = inspector.companyId ? await storage.getCompany(inspector.companyId) : null;
+
+      const pdfBuffer = await generateResumePDF({
+        profile: fakeProfile,
+        projects: [],
+        companies: company ? [company] : [],
+        photoBuffer,
+        companyName: company?.name,
+      });
+
+      const fullName = `${inspector.firstName || ""}_${inspector.lastName || ""}`.trim().replace(/\s+/g, "_") || "resume";
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `attachment; filename="${fullName}_Resume.pdf"`);
+      res.send(pdfBuffer);
+    } catch (error) {
+      console.error("Error generating team resume:", error);
+      res.status(500).json({ message: "Failed to generate team resume" });
+    }
+  });
+
+  // Generate resume PDF for a user
+  app.get("/api/resume/generate/:userId", isAuthenticated, async (req: any, res) => {
+    try {
+      const requestingUserId = req.user?.claims?.sub;
+      const targetUserId = req.params.userId;
+
+      const requestingProfile = await storage.getUserProfile(requestingUserId);
+      const isAdmin = requestingProfile?.role === "admin" || requestingProfile?.role === "owner" || requestingProfile?.role === "system_owner";
+      const isSelf = requestingUserId === targetUserId;
+
+      if (!isSelf && !isAdmin) {
+        return res.status(403).json({ message: "You can only generate your own resume, or you must be an admin" });
+      }
+
+      const profile = await storage.getUserProfile(targetUserId);
+      if (!profile) {
+        return res.status(404).json({ message: "User profile not found" });
+      }
+
+      const projects = await storage.getAllProjectsForUser(targetUserId);
+
+      const companyIds = [...new Set(projects.map(p => p.companyId).filter(Boolean))];
+      const companies = [];
+      for (const cId of companyIds) {
+        if (cId) {
+          const company = await storage.getCompany(cId);
+          if (company) companies.push(company);
+        }
+      }
+
+      let photoBuffer: Buffer | null = null;
+      if (profile.profilePhotoPath) {
+        try {
+          photoBuffer = await objectStorage.downloadBuffer(profile.profilePhotoPath);
+        } catch (e) {
+          // Photo download failed, continue without photo
+        }
+      }
+
+      let companyName: string | undefined;
+      if (companies.length > 0) {
+        companyName = companies[0].name;
+      }
+
+      const pdfBuffer = await generateResumePDF({
+        profile,
+        projects,
+        companies,
+        photoBuffer,
+        companyName,
+      });
+
+      const fullName = `${profile.firstName || ""}_${profile.lastName || ""}`.trim().replace(/\s+/g, "_") || "resume";
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `attachment; filename="${fullName}_Resume.pdf"`);
+      res.send(pdfBuffer);
+    } catch (error) {
+      console.error("Error generating resume:", error);
+      res.status(500).json({ message: "Failed to generate resume" });
     }
   });
 
