@@ -59,6 +59,8 @@ export default function ProfilePage() {
   const [newEducation, setNewEducation] = useState<{degree: string; school: string; status: string}>({degree: "", school: "", status: ""});
   const [references, setReferences] = useState<{name: string; title: string; organization: string; email?: string; phone?: string}[]>([]);
   const [newReference, setNewReference] = useState<{name: string; title: string; organization: string; email: string; phone: string}>({name: "", title: "", organization: "", email: "", phone: ""});
+  const [jobHistory, setJobHistory] = useState<{title: string; company: string; startDate?: string; endDate?: string; description?: string}[]>([]);
+  const [newJob, setNewJob] = useState<{title: string; company: string; startDate: string; endDate: string; description: string}>({title: "", company: "", startDate: "", endDate: "", description: ""});
   const [isGeneratingBio, setIsGeneratingBio] = useState(false);
   const photoInputRef = useRef<HTMLInputElement>(null);
 
@@ -103,6 +105,7 @@ export default function ProfilePage() {
       setCertifications(profile.certifications || []);
       setEducation(profile.education || []);
       setReferences(profile.references || []);
+      setJobHistory(profile.jobHistory || []);
     }
   }, [profile, form, user]);
 
@@ -113,6 +116,7 @@ export default function ProfilePage() {
         certifications,
         education,
         references,
+        jobHistory,
       });
     },
     onSuccess: () => {
@@ -222,6 +226,23 @@ export default function ProfilePage() {
 
   const removeReference = (index: number) => {
     setReferences(references.filter((_, i) => i !== index));
+  };
+
+  const addJob = () => {
+    if (newJob.title.trim() && newJob.company.trim()) {
+      setJobHistory([...jobHistory, {
+        title: newJob.title.trim(),
+        company: newJob.company.trim(),
+        startDate: newJob.startDate.trim() || undefined,
+        endDate: newJob.endDate.trim() || undefined,
+        description: newJob.description.trim() || undefined,
+      }]);
+      setNewJob({title: "", company: "", startDate: "", endDate: "", description: ""});
+    }
+  };
+
+  const removeJob = (index: number) => {
+    setJobHistory(jobHistory.filter((_, i) => i !== index));
   };
 
   const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -747,6 +768,109 @@ export default function ProfilePage() {
                       onClick={addEducation}
                       disabled={!newEducation.degree.trim() || !newEducation.school.trim()}
                       data-testid="button-add-education"
+                    >
+                      <Plus className="w-4 h-4" />
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card data-testid="card-job-history">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2" data-testid="title-job-history">
+                  <Building2 className="w-5 h-5" />
+                  Job History
+                </CardTitle>
+                <CardDescription data-testid="desc-job-history">
+                  Past positions and work experience not captured by current projects
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {jobHistory.length > 0 && (
+                  <div className="space-y-3" data-testid="list-job-history">
+                    {jobHistory.map((job, index) => (
+                      <div key={index} className="flex items-start justify-between gap-2 p-3 rounded-md border" data-testid={`job-history-item-${index}`}>
+                        <div className="flex-1">
+                          <div className="font-medium text-sm" data-testid={`text-job-title-${index}`}>{job.title}</div>
+                          <div className="text-sm text-muted-foreground" data-testid={`text-job-company-${index}`}>{job.company}</div>
+                          {(job.startDate || job.endDate) && (
+                            <div className="text-xs text-muted-foreground mt-1" data-testid={`text-job-dates-${index}`}>
+                              {job.startDate || "?"} - {job.endDate || "Present"}
+                            </div>
+                          )}
+                          {job.description && (
+                            <div className="text-xs text-muted-foreground mt-1" data-testid={`text-job-desc-${index}`}>
+                              {job.description}
+                            </div>
+                          )}
+                        </div>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => removeJob(index)}
+                          data-testid={`button-remove-job-${index}`}
+                        >
+                          <X className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {jobHistory.length === 0 && (
+                  <p className="text-sm text-muted-foreground" data-testid="text-no-job-history">
+                    No job history added yet.
+                  </p>
+                )}
+
+                <Separator />
+
+                <div className="space-y-3">
+                  <div className="text-sm font-medium">Add Position</div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <Input
+                      placeholder="Job Title"
+                      value={newJob.title}
+                      onChange={(e) => setNewJob({...newJob, title: e.target.value})}
+                      data-testid="input-new-job-title"
+                    />
+                    <Input
+                      placeholder="Company / Organization"
+                      value={newJob.company}
+                      onChange={(e) => setNewJob({...newJob, company: e.target.value})}
+                      data-testid="input-new-job-company"
+                    />
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <Input
+                      placeholder="Start Date (e.g. Jan 2020)"
+                      value={newJob.startDate}
+                      onChange={(e) => setNewJob({...newJob, startDate: e.target.value})}
+                      data-testid="input-new-job-start"
+                    />
+                    <Input
+                      placeholder="End Date (e.g. Dec 2023 or Present)"
+                      value={newJob.endDate}
+                      onChange={(e) => setNewJob({...newJob, endDate: e.target.value})}
+                      data-testid="input-new-job-end"
+                    />
+                  </div>
+                  <div className="flex gap-2">
+                    <Textarea
+                      placeholder="Brief description (optional)"
+                      rows={2}
+                      value={newJob.description}
+                      onChange={(e) => setNewJob({...newJob, description: e.target.value})}
+                      data-testid="input-new-job-description"
+                    />
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="icon"
+                      onClick={addJob}
+                      disabled={!newJob.title.trim() || !newJob.company.trim()}
+                      data-testid="button-add-job"
                     >
                       <Plus className="w-4 h-4" />
                     </Button>

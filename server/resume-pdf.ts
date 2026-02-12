@@ -281,6 +281,39 @@ export async function generateResumePDF(data: ResumeData): Promise<Buffer> {
         }
       }
 
+      const jobHistory = data.profile.jobHistory as Array<{ title: string; company: string; startDate?: string; endDate?: string; description?: string }> | null;
+      if (jobHistory && jobHistory.length > 0) {
+        drawRightSection("Work History");
+
+        for (const job of jobHistory) {
+          if (currentY > doc.page.height - 100) {
+            doc.addPage();
+            currentY = 50;
+          }
+
+          doc.fillColor(primaryColor).font("Helvetica-Bold").fontSize(10);
+          doc.text(job.title, rightColX, currentY, { width: rightColWidth });
+          currentY = doc.y + 2;
+
+          const jobDetails: string[] = [job.company];
+          if (job.startDate || job.endDate) {
+            jobDetails.push(`${job.startDate || "?"} - ${job.endDate || "Present"}`);
+          }
+
+          doc.fillColor(lightText).font("Helvetica").fontSize(8.5);
+          doc.text(jobDetails.join("  |  "), rightColX, currentY, { width: rightColWidth });
+          currentY = doc.y + 2;
+
+          if (job.description) {
+            doc.fillColor(textColor).font("Helvetica").fontSize(9);
+            doc.text(job.description, rightColX, currentY, { width: rightColWidth, lineGap: 2 });
+            currentY = doc.y + 2;
+          }
+
+          currentY += 10;
+        }
+      }
+
       const references = data.profile.references as Array<{ name: string; title: string; organization: string; email?: string; phone?: string }> | null;
       if (references && references.length > 0) {
         const refStartY = Math.max(currentY, leftY) + 14;
@@ -324,7 +357,17 @@ export async function generateResumePDF(data: ResumeData): Promise<Buffer> {
 
           doc.fillColor(textColor).font("Helvetica").fontSize(8.5);
           doc.text(`${ref.title}, ${ref.organization}`, colX, refY, { width: refColWidth });
-          refY = doc.y + 6;
+          refY = doc.y + 1;
+
+          const refContact: string[] = [];
+          if (ref.email) refContact.push(ref.email);
+          if (ref.phone) refContact.push(ref.phone);
+          if (refContact.length > 0) {
+            doc.fillColor(lightText).font("Helvetica").fontSize(8);
+            doc.text(refContact.join("  |  "), colX, refY, { width: refColWidth });
+            refY = doc.y + 1;
+          }
+          refY += 4;
 
           if (i % 2 === 0 || refY > currentY) {
             currentY = refY;
