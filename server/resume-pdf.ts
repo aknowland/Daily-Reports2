@@ -99,7 +99,7 @@ function drawBadgeHeader(
   doc.rect(0, 0, pageW, headerHeight).fill(primaryColor);
   doc.rect(0, headerHeight, pageW, 3).fill(goldColor);
 
-  doc.rect(badgeX, badgeY, badgeW, badgeH).fill("#e8e0d0");
+  doc.rect(badgeX, badgeY, badgeW, badgeH).fill("#ffffff");
 
   let badgeInnerY = badgeY + badgePad;
 
