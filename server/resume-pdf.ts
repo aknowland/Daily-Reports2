@@ -353,6 +353,12 @@ export async function generateResumePDF(data: ResumeData): Promise<Buffer> {
             currentY = doc.y + 2;
           }
 
+          if ((project as any).scopeOfWork) {
+            doc.fillColor(textColor).font("Helvetica").fontSize(9);
+            doc.text((project as any).scopeOfWork, rightColX, currentY, { width: rightColWidth, lineGap: 2 });
+            currentY = doc.y + 2;
+          }
+
           currentY += 10;
         }
       }

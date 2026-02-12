@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -120,6 +121,7 @@ export default function CompanyProjectsPage() {
     baseBudget: "",
     budgetTrackingMode: "" as "" | "daily_reports" | "scheduled" | "hybrid", // empty = inherit from contract
     inheritBillingRates: true, // true = inherit from contract option
+    scopeOfWork: "",
   });
   const [billingRates, setBillingRates] = useState<BillingRateEntry[]>([{ ...emptyBillingRate }]);
   const [baseHours, setBaseHours] = useState<BaseHoursEntry[]>([]);
@@ -336,7 +338,7 @@ export default function CompanyProjectsPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
       queryClient.invalidateQueries({ queryKey: ["/api/contracts"] });
       setShowCreateDialog(false);
-      setFormData({ name: "", projectNumber: "", client: "", clientId: "", address: "", distributionEmails: "", contractId: "", contractOptionId: "", startDate: "", substantialCompletionDate: "", finalCloseoutDate: "", budgetAmount: "", budgetedHours: "", baseBudget: "", budgetTrackingMode: "", inheritBillingRates: true });
+      setFormData({ name: "", projectNumber: "", client: "", clientId: "", address: "", distributionEmails: "", contractId: "", contractOptionId: "", startDate: "", substantialCompletionDate: "", finalCloseoutDate: "", budgetAmount: "", budgetedHours: "", baseBudget: "", budgetTrackingMode: "", inheritBillingRates: true, scopeOfWork: "" });
       setBillingRates([{ ...emptyBillingRate }]);
       setBaseHours([]);
       toast({
@@ -388,7 +390,7 @@ export default function CompanyProjectsPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/contracts"] });
       setEditingProject(null);
       setLinkedProposal(null);
-      setFormData({ name: "", projectNumber: "", client: "", clientId: "", address: "", distributionEmails: "", contractId: "", contractOptionId: "", startDate: "", substantialCompletionDate: "", finalCloseoutDate: "", budgetAmount: "", budgetedHours: "", baseBudget: "", budgetTrackingMode: "", inheritBillingRates: true });
+      setFormData({ name: "", projectNumber: "", client: "", clientId: "", address: "", distributionEmails: "", contractId: "", contractOptionId: "", startDate: "", substantialCompletionDate: "", finalCloseoutDate: "", budgetAmount: "", budgetedHours: "", baseBudget: "", budgetTrackingMode: "", inheritBillingRates: true, scopeOfWork: "" });
       setBillingRates([{ ...emptyBillingRate }]);
       setBaseHours([]);
       toast({
@@ -483,6 +485,7 @@ export default function CompanyProjectsPage() {
       baseBudget: (project as any).baseBudget || "",
       budgetTrackingMode: (project as any).budgetTrackingMode || "",
       inheritBillingRates: inheritRates,
+      scopeOfWork: (project as any).scopeOfWork || "",
     });
     
     // Load existing billing rates if not inheriting
@@ -816,7 +819,7 @@ export default function CompanyProjectsPage() {
           setShowCreateDialog(false);
           setEditingProject(null);
           setLinkedProposal(null);
-          setFormData({ name: "", projectNumber: "", client: "", clientId: "", address: "", distributionEmails: "", contractId: "", contractOptionId: "", startDate: "", substantialCompletionDate: "", finalCloseoutDate: "", budgetAmount: "", budgetedHours: "", baseBudget: "", budgetTrackingMode: "", inheritBillingRates: true });
+          setFormData({ name: "", projectNumber: "", client: "", clientId: "", address: "", distributionEmails: "", contractId: "", contractOptionId: "", startDate: "", substantialCompletionDate: "", finalCloseoutDate: "", budgetAmount: "", budgetedHours: "", baseBudget: "", budgetTrackingMode: "", inheritBillingRates: true, scopeOfWork: "" });
           setBillingRates([{ ...emptyBillingRate }]);
           setBaseHours([]);
         }
@@ -874,6 +877,17 @@ export default function CompanyProjectsPage() {
                 onChange={(e) => setFormData({ ...formData, address: e.target.value })}
                 placeholder="Project address"
                 data-testid="input-project-address"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="scopeOfWork">Scope of Work</Label>
+              <Textarea
+                id="scopeOfWork"
+                value={formData.scopeOfWork}
+                onChange={(e) => setFormData({ ...formData, scopeOfWork: e.target.value })}
+                placeholder="Describe the scope of work for this project"
+                rows={3}
+                data-testid="input-scope-of-work"
               />
             </div>
             <div className="space-y-2">
@@ -1463,7 +1477,7 @@ export default function CompanyProjectsPage() {
                 setShowCreateDialog(false);
                 setEditingProject(null);
                 setLinkedProposal(null);
-                setFormData({ name: "", projectNumber: "", client: "", clientId: "", address: "", distributionEmails: "", contractId: "", contractOptionId: "", startDate: "", substantialCompletionDate: "", finalCloseoutDate: "", budgetAmount: "", budgetedHours: "", baseBudget: "", budgetTrackingMode: "", inheritBillingRates: true });
+                setFormData({ name: "", projectNumber: "", client: "", clientId: "", address: "", distributionEmails: "", contractId: "", contractOptionId: "", startDate: "", substantialCompletionDate: "", finalCloseoutDate: "", budgetAmount: "", budgetedHours: "", baseBudget: "", budgetTrackingMode: "", inheritBillingRates: true, scopeOfWork: "" });
                 setBillingRates([{ ...emptyBillingRate }]);
                 setBaseHours([]);
               }}
