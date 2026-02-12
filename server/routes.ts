@@ -13691,8 +13691,11 @@ export async function registerRoutes(
       let companyLogoBuffer: Buffer | null = null;
       if (company?.logoPath) {
         try {
-          companyLogoBuffer = await objectStorage.downloadBuffer(company.logoPath);
-        } catch (e) {}
+          const dlPath = company.logoPath.startsWith("/storage/") ? company.logoPath.replace("/storage/", "/objects/") : company.logoPath;
+          companyLogoBuffer = await objectStorage.downloadBuffer(dlPath);
+        } catch (e) {
+          console.log("Could not load company logo for team resume:", e);
+        }
       }
 
       const pdfBuffer = await generateResumePDF({
@@ -13757,10 +13760,14 @@ export async function registerRoutes(
       let companyLogoBuffer: Buffer | null = null;
       if (companies.length > 0) {
         companyName = companies[0].name;
-        if (companies[0].logoPath) {
+        const logoPath = companies[0].logoPath;
+        if (logoPath) {
           try {
-            companyLogoBuffer = await objectStorage.downloadBuffer(companies[0].logoPath);
-          } catch (e) {}
+            const dlPath = logoPath.startsWith("/storage/") ? logoPath.replace("/storage/", "/objects/") : logoPath;
+            companyLogoBuffer = await objectStorage.downloadBuffer(dlPath);
+          } catch (e) {
+            console.log("Could not load company logo for resume:", e);
+          }
         }
       }
 
