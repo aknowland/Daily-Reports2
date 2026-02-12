@@ -42,33 +42,42 @@ function drawBadgeHeader(
   licenseStr?: string
 ): number {
   const pageW = doc.page.width;
-  const headerHeight = 130;
+
+  const badgeX = 30;
+  const badgeY = 8;
+  const badgeW = 110;
+  const badgePad = 3;
+
+  const logoH = companyLogoBuffer ? 20 : 0;
+  const photoH = 68;
+  const nameBarH = 16;
+  const titleBarH = 13;
+  const badgeH = badgePad + logoH + (logoH > 0 ? 2 : 0) + photoH + nameBarH + titleBarH + badgePad;
+
+  const headerHeight = Math.max(badgeH + badgeY * 2, 120);
 
   doc.rect(0, 0, pageW, headerHeight).fill(primaryColor);
   doc.rect(0, headerHeight, pageW, 3).fill(goldColor);
-
-  const badgeX = 30;
-  const badgeY = 10;
-  const badgeW = 110;
-  const badgePad = 4;
-
-  const photoH = 80;
-  const nameBarH = 18;
-  const titleBarH = 14;
-  const compNameH = companyName ? 16 : 0;
-  const badgeH = badgePad + compNameH + photoH + nameBarH + titleBarH + badgePad;
 
   doc.rect(badgeX, badgeY, badgeW, badgeH).fill("#e8e0d0");
 
   let badgeInnerY = badgeY + badgePad;
 
-  if (companyName) {
-    doc.fillColor(primaryColor).font("Helvetica-Bold").fontSize(5.5);
-    doc.text(companyName.toUpperCase(), badgeX + 2, badgeInnerY + 2, { width: badgeW - 4, align: "center", characterSpacing: 0.3 });
-    badgeInnerY += compNameH;
+  if (companyLogoBuffer) {
+    try {
+      const logoW = badgeW - badgePad * 2 - 4;
+      doc.image(companyLogoBuffer, badgeX + badgePad + 2, badgeInnerY, {
+        width: logoW,
+        height: logoH,
+        fit: [logoW, logoH],
+        align: "center",
+        valign: "center",
+      });
+    } catch (e) {}
+    badgeInnerY += logoH + 2;
   }
 
-  const photoInnerX = badgeX + (badgeW - (badgeW - badgePad * 2)) / 2;
+  const photoInnerX = badgeX + badgePad;
   const photoInnerW = badgeW - badgePad * 2;
 
   doc.rect(photoInnerX, badgeInnerY, photoInnerW, photoH).fill("#4a5568");
@@ -87,22 +96,22 @@ function drawBadgeHeader(
       doc.restore();
     } catch (e) {}
   } else {
-    doc.fillColor("#8ab4d4").font("Helvetica-Bold").fontSize(28);
+    doc.fillColor("#8ab4d4").font("Helvetica-Bold").fontSize(24);
     const initials = fullName.split(" ").map(n => n[0]).join("").substring(0, 2).toUpperCase();
-    doc.text(initials, photoInnerX, badgeInnerY + photoH / 2 - 14, { width: photoInnerW, align: "center" });
+    doc.text(initials, photoInnerX, badgeInnerY + photoH / 2 - 12, { width: photoInnerW, align: "center" });
   }
 
   badgeInnerY += photoH;
 
   doc.rect(badgeX + badgePad, badgeInnerY, badgeW - badgePad * 2, nameBarH).fill(goldColor);
-  doc.fillColor("#ffffff").font("Helvetica-Bold").fontSize(7);
-  doc.text(fullName, badgeX + badgePad + 2, badgeInnerY + 4, { width: badgeW - badgePad * 2 - 4, align: "center" });
+  doc.fillColor("#ffffff").font("Helvetica-Bold").fontSize(6.5);
+  doc.text(fullName, badgeX + badgePad + 1, badgeInnerY + 3, { width: badgeW - badgePad * 2 - 2, align: "center" });
   badgeInnerY += nameBarH;
 
   doc.rect(badgeX + badgePad, badgeInnerY, badgeW - badgePad * 2, titleBarH).fill("#3d3926");
   const titleText = inspectorClass || jobTitle;
-  doc.fillColor(goldColor).font("Helvetica").fontSize(5.5);
-  doc.text(titleText, badgeX + badgePad + 2, badgeInnerY + 3, { width: badgeW - badgePad * 2 - 4, align: "center" });
+  doc.fillColor(goldColor).font("Helvetica").fontSize(5);
+  doc.text(titleText, badgeX + badgePad + 1, badgeInnerY + 3, { width: badgeW - badgePad * 2 - 2, align: "center" });
 
   const textX = badgeX + badgeW + 20;
   const textW = pageW - textX - 30;
