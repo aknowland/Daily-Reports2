@@ -13691,8 +13691,18 @@ export async function registerRoutes(
       let companyLogoBuffer: Buffer | null = null;
       if (company?.logoPath) {
         try {
-          const dlPath = company.logoPath.startsWith("/storage/") ? company.logoPath.replace("/storage/", "/objects/") : company.logoPath;
-          companyLogoBuffer = await objectStorage.downloadBuffer(dlPath);
+          if (company.logoPath.startsWith("/storage/")) {
+            const localPath = path.join(process.cwd(), company.logoPath);
+            const fs = await import("fs");
+            if (fs.existsSync(localPath)) {
+              companyLogoBuffer = fs.readFileSync(localPath);
+            } else {
+              const dlPath = company.logoPath.replace("/storage/", "/objects/");
+              companyLogoBuffer = await objectStorage.downloadBuffer(dlPath);
+            }
+          } else {
+            companyLogoBuffer = await objectStorage.downloadBuffer(company.logoPath);
+          }
         } catch (e) {
           console.log("Could not load company logo for team resume:", e);
         }
@@ -13763,8 +13773,18 @@ export async function registerRoutes(
         const logoPath = companies[0].logoPath;
         if (logoPath) {
           try {
-            const dlPath = logoPath.startsWith("/storage/") ? logoPath.replace("/storage/", "/objects/") : logoPath;
-            companyLogoBuffer = await objectStorage.downloadBuffer(dlPath);
+            if (logoPath.startsWith("/storage/")) {
+              const localPath = path.join(process.cwd(), logoPath);
+              const fs = await import("fs");
+              if (fs.existsSync(localPath)) {
+                companyLogoBuffer = fs.readFileSync(localPath);
+              } else {
+                const dlPath = logoPath.replace("/storage/", "/objects/");
+                companyLogoBuffer = await objectStorage.downloadBuffer(dlPath);
+              }
+            } else {
+              companyLogoBuffer = await objectStorage.downloadBuffer(logoPath);
+            }
           } catch (e) {
             console.log("Could not load company logo for resume:", e);
           }
