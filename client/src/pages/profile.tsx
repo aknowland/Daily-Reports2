@@ -59,8 +59,8 @@ export default function ProfilePage() {
   const [newEducation, setNewEducation] = useState<{degree: string; school: string; status: string}>({degree: "", school: "", status: ""});
   const [references, setReferences] = useState<{name: string; title: string; organization: string; email?: string; phone?: string}[]>([]);
   const [newReference, setNewReference] = useState<{name: string; title: string; organization: string; email: string; phone: string}>({name: "", title: "", organization: "", email: "", phone: ""});
-  const [jobHistory, setJobHistory] = useState<{title: string; company: string; startDate?: string; endDate?: string; description?: string}[]>([]);
-  const [newJob, setNewJob] = useState<{title: string; company: string; startDate: string; endDate: string; description: string}>({title: "", company: "", startDate: "", endDate: "", description: ""});
+  const [jobHistory, setJobHistory] = useState<{title: string; company: string; client?: string; startDate?: string; endDate?: string; description?: string}[]>([]);
+  const [newJob, setNewJob] = useState<{title: string; company: string; client: string; startDate: string; endDate: string; description: string}>({title: "", company: "", client: "", startDate: "", endDate: "", description: ""});
   const [isGeneratingBio, setIsGeneratingBio] = useState(false);
   const photoInputRef = useRef<HTMLInputElement>(null);
 
@@ -233,11 +233,12 @@ export default function ProfilePage() {
       setJobHistory([...jobHistory, {
         title: newJob.title.trim(),
         company: newJob.company.trim(),
+        client: newJob.client.trim() || undefined,
         startDate: newJob.startDate.trim() || undefined,
         endDate: newJob.endDate.trim() || undefined,
         description: newJob.description.trim() || undefined,
       }]);
-      setNewJob({title: "", company: "", startDate: "", endDate: "", description: ""});
+      setNewJob({title: "", company: "", client: "", startDate: "", endDate: "", description: ""});
     }
   };
 
@@ -793,12 +794,13 @@ export default function ProfilePage() {
                       <div key={index} className="flex items-start justify-between gap-2 p-3 rounded-md border" data-testid={`job-history-item-${index}`}>
                         <div className="flex-1">
                           <div className="font-medium text-sm" data-testid={`text-job-title-${index}`}>{job.title}</div>
-                          <div className="text-sm text-muted-foreground" data-testid={`text-job-company-${index}`}>{job.company}</div>
-                          {(job.startDate || job.endDate) && (
-                            <div className="text-xs text-muted-foreground mt-1" data-testid={`text-job-dates-${index}`}>
-                              {job.startDate || "?"} - {job.endDate || "Present"}
-                            </div>
-                          )}
+                          <div className="text-xs text-muted-foreground mt-0.5" data-testid={`text-job-details-${index}`}>
+                            {[
+                              job.company,
+                              job.client ? `Client: ${job.client}` : null,
+                              (job.startDate || job.endDate) ? `${job.startDate || "?"} - ${job.endDate || "Present"}` : null,
+                            ].filter(Boolean).join("  |  ")}
+                          </div>
                           {job.description && (
                             <div className="text-xs text-muted-foreground mt-1" data-testid={`text-job-desc-${index}`}>
                               {job.description}
@@ -842,6 +844,12 @@ export default function ProfilePage() {
                       data-testid="input-new-job-company"
                     />
                   </div>
+                  <Input
+                    placeholder="Client Name (optional)"
+                    value={newJob.client}
+                    onChange={(e) => setNewJob({...newJob, client: e.target.value})}
+                    data-testid="input-new-job-client"
+                  />
                   <div className="grid gap-3 sm:grid-cols-2">
                     <Input
                       placeholder="Start Date (e.g. Jan 2020)"
