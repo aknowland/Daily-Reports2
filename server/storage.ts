@@ -699,12 +699,13 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createOrUpdateUserProfile(data: InsertUserProfile): Promise<UserProfile> {
+    const { userId, ...updateFields } = data as any;
     const [profile] = await db
       .insert(userProfiles)
       .values(data)
       .onConflictDoUpdate({
         target: userProfiles.userId,
-        set: data,
+        set: updateFields,
       })
       .returning();
     return profile;
