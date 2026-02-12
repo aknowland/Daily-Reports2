@@ -40,7 +40,8 @@ import {
   Users,
   Camera,
   Trash2,
-  FileDown
+  FileDown,
+  Sparkles
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { useTheme } from "@/hooks/use-theme";
@@ -626,7 +627,34 @@ export default function ProfilePage() {
                   name="bio"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel data-testid="label-bio">Bio</FormLabel>
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <FormLabel data-testid="label-bio">Bio</FormLabel>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          disabled={isGeneratingBio}
+                          onClick={async () => {
+                            setIsGeneratingBio(true);
+                            try {
+                              const res = await apiRequest("POST", "/api/profile/generate-bio");
+                              const data = await res.json();
+                              if (data.bio) {
+                                field.onChange(data.bio);
+                                toast({ title: "Bio generated", description: "Review and edit the AI-generated bio, then save your profile." });
+                              }
+                            } catch (err) {
+                              toast({ title: "Error", description: "Failed to generate bio. Please try again.", variant: "destructive" });
+                            } finally {
+                              setIsGeneratingBio(false);
+                            }
+                          }}
+                          data-testid="button-generate-bio"
+                        >
+                          {isGeneratingBio ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                          {isGeneratingBio ? "Generating..." : "AI Generate"}
+                        </Button>
+                      </div>
                       <FormControl>
                         <Textarea
                           placeholder="Write a brief professional summary..."

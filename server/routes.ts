@@ -13584,6 +13584,62 @@ export async function registerRoutes(
     }
   });
 
+  // AI-generate professional bio from user profile data
+  app.post("/api/profile/generate-bio", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      if (!profile) {
+        return res.status(404).json({ message: "Profile not found" });
+      }
+
+      const allProjects = await storage.getAllProjectsForUser(userId);
+      const projectNames = allProjects.map(p => p.name).filter(Boolean);
+
+      const certifications = (profile.certifications as string[]) || [];
+      const education = (profile.education as any[]) || [];
+      const references = (profile.references as any[]) || [];
+
+      const contextParts: string[] = [];
+      const fullName = [profile.firstName, profile.lastName].filter(Boolean).join(" ");
+      if (fullName) contextParts.push(`Name: ${fullName}`);
+      if (profile.title) contextParts.push(`Title: ${profile.title}`);
+      if (profile.licenseNumber) contextParts.push(`License: ${profile.licenseNumber}${profile.licenseState ? ` (${profile.licenseState})` : ""}`);
+      if (certifications.length > 0) contextParts.push(`Certifications: ${certifications.join(", ")}`);
+      if (education.length > 0) {
+        const eduStr = education.map((e: any) => `${e.degree} from ${e.school}${e.status ? ` (${e.status})` : ""}`).join("; ");
+        contextParts.push(`Education: ${eduStr}`);
+      }
+      if (projectNames.length > 0) contextParts.push(`Projects worked on: ${projectNames.slice(0, 15).join(", ")}`);
+      if (profile.contractorCompanyName) contextParts.push(`Company: ${profile.contractorCompanyName}`);
+      if (profile.bio) contextParts.push(`Existing bio (to improve upon): ${profile.bio}`);
+
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [
+          {
+            role: "system",
+            content: "You are a professional resume writer specializing in construction inspection and engineering. Write a concise, professional bio/summary paragraph (3-5 sentences) for a construction professional based on the provided information. Focus on their experience, qualifications, and expertise. Write in third person. Do not include any headers or labels - just the paragraph text. Do not make up information not provided."
+          },
+          {
+            role: "user",
+            content: contextParts.length > 0
+              ? `Write a professional bio based on this information:\n${contextParts.join("\n")}`
+              : "Write a brief generic professional bio template for a construction inspector that the user can customize."
+          }
+        ],
+        max_tokens: 500,
+        temperature: 0.7,
+      });
+
+      const bio = completion.choices[0]?.message?.content?.trim() || "";
+      res.json({ bio });
+    } catch (error) {
+      console.error("Error generating bio:", error);
+      res.status(500).json({ message: "Failed to generate bio" });
+    }
+  });
+
   // Generate resume PDF for a team inspector (non-user) - must be before :userId route
   app.get("/api/resume/generate/team/:inspectorId", isAuthenticated, async (req: any, res) => {
     try {
