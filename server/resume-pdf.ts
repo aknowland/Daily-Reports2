@@ -295,20 +295,6 @@ export async function generateResumePDF(data: ResumeData): Promise<Buffer> {
         }
       }
 
-      if (data.profile.contractorCompanyName) {
-        if (drawLeftSection("Company")) {
-          doc.fillColor(textColor).font("Helvetica").fontSize(8.5);
-          doc.text(data.profile.contractorCompanyName, leftColX + 4, leftY, { width: leftColWidth - 4 });
-          leftY = doc.y + 4;
-          if (data.profile.contractorAddress) {
-            doc.fillColor(lightText).font("Helvetica").fontSize(8);
-            doc.text(data.profile.contractorAddress, leftColX + 4, leftY, { width: leftColWidth - 4 });
-            leftY = doc.y + 4;
-          }
-          leftY += 10;
-        }
-      }
-
       let currentY = headerBottom + 16;
 
       const drawRightSection = (title: string) => {
@@ -371,8 +357,16 @@ export async function generateResumePDF(data: ResumeData): Promise<Buffer> {
         }
       }
 
-      const jobHistory = data.profile.jobHistory as Array<{ title: string; company: string; client?: string; startDate?: string; endDate?: string; description?: string }> | null;
-      if (jobHistory && jobHistory.length > 0) {
+      const jobHistoryRaw = data.profile.jobHistory as Array<{ title: string; company: string; client?: string; projectName?: string; startDate?: string; endDate?: string; description?: string }> | null;
+      const jobHistory = (jobHistoryRaw || []).slice().sort((a, b) => {
+        const parseDate = (d?: string) => {
+          if (!d || d.toLowerCase() === "present") return Infinity;
+          const parsed = Date.parse(d);
+          return isNaN(parsed) ? 0 : parsed;
+        };
+        return parseDate(b.endDate) - parseDate(a.endDate);
+      });
+      if (jobHistory.length > 0) {
         drawRightSection("Work History");
 
         for (const job of jobHistory) {
@@ -387,6 +381,7 @@ export async function generateResumePDF(data: ResumeData): Promise<Buffer> {
 
           const jobDetails: string[] = [job.company];
           if (job.client) jobDetails.push(job.client);
+          if (job.projectName) jobDetails.push(job.projectName);
           if (job.startDate || job.endDate) {
             jobDetails.push(`${job.startDate || "?"} - ${job.endDate || "Present"}`);
           }
