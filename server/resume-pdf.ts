@@ -29,6 +29,26 @@ function determineInspectorClass(profile: UserProfile): string | null {
   return null;
 }
 
+function getImageDimensions(buf: Buffer): { width: number; height: number } | null {
+  try {
+    if (buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) {
+      return { width: buf.readUInt32BE(16), height: buf.readUInt32BE(20) };
+    }
+    if (buf[0] === 0xff && buf[1] === 0xd8) {
+      let offset = 2;
+      while (offset < buf.length) {
+        if (buf[offset] !== 0xff) break;
+        const marker = buf[offset + 1];
+        if (marker === 0xc0 || marker === 0xc2) {
+          return { width: buf.readUInt16BE(offset + 7), height: buf.readUInt16BE(offset + 5) };
+        }
+        offset += 2 + buf.readUInt16BE(offset + 2);
+      }
+    }
+  } catch {}
+  return null;
+}
+
 function drawBadgeHeader(
   doc: PDFKit.PDFDocument,
   photoBuffer: Buffer | null | undefined,
@@ -45,14 +65,34 @@ function drawBadgeHeader(
 
   const badgeX = 30;
   const badgeY = 8;
-  const badgeW = 110;
   const badgePad = 3;
 
-  const logoH = companyLogoBuffer ? 20 : 0;
+  let logoDisplayW = 0;
+  let logoDisplayH = 0;
+  const targetLogoH = 30;
+
+  if (companyLogoBuffer) {
+    const dims = getImageDimensions(companyLogoBuffer);
+    if (dims && dims.width > 0 && dims.height > 0) {
+      const aspect = dims.width / dims.height;
+      logoDisplayH = targetLogoH;
+      logoDisplayW = targetLogoH * aspect;
+    } else {
+      logoDisplayH = targetLogoH;
+      logoDisplayW = 100;
+    }
+  }
+
+  const minBadgeW = 110;
+  const badgeW = companyLogoBuffer
+    ? Math.max(minBadgeW, logoDisplayW + badgePad * 2 + 4)
+    : minBadgeW;
+
   const photoH = 68;
   const nameBarH = 16;
   const titleBarH = 13;
-  const badgeH = badgePad + logoH + (logoH > 0 ? 2 : 0) + photoH + nameBarH + titleBarH + badgePad;
+  const logoSection = companyLogoBuffer ? logoDisplayH + 2 : 0;
+  const badgeH = badgePad + logoSection + photoH + nameBarH + titleBarH + badgePad;
 
   const headerHeight = Math.max(badgeH + badgeY * 2, 120);
 
@@ -65,16 +105,17 @@ function drawBadgeHeader(
 
   if (companyLogoBuffer) {
     try {
-      const logoW = badgeW - badgePad * 2 - 4;
-      doc.image(companyLogoBuffer, badgeX + badgePad + 2, badgeInnerY, {
-        width: logoW,
-        height: logoH,
-        fit: [logoW, logoH],
+      const logoAreaW = badgeW - badgePad * 2 - 4;
+      const fitW = Math.min(logoDisplayW, logoAreaW);
+      const fitH = logoDisplayH;
+      const logoX = badgeX + badgePad + 2 + (logoAreaW - fitW) / 2;
+      doc.image(companyLogoBuffer, logoX, badgeInnerY, {
+        fit: [fitW, fitH],
         align: "center",
         valign: "center",
       });
     } catch (e) {}
-    badgeInnerY += logoH + 2;
+    badgeInnerY += logoDisplayH + 2;
   }
 
   const photoInnerX = badgeX + badgePad;
