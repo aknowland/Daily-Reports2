@@ -115,6 +115,7 @@ export const teamInspectors = pgTable("team_inspectors", {
   bio: text("bio"),
   education: json("education").$type<{degree: string; school: string; status?: string}[]>().default([]),
   references: json("references").$type<{name: string; title: string; organization: string; email?: string; phone?: string}[]>().default([]),
+  jobHistory: json("job_history").$type<{title: string; company: string; startDate?: string; endDate?: string; description?: string}[]>().default([]),
   // Account linking - when they create a real account
   linkedUserId: varchar("linked_user_id").references(() => users.id, { onDelete: "set null" }),
   // Status tracking
@@ -145,6 +146,7 @@ export const userProfiles = pgTable("user_profiles", {
   bio: text("bio"),
   education: json("education").$type<{degree: string; school: string; status?: string}[]>().default([]),
   references: json("references").$type<{name: string; title: string; organization: string; email?: string; phone?: string}[]>().default([]),
+  jobHistory: json("job_history").$type<{title: string; company: string; startDate?: string; endDate?: string; description?: string}[]>().default([]),
   // Independent contractor fields
   contractorCompanyName: varchar("contractor_company_name"),
   contractorAddress: text("contractor_address"),
@@ -777,6 +779,7 @@ export const updateUserProfileSchema = createInsertSchema(userProfiles)
     bio: true,
     education: true,
     references: true,
+    jobHistory: true,
     contractorCompanyName: true,
     contractorAddress: true,
     contractorPhone: true,

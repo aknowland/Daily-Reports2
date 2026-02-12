@@ -13612,6 +13612,11 @@ export async function registerRoutes(
       }
       if (projectNames.length > 0) contextParts.push(`Projects worked on: ${projectNames.slice(0, 15).join(", ")}`);
       if (profile.contractorCompanyName) contextParts.push(`Company: ${profile.contractorCompanyName}`);
+      const jobHistory = (profile.jobHistory as any[]) || [];
+      if (jobHistory.length > 0) {
+        const jobStr = jobHistory.map((j: any) => `${j.title} at ${j.company}${j.startDate ? ` (${j.startDate} - ${j.endDate || "Present"})` : ""}`).join("; ");
+        contextParts.push(`Work history: ${jobStr}`);
+      }
       if (profile.bio) contextParts.push(`Existing bio (to improve upon): ${profile.bio}`);
 
       const completion = await openai.chat.completions.create({
