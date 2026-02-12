@@ -320,7 +320,17 @@ export async function generateResumePDF(data: ResumeData): Promise<Buffer> {
       }
 
       const assignedProjects = data.projects.filter(p => p.name);
-      if (assignedProjects.length > 0) {
+      const jobHistoryRaw = data.profile.jobHistory as Array<{ title: string; company: string; client?: string; projectName?: string; startDate?: string; endDate?: string; description?: string }> | null;
+      const jobHistory = (jobHistoryRaw || []).slice().sort((a, b) => {
+        const parseDate = (d?: string) => {
+          if (!d || d.toLowerCase() === "present") return Infinity;
+          const parsed = Date.parse(d);
+          return isNaN(parsed) ? 0 : parsed;
+        };
+        return parseDate(b.endDate) - parseDate(a.endDate);
+      });
+
+      if (assignedProjects.length > 0 || jobHistory.length > 0) {
         drawRightSection("Project Experience");
 
         for (const project of assignedProjects.slice(0, 15)) {
@@ -361,19 +371,6 @@ export async function generateResumePDF(data: ResumeData): Promise<Buffer> {
 
           currentY += 10;
         }
-      }
-
-      const jobHistoryRaw = data.profile.jobHistory as Array<{ title: string; company: string; client?: string; projectName?: string; startDate?: string; endDate?: string; description?: string }> | null;
-      const jobHistory = (jobHistoryRaw || []).slice().sort((a, b) => {
-        const parseDate = (d?: string) => {
-          if (!d || d.toLowerCase() === "present") return Infinity;
-          const parsed = Date.parse(d);
-          return isNaN(parsed) ? 0 : parsed;
-        };
-        return parseDate(b.endDate) - parseDate(a.endDate);
-      });
-      if (jobHistory.length > 0) {
-        drawRightSection("Work History");
 
         for (const job of jobHistory) {
           if (currentY > doc.page.height - 100) {
