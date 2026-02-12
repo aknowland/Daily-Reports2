@@ -88,6 +88,8 @@ The application is built with a modern web stack, utilizing **React, TypeScript,
 -   **Company Dashboard Notes**: Team Notes section with @mention support for tagging company members. Admin-only CRUD with `company_notes` table, `@[Name](userId)` mention format with highlighted rendering.
 -   **Inspector Workload Filtering**: Enhanced Inspector Workload card with Day/Week/Month/Year period filter. Each inspector row is expandable to show per-project hours breakdown (regular, OT, report count). Uses separate `/api/company/inspector-workload` endpoint.
 -   **Dismissable Dashboard Notifications**: X button on hover to dismiss alerts, stored in `dismissed_alerts` table per user+company.
+-   **Resume PDF Generation**: Professional two-column resume PDF generated from user profile data. Includes header with name/title/photo, profile summary, project experience from linked projects, certifications, education, license info, contact details, and references. Available from Profile page (self) and Team page (admin for any member/team inspector). Schema additions: `profilePhotoPath`, `bio`, `education` (JSON array), `references` (JSON array) on `userProfiles` and `teamInspectors` tables.
+-   **Profile Photo Upload**: Users can upload/remove portrait photos via Profile page. Photos stored in object storage under `profile-photos/` folder. Used in resume PDF generation and displayed on profile.
 
 ## Recent Changes (January 2026)
 

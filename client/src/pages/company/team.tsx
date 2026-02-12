@@ -65,6 +65,7 @@ import {
   MoreVertical,
   Download,
   Search,
+  FileDown,
 } from "lucide-react";
 import { Link } from "wouter";
 import { useState, useMemo, useEffect } from "react";
@@ -866,6 +867,15 @@ export default function CompanyTeamPage() {
                             <Button
                               variant="outline"
                               size="sm"
+                              onClick={() => window.open(`/api/resume/generate/${member.userId}`, '_blank')}
+                              data-testid={`button-generate-resume-${member.userId}`}
+                            >
+                              <FileDown className="w-4 h-4 mr-1" />
+                              Resume
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
                               onClick={() => setMemberToAssignProjects(member)}
                               data-testid={`button-manage-projects-${member.id}`}
                             >
@@ -1278,28 +1288,39 @@ export default function CompanyTeamPage() {
                             <p className="text-sm text-muted-foreground mt-2 line-clamp-2">{inspector.notes}</p>
                           )}
                         </div>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon" data-testid={`button-team-inspector-menu-${inspector.id}`}>
-                              <MoreVertical className="w-4 h-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem 
-                              onClick={() => { setEditingTeamInspector(inspector); setShowTeamInspectorDialog(true); }}
-                              data-testid={`button-edit-team-inspector-${inspector.id}`}
-                            >
-                              Edit Profile
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              className="text-destructive"
-                              onClick={() => setTeamInspectorToDelete(inspector)}
-                              data-testid={`button-delete-team-inspector-${inspector.id}`}
-                            >
-                              Delete
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
+                        <div className="flex items-center gap-1">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => window.open(`/api/resume/generate/team/${inspector.id}`, '_blank')}
+                            data-testid={`button-generate-resume-${inspector.id}`}
+                          >
+                            <FileDown className="w-4 h-4 mr-1" />
+                            Resume
+                          </Button>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon" data-testid={`button-team-inspector-menu-${inspector.id}`}>
+                                <MoreVertical className="w-4 h-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem 
+                                onClick={() => { setEditingTeamInspector(inspector); setShowTeamInspectorDialog(true); }}
+                                data-testid={`button-edit-team-inspector-${inspector.id}`}
+                              >
+                                Edit Profile
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                className="text-destructive"
+                                onClick={() => setTeamInspectorToDelete(inspector)}
+                                data-testid={`button-delete-team-inspector-${inspector.id}`}
+                              >
+                                Delete
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
                       </div>
                     </CardContent>
                   </Card>
