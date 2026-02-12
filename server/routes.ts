@@ -191,6 +191,7 @@ const createProjectSchema = z.object({
   baseBudget: z.string().or(z.number()).transform(val => val ? String(val) : null).nullable().optional(),
   budgetTrackingMode: z.enum(["daily_reports", "scheduled", "hybrid"]).nullable().optional(),
   inheritBillingRates: z.boolean().optional().default(true),
+  scopeOfWork: z.string().nullable().optional(),
 });
 
 const updateProjectSchema = createProjectSchema.partial();

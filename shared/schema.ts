@@ -188,6 +188,7 @@ export const projects = pgTable("projects", {
   baseBudget: numeric("base_budget"), // Pre-billed dollar amount before onboarding
   budgetTrackingMode: budgetTrackingModeEnum("budget_tracking_mode"), // null = inherit from contract
   inheritBillingRates: boolean("inherit_billing_rates").default(true), // true = inherit from contract option, false = use project-specific rates
+  scopeOfWork: text("scope_of_work"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
