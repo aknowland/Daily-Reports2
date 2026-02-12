@@ -59,6 +59,7 @@ export default function ProfilePage() {
   const [newEducation, setNewEducation] = useState<{degree: string; school: string; status: string}>({degree: "", school: "", status: ""});
   const [references, setReferences] = useState<{name: string; title: string; organization: string; email?: string; phone?: string}[]>([]);
   const [newReference, setNewReference] = useState<{name: string; title: string; organization: string; email: string; phone: string}>({name: "", title: "", organization: "", email: "", phone: ""});
+  const [isGeneratingBio, setIsGeneratingBio] = useState(false);
   const photoInputRef = useRef<HTMLInputElement>(null);
 
   const { data: profile, isLoading } = useQuery<UserProfile>({
