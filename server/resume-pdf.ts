@@ -29,53 +29,80 @@ function determineInspectorClass(profile: UserProfile): string | null {
   return null;
 }
 
-function drawBadge(doc: PDFKit.PDFDocument, x: number, y: number, size: number, photoBuffer: Buffer | null | undefined, inspectorClass: string | null, primaryColor: string) {
-  const centerX = x + size / 2;
-  const centerY = y + size / 2;
-  const outerRadius = size / 2;
-  const innerRadius = outerRadius - 4;
-  const photoRadius = innerRadius - 6;
+function drawBadgeHeader(
+  doc: PDFKit.PDFDocument,
+  photoBuffer: Buffer | null | undefined,
+  fullName: string,
+  jobTitle: string,
+  inspectorClass: string | null,
+  companyName: string | undefined,
+  companyLogoBuffer: Buffer | null | undefined,
+  primaryColor: string,
+  goldColor: string
+): number {
+  const pageW = doc.page.width;
+  const headerHeight = 320;
 
-  doc.save();
-  doc.circle(centerX, centerY, outerRadius).fill("#c9a84c");
-  doc.circle(centerX, centerY, outerRadius - 2).fill(primaryColor);
-  doc.circle(centerX, centerY, innerRadius).fill("#c9a84c");
-  doc.circle(centerX, centerY, innerRadius - 1.5).fill("#1a2e47");
+  doc.rect(0, 0, pageW, headerHeight).fill(primaryColor);
+
+  let topY = 24;
+
+  if (companyLogoBuffer) {
+    try {
+      doc.image(companyLogoBuffer, pageW / 2 - 60, topY, { width: 120, height: 40, fit: [120, 40], align: "center", valign: "center" });
+    } catch (e) {}
+    topY += 46;
+  }
+  if (companyName) {
+    doc.fillColor("#ffffff").font("Helvetica-Bold").fontSize(14);
+    doc.text(companyName.toUpperCase(), 40, topY, { width: pageW - 80, align: "center", characterSpacing: 1.2 });
+    topY = doc.y + 10;
+  } else {
+    topY += 10;
+  }
+
+  const photoW = 150;
+  const photoH = 160;
+  const photoX = (pageW - photoW) / 2;
+  const photoY = topY;
+
+  doc.rect(photoX, photoY, photoW, photoH).fill("#4a5568");
 
   if (photoBuffer) {
     try {
       doc.save();
-      doc.circle(centerX, centerY, photoRadius).clip();
-      const photoSize = photoRadius * 2;
-      doc.image(photoBuffer, centerX - photoRadius, centerY - photoRadius, {
-        width: photoSize,
-        height: photoSize,
-        fit: [photoSize, photoSize],
+      doc.rect(photoX, photoY, photoW, photoH).clip();
+      doc.image(photoBuffer, photoX, photoY, {
+        width: photoW,
+        height: photoH,
+        fit: [photoW, photoH],
         align: "center",
         valign: "center",
       });
       doc.restore();
-    } catch (e) {
-      doc.circle(centerX, centerY, photoRadius).fill("#2a4a6e");
-    }
+    } catch (e) {}
   } else {
-    doc.circle(centerX, centerY, photoRadius).fill("#2a4a6e");
-    doc.fillColor("#8ab4d4").font("Helvetica-Bold").fontSize(photoRadius * 0.7);
-    doc.text("?", centerX - photoRadius * 0.2, centerY - photoRadius * 0.35, { width: photoRadius, align: "center" });
+    doc.fillColor("#8ab4d4").font("Helvetica-Bold").fontSize(48);
+    const initials = fullName.split(" ").map(n => n[0]).join("").substring(0, 2).toUpperCase();
+    doc.text(initials, photoX, photoY + photoH / 2 - 24, { width: photoW, align: "center" });
   }
 
-  doc.restore();
+  const nameBarY = photoY + photoH;
+  const nameBarH = 36;
+  doc.rect(0, nameBarY, pageW, nameBarH).fill(goldColor);
 
-  if (inspectorClass) {
-    const labelY = y + size + 6;
-    doc.fillColor("#c9a84c")
-      .font("Helvetica-Bold")
-      .fontSize(7.5)
-      .text(inspectorClass.toUpperCase(), x - 10, labelY, { width: size + 20, align: "center" });
-    return labelY + 14;
-  }
+  doc.fillColor("#ffffff").font("Helvetica-Bold").fontSize(18);
+  doc.text(fullName, 40, nameBarY + 8, { width: pageW - 80, align: "center" });
 
-  return y + size + 6;
+  const titleBarY = nameBarY + nameBarH;
+  const titleBarH = 24;
+  doc.rect(0, titleBarY, pageW, titleBarH).fill("#3d3926");
+
+  const titleText = inspectorClass ? `${jobTitle}  -  ${inspectorClass}` : jobTitle;
+  doc.fillColor(goldColor).font("Helvetica").fontSize(11);
+  doc.text(titleText, 40, titleBarY + 6, { width: pageW - 80, align: "center" });
+
+  return titleBarY + titleBarH;
 }
 
 export async function generateResumePDF(data: ResumeData): Promise<Buffer> {
@@ -109,38 +136,14 @@ export async function generateResumePDF(data: ResumeData): Promise<Buffer> {
       const lightText = "#64748b";
       const sidebarBg = "#f1f5f9";
 
-      doc.rect(0, 0, doc.page.width, 120).fill(primaryColor);
-      doc.rect(0, 120, doc.page.width, 3).fill(goldColor);
+      const headerBottom = drawBadgeHeader(
+        doc, data.photoBuffer, fullName, jobTitle, inspectorClass,
+        data.companyName, data.companyLogoBuffer, primaryColor, goldColor
+      );
 
-      doc.fillColor("#ffffff")
-        .font("Helvetica-Bold")
-        .fontSize(26)
-        .text(fullName.toUpperCase(), rightColX, 28, { width: rightColWidth, characterSpacing: 1.5 });
+      doc.rect(leftColX - 10, headerBottom, leftColWidth + 20, doc.page.height - headerBottom - 40).fill(sidebarBg);
 
-      doc.fillColor("#8ab4d4")
-        .font("Helvetica")
-        .fontSize(13)
-        .text(jobTitle, rightColX, 60, { width: rightColWidth });
-
-      const headerDetails: string[] = [];
-      if (data.profile.licenseNumber) {
-        headerDetails.push(`License: ${data.profile.licenseNumber}${data.profile.licenseState ? ` (${data.profile.licenseState})` : ""}`);
-      }
-      if (data.companyName) headerDetails.push(data.companyName);
-
-      if (headerDetails.length > 0) {
-        doc.fillColor("#a0b8cf")
-          .font("Helvetica")
-          .fontSize(9)
-          .text(headerDetails.join("  |  "), rightColX, 82, { width: rightColWidth });
-      }
-
-      doc.rect(leftColX - 10, 123, leftColWidth + 20, doc.page.height - 163).fill(sidebarBg);
-
-      const badgeSize = 100;
-      const badgeX = leftColX + (leftColWidth - badgeSize) / 2;
-      let leftY = drawBadge(doc, badgeX, 140, badgeSize, data.photoBuffer, inspectorClass, primaryColor);
-      leftY += 12;
+      let leftY = headerBottom + 16;
 
       const drawLeftSection = (title: string) => {
         if (leftY > doc.page.height - 80) return false;
@@ -219,7 +222,7 @@ export async function generateResumePDF(data: ResumeData): Promise<Buffer> {
         }
       }
 
-      let currentY = 140;
+      let currentY = headerBottom + 16;
 
       const drawRightSection = (title: string) => {
         if (currentY > doc.page.height - 80) {
