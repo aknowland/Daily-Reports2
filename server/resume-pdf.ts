@@ -371,7 +371,7 @@ export async function generateResumePDF(data: ResumeData): Promise<Buffer> {
         }
       }
 
-      const jobHistory = data.profile.jobHistory as Array<{ title: string; company: string; startDate?: string; endDate?: string; description?: string }> | null;
+      const jobHistory = data.profile.jobHistory as Array<{ title: string; company: string; client?: string; startDate?: string; endDate?: string; description?: string }> | null;
       if (jobHistory && jobHistory.length > 0) {
         drawRightSection("Work History");
 
@@ -386,6 +386,7 @@ export async function generateResumePDF(data: ResumeData): Promise<Buffer> {
           currentY = doc.y + 2;
 
           const jobDetails: string[] = [job.company];
+          if (job.client) jobDetails.push(job.client);
           if (job.startDate || job.endDate) {
             jobDetails.push(`${job.startDate || "?"} - ${job.endDate || "Present"}`);
           }
