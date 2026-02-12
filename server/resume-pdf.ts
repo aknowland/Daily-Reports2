@@ -239,7 +239,9 @@ export async function generateResumePDF(data: ResumeData): Promise<Buffer> {
           .fontSize(9)
           .text(title.toUpperCase(), leftColX, leftY, { width: leftColWidth, characterSpacing: 0.8 });
         leftY += 13;
+        doc.save();
         doc.moveTo(leftColX, leftY - 2).lineTo(leftColX + leftColWidth * 0.4, leftY - 2).lineWidth(1.5).strokeColor(goldColor).stroke();
+        doc.restore();
         leftY += 8;
         return true;
       };
@@ -332,7 +334,9 @@ export async function generateResumePDF(data: ResumeData): Promise<Buffer> {
           .fontSize(11)
           .text(title.toUpperCase(), rightColX, currentY, { width: rightColWidth, characterSpacing: 0.8 });
         currentY += 16;
+        doc.save();
         doc.moveTo(rightColX, currentY - 2).lineTo(rightColX + rightColWidth, currentY - 2).lineWidth(1.5).strokeColor(goldColor).stroke();
+        doc.restore();
         currentY += 8;
       };
 
