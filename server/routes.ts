@@ -13535,6 +13535,7 @@ export async function registerRoutes(
         contractorAddress: normalize(data.contractorAddress),
         contractorPhone: normalize(data.contractorPhone),
         contractorEmail: normalize(data.contractorEmail),
+        jobHistory: data.jobHistory || [],
       });
       
       res.json(profile);
@@ -13676,6 +13677,7 @@ export async function registerRoutes(
         education: inspector.education,
         references: inspector.references,
         profilePhotoPath: inspector.profilePhotoPath,
+        jobHistory: inspector.jobHistory,
       };
 
       let photoBuffer: Buffer | null = null;
