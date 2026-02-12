@@ -38,71 +38,100 @@ function drawBadgeHeader(
   companyName: string | undefined,
   companyLogoBuffer: Buffer | null | undefined,
   primaryColor: string,
-  goldColor: string
+  goldColor: string,
+  licenseStr?: string
 ): number {
   const pageW = doc.page.width;
-  const headerHeight = 320;
+  const headerHeight = 130;
 
   doc.rect(0, 0, pageW, headerHeight).fill(primaryColor);
+  doc.rect(0, headerHeight, pageW, 3).fill(goldColor);
 
-  let topY = 24;
+  const badgeX = 30;
+  const badgeY = 10;
+  const badgeW = 110;
+  const badgePad = 4;
 
-  if (companyLogoBuffer) {
-    try {
-      doc.image(companyLogoBuffer, pageW / 2 - 60, topY, { width: 120, height: 40, fit: [120, 40], align: "center", valign: "center" });
-    } catch (e) {}
-    topY += 46;
-  }
+  const photoH = 80;
+  const nameBarH = 18;
+  const titleBarH = 14;
+  const compNameH = companyName ? 16 : 0;
+  const badgeH = badgePad + compNameH + photoH + nameBarH + titleBarH + badgePad;
+
+  doc.rect(badgeX, badgeY, badgeW, badgeH).fill("#e8e0d0");
+
+  let badgeInnerY = badgeY + badgePad;
+
   if (companyName) {
-    doc.fillColor("#ffffff").font("Helvetica-Bold").fontSize(14);
-    doc.text(companyName.toUpperCase(), 40, topY, { width: pageW - 80, align: "center", characterSpacing: 1.2 });
-    topY = doc.y + 10;
-  } else {
-    topY += 10;
+    doc.fillColor(primaryColor).font("Helvetica-Bold").fontSize(5.5);
+    doc.text(companyName.toUpperCase(), badgeX + 2, badgeInnerY + 2, { width: badgeW - 4, align: "center", characterSpacing: 0.3 });
+    badgeInnerY += compNameH;
   }
 
-  const photoW = 150;
-  const photoH = 160;
-  const photoX = (pageW - photoW) / 2;
-  const photoY = topY;
+  const photoInnerX = badgeX + (badgeW - (badgeW - badgePad * 2)) / 2;
+  const photoInnerW = badgeW - badgePad * 2;
 
-  doc.rect(photoX, photoY, photoW, photoH).fill("#4a5568");
+  doc.rect(photoInnerX, badgeInnerY, photoInnerW, photoH).fill("#4a5568");
 
   if (photoBuffer) {
     try {
       doc.save();
-      doc.rect(photoX, photoY, photoW, photoH).clip();
-      doc.image(photoBuffer, photoX, photoY, {
-        width: photoW,
+      doc.rect(photoInnerX, badgeInnerY, photoInnerW, photoH).clip();
+      doc.image(photoBuffer, photoInnerX, badgeInnerY, {
+        width: photoInnerW,
         height: photoH,
-        fit: [photoW, photoH],
+        fit: [photoInnerW, photoH],
         align: "center",
         valign: "center",
       });
       doc.restore();
     } catch (e) {}
   } else {
-    doc.fillColor("#8ab4d4").font("Helvetica-Bold").fontSize(48);
+    doc.fillColor("#8ab4d4").font("Helvetica-Bold").fontSize(28);
     const initials = fullName.split(" ").map(n => n[0]).join("").substring(0, 2).toUpperCase();
-    doc.text(initials, photoX, photoY + photoH / 2 - 24, { width: photoW, align: "center" });
+    doc.text(initials, photoInnerX, badgeInnerY + photoH / 2 - 14, { width: photoInnerW, align: "center" });
   }
 
-  const nameBarY = photoY + photoH;
-  const nameBarH = 36;
-  doc.rect(0, nameBarY, pageW, nameBarH).fill(goldColor);
+  badgeInnerY += photoH;
 
-  doc.fillColor("#ffffff").font("Helvetica-Bold").fontSize(18);
-  doc.text(fullName, 40, nameBarY + 8, { width: pageW - 80, align: "center" });
+  doc.rect(badgeX + badgePad, badgeInnerY, badgeW - badgePad * 2, nameBarH).fill(goldColor);
+  doc.fillColor("#ffffff").font("Helvetica-Bold").fontSize(7);
+  doc.text(fullName, badgeX + badgePad + 2, badgeInnerY + 4, { width: badgeW - badgePad * 2 - 4, align: "center" });
+  badgeInnerY += nameBarH;
 
-  const titleBarY = nameBarY + nameBarH;
-  const titleBarH = 24;
-  doc.rect(0, titleBarY, pageW, titleBarH).fill("#3d3926");
+  doc.rect(badgeX + badgePad, badgeInnerY, badgeW - badgePad * 2, titleBarH).fill("#3d3926");
+  const titleText = inspectorClass || jobTitle;
+  doc.fillColor(goldColor).font("Helvetica").fontSize(5.5);
+  doc.text(titleText, badgeX + badgePad + 2, badgeInnerY + 3, { width: badgeW - badgePad * 2 - 4, align: "center" });
 
-  const titleText = inspectorClass ? `${jobTitle}  -  ${inspectorClass}` : jobTitle;
-  doc.fillColor(goldColor).font("Helvetica").fontSize(11);
-  doc.text(titleText, 40, titleBarY + 6, { width: pageW - 80, align: "center" });
+  const textX = badgeX + badgeW + 20;
+  const textW = pageW - textX - 30;
 
-  return titleBarY + titleBarH;
+  doc.fillColor("#ffffff")
+    .font("Helvetica-Bold")
+    .fontSize(24)
+    .text(fullName.toUpperCase(), textX, 24, { width: textW, characterSpacing: 1.2 });
+
+  let detailY = doc.y + 4;
+
+  const subtitleParts: string[] = [];
+  if (inspectorClass) subtitleParts.push(inspectorClass);
+  if (jobTitle && jobTitle !== inspectorClass) subtitleParts.push(jobTitle);
+  if (subtitleParts.length > 0) {
+    doc.fillColor("#8ab4d4").font("Helvetica").fontSize(12);
+    doc.text(subtitleParts.join("  |  "), textX, detailY, { width: textW });
+    detailY = doc.y + 4;
+  }
+
+  const headerDetails: string[] = [];
+  if (licenseStr) headerDetails.push(licenseStr);
+  if (companyName) headerDetails.push(companyName);
+  if (headerDetails.length > 0) {
+    doc.fillColor("#a0b8cf").font("Helvetica").fontSize(9);
+    doc.text(headerDetails.join("  |  "), textX, detailY, { width: textW });
+  }
+
+  return headerHeight + 3;
 }
 
 export async function generateResumePDF(data: ResumeData): Promise<Buffer> {
@@ -136,9 +165,13 @@ export async function generateResumePDF(data: ResumeData): Promise<Buffer> {
       const lightText = "#64748b";
       const sidebarBg = "#f1f5f9";
 
+      const licenseStr = data.profile.licenseNumber
+        ? `License: ${data.profile.licenseNumber}${data.profile.licenseState ? ` (${data.profile.licenseState})` : ""}`
+        : undefined;
+
       const headerBottom = drawBadgeHeader(
         doc, data.photoBuffer, fullName, jobTitle, inspectorClass,
-        data.companyName, data.companyLogoBuffer, primaryColor, goldColor
+        data.companyName, data.companyLogoBuffer, primaryColor, goldColor, licenseStr
       );
 
       doc.rect(leftColX - 10, headerBottom, leftColWidth + 20, doc.page.height - headerBottom - 40).fill(sidebarBg);
