@@ -90,11 +90,11 @@ function drawBadgeHeader(
   const badgeMargin = 8;
   const badgeW = sidebarColWidth - badgeMargin * 2;
   const photoInnerW = badgeW - badgePad * 2;
-  const logoSectionH = companyLogoBuffer ? 40 : 0;
-  const photoH = 100;
-  const nameBarH = 16;
-  const titleBarH = 13;
-  const footerBarH = companyWebsite ? 12 : 0;
+  const logoSectionH = companyLogoBuffer ? 34 : 0;
+  const photoH = 140;
+  const nameBarH = 14;
+  const titleBarH = 11;
+  const footerBarH = companyWebsite ? 10 : 0;
   const badgeH = badgePad + logoSectionH + photoH + nameBarH + titleBarH + footerBarH + badgePad;
 
   const headerHeight = 85;
@@ -171,10 +171,10 @@ function drawBadgeOverlay(
     try {
       const logoAreaW = badgeW - badgePad * 2 - 8;
       const dims = getImageDimensions(companyLogoBuffer);
-      let fitW = 100, fitH = 36;
+      let fitW = 100, fitH = 30;
       if (dims && dims.width > 0 && dims.height > 0) {
         const aspect = dims.width / dims.height;
-        fitH = 36;
+        fitH = 30;
         fitW = Math.min(fitH * aspect, logoAreaW);
       }
       const logoX = badgeX + badgePad + 4 + (logoAreaW - fitW) / 2;
