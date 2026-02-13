@@ -59,8 +59,8 @@ export default function ProfilePage() {
   const [newEducation, setNewEducation] = useState<{degree: string; school: string; status: string}>({degree: "", school: "", status: ""});
   const [references, setReferences] = useState<{name: string; title: string; organization: string; email?: string; phone?: string}[]>([]);
   const [newReference, setNewReference] = useState<{name: string; title: string; organization: string; email: string; phone: string}>({name: "", title: "", organization: "", email: "", phone: ""});
-  const [jobHistory, setJobHistory] = useState<{title: string; company: string; client?: string; projectName?: string; startDate?: string; endDate?: string; description?: string}[]>([]);
-  const [newJob, setNewJob] = useState<{title: string; company: string; client: string; projectName: string; startDate: string; endDate: string; description: string}>({title: "", company: "", client: "", projectName: "", startDate: "", endDate: "", description: ""});
+  const [jobHistory, setJobHistory] = useState<{title: string; company: string; client?: string; projectName?: string; projectNumber?: string; projectValue?: string; startDate?: string; endDate?: string; description?: string}[]>([]);
+  const [newJob, setNewJob] = useState<{title: string; company: string; client: string; projectName: string; projectNumber: string; projectValue: string; startDate: string; endDate: string; description: string}>({title: "", company: "", client: "", projectName: "", projectNumber: "", projectValue: "", startDate: "", endDate: "", description: ""});
   const [isGeneratingBio, setIsGeneratingBio] = useState(false);
   const photoInputRef = useRef<HTMLInputElement>(null);
 
@@ -235,11 +235,13 @@ export default function ProfilePage() {
         company: newJob.company.trim(),
         client: newJob.client.trim() || undefined,
         projectName: newJob.projectName.trim() || undefined,
+        projectNumber: newJob.projectNumber.trim() || undefined,
+        projectValue: newJob.projectValue.trim() || undefined,
         startDate: newJob.startDate.trim() || undefined,
         endDate: newJob.endDate.trim() || undefined,
         description: newJob.description.trim() || undefined,
       }]);
-      setNewJob({title: "", company: "", client: "", projectName: "", startDate: "", endDate: "", description: ""});
+      setNewJob({title: "", company: "", client: "", projectName: "", projectNumber: "", projectValue: "", startDate: "", endDate: "", description: ""});
     }
   };
 
@@ -806,7 +808,8 @@ export default function ProfilePage() {
                             {[
                               job.company,
                               job.client ? `Client: ${job.client}` : null,
-                              job.projectName ? `Project: ${job.projectName}` : null,
+                              job.projectName ? `Project: ${job.projectName}${job.projectNumber ? ` (${job.projectNumber})` : ""}` : null,
+                              job.projectValue || null,
                               (job.startDate || job.endDate) ? `${job.startDate || "?"} - ${job.endDate || "Present"}` : null,
                             ].filter(Boolean).join("  |  ")}
                           </div>
@@ -865,6 +868,20 @@ export default function ProfilePage() {
                       value={newJob.projectName}
                       onChange={(e) => setNewJob({...newJob, projectName: e.target.value})}
                       data-testid="input-new-job-project"
+                    />
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <Input
+                      placeholder="Project Number (optional)"
+                      value={newJob.projectNumber}
+                      onChange={(e) => setNewJob({...newJob, projectNumber: e.target.value})}
+                      data-testid="input-new-job-project-number"
+                    />
+                    <Input
+                      placeholder="Project Value (e.g. $20 Million)"
+                      value={newJob.projectValue}
+                      onChange={(e) => setNewJob({...newJob, projectValue: e.target.value})}
+                      data-testid="input-new-job-project-value"
                     />
                   </div>
                   <div className="grid gap-3 sm:grid-cols-2">
