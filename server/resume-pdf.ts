@@ -84,7 +84,7 @@ function drawBadgeHeader(
     }
   }
 
-  const badgePad = 3;
+  const badgePad = 1.5;
   const sidebarColLeft = sidebarX != null ? sidebarX - 10 : pageW - 190;
   const sidebarColWidth = sidebarWidth != null ? sidebarWidth + 20 : 190;
   const badgeMargin = 8;
