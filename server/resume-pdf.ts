@@ -146,22 +146,23 @@ function drawBadgeOverlay(
   doc.rect(badgeX, badgeY, badgeW, badgeH).fill("#ffffff");
 
   let badgeInnerY = badgeY + badgePad;
+  const photoInnerX = badgeX + badgePad;
+
+  const gradientTotalH = logoSectionH + photoH;
+  const gradientSteps = 30;
+  const stepH = gradientTotalH / gradientSteps;
+  const startR = 0xff, startG = 0xff, startB = 0xff;
+  const endR = 0xd4, endG = 0xb8, endB = 0x96;
+  for (let i = 0; i < gradientSteps; i++) {
+    const t = i / (gradientSteps - 1);
+    const r = Math.round(startR + (endR - startR) * t);
+    const g = Math.round(startG + (endG - startG) * t);
+    const b = Math.round(startB + (endB - startB) * t);
+    const hex = `#${r.toString(16).padStart(2, "0")}${g.toString(16).padStart(2, "0")}${b.toString(16).padStart(2, "0")}`;
+    doc.rect(photoInnerX, badgeInnerY + i * stepH, photoInnerW, stepH + 0.5).fill(hex);
+  }
 
   if (companyLogoBuffer) {
-    const gradientSteps = 20;
-    const gradientH = logoSectionH;
-    const stepH = gradientH / gradientSteps;
-    const startR = 0xff, startG = 0xff, startB = 0xff;
-    const endR = 0xd4, endG = 0xb8, endB = 0x96;
-    for (let i = 0; i < gradientSteps; i++) {
-      const t = i / (gradientSteps - 1);
-      const r = Math.round(startR + (endR - startR) * t);
-      const g = Math.round(startG + (endG - startG) * t);
-      const b = Math.round(startB + (endB - startB) * t);
-      const hex = `#${r.toString(16).padStart(2, "0")}${g.toString(16).padStart(2, "0")}${b.toString(16).padStart(2, "0")}`;
-      doc.rect(badgeX + badgePad, badgeInnerY + i * stepH, photoInnerW, stepH + 0.5).fill(hex);
-    }
-
     try {
       const logoAreaW = badgeW - badgePad * 2 - 8;
       const dims = getImageDimensions(companyLogoBuffer);
@@ -182,8 +183,6 @@ function drawBadgeOverlay(
     badgeInnerY += logoSectionH;
   }
 
-  const photoInnerX = badgeX + badgePad;
-
   if (photoBuffer) {
     try {
       doc.save();
@@ -198,7 +197,6 @@ function drawBadgeOverlay(
       doc.restore();
     } catch (e) {}
   } else {
-    doc.rect(photoInnerX, badgeInnerY, photoInnerW, photoH).fill("#e8ddd0");
     doc.fillColor("#8b7355").font("Helvetica-Bold").fontSize(30);
     const initials = fullName.split(" ").map(n => n[0]).join("").substring(0, 2).toUpperCase();
     doc.text(initials, photoInnerX, badgeInnerY + photoH / 2 - 15, { width: photoInnerW, align: "center" });
@@ -280,7 +278,9 @@ export async function generateResumePDF(data: ResumeData): Promise<Buffer> {
         data.companyLogoBuffer, goldColor, data.companyWebsite, badgeInfo
       );
 
-      let sidebarY = headerBottom + 16;
+      const badgeBottom = badgeInfo.badgeY + badgeInfo.badgeH;
+      const badgeOverlap = Math.max(0, badgeBottom - headerBottom);
+      let sidebarY = headerBottom + badgeOverlap + 10;
 
       const drawSidebarSection = (title: string) => {
         if (sidebarY > doc.page.height - 80) return false;
