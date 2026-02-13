@@ -90,7 +90,7 @@ function drawBadgeHeader(
   const badgeMargin = 8;
   const badgeW = sidebarColWidth - badgeMargin * 2;
   const photoInnerW = badgeW;
-  const logoSectionH = companyLogoBuffer ? 28 : 0;
+  const logoSectionH = companyLogoBuffer ? 30 : 0;
   const photoH = 150;
   const nameBarH = 14;
   const titleBarH = 11;
@@ -153,31 +153,36 @@ function drawBadgeOverlay(
   let badgeInnerY = badgeY + badgePad;
   const photoInnerX = badgeX + badgePad;
 
-  const gradientTotalH = logoSectionH + photoH;
-  const gradientSteps = 30;
-  const stepH = gradientTotalH / gradientSteps;
-  const startR = 0xff, startG = 0xff, startB = 0xff;
-  const endR = 0xd4, endG = 0xb8, endB = 0x96;
-  for (let i = 0; i < gradientSteps; i++) {
-    const t = i / (gradientSteps - 1);
-    const r = Math.round(startR + (endR - startR) * t);
-    const g = Math.round(startG + (endG - startG) * t);
-    const b = Math.round(startB + (endB - startB) * t);
-    const hex = `#${r.toString(16).padStart(2, "0")}${g.toString(16).padStart(2, "0")}${b.toString(16).padStart(2, "0")}`;
-    doc.rect(photoInnerX, badgeInnerY + i * stepH, photoInnerW, stepH + 0.5).fill(hex);
-  }
+  if (companyLogoBuffer && logoSectionH > 0) {
+    const gradientSteps = 15;
+    const stepH = logoSectionH / gradientSteps;
+    const startR = 0xff, startG = 0xff, startB = 0xff;
+    const endR = 0xd4, endG = 0xb8, endB = 0x96;
+    for (let i = 0; i < gradientSteps; i++) {
+      const t = i / (gradientSteps - 1);
+      const r = Math.round(startR + (endR - startR) * t);
+      const g = Math.round(startG + (endG - startG) * t);
+      const b = Math.round(startB + (endB - startB) * t);
+      const hex = `#${r.toString(16).padStart(2, "0")}${g.toString(16).padStart(2, "0")}${b.toString(16).padStart(2, "0")}`;
+      doc.rect(photoInnerX, badgeInnerY + i * stepH, photoInnerW, stepH + 0.5).fill(hex);
+    }
 
-  if (companyLogoBuffer) {
     try {
-      const logoAreaW = badgeW - badgePad * 2 - 8;
+      const logoAreaW = photoInnerW - 4;
       const dims = getImageDimensions(companyLogoBuffer);
-      let fitW = 100, fitH = 24;
+      let fitH = logoSectionH - 4;
+      let fitW = logoAreaW;
       if (dims && dims.width > 0 && dims.height > 0) {
         const aspect = dims.width / dims.height;
-        fitH = 24;
-        fitW = Math.min(fitH * aspect, logoAreaW);
+        const candidateW = fitH * aspect;
+        if (candidateW > logoAreaW) {
+          fitW = logoAreaW;
+          fitH = logoAreaW / aspect;
+        } else {
+          fitW = candidateW;
+        }
       }
-      const logoX = badgeX + badgePad + 4 + (logoAreaW - fitW) / 2;
+      const logoX = photoInnerX + 2 + (logoAreaW - fitW) / 2;
       const logoY = badgeInnerY + (logoSectionH - fitH) / 2;
       doc.image(companyLogoBuffer, logoX, logoY, {
         fit: [fitW, fitH],
