@@ -23,6 +23,7 @@ import {
   Bell,
   CheckCircle,
   RefreshCw,
+  Globe,
 } from "lucide-react";
 import { Link } from "wouter";
 import { useState, useEffect, useRef } from "react";
@@ -39,6 +40,7 @@ export default function CompanySettingsPage() {
     phone: "",
     email: "",
     address: "",
+    website: "",
   });
 
   const { data: company, isLoading, error } = useQuery<Company>({
@@ -53,6 +55,7 @@ export default function CompanySettingsPage() {
         phone: company.phone || "",
         email: company.email || "",
         address: company.address || "",
+        website: company.website || "",
       });
     }
   }, [company]);
@@ -363,6 +366,19 @@ export default function CompanySettingsPage() {
                 onChange={(e) => setFormData({ ...formData, address: e.target.value })}
                 placeholder="Enter company address"
                 data-testid="input-company-address"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="website" className="flex items-center gap-2">
+                <Globe className="w-4 h-4" />
+                Website
+              </Label>
+              <Input
+                id="website"
+                value={formData.website}
+                onChange={(e) => setFormData({ ...formData, website: e.target.value })}
+                placeholder="e.g. www.YourCompany.com"
+                data-testid="input-company-website"
               />
             </div>
             <div className="pt-4">

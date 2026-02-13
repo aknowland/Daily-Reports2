@@ -9,6 +9,7 @@ interface ResumeData {
   photoBuffer?: Buffer | null;
   companyLogoBuffer?: Buffer | null;
   companyName?: string;
+  companyWebsite?: string;
 }
 
 function determineInspectorClass(profile: UserProfile): string | null {
@@ -60,13 +61,14 @@ function drawBadgeHeader(
   companyLogoBuffer: Buffer | null | undefined,
   primaryColor: string,
   goldColor: string,
-  licenseStr?: string
+  licenseStr?: string,
+  companyWebsite?: string
 ): number {
   const pageW = doc.page.width;
 
   let logoDisplayW = 0;
   let logoDisplayH = 0;
-  const targetLogoH = 30;
+  const targetLogoH = 44;
 
   if (companyLogoBuffer) {
     const dims = getImageDimensions(companyLogoBuffer);
@@ -81,13 +83,14 @@ function drawBadgeHeader(
   }
 
   const badgePad = 3.3;
-  const badgeW = 120;
+  const badgeW = 130;
   const photoInnerW = badgeW - badgePad * 2;
-  const photoH = 95;
-  const nameBarH = 17.6;
-  const titleBarH = 14.3;
-  const logoSection = companyLogoBuffer ? logoDisplayH + 2 : 0;
-  const badgeH = badgePad + logoSection + photoH + nameBarH + titleBarH + badgePad;
+  const logoSectionH = companyLogoBuffer ? targetLogoH + 14 : 0;
+  const photoH = 110;
+  const nameBarH = 18;
+  const titleBarH = 15;
+  const footerBarH = companyWebsite ? 13 : 0;
+  const badgeH = badgePad + logoSectionH + photoH + nameBarH + titleBarH + footerBarH + badgePad;
 
   const badgeY = 10;
   const headerHeight = Math.max(badgeH + badgeY * 2, 120);
@@ -101,18 +104,33 @@ function drawBadgeHeader(
   let badgeInnerY = badgeY + badgePad;
 
   if (companyLogoBuffer) {
+    const gradientSteps = 20;
+    const gradientH = logoSectionH;
+    const stepH = gradientH / gradientSteps;
+    const startR = 0xd4, startG = 0xb8, startB = 0x96;
+    const endR = 0xff, endG = 0xff, endB = 0xff;
+    for (let i = 0; i < gradientSteps; i++) {
+      const t = i / (gradientSteps - 1);
+      const r = Math.round(startR + (endR - startR) * t);
+      const g = Math.round(startG + (endG - startG) * t);
+      const b = Math.round(startB + (endB - startB) * t);
+      const hex = `#${r.toString(16).padStart(2, "0")}${g.toString(16).padStart(2, "0")}${b.toString(16).padStart(2, "0")}`;
+      doc.rect(badgeX + badgePad, badgeInnerY + i * stepH, photoInnerW, stepH + 0.5).fill(hex);
+    }
+
     try {
-      const logoAreaW = badgeW - badgePad * 2 - 4;
+      const logoAreaW = badgeW - badgePad * 2 - 8;
       const fitW = Math.min(logoDisplayW, logoAreaW);
       const fitH = logoDisplayH;
-      const logoX = badgeX + badgePad + 2 + (logoAreaW - fitW) / 2;
-      doc.image(companyLogoBuffer, logoX, badgeInnerY, {
+      const logoX = badgeX + badgePad + 4 + (logoAreaW - fitW) / 2;
+      const logoY = badgeInnerY + (logoSectionH - fitH) / 2;
+      doc.image(companyLogoBuffer, logoX, logoY, {
         fit: [fitW, fitH],
         align: "center",
         valign: "center",
       });
     } catch (e) {}
-    badgeInnerY += logoDisplayH + 2;
+    badgeInnerY += logoSectionH;
   }
 
   const photoInnerX = badgeX + badgePad;
@@ -131,15 +149,16 @@ function drawBadgeHeader(
       doc.restore();
     } catch (e) {}
   } else {
-    doc.fillColor("#8ab4d4").font("Helvetica-Bold").fontSize(30);
+    doc.rect(photoInnerX, badgeInnerY, photoInnerW, photoH).fill("#e8ddd0");
+    doc.fillColor("#8b7355").font("Helvetica-Bold").fontSize(32);
     const initials = fullName.split(" ").map(n => n[0]).join("").substring(0, 2).toUpperCase();
-    doc.text(initials, photoInnerX, badgeInnerY + photoH / 2 - 15, { width: photoInnerW, align: "center" });
+    doc.text(initials, photoInnerX, badgeInnerY + photoH / 2 - 16, { width: photoInnerW, align: "center" });
   }
 
   badgeInnerY += photoH;
 
   doc.rect(badgeX + badgePad, badgeInnerY, photoInnerW, nameBarH).fill(goldColor);
-  const nameFontSize = 8.2;
+  const nameFontSize = 8.8;
   doc.fillColor("#ffffff").font("Helvetica-Bold").fontSize(nameFontSize);
   const nameTextY = badgeInnerY + (nameBarH - nameFontSize) / 2;
   doc.text(fullName, badgeX + badgePad + 1, nameTextY, { width: photoInnerW - 2, align: "center" });
@@ -147,10 +166,20 @@ function drawBadgeHeader(
 
   doc.rect(badgeX + badgePad, badgeInnerY, photoInnerW, titleBarH).fill("#3d3926");
   const titleText = inspectorClass || jobTitle;
-  const titleFontSize = 6;
-  doc.fillColor(goldColor).font("Helvetica").fontSize(titleFontSize);
+  const titleFontSize = 6.5;
+  doc.fillColor(goldColor).font("Helvetica-Bold").fontSize(titleFontSize);
   const titleTextY = badgeInnerY + (titleBarH - titleFontSize) / 2;
   doc.text(titleText, badgeX + badgePad + 1, titleTextY, { width: photoInnerW - 2, align: "center" });
+  badgeInnerY += titleBarH;
+
+  if (companyWebsite) {
+    doc.rect(badgeX + badgePad, badgeInnerY, photoInnerW, footerBarH).fill("#f5f0e8");
+    const urlFontSize = 5.5;
+    doc.fillColor("#6b5c3e").font("Helvetica").fontSize(urlFontSize);
+    const urlTextY = badgeInnerY + (footerBarH - urlFontSize) / 2;
+    const displayUrl = companyWebsite.replace(/^https?:\/\//, "").replace(/\/$/, "");
+    doc.text(displayUrl, badgeX + badgePad + 1, urlTextY, { width: photoInnerW - 2, align: "center" });
+  }
 
   const textX = 30;
   const textW = badgeX - textX - 20;
@@ -219,7 +248,8 @@ export async function generateResumePDF(data: ResumeData): Promise<Buffer> {
 
       const headerBottom = drawBadgeHeader(
         doc, data.photoBuffer, fullName, jobTitle, inspectorClass,
-        data.companyName, data.companyLogoBuffer, primaryColor, goldColor, licenseStr
+        data.companyName, data.companyLogoBuffer, primaryColor, goldColor, licenseStr,
+        data.companyWebsite
       );
 
       doc.rect(sidebarX - 10, headerBottom, sidebarWidth + 20, doc.page.height - headerBottom - 40).fill(sidebarBg);

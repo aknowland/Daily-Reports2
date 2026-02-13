@@ -61,6 +61,7 @@ export const companies = pgTable("companies", {
   phone: varchar("phone"),
   email: varchar("email"),
   logoPath: varchar("logo_path"),
+  website: varchar("website"),
   createdById: varchar("created_by_id"),
   stripeCustomerId: varchar("stripe_customer_id"),
   stripeSubscriptionId: varchar("stripe_subscription_id"),
