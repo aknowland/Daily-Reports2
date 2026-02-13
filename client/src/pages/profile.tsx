@@ -41,7 +41,11 @@ import {
   Camera,
   Trash2,
   FileDown,
-  Sparkles
+  Sparkles,
+  Pencil,
+  ChevronUp,
+  ChevronDown,
+  Check
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { useTheme } from "@/hooks/use-theme";
@@ -61,6 +65,10 @@ export default function ProfilePage() {
   const [newReference, setNewReference] = useState<{name: string; title: string; organization: string; email: string; phone: string}>({name: "", title: "", organization: "", email: "", phone: ""});
   const [jobHistory, setJobHistory] = useState<{title: string; company: string; client?: string; projectName?: string; projectNumber?: string; projectValue?: string; startDate?: string; endDate?: string; description?: string}[]>([]);
   const [newJob, setNewJob] = useState<{title: string; company: string; client: string; projectName: string; projectNumber: string; projectValue: string; startDate: string; endDate: string; description: string}>({title: "", company: "", client: "", projectName: "", projectNumber: "", projectValue: "", startDate: "", endDate: "", description: ""});
+  const [editingJobIndex, setEditingJobIndex] = useState<number | null>(null);
+  const [editingJob, setEditingJob] = useState<{title: string; company: string; client: string; projectName: string; projectNumber: string; projectValue: string; startDate: string; endDate: string; description: string}>({title: "", company: "", client: "", projectName: "", projectNumber: "", projectValue: "", startDate: "", endDate: "", description: ""});
+  const [editingRefIndex, setEditingRefIndex] = useState<number | null>(null);
+  const [editingRef, setEditingRef] = useState<{name: string; title: string; organization: string; email: string; phone: string}>({name: "", title: "", organization: "", email: "", phone: ""});
   const [isGeneratingBio, setIsGeneratingBio] = useState(false);
   const photoInputRef = useRef<HTMLInputElement>(null);
 
@@ -224,10 +232,6 @@ export default function ProfilePage() {
     }
   };
 
-  const removeReference = (index: number) => {
-    setReferences(references.filter((_, i) => i !== index));
-  };
-
   const addJob = () => {
     if (newJob.title.trim() && newJob.company.trim()) {
       setJobHistory([...jobHistory, {
@@ -247,6 +251,92 @@ export default function ProfilePage() {
 
   const removeJob = (index: number) => {
     setJobHistory(jobHistory.filter((_, i) => i !== index));
+    if (editingJobIndex === index) setEditingJobIndex(null);
+  };
+
+  const startEditJob = (index: number) => {
+    const job = jobHistory[index];
+    setEditingJobIndex(index);
+    setEditingJob({
+      title: job.title || "",
+      company: job.company || "",
+      client: job.client || "",
+      projectName: job.projectName || "",
+      projectNumber: job.projectNumber || "",
+      projectValue: job.projectValue || "",
+      startDate: job.startDate || "",
+      endDate: job.endDate || "",
+      description: job.description || "",
+    });
+  };
+
+  const saveEditJob = () => {
+    if (editingJobIndex === null || !editingJob.title.trim() || !editingJob.company.trim()) return;
+    const updated = [...jobHistory];
+    updated[editingJobIndex] = {
+      title: editingJob.title.trim(),
+      company: editingJob.company.trim(),
+      client: editingJob.client.trim() || undefined,
+      projectName: editingJob.projectName.trim() || undefined,
+      projectNumber: editingJob.projectNumber.trim() || undefined,
+      projectValue: editingJob.projectValue.trim() || undefined,
+      startDate: editingJob.startDate.trim() || undefined,
+      endDate: editingJob.endDate.trim() || undefined,
+      description: editingJob.description.trim() || undefined,
+    };
+    setJobHistory(updated);
+    setEditingJobIndex(null);
+  };
+
+  const moveJob = (index: number, direction: "up" | "down") => {
+    const newIndex = direction === "up" ? index - 1 : index + 1;
+    if (newIndex < 0 || newIndex >= jobHistory.length) return;
+    const updated = [...jobHistory];
+    [updated[index], updated[newIndex]] = [updated[newIndex], updated[index]];
+    setJobHistory(updated);
+    if (editingJobIndex === index) setEditingJobIndex(newIndex);
+    else if (editingJobIndex === newIndex) setEditingJobIndex(index);
+  };
+
+  const startEditRef = (index: number) => {
+    const ref = references[index];
+    setEditingRefIndex(index);
+    setEditingRef({
+      name: ref.name || "",
+      title: ref.title || "",
+      organization: ref.organization || "",
+      email: ref.email || "",
+      phone: ref.phone || "",
+    });
+  };
+
+  const saveEditRef = () => {
+    if (editingRefIndex === null || !editingRef.name.trim() || !editingRef.title.trim() || !editingRef.organization.trim()) return;
+    const updated = [...references];
+    updated[editingRefIndex] = {
+      name: editingRef.name.trim(),
+      title: editingRef.title.trim(),
+      organization: editingRef.organization.trim(),
+      email: editingRef.email.trim() || undefined,
+      phone: editingRef.phone.trim() || undefined,
+    };
+    setReferences(updated);
+    setEditingRefIndex(null);
+  };
+
+  const moveRef = (index: number, direction: "up" | "down") => {
+    const newIndex = direction === "up" ? index - 1 : index + 1;
+    if (newIndex < 0 || newIndex >= references.length) return;
+    const updated = [...references];
+    [updated[index], updated[newIndex]] = [updated[newIndex], updated[index]];
+    setReferences(updated);
+    if (editingRefIndex === index) setEditingRefIndex(newIndex);
+    else if (editingRefIndex === newIndex) setEditingRefIndex(index);
+  };
+
+  const removeReference = (index: number) => {
+    setReferences(references.filter((_, i) => i !== index));
+    if (editingRefIndex === index) setEditingRefIndex(null);
   };
 
   const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -793,41 +883,69 @@ export default function ProfilePage() {
               <CardContent className="space-y-4">
                 {jobHistory.length > 0 && (
                   <div className="space-y-3" data-testid="list-job-history">
-                    {[...jobHistory].sort((a, b) => {
-                      const parseDate = (d?: string) => {
-                        if (!d || d.toLowerCase() === "present") return Infinity;
-                        const parsed = Date.parse(d);
-                        return isNaN(parsed) ? 0 : parsed;
-                      };
-                      return parseDate(b.endDate) - parseDate(a.endDate);
-                    }).map((job, index) => (
-                      <div key={index} className="flex items-start justify-between gap-2 p-3 rounded-md border" data-testid={`job-history-item-${index}`}>
-                        <div className="flex-1">
-                          <div className="font-medium text-sm" data-testid={`text-job-title-${index}`}>{job.title}</div>
-                          <div className="text-xs text-muted-foreground mt-0.5" data-testid={`text-job-details-${index}`}>
-                            {[
-                              job.company,
-                              job.client ? `Client: ${job.client}` : null,
-                              job.projectName ? `Project: ${job.projectName}${job.projectNumber ? ` (${job.projectNumber})` : ""}` : null,
-                              job.projectValue || null,
-                              (job.startDate || job.endDate) ? `${job.startDate || "?"} - ${job.endDate || "Present"}` : null,
-                            ].filter(Boolean).join("  |  ")}
-                          </div>
-                          {job.description && (
-                            <div className="text-xs text-muted-foreground mt-1" data-testid={`text-job-desc-${index}`}>
-                              {job.description}
+                    {jobHistory.map((job, index) => (
+                      <div key={index} className="rounded-md border" data-testid={`job-history-item-${index}`}>
+                        {editingJobIndex === index ? (
+                          <div className="p-3 space-y-3">
+                            <div className="grid gap-3 sm:grid-cols-2">
+                              <Input placeholder="Job Title" value={editingJob.title} onChange={(e) => setEditingJob({...editingJob, title: e.target.value})} data-testid="input-edit-job-title" />
+                              <Input placeholder="Company / Organization" value={editingJob.company} onChange={(e) => setEditingJob({...editingJob, company: e.target.value})} data-testid="input-edit-job-company" />
                             </div>
-                          )}
-                        </div>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => removeJob(index)}
-                          data-testid={`button-remove-job-${index}`}
-                        >
-                          <X className="w-4 h-4" />
-                        </Button>
+                            <div className="grid gap-3 sm:grid-cols-2">
+                              <Input placeholder="Client Name (optional)" value={editingJob.client} onChange={(e) => setEditingJob({...editingJob, client: e.target.value})} data-testid="input-edit-job-client" />
+                              <Input placeholder="Project Name (optional)" value={editingJob.projectName} onChange={(e) => setEditingJob({...editingJob, projectName: e.target.value})} data-testid="input-edit-job-project" />
+                            </div>
+                            <div className="grid gap-3 sm:grid-cols-2">
+                              <Input placeholder="Project Number (optional)" value={editingJob.projectNumber} onChange={(e) => setEditingJob({...editingJob, projectNumber: e.target.value})} data-testid="input-edit-job-project-number" />
+                              <Input placeholder="Project Value (e.g. $20 Million)" value={editingJob.projectValue} onChange={(e) => setEditingJob({...editingJob, projectValue: e.target.value})} data-testid="input-edit-job-project-value" />
+                            </div>
+                            <div className="grid gap-3 sm:grid-cols-2">
+                              <Input placeholder="Start Date (e.g. Jan 2020)" value={editingJob.startDate} onChange={(e) => setEditingJob({...editingJob, startDate: e.target.value})} data-testid="input-edit-job-start" />
+                              <Input placeholder="End Date (e.g. Dec 2023 or Present)" value={editingJob.endDate} onChange={(e) => setEditingJob({...editingJob, endDate: e.target.value})} data-testid="input-edit-job-end" />
+                            </div>
+                            <Textarea placeholder="Brief description (optional)" rows={2} value={editingJob.description} onChange={(e) => setEditingJob({...editingJob, description: e.target.value})} data-testid="input-edit-job-description" />
+                            <div className="flex gap-2 justify-end">
+                              <Button type="button" variant="ghost" size="sm" onClick={() => setEditingJobIndex(null)} data-testid="button-cancel-edit-job">Cancel</Button>
+                              <Button type="button" variant="default" size="sm" onClick={saveEditJob} disabled={!editingJob.title.trim() || !editingJob.company.trim()} data-testid="button-save-edit-job">
+                                <Check className="w-4 h-4 mr-1" /> Save
+                              </Button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="flex items-start gap-2 p-3">
+                            <div className="flex flex-col gap-0.5">
+                              <Button type="button" variant="ghost" size="icon" className="h-6 w-6" onClick={() => moveJob(index, "up")} disabled={index === 0} data-testid={`button-move-job-up-${index}`}>
+                                <ChevronUp className="w-3 h-3" />
+                              </Button>
+                              <Button type="button" variant="ghost" size="icon" className="h-6 w-6" onClick={() => moveJob(index, "down")} disabled={index === jobHistory.length - 1} data-testid={`button-move-job-down-${index}`}>
+                                <ChevronDown className="w-3 h-3" />
+                              </Button>
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="font-medium text-sm" data-testid={`text-job-title-${index}`}>{job.title}</div>
+                              <div className="text-xs text-muted-foreground mt-0.5" data-testid={`text-job-details-${index}`}>
+                                {[
+                                  job.company,
+                                  job.client ? `Client: ${job.client}` : null,
+                                  job.projectName ? `Project: ${job.projectName}${job.projectNumber ? ` (${job.projectNumber})` : ""}` : null,
+                                  job.projectValue || null,
+                                  (job.startDate || job.endDate) ? `${job.startDate || "?"} - ${job.endDate || "Present"}` : null,
+                                ].filter(Boolean).join("  |  ")}
+                              </div>
+                              {job.description && (
+                                <div className="text-xs text-muted-foreground mt-1" data-testid={`text-job-desc-${index}`}>{job.description}</div>
+                              )}
+                            </div>
+                            <div className="flex gap-1">
+                              <Button type="button" variant="ghost" size="icon" onClick={() => startEditJob(index)} data-testid={`button-edit-job-${index}`}>
+                                <Pencil className="w-4 h-4" />
+                              </Button>
+                              <Button type="button" variant="ghost" size="icon" onClick={() => removeJob(index)} data-testid={`button-remove-job-${index}`}>
+                                <X className="w-4 h-4" />
+                              </Button>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -935,31 +1053,58 @@ export default function ProfilePage() {
                 {references.length > 0 && (
                   <div className="space-y-3" data-testid="list-references">
                     {references.map((ref, index) => (
-                      <div key={index} className="flex items-start justify-between gap-2 p-3 rounded-md border" data-testid={`reference-item-${index}`}>
-                        <div className="flex-1">
-                          <div className="font-medium text-sm" data-testid={`text-reference-name-${index}`}>{ref.name}</div>
-                          <div className="text-sm text-muted-foreground" data-testid={`text-reference-title-${index}`}>{ref.title}</div>
-                          <div className="text-sm text-muted-foreground" data-testid={`text-reference-org-${index}`}>{ref.organization}</div>
-                          {ref.email && (
-                            <div className="text-xs text-muted-foreground mt-1" data-testid={`text-reference-email-${index}`}>
-                              <Mail className="w-3 h-3 inline mr-1" />{ref.email}
+                      <div key={index} className="rounded-md border" data-testid={`reference-item-${index}`}>
+                        {editingRefIndex === index ? (
+                          <div className="p-3 space-y-3">
+                            <div className="grid gap-3 sm:grid-cols-3">
+                              <Input placeholder="Name" value={editingRef.name} onChange={(e) => setEditingRef({...editingRef, name: e.target.value})} data-testid="input-edit-ref-name" />
+                              <Input placeholder="Title" value={editingRef.title} onChange={(e) => setEditingRef({...editingRef, title: e.target.value})} data-testid="input-edit-ref-title" />
+                              <Input placeholder="Organization" value={editingRef.organization} onChange={(e) => setEditingRef({...editingRef, organization: e.target.value})} data-testid="input-edit-ref-organization" />
                             </div>
-                          )}
-                          {ref.phone && (
-                            <div className="text-xs text-muted-foreground" data-testid={`text-reference-phone-${index}`}>
-                              {ref.phone}
+                            <div className="grid gap-3 sm:grid-cols-2">
+                              <Input placeholder="Email (optional)" type="email" value={editingRef.email} onChange={(e) => setEditingRef({...editingRef, email: e.target.value})} data-testid="input-edit-ref-email" />
+                              <Input placeholder="Phone (optional)" type="tel" value={editingRef.phone} onChange={(e) => setEditingRef({...editingRef, phone: e.target.value})} data-testid="input-edit-ref-phone" />
                             </div>
-                          )}
-                        </div>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => removeReference(index)}
-                          data-testid={`button-remove-reference-${index}`}
-                        >
-                          <X className="w-4 h-4" />
-                        </Button>
+                            <div className="flex gap-2 justify-end">
+                              <Button type="button" variant="ghost" size="sm" onClick={() => setEditingRefIndex(null)} data-testid="button-cancel-edit-ref">Cancel</Button>
+                              <Button type="button" variant="default" size="sm" onClick={saveEditRef} disabled={!editingRef.name.trim() || !editingRef.title.trim() || !editingRef.organization.trim()} data-testid="button-save-edit-ref">
+                                <Check className="w-4 h-4 mr-1" /> Save
+                              </Button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="flex items-start gap-2 p-3">
+                            <div className="flex flex-col gap-0.5">
+                              <Button type="button" variant="ghost" size="icon" className="h-6 w-6" onClick={() => moveRef(index, "up")} disabled={index === 0} data-testid={`button-move-ref-up-${index}`}>
+                                <ChevronUp className="w-3 h-3" />
+                              </Button>
+                              <Button type="button" variant="ghost" size="icon" className="h-6 w-6" onClick={() => moveRef(index, "down")} disabled={index === references.length - 1} data-testid={`button-move-ref-down-${index}`}>
+                                <ChevronDown className="w-3 h-3" />
+                              </Button>
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="font-medium text-sm" data-testid={`text-reference-name-${index}`}>{ref.name}</div>
+                              <div className="text-sm text-muted-foreground" data-testid={`text-reference-title-${index}`}>{ref.title}</div>
+                              <div className="text-sm text-muted-foreground" data-testid={`text-reference-org-${index}`}>{ref.organization}</div>
+                              {ref.email && (
+                                <div className="text-xs text-muted-foreground mt-1" data-testid={`text-reference-email-${index}`}>
+                                  <Mail className="w-3 h-3 inline mr-1" />{ref.email}
+                                </div>
+                              )}
+                              {ref.phone && (
+                                <div className="text-xs text-muted-foreground" data-testid={`text-reference-phone-${index}`}>{ref.phone}</div>
+                              )}
+                            </div>
+                            <div className="flex gap-1">
+                              <Button type="button" variant="ghost" size="icon" onClick={() => startEditRef(index)} data-testid={`button-edit-ref-${index}`}>
+                                <Pencil className="w-4 h-4" />
+                              </Button>
+                              <Button type="button" variant="ghost" size="icon" onClick={() => removeReference(index)} data-testid={`button-remove-reference-${index}`}>
+                                <X className="w-4 h-4" />
+                              </Button>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>

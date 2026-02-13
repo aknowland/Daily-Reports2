@@ -207,6 +207,8 @@ function drawBadgeOverlay(
     doc.text(initials, photoInnerX, badgeInnerY + photoH / 2 - 15, { width: photoInnerW, align: "center" });
   }
 
+  doc.rect(photoInnerX, badgeInnerY, photoInnerW, photoH).lineWidth(0.75).strokeColor(goldColor).stroke();
+
   badgeInnerY += photoH;
 
   doc.rect(badgeX + badgePad, badgeInnerY, photoInnerW, nameBarH).fill(goldColor);
