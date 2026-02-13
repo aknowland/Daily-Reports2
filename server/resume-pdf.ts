@@ -285,7 +285,7 @@ export async function generateResumePDF(data: ResumeData): Promise<Buffer> {
 
       const badgeBottom = badgeInfo.badgeY + badgeInfo.badgeH;
       const badgeOverlap = Math.max(0, badgeBottom - headerBottom);
-      let sidebarY = headerBottom + badgeOverlap + 10;
+      let sidebarY = headerBottom + badgeOverlap + 16;
 
       const drawSidebarSection = (title: string) => {
         if (sidebarY > doc.page.height - 80) return false;
@@ -293,12 +293,7 @@ export async function generateResumePDF(data: ResumeData): Promise<Buffer> {
           .font("Helvetica-Bold")
           .fontSize(9)
           .text(title.toUpperCase(), sidebarX, sidebarY, { width: sidebarWidth, characterSpacing: 0.8 });
-        const titleTextWidth = doc.widthOfString(title.toUpperCase(), { characterSpacing: 0.8 });
-        sidebarY += 13;
-        doc.save();
-        doc.moveTo(sidebarX, sidebarY - 2).lineTo(sidebarX + Math.min(titleTextWidth + 4, sidebarWidth), sidebarY - 2).lineWidth(1.5).strokeColor(goldColor).stroke();
-        doc.restore();
-        sidebarY += 8;
+        sidebarY += 15;
         return true;
       };
 
@@ -389,12 +384,7 @@ export async function generateResumePDF(data: ResumeData): Promise<Buffer> {
           .font("Helvetica-Bold")
           .fontSize(11)
           .text(title.toUpperCase(), mainColX, currentY, { width: mainColWidth, characterSpacing: 0.8 });
-        const titleTextWidth = doc.widthOfString(title.toUpperCase(), { characterSpacing: 0.8 });
-        currentY += 16;
-        doc.save();
-        doc.moveTo(mainColX, currentY - 2).lineTo(mainColX + Math.min(titleTextWidth + 4, mainColWidth), currentY - 2).lineWidth(1.5).strokeColor(goldColor).stroke();
-        doc.restore();
-        currentY += 8;
+        currentY += 18;
       };
 
       const bio = data.profile.bio as string | null;
@@ -444,7 +434,7 @@ export async function generateResumePDF(data: ResumeData): Promise<Buffer> {
           const lineFontBold = 9;
 
           if (company || projectVal) {
-            doc.font("Helvetica-Bold").fontSize(lineFontBold).fillColor(primaryColor);
+            doc.font("Helvetica-Bold").fontSize(lineFontBold).fillColor(goldColor);
             const companyText = company?.name || "";
             doc.text(companyText, mainColX, currentY, { width: mainColWidth, continued: false });
             if (projectVal) {
@@ -490,7 +480,7 @@ export async function generateResumePDF(data: ResumeData): Promise<Buffer> {
           const lineFontBold = 9;
 
           if (job.company || job.projectValue) {
-            doc.font("Helvetica-Bold").fontSize(lineFontBold).fillColor(primaryColor);
+            doc.font("Helvetica-Bold").fontSize(lineFontBold).fillColor(goldColor);
             doc.text(job.company, mainColX, currentY, { width: mainColWidth, continued: false });
             if (job.projectValue) {
               const valWidth = doc.widthOfString(job.projectValue);
