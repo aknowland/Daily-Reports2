@@ -87,7 +87,7 @@ function drawBadgeHeader(
   const badgePad = 0.75;
   const sidebarColLeft = sidebarX != null ? sidebarX - 10 : pageW - 190;
   const sidebarColWidth = sidebarWidth != null ? sidebarWidth + 20 : 190;
-  const badgeMargin = 4;
+  const badgeMargin = 1;
   const badgeW = sidebarColWidth - badgeMargin * 2;
   const photoInnerW = badgeW - badgePad * 2;
   const logoSectionH = companyLogoBuffer ? targetLogoH + 4 : 0;
