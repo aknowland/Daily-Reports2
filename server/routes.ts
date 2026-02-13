@@ -13752,11 +13752,11 @@ export async function registerRoutes(
         return res.status(404).json({ message: "User profile not found" });
       }
 
-      const isSystemOwner = profile.role === "system_owner";
-      const projects = isSystemOwner ? [] : await storage.getAllProjectsForUser(targetUserId);
+      const isAdminRole = profile.role === "system_owner" || profile.role === "admin" || profile.role === "owner";
+      const projects = isAdminRole ? [] : await storage.getAllProjectsForUser(targetUserId);
 
       const companies: any[] = [];
-      if (isSystemOwner) {
+      if (isAdminRole) {
         const memberships = await storage.getCompaniesForUser(targetUserId);
         for (const m of memberships) {
           if (m.company) companies.push(m.company);
