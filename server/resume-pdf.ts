@@ -260,7 +260,8 @@ export async function generateResumePDF(data: ResumeData): Promise<Buffer> {
 
       const primaryColor = "#1a2e47";
       const accentColor = "#1e5a96";
-      const goldColor = "#808000";
+      const goldColor = "#c9a84c";
+      const companyGold = "#808000";
       const textColor = "#2d3748";
       const lightText = "#64748b";
       const sidebarBg = "#f1f5f9";
@@ -434,7 +435,7 @@ export async function generateResumePDF(data: ResumeData): Promise<Buffer> {
           const lineFontBold = 9;
 
           if (company || projectVal) {
-            doc.font("Helvetica-Bold").fontSize(lineFontBold).fillColor(goldColor);
+            doc.font("Helvetica-Bold").fontSize(lineFontBold).fillColor(companyGold);
             const companyText = company?.name || "";
             doc.text(companyText, mainColX, currentY, { width: mainColWidth, continued: false });
             if (projectVal) {
@@ -480,7 +481,7 @@ export async function generateResumePDF(data: ResumeData): Promise<Buffer> {
           const lineFontBold = 9;
 
           if (job.company || job.projectValue) {
-            doc.font("Helvetica-Bold").fontSize(lineFontBold).fillColor(goldColor);
+            doc.font("Helvetica-Bold").fontSize(lineFontBold).fillColor(companyGold);
             doc.text(job.company, mainColX, currentY, { width: mainColWidth, continued: false });
             if (job.projectValue) {
               const valWidth = doc.widthOfString(job.projectValue);
