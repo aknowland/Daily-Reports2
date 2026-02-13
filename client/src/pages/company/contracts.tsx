@@ -72,6 +72,7 @@ import {
 import { useState, useRef } from "react";
 import type { ContractWithProjects, Project, Client, ContractAttachment, ProposalWithDetails } from "@shared/schema";
 import { ProposalDialog } from "@/components/proposal-dialog";
+import { ContractGanttChart } from "@/components/contract-gantt-chart";
 import { ClientSelect } from "@/components/client-select";
 import { PurchaseOrderSelect } from "@/components/purchase-order-select";
 import { format, differenceInDays, startOfMonth, endOfMonth, eachDayOfInterval, startOfWeek, endOfWeek, isSameMonth, isSameDay, addMonths, subMonths } from "date-fns";
@@ -1353,6 +1354,11 @@ export default function ContractsPage() {
           </div>
         )}
       </div>
+
+      {!isLoading && contracts.length > 0 && (
+        <ContractGanttChart contracts={contracts} />
+      )}
+
       <Tabs value={activeTab} onValueChange={(tab) => {
         setActiveTab(tab);
         // Reset pagination when switching tabs
