@@ -260,7 +260,7 @@ export async function generateResumePDF(data: ResumeData): Promise<Buffer> {
 
       const primaryColor = "#1a2e47";
       const accentColor = "#1e5a96";
-      const goldColor = "#c9a84c";
+      const goldColor = "#808000";
       const textColor = "#2d3748";
       const lightText = "#64748b";
       const sidebarBg = "#f1f5f9";
