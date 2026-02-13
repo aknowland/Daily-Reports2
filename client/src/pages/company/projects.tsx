@@ -122,6 +122,7 @@ export default function CompanyProjectsPage() {
     budgetTrackingMode: "" as "" | "daily_reports" | "scheduled" | "hybrid", // empty = inherit from contract
     inheritBillingRates: true, // true = inherit from contract option
     scopeOfWork: "",
+    projectValue: "",
   });
   const [billingRates, setBillingRates] = useState<BillingRateEntry[]>([{ ...emptyBillingRate }]);
   const [baseHours, setBaseHours] = useState<BaseHoursEntry[]>([]);
@@ -338,7 +339,7 @@ export default function CompanyProjectsPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
       queryClient.invalidateQueries({ queryKey: ["/api/contracts"] });
       setShowCreateDialog(false);
-      setFormData({ name: "", projectNumber: "", client: "", clientId: "", address: "", distributionEmails: "", contractId: "", contractOptionId: "", startDate: "", substantialCompletionDate: "", finalCloseoutDate: "", budgetAmount: "", budgetedHours: "", baseBudget: "", budgetTrackingMode: "", inheritBillingRates: true, scopeOfWork: "" });
+      setFormData({ name: "", projectNumber: "", client: "", clientId: "", address: "", distributionEmails: "", contractId: "", contractOptionId: "", startDate: "", substantialCompletionDate: "", finalCloseoutDate: "", budgetAmount: "", budgetedHours: "", baseBudget: "", budgetTrackingMode: "", inheritBillingRates: true, scopeOfWork: "", projectValue: "" });
       setBillingRates([{ ...emptyBillingRate }]);
       setBaseHours([]);
       toast({
@@ -390,7 +391,7 @@ export default function CompanyProjectsPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/contracts"] });
       setEditingProject(null);
       setLinkedProposal(null);
-      setFormData({ name: "", projectNumber: "", client: "", clientId: "", address: "", distributionEmails: "", contractId: "", contractOptionId: "", startDate: "", substantialCompletionDate: "", finalCloseoutDate: "", budgetAmount: "", budgetedHours: "", baseBudget: "", budgetTrackingMode: "", inheritBillingRates: true, scopeOfWork: "" });
+      setFormData({ name: "", projectNumber: "", client: "", clientId: "", address: "", distributionEmails: "", contractId: "", contractOptionId: "", startDate: "", substantialCompletionDate: "", finalCloseoutDate: "", budgetAmount: "", budgetedHours: "", baseBudget: "", budgetTrackingMode: "", inheritBillingRates: true, scopeOfWork: "", projectValue: "" });
       setBillingRates([{ ...emptyBillingRate }]);
       setBaseHours([]);
       toast({
@@ -486,6 +487,7 @@ export default function CompanyProjectsPage() {
       budgetTrackingMode: (project as any).budgetTrackingMode || "",
       inheritBillingRates: inheritRates,
       scopeOfWork: (project as any).scopeOfWork || "",
+      projectValue: (project as any).projectValue || "",
     });
     
     // Load existing billing rates if not inheriting
@@ -819,7 +821,7 @@ export default function CompanyProjectsPage() {
           setShowCreateDialog(false);
           setEditingProject(null);
           setLinkedProposal(null);
-          setFormData({ name: "", projectNumber: "", client: "", clientId: "", address: "", distributionEmails: "", contractId: "", contractOptionId: "", startDate: "", substantialCompletionDate: "", finalCloseoutDate: "", budgetAmount: "", budgetedHours: "", baseBudget: "", budgetTrackingMode: "", inheritBillingRates: true, scopeOfWork: "" });
+          setFormData({ name: "", projectNumber: "", client: "", clientId: "", address: "", distributionEmails: "", contractId: "", contractOptionId: "", startDate: "", substantialCompletionDate: "", finalCloseoutDate: "", budgetAmount: "", budgetedHours: "", baseBudget: "", budgetTrackingMode: "", inheritBillingRates: true, scopeOfWork: "", projectValue: "" });
           setBillingRates([{ ...emptyBillingRate }]);
           setBaseHours([]);
         }
@@ -877,6 +879,16 @@ export default function CompanyProjectsPage() {
                 onChange={(e) => setFormData({ ...formData, address: e.target.value })}
                 placeholder="Project address"
                 data-testid="input-project-address"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="projectValue">Project Value</Label>
+              <Input
+                id="projectValue"
+                value={formData.projectValue}
+                onChange={(e) => setFormData({ ...formData, projectValue: e.target.value })}
+                placeholder="e.g. $20 Million"
+                data-testid="input-project-value"
               />
             </div>
             <div className="space-y-2">
@@ -1477,7 +1489,7 @@ export default function CompanyProjectsPage() {
                 setShowCreateDialog(false);
                 setEditingProject(null);
                 setLinkedProposal(null);
-                setFormData({ name: "", projectNumber: "", client: "", clientId: "", address: "", distributionEmails: "", contractId: "", contractOptionId: "", startDate: "", substantialCompletionDate: "", finalCloseoutDate: "", budgetAmount: "", budgetedHours: "", baseBudget: "", budgetTrackingMode: "", inheritBillingRates: true, scopeOfWork: "" });
+                setFormData({ name: "", projectNumber: "", client: "", clientId: "", address: "", distributionEmails: "", contractId: "", contractOptionId: "", startDate: "", substantialCompletionDate: "", finalCloseoutDate: "", budgetAmount: "", budgetedHours: "", baseBudget: "", budgetTrackingMode: "", inheritBillingRates: true, scopeOfWork: "", projectValue: "" });
                 setBillingRates([{ ...emptyBillingRate }]);
                 setBaseHours([]);
               }}
