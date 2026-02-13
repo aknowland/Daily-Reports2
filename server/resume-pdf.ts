@@ -188,11 +188,13 @@ function drawBadgeOverlay(
     badgeInnerY += logoSectionH;
   }
 
-  const photoFramePad = 4;
-  const framedPhotoX = photoInnerX + photoFramePad;
-  const framedPhotoY = badgeInnerY + photoFramePad;
-  const framedPhotoW = photoInnerW - photoFramePad * 2;
-  const framedPhotoH = photoH - photoFramePad * 2;
+  const photoFramePadX = 4;
+  const photoFramePadTop = 2;
+  const photoFramePadBottom = 6;
+  const framedPhotoX = photoInnerX + photoFramePadX;
+  const framedPhotoY = badgeInnerY + photoFramePadTop;
+  const framedPhotoW = photoInnerW - photoFramePadX * 2;
+  const framedPhotoH = photoH - photoFramePadTop - photoFramePadBottom;
 
   let actualFrameX = framedPhotoX;
   let actualFrameY = framedPhotoY;
