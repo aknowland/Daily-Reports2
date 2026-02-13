@@ -62,7 +62,9 @@ function drawBadgeHeader(
   primaryColor: string,
   goldColor: string,
   licenseStr?: string,
-  companyWebsite?: string
+  companyWebsite?: string,
+  sidebarX?: number,
+  sidebarWidth?: number
 ): { headerHeight: number; badgeX: number; badgeY: number; badgeW: number; badgeH: number; badgePad: number; photoInnerW: number; logoSectionH: number; photoH: number; nameBarH: number; titleBarH: number; footerBarH: number } {
   const pageW = doc.page.width;
 
@@ -83,7 +85,10 @@ function drawBadgeHeader(
   }
 
   const badgePad = 3;
-  const badgeW = 120;
+  const sidebarColLeft = sidebarX != null ? sidebarX - 10 : pageW - 190;
+  const sidebarColWidth = sidebarWidth != null ? sidebarWidth + 20 : 190;
+  const badgeMargin = 8;
+  const badgeW = sidebarColWidth - badgeMargin * 2;
   const photoInnerW = badgeW - badgePad * 2;
   const logoSectionH = companyLogoBuffer ? targetLogoH + 4 : 0;
   const photoH = 100;
@@ -97,7 +102,7 @@ function drawBadgeHeader(
   doc.rect(0, 0, pageW, headerHeight).fill(primaryColor);
   doc.rect(0, headerHeight, pageW, 3).fill(goldColor);
 
-  const badgeX = pageW - badgeW - 25;
+  const badgeX = sidebarColLeft + badgeMargin;
   const badgeY = 8;
 
   const textX = 30;
@@ -267,7 +272,7 @@ export async function generateResumePDF(data: ResumeData): Promise<Buffer> {
       const badgeInfo = drawBadgeHeader(
         doc, data.photoBuffer, fullName, jobTitle, inspectorClass,
         data.companyName, data.companyLogoBuffer, primaryColor, goldColor, licenseStr,
-        data.companyWebsite
+        data.companyWebsite, sidebarX, sidebarWidth
       );
       const headerBottom = badgeInfo.headerHeight;
 
