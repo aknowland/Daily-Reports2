@@ -1,10 +1,11 @@
 import PDFDocument from "pdfkit";
-import { UserProfile, Project, Company } from "@shared/schema";
+import { UserProfile, Project, Company, Client } from "@shared/schema";
 
 interface ResumeData {
   profile: UserProfile;
   projects: Project[];
   companies: Company[];
+  clients: Client[];
   photoBuffer?: Buffer | null;
   companyLogoBuffer?: Buffer | null;
   companyName?: string;
@@ -349,7 +350,7 @@ export async function generateResumePDF(data: ResumeData): Promise<Buffer> {
       }
 
       const assignedProjects = data.projects.filter(p => p.name);
-      const jobHistoryRaw = data.profile.jobHistory as Array<{ title: string; company: string; client?: string; projectName?: string; startDate?: string; endDate?: string; description?: string }> | null;
+      const jobHistoryRaw = data.profile.jobHistory as Array<{ title: string; company: string; client?: string; projectName?: string; startDate?: string; endDate?: string; description?: string; projectValue?: string }> | null;
       const jobHistory = (jobHistoryRaw || []).slice().sort((a, b) => {
         const parseDate = (d?: string) => {
           if (!d || d.toLowerCase() === "present") return Infinity;
@@ -368,34 +369,56 @@ export async function generateResumePDF(data: ResumeData): Promise<Buffer> {
             currentY = 50;
           }
 
-          doc.fillColor(primaryColor).font("Helvetica-Bold").fontSize(10);
-          doc.text(project.name, rightColX, currentY, { width: rightColWidth });
-          currentY = doc.y + 2;
-
-          const details: string[] = [];
-          if (project.projectNumber) details.push(project.projectNumber);
-
           const company = data.companies.find(c => c.id === project.companyId);
-          if (company) details.push(company.name);
+          const clientRecord = (project as any).clientId
+            ? data.clients.find(c => c.id === (project as any).clientId)
+            : null;
+          const clientName = clientRecord?.name || project.client || null;
+          const projectVal = (project as any).projectValue || null;
 
-          if (project.startDate || project.substantialCompletionDate) {
-            const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-            const formatDateUTC = (d: Date) => `${months[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
-            const start = project.startDate ? formatDateUTC(new Date(project.startDate)) : "";
-            const end = project.substantialCompletionDate ? formatDateUTC(new Date(project.substantialCompletionDate)) : "Present";
-            details.push(`${start} - ${end}`);
+          const getYearRange = () => {
+            if (!project.startDate && !project.substantialCompletionDate) return null;
+            const startYear = project.startDate ? new Date(project.startDate).getUTCFullYear().toString() : "";
+            const endYear = project.substantialCompletionDate ? new Date(project.substantialCompletionDate).getUTCFullYear().toString() : "Present";
+            return `${startYear} - ${endYear}`;
+          };
+          const yearRange = getYearRange();
+
+          const lineFont = 9;
+          const lineFontBold = 9;
+
+          if (company || projectVal) {
+            doc.font("Helvetica-Bold").fontSize(lineFontBold).fillColor(primaryColor);
+            const companyText = company?.name || "";
+            doc.text(companyText, rightColX, currentY, { width: rightColWidth, continued: false });
+            if (projectVal) {
+              const valWidth = doc.widthOfString(projectVal);
+              doc.text(projectVal, rightColX + rightColWidth - valWidth, currentY, { width: valWidth, align: "right" });
+            }
+            currentY = doc.y + 1;
           }
 
-          if (details.length > 0) {
-            doc.fillColor(lightText).font("Helvetica").fontSize(8.5);
-            doc.text(details.join("  |  "), rightColX, currentY, { width: rightColWidth });
-            currentY = doc.y + 2;
+          if (clientName || yearRange) {
+            doc.font("Helvetica").fontSize(lineFont).fillColor(textColor);
+            const clientText = clientName || "";
+            doc.text(clientText, rightColX, currentY, { width: rightColWidth, continued: false });
+            if (yearRange) {
+              const yrWidth = doc.widthOfString(yearRange);
+              doc.text(yearRange, rightColX + rightColWidth - yrWidth, currentY, { width: yrWidth, align: "right" });
+            }
+            currentY = doc.y + 1;
           }
+
+          const projectNameParts: string[] = [project.name];
+          if (project.projectNumber) projectNameParts.push(`(${project.projectNumber})`);
+          doc.font("Helvetica-Bold").fontSize(lineFont).fillColor(accentColor);
+          doc.text(projectNameParts.join(" "), rightColX, currentY, { width: rightColWidth });
+          currentY = doc.y + 1;
 
           if ((project as any).scopeOfWork) {
-            doc.fillColor(textColor).font("Helvetica").fontSize(9);
+            doc.fillColor(textColor).font("Helvetica").fontSize(8.5);
             doc.text((project as any).scopeOfWork, rightColX, currentY, { width: rightColWidth, lineGap: 2 });
-            currentY = doc.y + 2;
+            currentY = doc.y + 1;
           }
 
           currentY += 10;
@@ -407,25 +430,45 @@ export async function generateResumePDF(data: ResumeData): Promise<Buffer> {
             currentY = 50;
           }
 
-          doc.fillColor(primaryColor).font("Helvetica-Bold").fontSize(10);
-          doc.text(job.title, rightColX, currentY, { width: rightColWidth });
-          currentY = doc.y + 2;
+          const lineFont = 9;
+          const lineFontBold = 9;
 
-          const jobDetails: string[] = [job.company];
-          if (job.client) jobDetails.push(job.client);
-          if (job.projectName) jobDetails.push(job.projectName);
-          if (job.startDate || job.endDate) {
-            jobDetails.push(`${job.startDate || "?"} - ${job.endDate || "Present"}`);
+          if (job.company || job.projectValue) {
+            doc.font("Helvetica-Bold").fontSize(lineFontBold).fillColor(primaryColor);
+            doc.text(job.company, rightColX, currentY, { width: rightColWidth, continued: false });
+            if (job.projectValue) {
+              const valWidth = doc.widthOfString(job.projectValue);
+              doc.text(job.projectValue, rightColX + rightColWidth - valWidth, currentY, { width: valWidth, align: "right" });
+            }
+            currentY = doc.y + 1;
           }
 
-          doc.fillColor(lightText).font("Helvetica").fontSize(8.5);
-          doc.text(jobDetails.join("  |  "), rightColX, currentY, { width: rightColWidth });
-          currentY = doc.y + 2;
+          if (job.client || job.startDate || job.endDate) {
+            doc.font("Helvetica").fontSize(lineFont).fillColor(textColor);
+            const clientText = job.client || "";
+            doc.text(clientText, rightColX, currentY, { width: rightColWidth, continued: false });
+            if (job.startDate || job.endDate) {
+              const dateRange = `${job.startDate || "?"} - ${job.endDate || "Present"}`;
+              const yrWidth = doc.widthOfString(dateRange);
+              doc.text(dateRange, rightColX + rightColWidth - yrWidth, currentY, { width: yrWidth, align: "right" });
+            }
+            currentY = doc.y + 1;
+          }
+
+          if (job.projectName) {
+            doc.font("Helvetica-Bold").fontSize(lineFont).fillColor(accentColor);
+            doc.text(job.projectName, rightColX, currentY, { width: rightColWidth });
+            currentY = doc.y + 1;
+          } else {
+            doc.font("Helvetica-Bold").fontSize(lineFont).fillColor(accentColor);
+            doc.text(job.title, rightColX, currentY, { width: rightColWidth });
+            currentY = doc.y + 1;
+          }
 
           if (job.description) {
-            doc.fillColor(textColor).font("Helvetica").fontSize(9);
+            doc.fillColor(textColor).font("Helvetica").fontSize(8.5);
             doc.text(job.description, rightColX, currentY, { width: rightColWidth, lineGap: 2 });
-            currentY = doc.y + 2;
+            currentY = doc.y + 1;
           }
 
           currentY += 10;

@@ -13716,6 +13716,7 @@ export async function registerRoutes(
         profile: fakeProfile,
         projects: [],
         companies: company ? [company] : [],
+        clients: [],
         photoBuffer,
         companyLogoBuffer,
         companyName: company?.name,
@@ -13761,6 +13762,15 @@ export async function registerRoutes(
         }
       }
 
+      const clientIds = [...new Set(projects.map(p => (p as any).clientId).filter(Boolean))];
+      const clients = [];
+      for (const clId of clientIds) {
+        if (clId) {
+          const client = await storage.getClient(clId);
+          if (client) clients.push(client);
+        }
+      }
+
       let photoBuffer: Buffer | null = null;
       if (profile.profilePhotoPath) {
         try {
@@ -13799,6 +13809,7 @@ export async function registerRoutes(
         profile,
         projects,
         companies,
+        clients,
         photoBuffer,
         companyLogoBuffer,
         companyName,
