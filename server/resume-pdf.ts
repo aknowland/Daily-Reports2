@@ -169,15 +169,15 @@ function drawBadgeOverlay(
 
   if (companyLogoBuffer) {
     try {
-      const logoAreaW = badgeW - badgePad * 2 - 8;
+      const logoAreaW = photoInnerW;
       const dims = getImageDimensions(companyLogoBuffer);
-      let fitW = 100, fitH = 44;
+      let fitW = logoAreaW, fitH = 44;
       if (dims && dims.width > 0 && dims.height > 0) {
         const aspect = dims.width / dims.height;
         fitH = 44;
         fitW = Math.min(fitH * aspect, logoAreaW);
       }
-      const logoX = badgeX + badgePad + 4 + (logoAreaW - fitW) / 2;
+      const logoX = photoInnerX + (logoAreaW - fitW) / 2;
       const logoY = badgeInnerY + (logoSectionH - fitH) / 2;
       doc.image(companyLogoBuffer, logoX, logoY, {
         fit: [fitW, fitH],
