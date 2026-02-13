@@ -13054,8 +13054,8 @@ export async function registerRoutes(
         return res.status(403).json({ message: "Only company admins can update company information" });
       }
 
-      const { name, address, phone, email } = req.body;
-      const updated = await storage.updateCompany(profile.activeCompanyId, { name, address, phone, email });
+      const { name, address, phone, email, website } = req.body;
+      const updated = await storage.updateCompany(profile.activeCompanyId, { name, address, phone, email, website });
       res.json(updated);
     } catch (error) {
       console.error("Error updating company:", error);
@@ -13720,6 +13720,7 @@ export async function registerRoutes(
         photoBuffer,
         companyLogoBuffer,
         companyName: company?.name,
+        companyWebsite: company?.website || undefined,
       });
 
       const fullName = `${inspector.firstName || ""}_${inspector.lastName || ""}`.trim().replace(/\s+/g, "_") || "resume";
@@ -13805,6 +13806,8 @@ export async function registerRoutes(
         }
       }
 
+      const companyWebsite = companies.length > 0 ? companies[0].website || undefined : undefined;
+
       const pdfBuffer = await generateResumePDF({
         profile,
         projects,
@@ -13813,6 +13816,7 @@ export async function registerRoutes(
         photoBuffer,
         companyLogoBuffer,
         companyName,
+        companyWebsite,
       });
 
       const fullName = `${profile.firstName || ""}_${profile.lastName || ""}`.trim().replace(/\s+/g, "_") || "resume";
