@@ -188,14 +188,20 @@ function drawBadgeOverlay(
     badgeInnerY += logoSectionH;
   }
 
+  const photoFramePad = 4;
+  const framedPhotoX = photoInnerX + photoFramePad;
+  const framedPhotoY = badgeInnerY + photoFramePad;
+  const framedPhotoW = photoInnerW - photoFramePad * 2;
+  const framedPhotoH = photoH - photoFramePad * 2;
+
   if (photoBuffer) {
     try {
       doc.save();
-      doc.rect(photoInnerX, badgeInnerY, photoInnerW, photoH).clip();
-      doc.image(photoBuffer, photoInnerX, badgeInnerY, {
-        width: photoInnerW,
-        height: photoH,
-        fit: [photoInnerW, photoH],
+      doc.rect(framedPhotoX, framedPhotoY, framedPhotoW, framedPhotoH).clip();
+      doc.image(photoBuffer, framedPhotoX, framedPhotoY, {
+        width: framedPhotoW,
+        height: framedPhotoH,
+        fit: [framedPhotoW, framedPhotoH],
         align: "center",
         valign: "center",
       });
@@ -204,10 +210,10 @@ function drawBadgeOverlay(
   } else {
     doc.fillColor("#8b7355").font("Helvetica-Bold").fontSize(30);
     const initials = fullName.split(" ").map(n => n[0]).join("").substring(0, 2).toUpperCase();
-    doc.text(initials, photoInnerX, badgeInnerY + photoH / 2 - 15, { width: photoInnerW, align: "center" });
+    doc.text(initials, framedPhotoX, framedPhotoY + framedPhotoH / 2 - 15, { width: framedPhotoW, align: "center" });
   }
 
-  doc.rect(photoInnerX, badgeInnerY, photoInnerW, photoH).lineWidth(0.75).strokeColor(goldColor).stroke();
+  doc.rect(framedPhotoX, framedPhotoY, framedPhotoW, framedPhotoH).lineWidth(0.75).strokeColor(goldColor).stroke();
 
   badgeInnerY += photoH;
 
