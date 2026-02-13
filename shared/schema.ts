@@ -189,6 +189,7 @@ export const projects = pgTable("projects", {
   budgetTrackingMode: budgetTrackingModeEnum("budget_tracking_mode"), // null = inherit from contract
   inheritBillingRates: boolean("inherit_billing_rates").default(true), // true = inherit from contract option, false = use project-specific rates
   scopeOfWork: text("scope_of_work"),
+  projectValue: text("project_value"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
