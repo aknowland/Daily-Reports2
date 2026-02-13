@@ -70,7 +70,7 @@ function drawBadgeHeader(
 
   let logoDisplayW = 0;
   let logoDisplayH = 0;
-  const targetLogoH = 44;
+  const targetLogoH = 38;
 
   if (companyLogoBuffer) {
     const dims = getImageDimensions(companyLogoBuffer);
@@ -90,7 +90,7 @@ function drawBadgeHeader(
   const photoInnerW = 130;
   const badgeW = photoInnerW + badgePad * 2;
   const logoSectionH = companyLogoBuffer ? targetLogoH + 4 : 0;
-  const photoH = 100;
+  const photoH = 115;
   const nameBarH = 16;
   const titleBarH = 13;
   const footerBarH = companyWebsite ? 12 : 0;
