@@ -13752,19 +13752,27 @@ export async function registerRoutes(
         return res.status(404).json({ message: "User profile not found" });
       }
 
-      const projects = await storage.getAllProjectsForUser(targetUserId);
+      const isSystemOwner = profile.role === "system_owner";
+      const projects = isSystemOwner ? [] : await storage.getAllProjectsForUser(targetUserId);
 
-      const companyIds = [...new Set(projects.map(p => p.companyId).filter(Boolean))];
-      const companies = [];
-      for (const cId of companyIds) {
-        if (cId) {
-          const company = await storage.getCompany(cId);
-          if (company) companies.push(company);
+      const companies: any[] = [];
+      if (isSystemOwner) {
+        const memberships = await storage.getCompaniesForUser(targetUserId);
+        for (const m of memberships) {
+          if (m.company) companies.push(m.company);
+        }
+      } else {
+        const companyIds = [...new Set(projects.map(p => p.companyId).filter(Boolean))];
+        for (const cId of companyIds) {
+          if (cId) {
+            const company = await storage.getCompany(cId);
+            if (company) companies.push(company);
+          }
         }
       }
 
       const clientIds = [...new Set(projects.map(p => (p as any).clientId).filter(Boolean))];
-      const clients = [];
+      const clients: any[] = [];
       for (const clId of clientIds) {
         if (clId) {
           const client = await storage.getClient(clId);
