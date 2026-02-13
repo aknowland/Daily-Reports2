@@ -158,7 +158,7 @@ function drawBadgeOverlay(
   const startR = 0xff, startG = 0xff, startB = 0xff;
   const endR = 0xd4, endG = 0xb8, endB = 0x96;
   for (let i = 0; i < gradientSteps; i++) {
-    const t = i / (gradientSteps - 1);
+    const t = Math.pow(i / (gradientSteps - 1), 0.6);
     const r = Math.round(startR + (endR - startR) * t);
     const g = Math.round(startG + (endG - startG) * t);
     const b = Math.round(startB + (endB - startB) * t);
