@@ -84,13 +84,13 @@ function drawBadgeHeader(
     }
   }
 
-  const badgePad = 2;
+  const badgePad = 3;
   const sidebarColLeft = sidebarX != null ? sidebarX - 10 : pageW - 190;
   const sidebarColWidth = sidebarWidth != null ? sidebarWidth + 20 : 190;
   const badgeMargin = 8;
   const badgeW = sidebarColWidth - badgeMargin * 2;
   const photoInnerW = badgeW - badgePad * 2;
-  const logoSectionH = companyLogoBuffer ? 40 : 0;
+  const logoSectionH = companyLogoBuffer ? targetLogoH + 4 : 0;
   const photoH = 100;
   const nameBarH = 16;
   const titleBarH = 13;
@@ -171,10 +171,10 @@ function drawBadgeOverlay(
     try {
       const logoAreaW = badgeW - badgePad * 2 - 8;
       const dims = getImageDimensions(companyLogoBuffer);
-      let fitW = 100, fitH = 36;
+      let fitW = 100, fitH = 44;
       if (dims && dims.width > 0 && dims.height > 0) {
         const aspect = dims.width / dims.height;
-        fitH = 36;
+        fitH = 44;
         fitW = Math.min(fitH * aspect, logoAreaW);
       }
       const logoX = badgeX + badgePad + 4 + (logoAreaW - fitW) / 2;
@@ -293,8 +293,12 @@ export async function generateResumePDF(data: ResumeData): Promise<Buffer> {
           .font("Helvetica-Bold")
           .fontSize(9)
           .text(title.toUpperCase(), sidebarX, sidebarY, { width: sidebarWidth, characterSpacing: 0.8 });
+        const titleTextWidth = doc.widthOfString(title.toUpperCase(), { characterSpacing: 0.8 });
         sidebarY += 13;
-        sidebarY += 4;
+        doc.save();
+        doc.moveTo(sidebarX, sidebarY - 2).lineTo(sidebarX + Math.min(titleTextWidth + 4, sidebarWidth), sidebarY - 2).lineWidth(1.5).strokeColor(goldColor).stroke();
+        doc.restore();
+        sidebarY += 8;
         return true;
       };
 
@@ -385,8 +389,12 @@ export async function generateResumePDF(data: ResumeData): Promise<Buffer> {
           .font("Helvetica-Bold")
           .fontSize(11)
           .text(title.toUpperCase(), mainColX, currentY, { width: mainColWidth, characterSpacing: 0.8 });
+        const titleTextWidth = doc.widthOfString(title.toUpperCase(), { characterSpacing: 0.8 });
         currentY += 16;
-        currentY += 4;
+        doc.save();
+        doc.moveTo(mainColX, currentY - 2).lineTo(mainColX + Math.min(titleTextWidth + 4, mainColWidth), currentY - 2).lineWidth(1.5).strokeColor(goldColor).stroke();
+        doc.restore();
+        currentY += 8;
       };
 
       const bio = data.profile.bio as string | null;
