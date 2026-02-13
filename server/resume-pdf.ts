@@ -194,14 +194,31 @@ function drawBadgeOverlay(
   const framedPhotoW = photoInnerW - photoFramePad * 2;
   const framedPhotoH = photoH - photoFramePad * 2;
 
+  let actualFrameX = framedPhotoX;
+  let actualFrameY = framedPhotoY;
+  let actualFrameW = framedPhotoW;
+  let actualFrameH = framedPhotoH;
+
   if (photoBuffer) {
     try {
+      const imgObj = (doc as any).openImage(photoBuffer);
+      const imgW = imgObj.width;
+      const imgH = imgObj.height;
+      const scaleW = framedPhotoW / imgW;
+      const scaleH = framedPhotoH / imgH;
+      const scale = Math.min(scaleW, scaleH);
+      const renderedW = imgW * scale;
+      const renderedH = imgH * scale;
+      actualFrameX = framedPhotoX + (framedPhotoW - renderedW) / 2;
+      actualFrameY = framedPhotoY + (framedPhotoH - renderedH) / 2;
+      actualFrameW = renderedW;
+      actualFrameH = renderedH;
+
       doc.save();
-      doc.rect(framedPhotoX, framedPhotoY, framedPhotoW, framedPhotoH).clip();
-      doc.image(photoBuffer, framedPhotoX, framedPhotoY, {
-        fit: [framedPhotoW, framedPhotoH],
-        align: "center",
-        valign: "center",
+      doc.rect(actualFrameX, actualFrameY, actualFrameW, actualFrameH).clip();
+      doc.image(imgObj, actualFrameX, actualFrameY, {
+        width: actualFrameW,
+        height: actualFrameH,
       });
       doc.restore();
     } catch (e) {}
@@ -211,7 +228,7 @@ function drawBadgeOverlay(
     doc.text(initials, framedPhotoX, framedPhotoY + framedPhotoH / 2 - 15, { width: framedPhotoW, align: "center" });
   }
 
-  doc.rect(framedPhotoX, framedPhotoY, framedPhotoW, framedPhotoH).lineWidth(0.75).strokeColor(goldColor).stroke();
+  doc.rect(actualFrameX, actualFrameY, actualFrameW, actualFrameH).lineWidth(0.75).strokeColor(goldColor).stroke();
 
   badgeInnerY += photoH;
 
