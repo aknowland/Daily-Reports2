@@ -199,7 +199,7 @@ function drawBadgeOverlay(
       doc.save();
       doc.rect(framedPhotoX, framedPhotoY, framedPhotoW, framedPhotoH).clip();
       doc.image(photoBuffer, framedPhotoX, framedPhotoY, {
-        cover: [framedPhotoW, framedPhotoH],
+        fit: [framedPhotoW, framedPhotoH],
         align: "center",
         valign: "center",
       });
