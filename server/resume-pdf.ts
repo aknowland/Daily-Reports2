@@ -84,17 +84,17 @@ function drawBadgeHeader(
     }
   }
 
-  const badgePad = 0;
+  const badgePad = 2;
   const sidebarColLeft = sidebarX != null ? sidebarX - 10 : pageW - 190;
   const sidebarColWidth = sidebarWidth != null ? sidebarWidth + 20 : 190;
   const badgeMargin = 8;
   const badgeW = sidebarColWidth - badgeMargin * 2;
-  const photoInnerW = badgeW;
-  const logoSectionH = companyLogoBuffer ? 30 : 0;
-  const photoH = 150;
-  const nameBarH = 14;
-  const titleBarH = 11;
-  const footerBarH = companyWebsite ? 10 : 0;
+  const photoInnerW = badgeW - badgePad * 2;
+  const logoSectionH = companyLogoBuffer ? 40 : 0;
+  const photoH = 100;
+  const nameBarH = 16;
+  const titleBarH = 13;
+  const footerBarH = companyWebsite ? 12 : 0;
   const badgeH = badgePad + logoSectionH + photoH + nameBarH + titleBarH + footerBarH + badgePad;
 
   const headerHeight = 85;
@@ -153,36 +153,31 @@ function drawBadgeOverlay(
   let badgeInnerY = badgeY + badgePad;
   const photoInnerX = badgeX + badgePad;
 
-  if (companyLogoBuffer && logoSectionH > 0) {
-    const gradientSteps = 15;
-    const stepH = logoSectionH / gradientSteps;
-    const startR = 0xff, startG = 0xff, startB = 0xff;
-    const endR = 0xd4, endG = 0xb8, endB = 0x96;
-    for (let i = 0; i < gradientSteps; i++) {
-      const t = i / (gradientSteps - 1);
-      const r = Math.round(startR + (endR - startR) * t);
-      const g = Math.round(startG + (endG - startG) * t);
-      const b = Math.round(startB + (endB - startB) * t);
-      const hex = `#${r.toString(16).padStart(2, "0")}${g.toString(16).padStart(2, "0")}${b.toString(16).padStart(2, "0")}`;
-      doc.rect(photoInnerX, badgeInnerY + i * stepH, photoInnerW, stepH + 0.5).fill(hex);
-    }
+  const gradientTotalH = logoSectionH + photoH;
+  const gradientSteps = 30;
+  const stepH = gradientTotalH / gradientSteps;
+  const startR = 0xff, startG = 0xff, startB = 0xff;
+  const endR = 0xd4, endG = 0xb8, endB = 0x96;
+  for (let i = 0; i < gradientSteps; i++) {
+    const t = i / (gradientSteps - 1);
+    const r = Math.round(startR + (endR - startR) * t);
+    const g = Math.round(startG + (endG - startG) * t);
+    const b = Math.round(startB + (endB - startB) * t);
+    const hex = `#${r.toString(16).padStart(2, "0")}${g.toString(16).padStart(2, "0")}${b.toString(16).padStart(2, "0")}`;
+    doc.rect(photoInnerX, badgeInnerY + i * stepH, photoInnerW, stepH + 0.5).fill(hex);
+  }
 
+  if (companyLogoBuffer) {
     try {
-      const logoAreaW = photoInnerW - 4;
+      const logoAreaW = badgeW - badgePad * 2 - 8;
       const dims = getImageDimensions(companyLogoBuffer);
-      let fitH = logoSectionH - 4;
-      let fitW = logoAreaW;
+      let fitW = 100, fitH = 36;
       if (dims && dims.width > 0 && dims.height > 0) {
         const aspect = dims.width / dims.height;
-        const candidateW = fitH * aspect;
-        if (candidateW > logoAreaW) {
-          fitW = logoAreaW;
-          fitH = logoAreaW / aspect;
-        } else {
-          fitW = candidateW;
-        }
+        fitH = 36;
+        fitW = Math.min(fitH * aspect, logoAreaW);
       }
-      const logoX = photoInnerX + 2 + (logoAreaW - fitW) / 2;
+      const logoX = badgeX + badgePad + 4 + (logoAreaW - fitW) / 2;
       const logoY = badgeInnerY + (logoSectionH - fitH) / 2;
       doc.image(companyLogoBuffer, logoX, logoY, {
         fit: [fitW, fitH],
@@ -215,7 +210,7 @@ function drawBadgeOverlay(
   badgeInnerY += photoH;
 
   doc.rect(badgeX + badgePad, badgeInnerY, photoInnerW, nameBarH).fill(goldColor);
-  const nameFontSize = 8;
+  const nameFontSize = 8.8;
   doc.fillColor("#ffffff").font("Helvetica-Bold").fontSize(nameFontSize);
   const nameTextY = badgeInnerY + (nameBarH - nameFontSize) / 2;
   doc.text(fullName, badgeX + badgePad + 1, nameTextY, { width: photoInnerW - 2, align: "center" });
@@ -223,7 +218,7 @@ function drawBadgeOverlay(
 
   doc.rect(badgeX + badgePad, badgeInnerY, photoInnerW, titleBarH).fill("#3d3926");
   const titleText = inspectorClass || jobTitle;
-  const titleFontSize = 6;
+  const titleFontSize = 6.5;
   doc.fillColor(goldColor).font("Helvetica-Bold").fontSize(titleFontSize);
   const titleTextY = badgeInnerY + (titleBarH - titleFontSize) / 2;
   doc.text(titleText, badgeX + badgePad + 1, titleTextY, { width: photoInnerW - 2, align: "center" });
