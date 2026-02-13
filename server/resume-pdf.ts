@@ -87,9 +87,8 @@ function drawBadgeHeader(
   const badgePad = 0.75;
   const sidebarColLeft = sidebarX != null ? sidebarX - 10 : pageW - 190;
   const sidebarColWidth = sidebarWidth != null ? sidebarWidth + 20 : 190;
-  const badgeMargin = 1;
-  const badgeW = sidebarColWidth - badgeMargin * 2;
-  const photoInnerW = badgeW - badgePad * 2;
+  const photoInnerW = 130;
+  const badgeW = photoInnerW + badgePad * 2;
   const logoSectionH = companyLogoBuffer ? targetLogoH + 4 : 0;
   const photoH = 100;
   const nameBarH = 16;
@@ -102,7 +101,7 @@ function drawBadgeHeader(
   doc.rect(0, 0, pageW, headerHeight).fill(primaryColor);
   doc.rect(0, headerHeight, pageW, 3).fill(goldColor);
 
-  const badgeX = sidebarColLeft + badgeMargin;
+  const badgeX = sidebarColLeft + (sidebarColWidth - badgeW) / 2;
   const badgeY = 8;
 
   const textX = 30;
