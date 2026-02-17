@@ -6293,6 +6293,27 @@ export async function registerRoutes(
         }
       }
       
+      // Send bid due date notification to admins if applicable
+      if (contract.bidDueDate) {
+        try {
+          const { Resend } = await import('resend');
+          const resend = new Resend(process.env.RESEND_API_KEY);
+          const { sendBidCreatedNotification } = await import('./notification-processor');
+          const client = contract.clientId ? await storage.getClient(contract.clientId) : null;
+          await sendBidCreatedNotification(resend, {
+            type: 'contract',
+            name: contract.name,
+            number: contract.contractNumber,
+            clientName: client?.name || null,
+            bidDueDate: contract.bidDueDate,
+            companyId: profile.activeCompanyId,
+            description: contract.description || null,
+          });
+        } catch (notifError) {
+          console.error("Failed to send bid notification:", notifError);
+        }
+      }
+
       // Return contract with options
       const fullContract = await storage.getContract(contract.id);
       res.status(201).json(fullContract);
@@ -8407,6 +8428,26 @@ export async function registerRoutes(
         }
       }
       
+      // Send bid notification if proposal has an end date (bid deadline)
+      if (proposal.endDate) {
+        try {
+          const { Resend } = await import('resend');
+          const resend = new Resend(process.env.RESEND_API_KEY);
+          const { sendBidCreatedNotification } = await import('./notification-processor');
+          const client = proposal.clientId ? await storage.getClient(proposal.clientId) : null;
+          await sendBidCreatedNotification(resend, {
+            type: 'proposal',
+            name: proposal.projectName,
+            number: proposal.proposalNumber,
+            clientName: client?.name || proposal.clientName || null,
+            bidDueDate: proposal.endDate,
+            companyId: profile.activeCompanyId,
+          });
+        } catch (notifError) {
+          console.error("Failed to send proposal bid notification:", notifError);
+        }
+      }
+
       const fullProposal = await storage.getProposal(proposal.id);
       res.status(201).json(fullProposal);
     } catch (error) {
