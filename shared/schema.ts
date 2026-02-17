@@ -489,7 +489,8 @@ export const contractOptionInspectors = pgTable("contract_option_inspectors", {
 export const contractNotificationTypeEnum = pgEnum("contract_notification_type", [
   "start_date",
   "substantial_completion",
-  "final_closeout"
+  "final_closeout",
+  "bid_due_date"
 ]);
 
 // Contract notifications table - tracks sent notifications to prevent duplicates

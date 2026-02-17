@@ -6,6 +6,7 @@ export const NOTIFICATION_INTERVALS = {
   start_date: [30, 14, 7] as const,
   substantial_completion: [120, 90, 60, 30, 14, 3] as const,
   final_closeout: [10, 3] as const,
+  bid_due_date: [14, 7, 3, 1] as const,
 };
 
 // Budget milestone percentages
@@ -97,6 +98,7 @@ export async function processContractNotifications(
       
       // 2. Check for upcoming date notifications
       const dateChecks = [
+        { type: 'bid_due_date' as const, date: (contract as any).bidDueDate, label: 'Bid Due Date' },
         { type: 'start_date' as const, date: contract.startDate, label: 'Contract Start Date' },
         { type: 'substantial_completion' as const, date: contract.substantialCompletionDate, label: 'Substantial Completion Date' },
         { type: 'final_closeout' as const, date: contract.finalCloseoutDate, label: 'Final Closeout Date' },
@@ -491,4 +493,67 @@ export async function processContractNotifications(
   }
   
   return results;
+}
+
+export async function sendBidCreatedNotification(
+  resendInstance: any,
+  params: {
+    type: 'contract' | 'proposal';
+    name: string;
+    number: string;
+    clientName?: string | null;
+    bidDueDate?: Date | string | null;
+    companyId: string;
+    description?: string | null;
+  }
+): Promise<void> {
+  if (!resendInstance || !params.bidDueDate) return;
+
+  const adminEmails = await storage.getCompanyAdminEmails(params.companyId);
+  if (adminEmails.length === 0) return;
+
+  const company = await storage.getCompany(params.companyId);
+  const dueDate = new Date(params.bidDueDate);
+  const formattedDate = dueDate.toLocaleDateString('en-US', {
+    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+  });
+
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  dueDate.setHours(0, 0, 0, 0);
+  const daysUntil = Math.max(0, Math.ceil((dueDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)));
+
+  const typeLabel = params.type === 'contract' ? 'Contract' : 'Proposal';
+  const urgencyColor = daysUntil <= 3 ? '#c53030' : daysUntil <= 7 ? '#c05621' : '#2d3748';
+  const urgencyBg = daysUntil <= 3 ? '#fed7d7' : daysUntil <= 7 ? '#feebc8' : '#ebf8ff';
+  const urgencyBorder = daysUntil <= 3 ? '#fc8181' : daysUntil <= 7 ? '#f6ad55' : '#63b3ed';
+
+  try {
+    await resendInstance.emails.send({
+      from: 'Field Daily Reports <noreply@mail.replit.app>',
+      to: adminEmails,
+      subject: `New ${typeLabel} Created: ${params.name} - Bid Due ${formattedDate}`,
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <h2 style="color: #1a365d;">New ${typeLabel} with Upcoming Bid</h2>
+          <p>A new ${typeLabel.toLowerCase()} has been created with an upcoming bid due date:</p>
+          <div style="background: ${urgencyBg}; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid ${urgencyBorder};">
+            <h3 style="margin: 0 0 10px 0; color: #2d3748;">${params.name}</h3>
+            <p style="margin: 5px 0;"><strong>${typeLabel} #:</strong> ${params.number}</p>
+            ${params.clientName ? `<p style="margin: 5px 0;"><strong>Client:</strong> ${params.clientName}</p>` : ''}
+            <hr style="border: none; border-top: 1px solid ${urgencyBorder}; margin: 15px 0;">
+            <p style="margin: 5px 0; font-size: 18px; color: ${urgencyColor};"><strong>Bid Due:</strong> ${formattedDate}</p>
+            <p style="margin: 5px 0; color: ${urgencyColor};"><strong>Days Remaining:</strong> ${daysUntil}</p>
+            ${params.description ? `<p style="margin: 10px 0 5px 0;"><strong>Description:</strong> ${params.description}</p>` : ''}
+          </div>
+          ${daysUntil <= 3 ? `<p style="color: #c53030; font-weight: bold;">URGENT: This bid is due in ${daysUntil} day${daysUntil !== 1 ? 's' : ''}. Immediate action required.</p>` : ''}
+          <p style="color: #718096; font-size: 14px;">
+            This is an automated notification from ${company?.name || 'Field Daily Reports'}.
+          </p>
+        </div>
+      `,
+    });
+  } catch (e: any) {
+    console.error(`Failed to send bid created notification: ${e.message}`);
+  }
 }
