@@ -8388,17 +8388,16 @@ export async function registerRoutes(
       // Generate proposal number
       const proposalNumber = await storage.getNextProposalNumber(profile.activeCompanyId);
       
-      // Convert date strings to Date objects and handle nullable fields
       const processedData = {
         ...proposalData,
         companyId: profile.activeCompanyId,
         proposalNumber,
         createdById: userId,
-        startDate: proposalData.startDate || null,
-        endDate: proposalData.endDate || null,
-        clientId: proposalData.clientId || null, // Convert empty string to null
-        contractId: proposalData.contractId || null, // Link to contract
-        projectId: proposalData.projectId || null, // Link to project
+        startDate: proposalData.startDate ? new Date(proposalData.startDate) : null,
+        endDate: proposalData.endDate ? new Date(proposalData.endDate) : null,
+        clientId: proposalData.clientId || null,
+        contractId: proposalData.contractId || null,
+        projectId: proposalData.projectId || null,
       };
       
       const proposal = await storage.createProposal(processedData);
@@ -8476,14 +8475,13 @@ export async function registerRoutes(
       
       const { options, ...proposalData } = req.body;
       
-      // Handle nullable fields - keep dates as strings to avoid timezone shifts
       const processedData = {
         ...proposalData,
-        startDate: proposalData.startDate || null,
-        endDate: proposalData.endDate || null,
-        clientId: proposalData.clientId || null, // Convert empty string to null
-        contractId: proposalData.contractId || null, // Link to contract
-        projectId: proposalData.projectId || null, // Link to project
+        startDate: proposalData.startDate ? new Date(proposalData.startDate) : null,
+        endDate: proposalData.endDate ? new Date(proposalData.endDate) : null,
+        clientId: proposalData.clientId || null,
+        contractId: proposalData.contractId || null,
+        projectId: proposalData.projectId || null,
       };
       
       const updated = await storage.updateProposal(req.params.id, processedData);
