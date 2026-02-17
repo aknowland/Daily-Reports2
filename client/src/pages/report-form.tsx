@@ -135,6 +135,7 @@ export default function ReportFormPage() {
   }, [formData.timeIn, formData.timeOut]);
 
   const [photos, setPhotos] = useState<PhotoItem[]>([]);
+  const [removedPhotoIds, setRemovedPhotoIds] = useState<string[]>([]);
   const [signature, setSignature] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [showEmailDialog, setShowEmailDialog] = useState(false);
@@ -310,6 +311,16 @@ export default function ReportFormPage() {
       // Only save signature if it's new (base64 data, not an existing file path)
       if (signature && reportId && signature.startsWith("data:")) {
         await apiRequest("POST", `/api/reports/${reportId}/signature`, { signature });
+      }
+
+      if (removedPhotoIds.length > 0) {
+        for (const photoId of removedPhotoIds) {
+          try {
+            await apiRequest("DELETE", `/api/photos/${photoId}`);
+          } catch (e) {
+          }
+        }
+        setRemovedPhotoIds([]);
       }
 
       const newPhotos = photos.filter(p => p.file);
@@ -962,7 +973,14 @@ export default function ReportFormPage() {
           <CardContent>
             <PhotoUpload
               photos={photos}
-              onPhotosChange={setPhotos}
+              onPhotosChange={(newPhotos) => {
+                const currentIds = new Set(newPhotos.filter(p => p.id).map(p => p.id));
+                const removed = photos.filter(p => p.id && !currentIds.has(p.id)).map(p => p.id!);
+                if (removed.length > 0) {
+                  setRemovedPhotoIds(prev => [...prev, ...removed]);
+                }
+                setPhotos(newPhotos);
+              }}
             />
           </CardContent>
         </Card>

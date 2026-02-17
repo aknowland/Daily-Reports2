@@ -585,8 +585,7 @@ export function ReportDetailPanel({
                           <Button
                             size="icon"
                             variant="destructive"
-                            className="absolute top-1 right-1 h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity"
-                            style={{ visibility: 'visible' }}
+                            className="absolute top-1 right-1 h-7 w-7 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity"
                             onClick={(e) => {
                               e.stopPropagation();
                               setDeletingPhotoId(photo.id);
