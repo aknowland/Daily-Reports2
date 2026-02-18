@@ -66,9 +66,11 @@ import {
   Download,
   Search,
   FileDown,
+  Upload,
 } from "lucide-react";
 import { Link } from "wouter";
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import type { CompanyMember, User, Project, Invite, JoinRequest, IorAgreement, IorAgreementWithDetails, TeamInspector } from "@shared/schema";
 
 const KNOWLAND_COMPANY_NAME = "Knowland Construction Services";
@@ -101,6 +103,10 @@ export default function CompanyTeamPage() {
   const [editingTeamInspector, setEditingTeamInspector] = useState<TeamInspector | null>(null);
   const [teamInspectorToDelete, setTeamInspectorToDelete] = useState<TeamInspector | null>(null);
   const [teamInspectorSearchQuery, setTeamInspectorSearchQuery] = useState("");
+  const [resumeTarget, setResumeTarget] = useState<{type: 'member' | 'team-inspector', id: string, name: string} | null>(null);
+  const [resumeData, setResumeData] = useState<any>(null);
+  const [showResumePreview, setShowResumePreview] = useState(false);
+  const resumeInputRef = useRef<HTMLInputElement>(null);
   const [inviteForm, setInviteForm] = useState({
     email: "",
     firstName: "",
@@ -484,6 +490,60 @@ export default function CompanyTeamPage() {
     },
   });
 
+  const resumeParseMutation = useMutation({
+    mutationFn: async ({ file, target }: { file: File, target: {type: string, id: string} }) => {
+      const formData = new FormData();
+      formData.append("resume", file);
+      const url = target.type === 'member' 
+        ? `/api/admin/users/${target.id}/parse-resume`
+        : `/api/team-inspectors/${target.id}/parse-resume`;
+      const res = await fetch(url, { method: "POST", body: formData, credentials: "include" });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ message: "Upload failed" }));
+        throw new Error(err.message || "Failed to parse resume");
+      }
+      return res.json();
+    },
+    onSuccess: (data) => {
+      setResumeData(data);
+      setShowResumePreview(true);
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to parse resume",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const applyResumeMutation = useMutation({
+    mutationFn: async ({ target, data }: { target: {type: string, id: string}, data: any }) => {
+      const url = target.type === 'member'
+        ? `/api/admin/users/${target.id}/apply-resume`
+        : `/api/team-inspectors/${target.id}/apply-resume`;
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to apply resume data");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/companies", activeCompany?.id, "members"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/companies", activeCompany?.id, "team-inspectors"] });
+      setShowResumePreview(false);
+      setResumeData(null);
+      setResumeTarget(null);
+      toast({ title: "Resume Applied", description: "Profile has been updated with resume data." });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to apply resume data", variant: "destructive" });
+    },
+  });
+
   // Wait for companies data to load before checking permissions
   if (isCompaniesLoading) {
     return (
@@ -585,6 +645,20 @@ export default function CompanyTeamPage() {
   return (
     <PageLayout title="Team Members">
       <div className="container px-4 py-6 mx-auto max-w-screen-lg space-y-6">
+        <input
+          ref={resumeInputRef}
+          type="file"
+          accept=".pdf,.docx,.doc,.txt"
+          className="hidden"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file && resumeTarget) {
+              resumeParseMutation.mutate({ file, target: resumeTarget });
+              e.target.value = "";
+            }
+          }}
+          data-testid="input-admin-resume-upload"
+        />
         <div className="flex items-center gap-2 mb-2">
           <Button variant="ghost" size="sm" asChild data-testid="button-back">
             <Link href="/">
@@ -872,6 +946,24 @@ export default function CompanyTeamPage() {
                             >
                               <FileDown className="w-4 h-4 mr-1" />
                               Resume
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                const name = [member.user?.firstName, member.user?.lastName].filter(Boolean).join(" ") || member.user?.email || "User";
+                                setResumeTarget({ type: 'member', id: member.userId, name });
+                                resumeInputRef.current?.click();
+                              }}
+                              disabled={resumeParseMutation.isPending}
+                              data-testid={`button-import-resume-${member.userId}`}
+                            >
+                              {resumeParseMutation.isPending && resumeTarget?.id === member.userId ? (
+                                <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                              ) : (
+                                <Upload className="w-4 h-4 mr-1" />
+                              )}
+                              Import
                             </Button>
                             <Button
                               variant="outline"
@@ -1312,6 +1404,16 @@ export default function CompanyTeamPage() {
                                 Edit Profile
                               </DropdownMenuItem>
                               <DropdownMenuItem
+                                onClick={() => {
+                                  const name = `${inspector.firstName} ${inspector.lastName}`.trim();
+                                  setResumeTarget({ type: 'team-inspector', id: inspector.id, name });
+                                  setTimeout(() => resumeInputRef.current?.click(), 100);
+                                }}
+                                data-testid={`button-import-resume-team-${inspector.id}`}
+                              >
+                                Import Resume
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
                                 className="text-destructive"
                                 onClick={() => setTeamInspectorToDelete(inspector)}
                                 data-testid={`button-delete-team-inspector-${inspector.id}`}
@@ -1419,6 +1521,124 @@ export default function CompanyTeamPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <Dialog open={showResumePreview} onOpenChange={setShowResumePreview}>
+        <DialogContent className="max-w-lg max-h-[85vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileText className="w-5 h-5" />
+              Resume Data Preview
+            </DialogTitle>
+            <DialogDescription>
+              Extracted data for {resumeTarget?.name}. Click "Apply" to update their profile.
+            </DialogDescription>
+          </DialogHeader>
+          <ScrollArea className="flex-1 pr-4">
+            {resumeData && (
+              <div className="space-y-4 text-sm">
+                {(resumeData.firstName || resumeData.lastName) && (
+                  <div>
+                    <p className="font-medium text-muted-foreground mb-1">Name</p>
+                    <p>{[resumeData.firstName, resumeData.lastName].filter(Boolean).join(" ")}</p>
+                  </div>
+                )}
+                {resumeData.title && (
+                  <div>
+                    <p className="font-medium text-muted-foreground mb-1">Title</p>
+                    <p>{resumeData.title}</p>
+                  </div>
+                )}
+                {resumeData.bio && (
+                  <div>
+                    <p className="font-medium text-muted-foreground mb-1">Professional Summary</p>
+                    <p className="whitespace-pre-wrap">{resumeData.bio}</p>
+                  </div>
+                )}
+                {(resumeData.phone || resumeData.email) && (
+                  <div>
+                    <p className="font-medium text-muted-foreground mb-1">Contact</p>
+                    {resumeData.phone && <p>Phone: {resumeData.phone}</p>}
+                    {resumeData.email && <p>Email: {resumeData.email}</p>}
+                  </div>
+                )}
+                {(resumeData.licenseNumber || resumeData.licenseState) && (
+                  <div>
+                    <p className="font-medium text-muted-foreground mb-1">License</p>
+                    <p>{[resumeData.licenseNumber, resumeData.licenseState].filter(Boolean).join(" - ")}</p>
+                  </div>
+                )}
+                {resumeData.certifications?.length > 0 && (
+                  <div>
+                    <p className="font-medium text-muted-foreground mb-1">Certifications ({resumeData.certifications.length})</p>
+                    <div className="flex flex-wrap gap-1">
+                      {resumeData.certifications.map((cert: string, i: number) => (
+                        <Badge key={i} variant="secondary">{cert}</Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {resumeData.education?.length > 0 && (
+                  <div>
+                    <p className="font-medium text-muted-foreground mb-1">Education ({resumeData.education.length})</p>
+                    <div className="space-y-1">
+                      {resumeData.education.map((edu: any, i: number) => (
+                        <p key={i}>{edu.degree} - {edu.school}{edu.status ? ` (${edu.status})` : ""}</p>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {resumeData.jobHistory?.length > 0 && (
+                  <div>
+                    <p className="font-medium text-muted-foreground mb-1">Work History ({resumeData.jobHistory.length})</p>
+                    <div className="space-y-2">
+                      {resumeData.jobHistory.map((job: any, i: number) => (
+                        <div key={i} className="border-l-2 border-border pl-3">
+                          <p className="font-medium">{job.title}</p>
+                          <p className="text-muted-foreground">{job.company}{job.startDate ? ` (${job.startDate} - ${job.endDate || "Present"})` : ""}</p>
+                          {job.description && <p className="mt-1">{job.description}</p>}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {resumeData.references?.length > 0 && (
+                  <div>
+                    <p className="font-medium text-muted-foreground mb-1">References ({resumeData.references.length})</p>
+                    <div className="space-y-1">
+                      {resumeData.references.map((ref: any, i: number) => (
+                        <p key={i}>{ref.name} - {ref.title}, {ref.organization}</p>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {resumeData.contractorCompanyName && (
+                  <div>
+                    <p className="font-medium text-muted-foreground mb-1">Company</p>
+                    <p>{resumeData.contractorCompanyName}</p>
+                  </div>
+                )}
+              </div>
+            )}
+          </ScrollArea>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => { setShowResumePreview(false); setResumeData(null); setResumeTarget(null); }} data-testid="button-cancel-admin-resume">
+              Cancel
+            </Button>
+            <Button 
+              onClick={() => resumeTarget && applyResumeMutation.mutate({ target: resumeTarget, data: resumeData })}
+              disabled={applyResumeMutation.isPending}
+              data-testid="button-apply-admin-resume"
+            >
+              {applyResumeMutation.isPending ? (
+                <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+              ) : (
+                <Check className="w-4 h-4 mr-1" />
+              )}
+              Apply to Profile
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </PageLayout>
   );
 }
