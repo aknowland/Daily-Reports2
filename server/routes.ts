@@ -13710,9 +13710,8 @@ export async function registerRoutes(
     let textContent = "";
 
     if (file.mimetype === "application/pdf") {
-      const pdfModule = await import("pdf-parse");
-      const pdfParse = pdfModule.default || pdfModule;
-      const pdfData = await pdfParse(file.buffer);
+      const { PDFParse } = await import("pdf-parse");
+      const pdfData = await PDFParse(file.buffer);
       textContent = pdfData.text;
     } else if (file.mimetype === "text/plain") {
       textContent = file.buffer.toString("utf-8");
