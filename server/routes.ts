@@ -13706,42 +13706,36 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/profile/parse-resume", isAuthenticated, resumeUpload.single("resume"), async (req: any, res) => {
-    try {
-      const file = req.file;
-      if (!file) {
-        return res.status(400).json({ message: "No file uploaded" });
-      }
+  async function extractAndParseResume(file: Express.Multer.File): Promise<any> {
+    let textContent = "";
 
-      let textContent = "";
+    if (file.mimetype === "application/pdf") {
+      const pdfParse = (await import("pdf-parse")).default;
+      const pdfData = await pdfParse(file.buffer);
+      textContent = pdfData.text;
+    } else if (file.mimetype === "text/plain") {
+      textContent = file.buffer.toString("utf-8");
+    } else if (
+      file.mimetype === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+      file.mimetype === "application/msword"
+    ) {
+      const mammoth = await import("mammoth");
+      const result = await mammoth.extractRawText({ buffer: file.buffer });
+      textContent = result.value;
+    }
 
-      if (file.mimetype === "application/pdf") {
-        const pdfParse = (await import("pdf-parse")).default;
-        const pdfData = await pdfParse(file.buffer);
-        textContent = pdfData.text;
-      } else if (file.mimetype === "text/plain") {
-        textContent = file.buffer.toString("utf-8");
-      } else if (
-        file.mimetype === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
-        file.mimetype === "application/msword"
-      ) {
-        const mammoth = await import("mammoth");
-        const result = await mammoth.extractRawText({ buffer: file.buffer });
-        textContent = result.value;
-      }
+    if (!textContent || textContent.trim().length < 20) {
+      throw new Error("Could not extract enough text from the uploaded file. Please try a different file format.");
+    }
 
-      if (!textContent || textContent.trim().length < 20) {
-        return res.status(400).json({ message: "Could not extract enough text from the uploaded file. Please try a different file format." });
-      }
+    const truncatedText = textContent.substring(0, 15000);
 
-      const truncatedText = textContent.substring(0, 15000);
-
-      const completion = await openai.chat.completions.create({
-        model: "gpt-4o-mini",
-        messages: [
-          {
-            role: "system",
-            content: `You are a resume parser for a construction inspection professional. Extract structured data from the resume text and return a JSON object with these fields:
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        {
+          role: "system",
+          content: `You are a resume parser for a construction inspection professional. Extract structured data from the resume text and return a JSON object with these fields:
 {
   "firstName": "string or null",
   "lastName": "string or null",
@@ -13758,29 +13752,202 @@ export async function registerRoutes(
   "contractorCompanyName": "string or null - if they mention their own company"
 }
 Return ONLY valid JSON, no markdown, no explanation. Use null for missing top-level fields and empty strings for missing nested fields. For arrays, return empty array if no items found.`
-          },
-          {
-            role: "user",
-            content: `Parse the following resume and extract the structured data:\n\n${truncatedText}`
-          }
-        ],
-        max_tokens: 4000,
-        temperature: 0.1,
-        response_format: { type: "json_object" },
-      });
+        },
+        {
+          role: "user",
+          content: `Parse the following resume and extract the structured data:\n\n${truncatedText}`
+        }
+      ],
+      max_tokens: 4000,
+      temperature: 0.1,
+      response_format: { type: "json_object" },
+    });
 
-      const content = completion.choices[0]?.message?.content?.trim() || "{}";
-      let parsed;
-      try {
-        parsed = JSON.parse(content);
-      } catch {
-        return res.status(500).json({ message: "Failed to parse AI response. Please try again." });
+    const content = completion.choices[0]?.message?.content?.trim() || "{}";
+    return JSON.parse(content);
+  }
+
+  app.post("/api/profile/parse-resume", isAuthenticated, resumeUpload.single("resume"), async (req: any, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ message: "No file uploaded" });
+      }
+      const parsed = await extractAndParseResume(req.file);
+      res.json(parsed);
+    } catch (error: any) {
+      console.error("Error parsing resume:", error);
+      const statusCode = error.message?.includes("Could not extract") ? 400 : 500;
+      res.status(statusCode).json({ message: error.message || "Failed to parse resume. Please try again." });
+    }
+  });
+
+  app.post("/api/admin/users/:userId/parse-resume", isAuthenticated, resumeUpload.single("resume"), async (req: any, res) => {
+    try {
+      const adminUserId = req.user?.claims?.sub;
+      const targetUserId = req.params.userId;
+
+      const adminProfile = await storage.getUserProfile(adminUserId);
+      const hasSystemAdmin = isEffectiveSystemAdmin(adminProfile);
+
+      const targetProfile = await storage.getUserProfile(targetUserId);
+      if (!targetProfile) {
+        return res.status(404).json({ message: "User not found" });
       }
 
+      if (!hasSystemAdmin) {
+        const memberships = await storage.getCompaniesForUser(targetUserId);
+        const adminMemberships = await storage.getCompaniesForUser(adminUserId);
+        const sharedCompanyIds = memberships
+          .filter((m: any) => adminMemberships.some((am: any) => am.id === m.id))
+          .map((m: any) => m.id);
+        let hasAccess = false;
+        for (const companyId of sharedCompanyIds) {
+          if (await isEffectiveCompanyAdmin(adminUserId, companyId, adminProfile)) {
+            hasAccess = true;
+            break;
+          }
+        }
+        if (!hasAccess) {
+          return res.status(403).json({ message: "Access denied. Admin rights required." });
+        }
+      }
+
+      if (!req.file) {
+        return res.status(400).json({ message: "No file uploaded" });
+      }
+
+      const parsed = await extractAndParseResume(req.file);
       res.json(parsed);
+    } catch (error: any) {
+      console.error("Error parsing resume for user:", error);
+      const statusCode = error.message?.includes("Could not extract") ? 400 : 500;
+      res.status(statusCode).json({ message: error.message || "Failed to parse resume. Please try again." });
+    }
+  });
+
+  app.post("/api/admin/users/:userId/apply-resume", isAuthenticated, async (req: any, res) => {
+    try {
+      const adminUserId = req.user?.claims?.sub;
+      const targetUserId = req.params.userId;
+
+      const adminProfile = await storage.getUserProfile(adminUserId);
+      const hasSystemAdmin = isEffectiveSystemAdmin(adminProfile);
+
+      const targetProfile = await storage.getUserProfile(targetUserId);
+      if (!targetProfile) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      if (!hasSystemAdmin) {
+        const memberships = await storage.getCompaniesForUser(targetUserId);
+        const adminMemberships = await storage.getCompaniesForUser(adminUserId);
+        const sharedCompanyIds = memberships
+          .filter((m: any) => adminMemberships.some((am: any) => am.id === m.id))
+          .map((m: any) => m.id);
+        let hasAccess = false;
+        for (const companyId of sharedCompanyIds) {
+          if (await isEffectiveCompanyAdmin(adminUserId, companyId, adminProfile)) {
+            hasAccess = true;
+            break;
+          }
+        }
+        if (!hasAccess) {
+          return res.status(403).json({ message: "Access denied. Admin rights required." });
+        }
+      }
+
+      const data = req.body;
+      const updateData: any = {};
+      if (data.firstName) updateData.firstName = data.firstName;
+      if (data.lastName) updateData.lastName = data.lastName;
+      if (data.title) updateData.title = data.title;
+      if (data.phone) updateData.phone = data.phone;
+      if (data.bio) updateData.bio = data.bio;
+      if (data.licenseNumber) updateData.licenseNumber = data.licenseNumber;
+      if (data.licenseState) updateData.licenseState = data.licenseState;
+      if (data.contractorCompanyName) updateData.contractorCompanyName = data.contractorCompanyName;
+      if (data.certifications) updateData.certifications = data.certifications;
+      if (data.education) updateData.education = data.education;
+      if (data.references) updateData.references = data.references;
+      if (data.jobHistory) updateData.jobHistory = data.jobHistory;
+
+      const updated = await storage.updateUserProfile(targetUserId, updateData);
+      res.json(updated);
     } catch (error) {
-      console.error("Error parsing resume:", error);
-      res.status(500).json({ message: "Failed to parse resume. Please try again." });
+      console.error("Error applying resume data to user:", error);
+      res.status(500).json({ message: "Failed to apply resume data" });
+    }
+  });
+
+  app.post("/api/team-inspectors/:id/parse-resume", isAuthenticated, resumeUpload.single("resume"), async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const inspectorId = req.params.id;
+
+      const inspector = await storage.getTeamInspector(inspectorId);
+      if (!inspector) {
+        return res.status(404).json({ message: "Team inspector not found" });
+      }
+
+      const profile = await storage.getUserProfile(userId);
+      const hasSystemAdmin = isEffectiveSystemAdmin(profile);
+      const hasCompanyAdmin = await isEffectiveCompanyAdmin(userId, inspector.companyId, profile);
+
+      if (!hasSystemAdmin && !hasCompanyAdmin) {
+        return res.status(403).json({ message: "Access denied. Admin rights required." });
+      }
+
+      if (!req.file) {
+        return res.status(400).json({ message: "No file uploaded" });
+      }
+
+      const parsed = await extractAndParseResume(req.file);
+      res.json(parsed);
+    } catch (error: any) {
+      console.error("Error parsing resume for team inspector:", error);
+      res.status(500).json({ message: error.message || "Failed to parse resume. Please try again." });
+    }
+  });
+
+  app.post("/api/team-inspectors/:id/apply-resume", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const inspectorId = req.params.id;
+
+      const inspector = await storage.getTeamInspector(inspectorId);
+      if (!inspector) {
+        return res.status(404).json({ message: "Team inspector not found" });
+      }
+
+      const profile = await storage.getUserProfile(userId);
+      const hasSystemAdmin = isEffectiveSystemAdmin(profile);
+      const hasCompanyAdmin = await isEffectiveCompanyAdmin(userId, inspector.companyId, profile);
+
+      if (!hasSystemAdmin && !hasCompanyAdmin) {
+        return res.status(403).json({ message: "Access denied. Admin rights required." });
+      }
+
+      const data = req.body;
+      const updateData: any = {};
+      if (data.firstName) updateData.firstName = data.firstName;
+      if (data.lastName) updateData.lastName = data.lastName;
+      if (data.title) updateData.title = data.title;
+      if (data.phone) updateData.phone = data.phone;
+      if (data.email) updateData.email = data.email;
+      if (data.licenseNumber) updateData.licenseNumber = data.licenseNumber;
+      if (data.licenseState) updateData.licenseState = data.licenseState;
+      if (data.certifications) updateData.certifications = data.certifications;
+      if (data.notes) updateData.notes = data.notes;
+      if (data.bio) updateData.bio = data.bio;
+      if (data.education) updateData.education = data.education;
+      if (data.references) updateData.references = data.references;
+      if (data.jobHistory) updateData.jobHistory = data.jobHistory;
+
+      const updated = await storage.updateTeamInspector(inspectorId, updateData);
+      res.json(updated);
+    } catch (error) {
+      console.error("Error applying resume data to team inspector:", error);
+      res.status(500).json({ message: "Failed to apply resume data" });
     }
   });
 
