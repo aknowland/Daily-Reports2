@@ -45,11 +45,21 @@ import {
   Pencil,
   ChevronUp,
   ChevronDown,
-  Check
+  Check,
+  Upload,
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { useTheme } from "@/hooks/use-theme";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { Link } from "wouter";
 import { updateUserProfileSchema, type UserProfile, type UpdateUserProfile } from "@shared/schema";
 
@@ -70,6 +80,9 @@ export default function ProfilePage() {
   const [editingRefIndex, setEditingRefIndex] = useState<number | null>(null);
   const [editingRef, setEditingRef] = useState<{name: string; title: string; organization: string; email: string; phone: string}>({name: "", title: "", organization: "", email: "", phone: ""});
   const [isGeneratingBio, setIsGeneratingBio] = useState(false);
+  const [showResumePreview, setShowResumePreview] = useState(false);
+  const [resumeData, setResumeData] = useState<any>(null);
+  const resumeInputRef = useRef<HTMLInputElement>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
 
   const { data: profile, isLoading } = useQuery<UserProfile>({
@@ -168,6 +181,83 @@ export default function ProfilePage() {
       toast({ title: "Photo Removed", description: "Your profile photo has been removed." });
     },
   });
+
+  const resumeParseMutation = useMutation({
+    mutationFn: async (file: File) => {
+      const formData = new FormData();
+      formData.append("resume", file);
+      const res = await fetch("/api/profile/parse-resume", { method: "POST", body: formData, credentials: "include" });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ message: "Upload failed" }));
+        throw new Error(err.message || "Failed to parse resume");
+      }
+      return res.json();
+    },
+    onSuccess: (data) => {
+      setResumeData(data);
+      setShowResumePreview(true);
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to parse resume",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const applyResumeData = () => {
+    if (!resumeData) return;
+
+    if (resumeData.firstName) form.setValue("firstName", resumeData.firstName);
+    if (resumeData.lastName) form.setValue("lastName", resumeData.lastName);
+    if (resumeData.title) form.setValue("title", resumeData.title);
+    if (resumeData.phone) form.setValue("phone", resumeData.phone);
+    if (resumeData.bio) form.setValue("bio", resumeData.bio);
+    if (resumeData.licenseNumber) form.setValue("licenseNumber", resumeData.licenseNumber);
+    if (resumeData.licenseState) form.setValue("licenseState", resumeData.licenseState);
+    if (resumeData.contractorCompanyName) form.setValue("contractorCompanyName", resumeData.contractorCompanyName);
+
+    if (resumeData.certifications?.length > 0) {
+      setCertifications(resumeData.certifications);
+    }
+    if (resumeData.education?.length > 0) {
+      setEducation(resumeData.education.map((e: any) => ({
+        degree: e.degree || "",
+        school: e.school || "",
+        status: e.status || "",
+      })));
+    }
+    if (resumeData.references?.length > 0) {
+      setReferences(resumeData.references.map((r: any) => ({
+        name: r.name || "",
+        title: r.title || "",
+        organization: r.organization || "",
+        email: r.email || "",
+        phone: r.phone || "",
+      })));
+    }
+    if (resumeData.jobHistory?.length > 0) {
+      setJobHistory(resumeData.jobHistory.map((j: any) => ({
+        title: j.title || "",
+        company: j.company || "",
+        client: j.client || "",
+        projectName: j.projectName || "",
+        projectNumber: j.projectNumber || "",
+        projectValue: j.projectValue || "",
+        startDate: j.startDate || "",
+        endDate: j.endDate || "",
+        description: j.description || "",
+      })));
+    }
+
+    setShowResumePreview(false);
+    setResumeData(null);
+    toast({
+      title: "Resume Data Applied",
+      description: "Your profile fields have been updated. Review and save to keep the changes.",
+    });
+  };
 
   const getInitials = () => {
     const first = profile?.firstName || user?.firstName || "";
@@ -370,17 +460,47 @@ export default function ProfilePage() {
               Back to Dashboard
             </Link>
           </Button>
-          {profile && (
+          <div className="flex items-center gap-2 flex-wrap">
+            <input
+              ref={resumeInputRef}
+              type="file"
+              accept=".pdf,.docx,.doc,.txt"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) {
+                  resumeParseMutation.mutate(file);
+                  e.target.value = "";
+                }
+              }}
+              data-testid="input-resume-upload"
+            />
             <Button
-              variant="default"
+              variant="outline"
               size="sm"
-              onClick={() => window.open(`/api/resume/generate/${profile.userId}`, '_blank')}
-              data-testid="button-generate-resume"
+              onClick={() => resumeInputRef.current?.click()}
+              disabled={resumeParseMutation.isPending}
+              data-testid="button-upload-resume"
             >
-              <FileDown className="w-4 h-4 mr-1" />
-              Generate Resume
+              {resumeParseMutation.isPending ? (
+                <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+              ) : (
+                <Upload className="w-4 h-4 mr-1" />
+              )}
+              {resumeParseMutation.isPending ? "Parsing..." : "Import Resume"}
             </Button>
-          )}
+            {profile && (
+              <Button
+                variant="default"
+                size="sm"
+                onClick={() => window.open(`/api/resume/generate/${profile.userId}`, '_blank')}
+                data-testid="button-generate-resume"
+              >
+                <FileDown className="w-4 h-4 mr-1" />
+                Generate Resume
+              </Button>
+            )}
+          </div>
         </div>
         <Card data-testid="card-user-info">
           <CardHeader>
@@ -1285,6 +1405,116 @@ export default function ProfilePage() {
           </form>
         </Form>
       </div>
+
+      <Dialog open={showResumePreview} onOpenChange={setShowResumePreview}>
+        <DialogContent className="max-w-lg max-h-[85vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileText className="w-5 h-5" />
+              Resume Data Preview
+            </DialogTitle>
+            <DialogDescription>
+              Review the extracted data below. Click "Apply to Profile" to fill in your profile fields. You can edit them before saving.
+            </DialogDescription>
+          </DialogHeader>
+          <ScrollArea className="flex-1 pr-4">
+            {resumeData && (
+              <div className="space-y-4 text-sm">
+                {(resumeData.firstName || resumeData.lastName) && (
+                  <div>
+                    <p className="font-medium text-muted-foreground mb-1">Name</p>
+                    <p>{[resumeData.firstName, resumeData.lastName].filter(Boolean).join(" ")}</p>
+                  </div>
+                )}
+                {resumeData.title && (
+                  <div>
+                    <p className="font-medium text-muted-foreground mb-1">Title</p>
+                    <p>{resumeData.title}</p>
+                  </div>
+                )}
+                {resumeData.bio && (
+                  <div>
+                    <p className="font-medium text-muted-foreground mb-1">Professional Summary</p>
+                    <p className="whitespace-pre-wrap">{resumeData.bio}</p>
+                  </div>
+                )}
+                {(resumeData.phone || resumeData.email) && (
+                  <div>
+                    <p className="font-medium text-muted-foreground mb-1">Contact</p>
+                    {resumeData.phone && <p>Phone: {resumeData.phone}</p>}
+                    {resumeData.email && <p>Email: {resumeData.email}</p>}
+                  </div>
+                )}
+                {(resumeData.licenseNumber || resumeData.licenseState) && (
+                  <div>
+                    <p className="font-medium text-muted-foreground mb-1">License</p>
+                    <p>{[resumeData.licenseNumber, resumeData.licenseState].filter(Boolean).join(" - ")}</p>
+                  </div>
+                )}
+                {resumeData.certifications?.length > 0 && (
+                  <div>
+                    <p className="font-medium text-muted-foreground mb-1">Certifications ({resumeData.certifications.length})</p>
+                    <div className="flex flex-wrap gap-1">
+                      {resumeData.certifications.map((cert: string, i: number) => (
+                        <Badge key={i} variant="secondary">{cert}</Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {resumeData.education?.length > 0 && (
+                  <div>
+                    <p className="font-medium text-muted-foreground mb-1">Education ({resumeData.education.length})</p>
+                    <div className="space-y-1">
+                      {resumeData.education.map((edu: any, i: number) => (
+                        <p key={i}>{edu.degree} - {edu.school}{edu.status ? ` (${edu.status})` : ""}</p>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {resumeData.jobHistory?.length > 0 && (
+                  <div>
+                    <p className="font-medium text-muted-foreground mb-1">Work History ({resumeData.jobHistory.length})</p>
+                    <div className="space-y-2">
+                      {resumeData.jobHistory.map((job: any, i: number) => (
+                        <div key={i} className="border-l-2 border-border pl-3">
+                          <p className="font-medium">{job.title}</p>
+                          <p className="text-muted-foreground">{job.company}{job.startDate ? ` (${job.startDate} - ${job.endDate || "Present"})` : ""}</p>
+                          {job.description && <p className="mt-1">{job.description}</p>}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {resumeData.references?.length > 0 && (
+                  <div>
+                    <p className="font-medium text-muted-foreground mb-1">References ({resumeData.references.length})</p>
+                    <div className="space-y-1">
+                      {resumeData.references.map((ref: any, i: number) => (
+                        <p key={i}>{ref.name} - {ref.title}, {ref.organization}</p>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {resumeData.contractorCompanyName && (
+                  <div>
+                    <p className="font-medium text-muted-foreground mb-1">Company</p>
+                    <p>{resumeData.contractorCompanyName}</p>
+                  </div>
+                )}
+              </div>
+            )}
+          </ScrollArea>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => { setShowResumePreview(false); setResumeData(null); }} data-testid="button-cancel-resume">
+              Cancel
+            </Button>
+            <Button onClick={applyResumeData} data-testid="button-apply-resume">
+              <Check className="w-4 h-4 mr-1" />
+              Apply to Profile
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </PageLayout>
   );
 }

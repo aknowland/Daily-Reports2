@@ -153,6 +153,25 @@ const companyLogoUpload = multer({
   },
 });
 
+// Multer config for resume upload (PDF, DOCX)
+const resumeUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 20 * 1024 * 1024 }, // 20MB
+  fileFilter: (_req, file, cb) => {
+    const allowed = [
+      'application/pdf',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/msword',
+      'text/plain',
+    ];
+    if (allowed.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error("Only PDF, DOCX, DOC, and TXT files are allowed"));
+    }
+  },
+});
+
 // Multer config for audio files
 const audioUpload = multer({
   storage: multer.memoryStorage(),
@@ -13684,6 +13703,84 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error generating bio:", error);
       res.status(500).json({ message: "Failed to generate bio" });
+    }
+  });
+
+  app.post("/api/profile/parse-resume", isAuthenticated, resumeUpload.single("resume"), async (req: any, res) => {
+    try {
+      const file = req.file;
+      if (!file) {
+        return res.status(400).json({ message: "No file uploaded" });
+      }
+
+      let textContent = "";
+
+      if (file.mimetype === "application/pdf") {
+        const pdfParse = (await import("pdf-parse")).default;
+        const pdfData = await pdfParse(file.buffer);
+        textContent = pdfData.text;
+      } else if (file.mimetype === "text/plain") {
+        textContent = file.buffer.toString("utf-8");
+      } else if (
+        file.mimetype === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+        file.mimetype === "application/msword"
+      ) {
+        const mammoth = await import("mammoth");
+        const result = await mammoth.extractRawText({ buffer: file.buffer });
+        textContent = result.value;
+      }
+
+      if (!textContent || textContent.trim().length < 20) {
+        return res.status(400).json({ message: "Could not extract enough text from the uploaded file. Please try a different file format." });
+      }
+
+      const truncatedText = textContent.substring(0, 15000);
+
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [
+          {
+            role: "system",
+            content: `You are a resume parser for a construction inspection professional. Extract structured data from the resume text and return a JSON object with these fields:
+{
+  "firstName": "string or null",
+  "lastName": "string or null",
+  "title": "string or null - professional title/role",
+  "phone": "string or null",
+  "email": "string or null",
+  "bio": "string or null - a 3-5 sentence professional summary. If the resume has a summary/objective section, use that. Otherwise generate one from the content.",
+  "licenseNumber": "string or null",
+  "licenseState": "string or null - US state abbreviation",
+  "certifications": ["array of certification strings like 'ICC Special Inspector', 'AWS CWI', etc."],
+  "education": [{"degree": "string", "school": "string", "status": "string or empty - e.g. 'Completed', 'In Progress'"}],
+  "references": [{"name": "string", "title": "string", "organization": "string", "email": "string or empty", "phone": "string or empty"}],
+  "jobHistory": [{"title": "string", "company": "string", "client": "string or empty", "projectName": "string or empty", "projectNumber": "string or empty", "projectValue": "string or empty", "startDate": "string or empty - YYYY-MM format", "endDate": "string or empty - YYYY-MM format or 'Present'", "description": "string or empty"}],
+  "contractorCompanyName": "string or null - if they mention their own company"
+}
+Return ONLY valid JSON, no markdown, no explanation. Use null for missing top-level fields and empty strings for missing nested fields. For arrays, return empty array if no items found.`
+          },
+          {
+            role: "user",
+            content: `Parse the following resume and extract the structured data:\n\n${truncatedText}`
+          }
+        ],
+        max_tokens: 4000,
+        temperature: 0.1,
+        response_format: { type: "json_object" },
+      });
+
+      const content = completion.choices[0]?.message?.content?.trim() || "{}";
+      let parsed;
+      try {
+        parsed = JSON.parse(content);
+      } catch {
+        return res.status(500).json({ message: "Failed to parse AI response. Please try again." });
+      }
+
+      res.json(parsed);
+    } catch (error) {
+      console.error("Error parsing resume:", error);
+      res.status(500).json({ message: "Failed to parse resume. Please try again." });
     }
   });
 
