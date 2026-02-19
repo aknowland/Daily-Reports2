@@ -217,7 +217,12 @@ const updateProjectSchema = createProjectSchema.partial();
 
 const createReportSchema = z.object({
   projectId: z.string().min(1).nullable().optional(), // Optional to allow personal reports without a project
-  date: z.string().or(z.date()).transform(val => new Date(val)),
+  date: z.string().or(z.date()).transform(val => {
+    if (typeof val === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(val)) {
+      return new Date(val + 'T12:00:00');
+    }
+    return new Date(val);
+  }),
   weatherType: z.enum(["clear", "cloudy", "rain", "wind", "heat", "cold"]).optional(),
   weatherNotes: z.string().optional(),
   typeOfWork: z.array(z.string()).optional().default([]),
@@ -10079,7 +10084,7 @@ export async function registerRoutes(
       }
       // Time cell shows when report was submitted (signedAt); if not signed, show "--"
       const timeStr = report.signedAt 
-        ? new Date(report.signedAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
+        ? new Date(report.signedAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'America/Los_Angeles' })
         : '--';
       
       doc.strokeColor('#000').lineWidth(0.5);
