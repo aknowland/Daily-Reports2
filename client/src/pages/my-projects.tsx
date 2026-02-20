@@ -119,6 +119,13 @@ export default function MyProjectsPage() {
   const [isGeneratingCombined, setIsGeneratingCombined] = useState(false);
   const [isGeneratingInspectorInvoice, setIsGeneratingInspectorInvoice] = useState(false);
 
+  const [showMultiProjectDialog, setShowMultiProjectDialog] = useState(false);
+  const [selectedProjectIds, setSelectedProjectIds] = useState<string[]>([]);
+  const [multiProjectMonth, setMultiProjectMonth] = useState<Date | undefined>(startOfMonth(new Date()));
+  const [isGeneratingMultiTimesheet, setIsGeneratingMultiTimesheet] = useState(false);
+  const [isGeneratingMultiCombined, setIsGeneratingMultiCombined] = useState(false);
+  const [isGeneratingMultiInvoice, setIsGeneratingMultiInvoice] = useState(false);
+
   const { data: projects = [], isLoading, error } = useQuery<Project[]>({
     queryKey: ["/api/my-projects"],
   });
@@ -458,6 +465,51 @@ export default function MyProjectsPage() {
     }
   };
 
+  const toggleProjectSelection = (projectId: string) => {
+    setSelectedProjectIds(prev => {
+      if (prev.includes(projectId)) return prev.filter(id => id !== projectId);
+      if (prev.length >= 5) return prev;
+      return [...prev, projectId];
+    });
+  };
+
+  const multiProjectDownload = async (endpoint: string, filenamePrefix: string, setLoading: (v: boolean) => void) => {
+    if (selectedProjectIds.length === 0 || !multiProjectMonth) return;
+    setLoading(true);
+    try {
+      const month = multiProjectMonth.getMonth() + 1;
+      const year = multiProjectMonth.getFullYear();
+      const response = await fetch(`/api/billing/${endpoint}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ projectIds: selectedProjectIds, month, year }),
+      });
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || "Failed to generate PDF");
+      }
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${filenamePrefix}_${format(multiProjectMonth, "MMMM-yyyy")}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      toast({ title: "PDF Generated", description: "Your PDF has been downloaded." });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to generate PDF",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Get companies where user is admin
   const adminCompanies = companies.filter(c => c.role === "admin");
   
@@ -540,10 +592,26 @@ export default function MyProjectsPage() {
               Projects you are assigned to
             </p>
           </div>
-          <Button onClick={() => setShowCreateDialog(true)} data-testid="button-create-project">
-            <Plus className="w-4 h-4 mr-2" />
-            New Project
-          </Button>
+          <div className="flex gap-2 flex-wrap">
+            {projects.length >= 2 && (
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setSelectedProjectIds([]);
+                  setMultiProjectMonth(startOfMonth(new Date()));
+                  setShowMultiProjectDialog(true);
+                }}
+                data-testid="button-multi-project-billing"
+              >
+                <FileStack className="w-4 h-4 mr-2" />
+                Multi-Project Billing
+              </Button>
+            )}
+            <Button onClick={() => setShowCreateDialog(true)} data-testid="button-create-project">
+              <Plus className="w-4 h-4 mr-2" />
+              New Project
+            </Button>
+          </div>
         </div>
 
         {projects.length === 0 ? (
@@ -1110,6 +1178,111 @@ export default function MyProjectsPage() {
                   <Receipt className="w-4 h-4 mr-2" />
                   My Invoice
                 </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showMultiProjectDialog} onOpenChange={setShowMultiProjectDialog}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Multi-Project Billing</DialogTitle>
+            <DialogDescription>
+              Select up to 5 projects to generate a combined timesheet, reports, or invoice.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 pt-2">
+            <div className="space-y-2">
+              <Label>Month</Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" className="w-full justify-start gap-2" data-testid="button-multi-month-picker">
+                    <Calendar className="w-4 h-4" />
+                    {multiProjectMonth ? format(multiProjectMonth, "MMMM yyyy") : "Select month"}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <CalendarComponent
+                    mode="single"
+                    selected={multiProjectMonth}
+                    onSelect={(date) => { if (date) setMultiProjectMonth(startOfMonth(date)); }}
+                    data-testid="calendar-multi-month"
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+            <div className="space-y-2">
+              <Label>Projects ({selectedProjectIds.length}/5 selected)</Label>
+              <div className="space-y-2 max-h-60 overflow-y-auto">
+                {projects.map((project) => {
+                  const isSelected = selectedProjectIds.includes(project.id);
+                  const isDisabled = !isSelected && selectedProjectIds.length >= 5;
+                  return (
+                    <div
+                      key={project.id}
+                      className={`flex items-center gap-3 p-3 rounded-md cursor-pointer border ${isSelected ? "border-primary bg-primary/5" : "border-border"} ${isDisabled ? "opacity-50 cursor-not-allowed" : "hover-elevate"}`}
+                      onClick={() => !isDisabled && toggleProjectSelection(project.id)}
+                      data-testid={`multi-select-project-${project.id}`}
+                    >
+                      <div className={`w-5 h-5 rounded border-2 flex items-center justify-center shrink-0 ${isSelected ? "border-primary bg-primary" : "border-muted-foreground"}`}>
+                        {isSelected && <Check className="w-3 h-3 text-primary-foreground" />}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="font-medium text-sm truncate">{project.name}</div>
+                        <div className="text-xs text-muted-foreground flex items-center gap-2 flex-wrap">
+                          {project.projectNumber && <span>#{project.projectNumber}</span>}
+                          {project.client && <span>{project.client}</span>}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+          <DialogFooter className="gap-2 sm:gap-0 flex-wrap">
+            <Button
+              variant="outline"
+              onClick={() => setShowMultiProjectDialog(false)}
+              data-testid="button-multi-close"
+            >
+              Close
+            </Button>
+            <Button
+              variant="outline"
+              disabled={selectedProjectIds.length === 0 || !multiProjectMonth || isGeneratingMultiTimesheet}
+              onClick={() => multiProjectDownload("multi-project-timesheet", "Timesheet_MultiProject", setIsGeneratingMultiTimesheet)}
+              data-testid="button-multi-timesheet"
+            >
+              {isGeneratingMultiTimesheet ? (
+                <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Generating...</>
+              ) : (
+                <><Clock className="w-4 h-4 mr-2" />Timesheet</>
+              )}
+            </Button>
+            <Button
+              variant="outline"
+              disabled={selectedProjectIds.length === 0 || !multiProjectMonth || isGeneratingMultiCombined}
+              onClick={() => multiProjectDownload("multi-project-combined-reports", "Combined_Reports_MultiProject", setIsGeneratingMultiCombined)}
+              data-testid="button-multi-combined"
+            >
+              {isGeneratingMultiCombined ? (
+                <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Generating...</>
+              ) : (
+                <><FileStack className="w-4 h-4 mr-2" />Combined Reports</>
+              )}
+            </Button>
+            <Button
+              variant="outline"
+              disabled={selectedProjectIds.length === 0 || !multiProjectMonth || isGeneratingMultiInvoice}
+              onClick={() => multiProjectDownload("multi-project-inspector-invoice", "Inspector_Invoice_MultiProject", setIsGeneratingMultiInvoice)}
+              data-testid="button-multi-invoice"
+            >
+              {isGeneratingMultiInvoice ? (
+                <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Generating...</>
+              ) : (
+                <><Receipt className="w-4 h-4 mr-2" />My Invoice</>
               )}
             </Button>
           </DialogFooter>
