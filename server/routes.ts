@@ -11153,6 +11153,253 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/billing/multi-project-timesheet", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      const { projectIds, month, year } = req.body;
+
+      if (!Array.isArray(projectIds) || projectIds.length === 0 || projectIds.length > 5 || !month || !year) {
+        return res.status(400).json({ message: "1-5 project IDs, month, and year are required" });
+      }
+
+      const allProjects: any[] = [];
+      const allReports: DailyReport[] = [];
+      let companyId: string | null = null;
+
+      for (const projectId of projectIds) {
+        const project = await storage.getProject(projectId);
+        if (!project) continue;
+        const isMember = await storage.isUserMemberOfProject(projectId, userId);
+        const hasCompanyAccess = project.companyId && await isEffectiveCompanyAdmin(userId, project.companyId, profile);
+        if (!isEffectiveSystemAdmin(profile) && !hasCompanyAccess && !isMember) continue;
+        allProjects.push(project);
+        if (!companyId && project.companyId) companyId = project.companyId;
+        const startDate = new Date(year, month - 1, 1);
+        const endDate = new Date(year, month, 0);
+        endDate.setHours(23, 59, 59, 999);
+        const reports = await storage.getReportsForInvoice(projectId, startDate, endDate);
+        const inspectorReports = reports.filter(r => r.inspectorId === userId);
+        allReports.push(...inspectorReports);
+      }
+
+      if (allProjects.length === 0) {
+        return res.status(400).json({ message: "No accessible projects found" });
+      }
+
+      const companyIds = new Set(allProjects.map(p => p.companyId).filter(Boolean));
+      if (companyIds.size > 1) {
+        return res.status(400).json({ message: "All selected projects must belong to the same company" });
+      }
+
+      let company = null;
+      if (companyId) company = await storage.getCompany(companyId);
+      const contracts = companyId ? await storage.getContracts(companyId) : [];
+      const inspectorProfile = await storage.getUserProfile(userId);
+
+      const timesheetData = aggregateReportsToTimesheetData(
+        allReports, allProjects, contracts, company, inspectorProfile, month, year
+      );
+
+      if (company?.logoPath) {
+        try {
+          timesheetData.companyLogoBuffer = await objectStorage.downloadBuffer(company.logoPath);
+        } catch (e) { /* ignore logo errors */ }
+      }
+
+      const pdfBuffer = await generateTimesheetPdf(timesheetData);
+      const startDate = new Date(year, month - 1, 1);
+      const monthName = format(startDate, 'MMMM-yyyy');
+      const filename = `Timesheet_MultiProject_${monthName}.pdf`;
+
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.send(pdfBuffer);
+    } catch (error) {
+      console.error("Error generating multi-project timesheet:", error);
+      res.status(500).json({ message: "Failed to generate multi-project timesheet" });
+    }
+  });
+
+  app.post("/api/billing/multi-project-combined-reports", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      const { projectIds, month, year } = req.body;
+
+      if (!Array.isArray(projectIds) || projectIds.length === 0 || projectIds.length > 5 || !month || !year) {
+        return res.status(400).json({ message: "1-5 project IDs, month, and year are required" });
+      }
+
+      const startDate = new Date(year, month - 1, 1);
+      const endDate = new Date(year, month, 0);
+      endDate.setHours(23, 59, 59, 999);
+      const mergedPdf = await PDFLibDocument.create();
+      let foundAny = false;
+
+      for (const projectId of projectIds) {
+        const project = await storage.getProject(projectId);
+        if (!project) continue;
+        const isMember = await storage.isUserMemberOfProject(projectId, userId);
+        const hasCompanyAccess = project.companyId && await isEffectiveCompanyAdmin(userId, project.companyId, profile);
+        if (!isEffectiveSystemAdmin(profile) && !hasCompanyAccess && !isMember) continue;
+
+        const allReports = await storage.getReportsForInvoice(projectId, startDate, endDate);
+        const reports = allReports.filter(r => r.inspectorId === userId && r.pdfPath);
+
+        for (const report of reports) {
+          try {
+            let pdfBytes: Uint8Array;
+            if (report.pdfPath!.startsWith('/objects/')) {
+              const buffer = await objectStorage.downloadBuffer(report.pdfPath!);
+              pdfBytes = new Uint8Array(buffer);
+            } else {
+              const localPath = path.join(process.cwd(), report.pdfPath!.replace(/^\//, ''));
+              if (fs.existsSync(localPath)) {
+                pdfBytes = new Uint8Array(fs.readFileSync(localPath));
+              } else continue;
+            }
+            const pdfDoc = await PDFLibDocument.load(pdfBytes);
+            const copiedPages = await mergedPdf.copyPages(pdfDoc, pdfDoc.getPageIndices());
+            copiedPages.forEach(page => mergedPdf.addPage(page));
+            foundAny = true;
+          } catch (err) {
+            console.error(`Error adding report ${report.id} to combined PDF:`, err);
+          }
+        }
+      }
+
+      if (!foundAny) {
+        return res.status(400).json({ message: "No report PDFs found for the selected projects and period" });
+      }
+
+      const mergedPdfBytes = await mergedPdf.save();
+      const pdfBuffer = Buffer.from(mergedPdfBytes);
+      const monthName = format(startDate, 'MMMM-yyyy');
+      const filename = `Combined_Reports_MultiProject_${monthName}.pdf`;
+
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.send(pdfBuffer);
+    } catch (error) {
+      console.error("Error generating multi-project combined reports:", error);
+      res.status(500).json({ message: "Failed to generate combined reports" });
+    }
+  });
+
+  app.post("/api/billing/multi-project-inspector-invoice", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      const { projectIds, month, year } = req.body;
+
+      if (!Array.isArray(projectIds) || projectIds.length === 0 || projectIds.length > 5 || !month || !year) {
+        return res.status(400).json({ message: "1-5 project IDs, month, and year are required" });
+      }
+
+      const inspectorProfile = await storage.getUserProfile(userId);
+      const inspectorUser = await storage.getUserById(userId);
+      const inspectorName = inspectorProfile?.firstName && inspectorProfile?.lastName
+        ? `${inspectorProfile.firstName} ${inspectorProfile.lastName}`
+        : inspectorUser?.firstName && inspectorUser?.lastName
+          ? `${inspectorUser.firstName} ${inspectorUser.lastName}`
+          : inspectorUser?.email || 'Inspector';
+
+      const startDate = new Date(year, month - 1, 1);
+      const endDate = new Date(year, month, 0);
+      endDate.setHours(23, 59, 59, 999);
+      let totalRegularHours = 0;
+      let totalOvertimeHours = 0;
+      let avgRegularRate = 0;
+      let avgOvertimeRate = 0;
+      let avgPremiumRate = 0;
+      const projectNames: string[] = [];
+      const projectNumbers: string[] = [];
+      let companyId: string | null = null;
+      let rateCount = 0;
+      const invoiceCompanyIds = new Set<string>();
+
+      for (const projectId of projectIds) {
+        const project = await storage.getProject(projectId);
+        if (!project) continue;
+        const isMember = await storage.isUserMemberOfProject(projectId, userId);
+        if (!isMember) continue;
+        if (!companyId && project.companyId) companyId = project.companyId;
+        if (project.companyId) invoiceCompanyIds.add(project.companyId);
+
+        projectNames.push(project.name);
+        if (project.projectNumber) projectNumbers.push(project.projectNumber);
+
+        const allReports = await storage.getReportsForInvoice(projectId, startDate, endDate);
+        const reports = allReports.filter(r => r.inspectorId === userId);
+
+        for (const report of reports) {
+          totalRegularHours += parseFloat(report.regularHours || '0') || 0;
+          totalOvertimeHours += parseFloat(report.otHours || '0') || 0;
+        }
+
+        const projectMember = await storage.getProjectMember(projectId, userId);
+        if (projectMember) {
+          avgRegularRate += parseFloat(projectMember.regularRate || '0') || 0;
+          avgOvertimeRate += parseFloat(projectMember.overtimeRate || '0') || 0;
+          avgPremiumRate += parseFloat(projectMember.premiumRate || '0') || 0;
+          rateCount++;
+        }
+      }
+
+      if (projectNames.length === 0) {
+        return res.status(400).json({ message: "No accessible projects found" });
+      }
+
+      if (invoiceCompanyIds.size > 1) {
+        return res.status(400).json({ message: "All selected projects must belong to the same company" });
+      }
+
+      if (rateCount > 0) {
+        avgRegularRate /= rateCount;
+        avgOvertimeRate /= rateCount;
+        avgPremiumRate /= rateCount;
+      }
+
+      let company = null;
+      if (companyId) company = await storage.getCompany(companyId);
+
+      const invoiceNumber = `INS-${userId.slice(-4)}-MULTI-${String(month).padStart(2, '0')}${year}`;
+
+      const invoiceData: InspectorInvoiceData = {
+        inspectorName,
+        inspectorAddress: inspectorProfile?.contractorAddress || undefined,
+        inspectorPhone: inspectorProfile?.contractorPhone || inspectorProfile?.phone || undefined,
+        inspectorEmail: inspectorProfile?.contractorEmail || inspectorProfile?.email || inspectorUser?.email || undefined,
+        companyName: company?.name || 'Company',
+        companyAddress: company?.address || undefined,
+        projectName: projectNames.join(' / '),
+        projectNumber: projectNumbers.join(' / ') || undefined,
+        invoiceNumber,
+        invoiceDate: new Date(),
+        month,
+        year,
+        regularHours: totalRegularHours,
+        overtimeHours: totalOvertimeHours,
+        premiumHours: 0,
+        regularRate: avgRegularRate,
+        overtimeRate: avgOvertimeRate,
+        premiumRate: avgPremiumRate,
+      };
+
+      const pdfBuffer = await generateInspectorInvoicePdf(invoiceData);
+      const monthName = format(startDate, 'MMMM-yyyy');
+      const filename = `Inspector_Invoice_MultiProject_${monthName}.pdf`;
+
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.send(pdfBuffer);
+    } catch (error) {
+      console.error("Error generating multi-project inspector invoice:", error);
+      res.status(500).json({ message: "Failed to generate inspector invoice" });
+    }
+  });
+
   // Test endpoint: Generate blank timesheet PDF for viewing the template
   app.get("/api/billing/test-timesheet", async (req, res) => {
     try {
