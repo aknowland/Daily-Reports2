@@ -586,6 +586,82 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/projects/:id/daily-reports", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      const project = await storage.getProject(req.params.id);
+      if (!project) return res.status(404).json({ message: "Project not found" });
+
+      const hasAccess = isEffectiveSystemAdmin(profile) ||
+        (project.companyId && await isEffectiveCompanyAdmin(userId, project.companyId, profile)) ||
+        await storage.isUserMemberOfProject(req.params.id, userId);
+      if (!hasAccess) return res.status(403).json({ message: "Access denied" });
+
+      const { offset = '0', limit = '10', sortBy = 'date', sortOrder = 'desc', startDate, endDate, inspectorId, search } = req.query;
+
+      const allReports = await storage.getReportsByProject(req.params.id);
+
+      let filtered = [...allReports];
+
+      if (startDate) {
+        const start = new Date(startDate as string);
+        filtered = filtered.filter(r => new Date(r.date) >= start);
+      }
+      if (endDate) {
+        const end = new Date(endDate as string);
+        end.setHours(23, 59, 59, 999);
+        filtered = filtered.filter(r => new Date(r.date) <= end);
+      }
+      if (inspectorId) {
+        filtered = filtered.filter(r => r.inspectorId === inspectorId);
+      }
+      if (search) {
+        const s = (search as string).toLowerCase();
+        filtered = filtered.filter(r =>
+          (r.workPerformed || '').toLowerCase().includes(s) ||
+          (r.notes || '').toLowerCase().includes(s) ||
+          (r.issuesDetails || '').toLowerCase().includes(s) ||
+          (r.equipment || '').toLowerCase().includes(s)
+        );
+      }
+
+      filtered.sort((a, b) => {
+        if (sortBy === 'date') {
+          const da = new Date(a.date).getTime();
+          const db = new Date(b.date).getTime();
+          return sortOrder === 'asc' ? da - db : db - da;
+        }
+        return 0;
+      });
+
+      const total = filtered.length;
+      const off = parseInt(offset as string, 10);
+      const lim = parseInt(limit as string, 10);
+      const paginated = filtered.slice(off, off + lim);
+
+      const inspectorIds = [...new Set(allReports.map(r => r.inspectorId))];
+      const inspectors: { id: string; name: string }[] = [];
+      for (const iId of inspectorIds) {
+        const p = await storage.getUserProfile(iId);
+        const u = await storage.getUserById(iId);
+        const name = p?.firstName && p?.lastName ? `${p.firstName} ${p.lastName}` : u?.firstName && u?.lastName ? `${u.firstName} ${u.lastName}` : u?.email || 'Unknown';
+        inspectors.push({ id: iId, name });
+      }
+
+      const inspectorMap = Object.fromEntries(inspectors.map(i => [i.id, i.name]));
+      const reportsWithNames = paginated.map(r => ({
+        ...r,
+        inspectorName: inspectorMap[r.inspectorId] || 'Unknown',
+      }));
+
+      res.json({ reports: reportsWithNames, total, inspectors });
+    } catch (error) {
+      console.error("Error fetching project daily reports:", error);
+      res.status(500).json({ message: "Failed to fetch daily reports" });
+    }
+  });
+
   // Get project dashboard data for inspectors (limited info - no financial data)
   app.get("/api/projects/:id/dashboard", isAuthenticated, async (req: any, res) => {
     try {

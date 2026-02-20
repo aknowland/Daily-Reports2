@@ -1297,8 +1297,8 @@ export default function ProjectDashboardPage() {
             <CardContent>
               <div className="text-2xl font-bold mb-2">{dailyReports.length}</div>
               <div className="text-sm text-muted-foreground mb-3">Total reports submitted</div>
-              <div className="space-y-2 max-h-80 overflow-y-auto">
-                {dailyReports.slice(0, 10).map((report) => (
+              <div className="space-y-2 max-h-60 overflow-y-auto">
+                {dailyReports.slice(0, 5).map((report) => (
                   <Link
                     key={report.id}
                     href={`/reports/${report.id}`}
@@ -1314,6 +1314,14 @@ export default function ProjectDashboardPage() {
                   </Link>
                 ))}
               </div>
+              {dailyReports.length > 0 && (
+                <Link href={`/project/${project.id}/daily-reports`}>
+                  <Button variant="outline" size="sm" className="w-full mt-3 gap-2" data-testid="button-view-all-daily-reports">
+                    <FileText className="w-4 h-4" />
+                    View All Daily Reports
+                  </Button>
+                </Link>
+              )}
             </CardContent>
           </Card>
 
