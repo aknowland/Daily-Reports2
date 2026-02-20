@@ -12671,6 +12671,66 @@ export async function registerRoutes(
     }
   });
 
+  app.patch("/api/companies/:id/members/:userId/name", isAuthenticated, async (req: any, res) => {
+    try {
+      const currentUserId = req.user?.claims?.sub;
+      const companyId = req.params.id;
+      const targetUserId = req.params.userId;
+
+      const nameSchema = z.object({
+        firstName: z.string().max(100).optional(),
+        lastName: z.string().max(100).optional(),
+      }).refine(data => (data.firstName?.trim() || data.lastName?.trim()), {
+        message: "At least one name field is required",
+      });
+
+      const parseResult = nameSchema.safeParse(req.body);
+      if (!parseResult.success) {
+        return res.status(400).json({ message: parseResult.error.errors[0]?.message || "Validation failed" });
+      }
+
+      const { firstName, lastName } = parseResult.data;
+
+      const profile = await storage.getUserProfile(currentUserId);
+      const hasSystemAdminAccess = isEffectiveSystemAdmin(profile);
+      const hasCompanyAdminAccess = await isEffectiveCompanyAdmin(currentUserId, companyId, profile);
+
+      if (!hasSystemAdminAccess && !hasCompanyAdminAccess) {
+        return res.status(403).json({ message: "Access denied. Admin rights required." });
+      }
+
+      const membership = await storage.getCompanyMember(companyId, targetUserId);
+      if (!membership) {
+        return res.status(404).json({ message: "User is not a member of this company" });
+      }
+
+      const targetProfile = await storage.getUserProfile(targetUserId);
+      const updateData: any = { userId: targetUserId };
+
+      if (targetProfile) {
+        updateData.firstName = firstName !== undefined ? (firstName.trim() || targetProfile.firstName) : targetProfile.firstName;
+        updateData.lastName = lastName !== undefined ? (lastName.trim() || targetProfile.lastName) : targetProfile.lastName;
+      } else {
+        if (firstName !== undefined) updateData.firstName = firstName.trim() || null;
+        if (lastName !== undefined) updateData.lastName = lastName.trim() || null;
+      }
+
+      const updated = await storage.createOrUpdateUserProfile(updateData);
+
+      const usersUpdate: any = {};
+      if (updateData.firstName) usersUpdate.firstName = updateData.firstName;
+      if (updateData.lastName) usersUpdate.lastName = updateData.lastName;
+      if (Object.keys(usersUpdate).length > 0) {
+        await db.update(users).set(usersUpdate).where(eq(users.id, targetUserId));
+      }
+
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating member name:", error);
+      res.status(500).json({ message: "Failed to update member name" });
+    }
+  });
+
   // Remove company member (system admin or company admin)
   app.delete("/api/companies/:id/members/:userId", isAuthenticated, async (req: any, res) => {
     try {

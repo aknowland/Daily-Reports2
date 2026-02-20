@@ -67,6 +67,7 @@ import {
   Search,
   FileDown,
   Upload,
+  Pencil,
 } from "lucide-react";
 import { Link } from "wouter";
 import { useState, useMemo, useEffect, useRef } from "react";
@@ -107,6 +108,7 @@ export default function CompanyTeamPage() {
   const [resumeData, setResumeData] = useState<any>(null);
   const [showResumePreview, setShowResumePreview] = useState(false);
   const resumeInputRef = useRef<HTMLInputElement>(null);
+  const [editingMemberName, setEditingMemberName] = useState<{userId: string; firstName: string; lastName: string} | null>(null);
   const [inviteForm, setInviteForm] = useState({
     email: "",
     firstName: "",
@@ -350,6 +352,27 @@ export default function CompanyTeamPage() {
       toast({
         title: "Error",
         description: "Failed to update member role.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const updateMemberNameMutation = useMutation({
+    mutationFn: async ({ userId, firstName, lastName }: { userId: string; firstName: string; lastName: string }) => {
+      return apiRequest("PATCH", `/api/companies/${activeCompany?.id}/members/${userId}/name`, { firstName, lastName });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/companies", activeCompany?.id, "members"] });
+      setEditingMemberName(null);
+      toast({
+        title: "Name Updated",
+        description: "Team member name has been updated.",
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to update name.",
         variant: "destructive",
       });
     },
@@ -925,6 +948,24 @@ export default function CompanyTeamPage() {
                                 <p className="font-medium truncate" data-testid={`text-member-name-${member.id}`}>
                                   {displayName}
                                 </p>
+                                {isEffectiveCompanyAdmin && (
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="shrink-0"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setEditingMemberName({
+                                        userId: member.userId,
+                                        firstName: member.user?.firstName || "",
+                                        lastName: member.user?.lastName || "",
+                                      });
+                                    }}
+                                    data-testid={`button-edit-name-${member.id}`}
+                                  >
+                                    <Pencil className="w-3 h-3" />
+                                  </Button>
+                                )}
                                 {isCurrentUser && (
                                   <Badge variant="secondary" className="text-xs">You</Badge>
                                 )}
@@ -1432,6 +1473,67 @@ export default function CompanyTeamPage() {
           </TabsContent>
         </Tabs>
       </div>
+
+      <Dialog open={!!editingMemberName} onOpenChange={() => setEditingMemberName(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit Member Name</DialogTitle>
+            <DialogDescription>
+              Update the name for this team member.
+            </DialogDescription>
+          </DialogHeader>
+          {editingMemberName && (
+            <form onSubmit={(e) => {
+              e.preventDefault();
+              updateMemberNameMutation.mutate(editingMemberName);
+            }}>
+              <div className="space-y-4 py-4">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-first-name">First Name</Label>
+                    <Input
+                      id="edit-first-name"
+                      placeholder="First name"
+                      value={editingMemberName.firstName}
+                      onChange={(e) => setEditingMemberName({ ...editingMemberName, firstName: e.target.value })}
+                      data-testid="input-edit-first-name"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-last-name">Last Name</Label>
+                    <Input
+                      id="edit-last-name"
+                      placeholder="Last name"
+                      value={editingMemberName.lastName}
+                      onChange={(e) => setEditingMemberName({ ...editingMemberName, lastName: e.target.value })}
+                      data-testid="input-edit-last-name"
+                    />
+                  </div>
+                </div>
+              </div>
+              <DialogFooter>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setEditingMemberName(null)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={updateMemberNameMutation.isPending || (!editingMemberName.firstName.trim() && !editingMemberName.lastName.trim())}
+                  data-testid="button-save-name"
+                >
+                  {updateMemberNameMutation.isPending && (
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  )}
+                  Save Name
+                </Button>
+              </DialogFooter>
+            </form>
+          )}
+        </DialogContent>
+      </Dialog>
 
       <AlertDialog open={!!memberToRemove} onOpenChange={() => setMemberToRemove(null)}>
         <AlertDialogContent>
