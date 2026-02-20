@@ -2092,11 +2092,26 @@ export async function registerRoutes(
         doc.moveDown();
       }
       
+      // Get linked client name (from project.clientId or contract)
+      let linkedClientName = project.client || '';
+      if (project.clientId) {
+        const linkedClient = await storage.getClient(project.clientId);
+        if (linkedClient) linkedClientName = linkedClient.name;
+      }
+      if (!linkedClientName && project.companyId) {
+        const allContracts = await storage.getContracts(project.companyId);
+        const linkedContract = allContracts.find((c: any) => c.projects?.some((p: any) => p.id === projectId));
+        if (linkedContract?.clientId) {
+          const contractClient = await storage.getClient(linkedContract.clientId);
+          if (contractClient) linkedClientName = contractClient.name;
+        }
+      }
+
       // Project info section
       doc.fontSize(10).font('Helvetica-Bold').text('PROJECT:', startX);
-      doc.fontSize(10).font('Helvetica').text(`${project.name} (${project.projectNumber || 'N/A'})`, startX);
-      if (project.client) doc.text(`Client: ${project.client}`);
-      if (project.address) doc.text(`Address: ${project.address}`);
+      doc.fontSize(10).font('Helvetica').text(`${project.name} (${project.projectNumber || 'N/A'})`, startX, undefined, { width: pageWidth });
+      if (linkedClientName) doc.text(`Client: ${linkedClientName}`, startX, undefined, { width: pageWidth });
+      if (project.address) doc.text(`Address: ${project.address}`, startX, undefined, { width: pageWidth });
       doc.moveDown(1.5);
       
       // Summary section
@@ -8255,11 +8270,17 @@ export async function registerRoutes(
       if (invoice.clientId) {
         client = await storage.getClient(invoice.clientId);
       }
+      if (!client && project?.clientId) {
+        client = await storage.getClient(project.clientId);
+      }
       if (invoice.purchaseOrderId) {
         purchaseOrder = await storage.getPurchaseOrder(invoice.purchaseOrderId);
       }
       if (invoice.contractId) {
         contract = await storage.getContract(invoice.contractId);
+      }
+      if (!client && contract?.clientId) {
+        client = await storage.getClient(contract.clientId);
       }
       
       // Generate PDF for attachment
@@ -11120,11 +11141,23 @@ export async function registerRoutes(
         contract = allContracts.find((c: any) => c.projects?.some((p: any) => p.id === projectId)) || null;
       }
 
-      // Get client info from contract
+      // Get client info - try contract first, then project directly
       let client = null;
       if (contract?.clientId) {
         client = await storage.getClient(contract.clientId);
       }
+      if (!client && project.clientId) {
+        client = await storage.getClient(project.clientId);
+      }
+
+      // Get IOR agreements for this project to get inspector hourly rates
+      const iorAgreements = await storage.getIorAgreementsByProject(projectId);
+      const iorRateMap = new Map<string, string>();
+      iorAgreements.forEach((ior: any) => {
+        if (ior.inspectorId && ior.rate) {
+          iorRateMap.set(ior.inspectorId, ior.rate);
+        }
+      });
 
       // Get reports for the specified month
       const startDate = new Date(year, month - 1, 1);
@@ -11140,6 +11173,7 @@ export async function registerRoutes(
         regularHours: number;
         overtimeHours: number;
         premiumHours: number;
+        hourlyRate?: number;
       }> = [];
       
       for (const report of reports) {
@@ -11157,12 +11191,17 @@ export async function registerRoutes(
             ? `${inspectorUser.firstName} ${inspectorUser.lastName}`
             : inspectorUser?.email || 'Unknown';
         
+        // Get hourly rate from IOR agreement
+        const iorRate = iorRateMap.get(report.inspectorId);
+        const hourlyRate = iorRate ? parseFloat(iorRate) : undefined;
+        
         reportDetails.push({
           date: report.date,
           inspectorName,
           regularHours: regHrs,
           overtimeHours: otHrs,
           premiumHours: 0,
+          hourlyRate,
         });
       }
 

@@ -855,6 +855,7 @@ export interface InvoiceReportDetail {
   regularHours: number;
   overtimeHours: number;
   premiumHours: number;
+  hourlyRate?: number;
 }
 
 export interface InvoiceData {
@@ -904,26 +905,26 @@ export async function generateInvoicePdf(data: InvoiceData): Promise<Buffer> {
 
     // ========== HEADER SECTION ==========
     // Company name and INVOICE title on same line, properly aligned
-    doc.fontSize(20).font('Helvetica-Bold').fillColor('#000');
-    doc.text(data.companyName, startX, 45, { width: pageWidth - 150 });
+    doc.fontSize(18).font('Helvetica-Bold').fillColor('#000');
+    doc.text(data.companyName, startX, 45, { width: pageWidth - 160, ellipsis: true });
     
     // INVOICE title - right aligned
-    doc.fontSize(28).font('Helvetica-Bold').fillColor('#333');
+    doc.fontSize(26).font('Helvetica-Bold').fillColor('#333');
     doc.text('INVOICE', rightColX, 45, { width: 200, align: 'right' });
 
     // Company contact info below company name
-    let headerY = 75;
+    let headerY = 72;
     doc.fontSize(9).font('Helvetica').fillColor('#444');
     if (data.companyAddress) {
-      doc.text(data.companyAddress, startX, headerY);
+      doc.text(data.companyAddress, startX, headerY, { width: pageWidth - 220, ellipsis: true });
       headerY = doc.y + 2;
     }
     if (data.companyPhone) {
-      doc.text(data.companyPhone, startX, headerY);
+      doc.text(data.companyPhone, startX, headerY, { width: pageWidth - 220 });
       headerY = doc.y + 2;
     }
     if (data.companyEmail) {
-      doc.text(data.companyEmail, startX, headerY);
+      doc.text(data.companyEmail, startX, headerY, { width: pageWidth - 220 });
       headerY = doc.y + 2;
     }
 
@@ -958,11 +959,11 @@ export async function generateInvoicePdf(data: InvoiceData): Promise<Buffer> {
     doc.fontSize(9).font('Helvetica').fillColor('#000');
     let billToY = sectionY + 18;
     if (data.clientName) {
-      doc.font('Helvetica-Bold').text(data.clientName, startX, billToY);
+      doc.font('Helvetica-Bold').text(data.clientName, startX, billToY, { width: colWidth - 20, ellipsis: true });
       billToY = doc.y + 2;
     }
     if (data.clientContactName) {
-      doc.font('Helvetica').text(`Attn: ${data.clientContactName}`, startX, billToY);
+      doc.font('Helvetica').text(`Attn: ${data.clientContactName}`, startX, billToY, { width: colWidth - 20, ellipsis: true });
       billToY = doc.y + 2;
     }
     if (data.clientAddress) {
@@ -971,29 +972,31 @@ export async function generateInvoicePdf(data: InvoiceData): Promise<Buffer> {
     }
 
     // Project section (right)
-    doc.fontSize(10).font('Helvetica-Bold').fillColor('#000').text('PROJECT DETAILS', startX + colWidth + 20, sectionY);
-    doc.moveTo(startX + colWidth + 20, sectionY + 12).lineTo(startX + colWidth + 120, sectionY + 12).strokeColor('#ccc').lineWidth(0.5).stroke();
+    const projSectionX = startX + colWidth + 20;
+    const projSectionW = colWidth - 20;
+    doc.fontSize(10).font('Helvetica-Bold').fillColor('#000').text('PROJECT DETAILS', projSectionX, sectionY);
+    doc.moveTo(projSectionX, sectionY + 12).lineTo(projSectionX + 100, sectionY + 12).strokeColor('#ccc').lineWidth(0.5).stroke();
     let projY = sectionY + 18;
-    doc.fontSize(9).font('Helvetica-Bold').text(data.projectName, startX + colWidth + 20, projY, { width: colWidth - 20 });
+    doc.fontSize(9).font('Helvetica-Bold').text(data.projectName, projSectionX, projY, { width: projSectionW, ellipsis: true });
     projY = doc.y + 4;
     
     if (data.projectNumber) {
-      doc.font('Helvetica').text('Project #: ', startX + colWidth + 20, projY, { continued: true });
+      doc.font('Helvetica').text('Project #: ', projSectionX, projY, { continued: true, width: projSectionW });
       doc.font('Helvetica-Bold').text(data.projectNumber);
       projY = doc.y + 2;
     }
     if (data.contractNumber) {
-      doc.font('Helvetica').text('Contract #: ', startX + colWidth + 20, projY, { continued: true });
+      doc.font('Helvetica').text('Contract #: ', projSectionX, projY, { continued: true, width: projSectionW });
       doc.font('Helvetica-Bold').text(data.contractNumber);
       projY = doc.y + 2;
     }
     if (data.purchaseOrderNumber) {
-      doc.font('Helvetica').text('PO #: ', startX + colWidth + 20, projY, { continued: true });
+      doc.font('Helvetica').text('PO #: ', projSectionX, projY, { continued: true, width: projSectionW });
       doc.font('Helvetica-Bold').text(data.purchaseOrderNumber);
       projY = doc.y + 2;
     }
     if (data.purchaseOrderValue) {
-      doc.font('Helvetica').text('PO Value: ', startX + colWidth + 20, projY, { continued: true });
+      doc.font('Helvetica').text('PO Value: ', projSectionX, projY, { continued: true, width: projSectionW });
       doc.font('Helvetica-Bold').text('$' + data.purchaseOrderValue.toLocaleString('en-US', { minimumFractionDigits: 2 }));
       projY = doc.y + 2;
     }
@@ -1033,7 +1036,7 @@ export async function generateInvoicePdf(data: InvoiceData): Promise<Buffer> {
       doc.fontSize(9).font('Helvetica').fillColor('#000');
       
       colX = startX;
-      doc.text(item.desc, colX + 8, rowY + 6, { width: summaryColWidths[0] - 16 });
+      doc.text(item.desc, colX + 8, rowY + 6, { width: summaryColWidths[0] - 16, ellipsis: true });
       colX += summaryColWidths[0];
       doc.text(item.hours.toFixed(2), colX + 8, rowY + 6, { width: summaryColWidths[1] - 16, align: 'right' });
       colX += summaryColWidths[1];
@@ -1058,16 +1061,25 @@ export async function generateInvoicePdf(data: InvoiceData): Promise<Buffer> {
       doc.moveTo(startX, rowY + 14).lineTo(startX + 220, rowY + 14).strokeColor('#ccc').lineWidth(0.5).stroke();
       rowY += 22;
 
-      const detailColWidths = [85, 150, 70, 70, 70, 70];
+      const hasRates = data.reportDetails.some(d => d.hourlyRate !== undefined && d.hourlyRate > 0);
+      const detailColWidths = hasRates
+        ? [75, 115, 60, 60, 55, 55, 60]
+        : [85, 150, 70, 70, 70, 70];
+      const detailHeaders = hasRates
+        ? ['Date', 'Inspector', 'Rate', 'Regular', 'Overtime', 'Premium', 'Total']
+        : ['Date', 'Inspector', 'Regular', 'Overtime', 'Premium', 'Total'];
       const totalDetailWidth = detailColWidths.reduce((a, b) => a + b, 0);
 
       // Detail header
       doc.rect(startX, rowY, totalDetailWidth, 20).fillAndStroke('#34495e', '#34495e');
       doc.fontSize(8).font('Helvetica-Bold').fillColor('#fff');
       colX = startX;
-      ['Date', 'Inspector', 'Regular', 'Overtime', 'Premium', 'Total'].forEach((header, i) => {
+      detailHeaders.forEach((header, i) => {
         const w = detailColWidths[i];
-        doc.text(header, colX + 4, rowY + 6, { width: w - 8, align: i > 1 ? 'right' : 'left' });
+        if (header) {
+          const alignRight = hasRates ? i > 1 : i > 1;
+          doc.text(header, colX + 4, rowY + 6, { width: w - 8, align: alignRight ? 'right' : 'left' });
+        }
         colX += w;
       });
       rowY += 20;
@@ -1093,15 +1105,29 @@ export async function generateInvoicePdf(data: InvoiceData): Promise<Buffer> {
         colX = startX;
         doc.text(format(new Date(detail.date), 'MM/dd/yyyy'), colX + 4, rowY + 4, { width: detailColWidths[0] - 8 });
         colX += detailColWidths[0];
-        doc.text(detail.inspectorName, colX + 4, rowY + 4, { width: detailColWidths[1] - 8 });
+        doc.text(detail.inspectorName, colX + 4, rowY + 4, { width: detailColWidths[1] - 8, ellipsis: true });
         colX += detailColWidths[1];
-        doc.text(detail.regularHours > 0 ? detail.regularHours.toFixed(1) : '-', colX + 4, rowY + 4, { width: detailColWidths[2] - 8, align: 'right' });
-        colX += detailColWidths[2];
-        doc.text(detail.overtimeHours > 0 ? detail.overtimeHours.toFixed(1) : '-', colX + 4, rowY + 4, { width: detailColWidths[3] - 8, align: 'right' });
-        colX += detailColWidths[3];
-        doc.text(detail.premiumHours > 0 ? detail.premiumHours.toFixed(1) : '-', colX + 4, rowY + 4, { width: detailColWidths[4] - 8, align: 'right' });
-        colX += detailColWidths[4];
-        doc.font('Helvetica-Bold').text(totalHours.toFixed(1), colX + 4, rowY + 4, { width: detailColWidths[5] - 8, align: 'right' });
+        
+        if (hasRates) {
+          const rateIdx = 2, regIdx = 3, otIdx = 4, prmIdx = 5, totIdx = 6;
+          doc.text(detail.hourlyRate ? '$' + detail.hourlyRate.toFixed(2) : '-', colX + 4, rowY + 4, { width: detailColWidths[rateIdx] - 8, align: 'right' });
+          colX += detailColWidths[rateIdx];
+          doc.text(detail.regularHours > 0 ? detail.regularHours.toFixed(1) : '-', colX + 4, rowY + 4, { width: detailColWidths[regIdx] - 8, align: 'right' });
+          colX += detailColWidths[regIdx];
+          doc.text(detail.overtimeHours > 0 ? detail.overtimeHours.toFixed(1) : '-', colX + 4, rowY + 4, { width: detailColWidths[otIdx] - 8, align: 'right' });
+          colX += detailColWidths[otIdx];
+          doc.text(detail.premiumHours > 0 ? detail.premiumHours.toFixed(1) : '-', colX + 4, rowY + 4, { width: detailColWidths[prmIdx] - 8, align: 'right' });
+          colX += detailColWidths[prmIdx];
+          doc.font('Helvetica-Bold').text(totalHours.toFixed(1), colX + 4, rowY + 4, { width: detailColWidths[totIdx] - 8, align: 'right' });
+        } else {
+          doc.text(detail.regularHours > 0 ? detail.regularHours.toFixed(1) : '-', colX + 4, rowY + 4, { width: detailColWidths[2] - 8, align: 'right' });
+          colX += detailColWidths[2];
+          doc.text(detail.overtimeHours > 0 ? detail.overtimeHours.toFixed(1) : '-', colX + 4, rowY + 4, { width: detailColWidths[3] - 8, align: 'right' });
+          colX += detailColWidths[3];
+          doc.text(detail.premiumHours > 0 ? detail.premiumHours.toFixed(1) : '-', colX + 4, rowY + 4, { width: detailColWidths[4] - 8, align: 'right' });
+          colX += detailColWidths[4];
+          doc.font('Helvetica-Bold').text(totalHours.toFixed(1), colX + 4, rowY + 4, { width: detailColWidths[5] - 8, align: 'right' });
+        }
 
         rowY += 16;
       });
@@ -1109,6 +1135,10 @@ export async function generateInvoicePdf(data: InvoiceData): Promise<Buffer> {
 
     // Notes
     if (data.notes) {
+      if (rowY > doc.page.height - 100) {
+        doc.addPage();
+        rowY = 50;
+      }
       rowY += 20;
       doc.fontSize(9).font('Helvetica-Bold').fillColor('#000').text('Notes:', startX, rowY);
       doc.fontSize(9).font('Helvetica').text(data.notes, startX, rowY + 14, { width: pageWidth });
