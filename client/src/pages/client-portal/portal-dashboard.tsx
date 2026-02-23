@@ -20,12 +20,20 @@ interface ClientProject {
   name: string;
   projectNumber: string | null;
   address: string | null;
-  status: string;
-  scheduleProgress: number;
   totalReports: number;
   latestReportDate: string | null;
   startDate: string | null;
   substantialCompletionDate: string | null;
+}
+
+function computeScheduleProgress(startDate: string | null, endDate: string | null): number {
+  if (!startDate || !endDate) return 0;
+  const start = new Date(startDate).getTime();
+  const end = new Date(endDate).getTime();
+  const now = Date.now();
+  if (now <= start) return 0;
+  if (now >= end) return 100;
+  return Math.round(((now - start) / (end - start)) * 100);
 }
 
 interface PortalStatus {
@@ -42,19 +50,6 @@ interface ProjectsResponse {
   companyName: string;
   companyLogo: string | null;
   projects: ClientProject[];
-}
-
-function getStatusBadgeClasses(status: string) {
-  switch (status) {
-    case "active":
-      return "bg-green-600/15 text-green-700 border-green-600/30";
-    case "completed":
-      return "bg-blue-600/15 text-blue-700 border-blue-600/30";
-    case "on-hold":
-      return "bg-amber-600/15 text-amber-700 border-amber-600/30";
-    default:
-      return "bg-muted text-muted-foreground";
-  }
 }
 
 function formatDate(dateStr: string | null) {
@@ -186,13 +181,15 @@ export default function PortalDashboard() {
                           </span>
                         </div>
                       </div>
-                      <Badge
-                        variant="outline"
-                        className={`${getStatusBadgeClasses(project.status)} capitalize flex-shrink-0 no-default-hover-elevate no-default-active-elevate`}
-                        data-testid={`badge-status-${project.id}`}
-                      >
-                        {project.status.replace("-", " ")}
-                      </Badge>
+                      {project.projectNumber && (
+                        <Badge
+                          variant="outline"
+                          className="bg-muted text-muted-foreground flex-shrink-0 no-default-hover-elevate no-default-active-elevate"
+                          data-testid={`badge-project-number-${project.id}`}
+                        >
+                          {project.projectNumber}
+                        </Badge>
+                      )}
                     </div>
 
                     <div className="space-y-1.5">
@@ -202,13 +199,13 @@ export default function PortalDashboard() {
                           className="font-medium"
                           data-testid={`text-progress-${project.id}`}
                         >
-                          {project.scheduleProgress}%
+                          {computeScheduleProgress(project.startDate, project.substantialCompletionDate)}%
                         </span>
                       </div>
                       <div className="w-full h-2 bg-muted rounded-full overflow-hidden">
                         <div
                           className="h-full bg-[hsl(36,90%,50%)] rounded-full transition-all"
-                          style={{ width: `${Math.min(100, Math.max(0, project.scheduleProgress))}%` }}
+                          style={{ width: `${Math.min(100, Math.max(0, computeScheduleProgress(project.startDate, project.substantialCompletionDate)))}%` }}
                           data-testid={`progress-bar-${project.id}`}
                         />
                       </div>
