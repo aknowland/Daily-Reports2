@@ -47,16 +47,16 @@ export default function LandingPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+      <header className="sticky top-0 z-50 w-full bg-[hsl(216,32%,15%)] text-white border-b-2 border-[hsl(36,90%,50%)]">
         <div className="container flex h-14 max-w-screen-2xl items-center justify-between px-4">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
-              <HardHat className="w-5 h-5 text-primary-foreground" />
+            <div className="w-8 h-8 rounded bg-[hsl(36,90%,50%)] flex items-center justify-center">
+              <HardHat className="w-5 h-5 text-[hsl(216,32%,10%)]" />
             </div>
-            <span className="font-semibold text-lg">Field Daily Reports</span>
+            <span className="font-semibold text-lg tracking-tight">Field Daily Reports</span>
           </div>
           <div className="flex items-center gap-2">
-            <Button asChild data-testid="button-header-login">
+            <Button asChild className="bg-[hsl(36,90%,50%)] text-[hsl(216,32%,10%)] hover:bg-[hsl(36,90%,45%)] font-semibold" data-testid="button-header-login">
               <a href="/api/login">Sign In</a>
             </Button>
           </div>
