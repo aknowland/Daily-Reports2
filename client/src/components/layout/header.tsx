@@ -86,7 +86,7 @@ export function Header({ title = "Field Daily Reports" }: HeaderProps) {
   const renderNavItems = (items: typeof inspectorNavItems, sectionTitle?: string, keyPrefix = "") => (
     <>
       {sectionTitle && (
-        <div className="px-3 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+        <div className="px-3 py-2 text-xs font-semibold text-white/70 uppercase tracking-wider">
           {sectionTitle}
         </div>
       )}
@@ -99,10 +99,10 @@ export function Header({ title = "Field Daily Reports" }: HeaderProps) {
           <Link key={`${keyPrefix}${item.href}`} href={item.href} onClick={() => setSheetOpen(false)}>
             <div
               className={cn(
-                "flex items-center gap-3 px-3 py-2 rounded-md transition-colors",
+                "flex items-center gap-3 px-3 py-2 rounded transition-colors",
                 isActive 
-                  ? "bg-primary text-primary-foreground" 
-                  : "hover-elevate"
+                  ? "bg-[hsl(36,90%,50%)] text-[hsl(216,32%,10%)] font-semibold" 
+                  : "text-white/80 hover:text-white hover:bg-white/10"
               )}
               data-testid={`nav-${item.label.toLowerCase().replace(/\s+/g, '-')}`}
             >
@@ -116,21 +116,21 @@ export function Header({ title = "Field Daily Reports" }: HeaderProps) {
   );
 
   return (
-    <header className="sticky top-0 z-40 w-full border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+    <header className="sticky top-0 z-40 w-full bg-[hsl(216,32%,15%)] text-white border-b-2 border-[hsl(36,90%,50%)]">
       <div className="flex h-14 items-center justify-between gap-4 px-4">
         <div className="flex items-center gap-2">
           {user && (
             <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
               <SheetTrigger asChild>
-                <Button variant="ghost" size="icon" data-testid="button-nav-menu">
+                <Button variant="ghost" size="icon" className="text-white/80 hover:text-white hover:bg-white/10" data-testid="button-nav-menu">
                   <Menu className="w-5 h-5" />
                 </Button>
               </SheetTrigger>
-              <SheetContent side="left" className="w-64 overflow-y-auto">
+              <SheetContent side="left" className="w-64 overflow-y-auto bg-[hsl(216,32%,15%)] text-white border-r-2 border-[hsl(36,90%,50%)]">
                 <SheetHeader>
-                  <SheetTitle className="flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
-                      <HardHat className="w-5 h-5 text-primary-foreground" />
+                  <SheetTitle className="flex items-center gap-2 text-white">
+                    <div className="w-8 h-8 rounded bg-[hsl(36,90%,50%)] flex items-center justify-center">
+                      <HardHat className="w-5 h-5 text-[hsl(216,32%,10%)]" />
                     </div>
                     Field Daily Reports
                   </SheetTitle>
@@ -140,23 +140,23 @@ export function Header({ title = "Field Daily Reports" }: HeaderProps) {
                   
                   {isEffectiveCompanyAdmin && activeCompany && (
                     <>
-                      <Separator className="my-4" />
+                      <Separator className="my-4 bg-white/15" />
                       {renderNavItems(companyAdminNavItems, `${activeCompany.name}`, "company-admin-")}
                     </>
                   )}
                   
                   {showSystemAdminFeatures && (
                     <>
-                      <Separator className="my-4" />
+                      <Separator className="my-4 bg-white/15" />
                       <Collapsible open={sysAdminOpen} onOpenChange={setSysAdminOpen}>
                         <CollapsibleTrigger className="w-full">
-                          <div className="flex items-center justify-between px-3 py-2 rounded-md hover-elevate">
-                            <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                          <div className="flex items-center justify-between px-3 py-2 rounded hover:bg-white/10">
+                            <div className="flex items-center gap-2 text-xs font-semibold text-white/70 uppercase tracking-wider">
                               <Shield className="w-3 h-3" />
                               System Admin
                             </div>
                             <ChevronDown className={cn(
-                              "w-4 h-4 text-muted-foreground transition-transform duration-200",
+                              "w-4 h-4 text-white/40 transition-transform duration-200",
                               sysAdminOpen && "rotate-180"
                             )} />
                           </div>
@@ -170,10 +170,10 @@ export function Header({ title = "Field Daily Reports" }: HeaderProps) {
                               <Link key={item.href} href={item.href} onClick={() => setSheetOpen(false)}>
                                 <div
                                   className={cn(
-                                    "flex items-center gap-3 px-3 py-2 rounded-md transition-colors",
+                                    "flex items-center gap-3 px-3 py-2 rounded transition-colors",
                                     isActive 
-                                      ? "bg-primary text-primary-foreground" 
-                                      : "hover-elevate"
+                                      ? "bg-[hsl(36,90%,50%)] text-[hsl(216,32%,10%)] font-semibold" 
+                                      : "text-white/80 hover:text-white hover:bg-white/10"
                                   )}
                                   data-testid={`nav-admin-${item.label.toLowerCase().replace(/\s+/g, '-')}`}
                                 >
@@ -189,10 +189,10 @@ export function Header({ title = "Field Daily Reports" }: HeaderProps) {
                   )}
                 </nav>
                 
-                <Separator className="my-4" />
+                <Separator className="my-4 bg-white/15" />
                 <Button 
                   variant="ghost" 
-                  className="w-full justify-start text-destructive"
+                  className="w-full justify-start text-red-400 hover:text-red-300 hover:bg-white/10"
                   onClick={() => {
                     setSheetOpen(false);
                     logout();
@@ -207,10 +207,10 @@ export function Header({ title = "Field Daily Reports" }: HeaderProps) {
           )}
           <Link href="/">
             <div className="flex items-center gap-2 cursor-pointer" data-testid="link-home">
-              <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
-                <HardHat className="w-5 h-5 text-primary-foreground" />
+              <div className="w-8 h-8 rounded bg-[hsl(36,90%,50%)] flex items-center justify-center">
+                <HardHat className="w-5 h-5 text-[hsl(216,32%,10%)]" />
               </div>
-              <span className="font-semibold text-lg hidden sm:inline">{title}</span>
+              <span className="font-semibold text-lg hidden sm:inline tracking-tight">{title}</span>
             </div>
           </Link>
         </div>
@@ -224,10 +224,10 @@ export function Header({ title = "Field Daily Reports" }: HeaderProps) {
           ) : user ? (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="rounded-full" data-testid="button-user-menu">
+                <Button variant="ghost" size="icon" className="rounded-full text-white/80 hover:text-white hover:bg-white/10" data-testid="button-user-menu">
                   <Avatar className="h-9 w-9">
                     <AvatarImage src={user.profileImageUrl || undefined} alt={getDisplayName()} />
-                    <AvatarFallback className="bg-primary text-primary-foreground text-sm font-medium">
+                    <AvatarFallback className="bg-[hsl(36,90%,50%)] text-[hsl(216,32%,10%)] text-sm font-medium">
                       {getInitials(user.firstName, user.lastName)}
                     </AvatarFallback>
                   </Avatar>
@@ -311,7 +311,7 @@ export function Header({ title = "Field Daily Reports" }: HeaderProps) {
               </DropdownMenuContent>
             </DropdownMenu>
           ) : (
-            <Button asChild data-testid="button-login">
+            <Button asChild className="bg-[hsl(36,90%,50%)] text-[hsl(216,32%,10%)] hover:bg-[hsl(36,90%,45%)] font-semibold" data-testid="button-login">
               <a href="/api/login">Sign in</a>
             </Button>
           )}
