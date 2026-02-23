@@ -29,6 +29,14 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
   Briefcase,
   Plus,
   Trash2,
@@ -41,10 +49,12 @@ import {
   Search,
   ArrowLeft,
   Building2,
+  ExternalLink,
+  Send,
 } from "lucide-react";
 import { useState } from "react";
 import { useLocation, Link } from "wouter";
-import type { Client } from "@shared/schema";
+import type { Client, Project } from "@shared/schema";
 
 type ClientFormData = {
   name: string;
@@ -73,6 +83,12 @@ export default function ClientsPage() {
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [isPortalInviteOpen, setIsPortalInviteOpen] = useState(false);
+  const [portalInviteClient, setPortalInviteClient] = useState<Client | null>(null);
+  const [portalInviteEmail, setPortalInviteEmail] = useState("");
+  const [portalInviteFirstName, setPortalInviteFirstName] = useState("");
+  const [portalInviteLastName, setPortalInviteLastName] = useState("");
+  const [portalSelectedProjects, setPortalSelectedProjects] = useState<string[]>([]);
   const [editingClient, setEditingClient] = useState<Client | null>(null);
   const [clientToDelete, setClientToDelete] = useState<Client | null>(null);
   const [formData, setFormData] = useState<ClientFormData>(emptyFormData);
@@ -86,6 +102,34 @@ export default function ClientsPage() {
       return response.json();
     },
     enabled: !!activeCompany?.id,
+  });
+
+  const { data: projects = [] } = useQuery<Project[]>({
+    queryKey: ["/api/projects"],
+    enabled: !!activeCompany?.id,
+  });
+
+  const portalInviteMutation = useMutation({
+    mutationFn: async (data: { email: string; firstName: string; lastName: string; clientId: string; projectIds: string[]; companyId: string }) => {
+      const response = await apiRequest("POST", "/api/client-portal/invite", data);
+      return response.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Client portal invite sent successfully" });
+      setIsPortalInviteOpen(false);
+      setPortalInviteClient(null);
+      setPortalInviteEmail("");
+      setPortalInviteFirstName("");
+      setPortalInviteLastName("");
+      setPortalSelectedProjects([]);
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Failed to send portal invite",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
   });
 
   const createMutation = useMutation({
@@ -349,9 +393,29 @@ export default function ClientsPage() {
                         )}
                       </div>
 
-                      <div className="mt-3 pt-3 border-t flex items-center gap-2 text-sm text-primary">
-                        <FolderOpen className="h-4 w-4" />
-                        <span>View Projects</span>
+                      <div className="mt-3 pt-3 border-t flex items-center justify-between">
+                        <div className="flex items-center gap-2 text-sm text-primary">
+                          <FolderOpen className="h-4 w-4" />
+                          <span>View Projects</span>
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 text-xs gap-1"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setPortalInviteClient(client);
+                            setPortalInviteEmail(client.email || "");
+                            setPortalInviteFirstName(client.contactName?.split(" ")[0] || "");
+                            setPortalInviteLastName(client.contactName?.split(" ").slice(1).join(" ") || "");
+                            setPortalSelectedProjects([]);
+                            setIsPortalInviteOpen(true);
+                          }}
+                          data-testid={`button-portal-invite-${client.id}`}
+                        >
+                          <ExternalLink className="h-3 w-3" />
+                          Portal Invite
+                        </Button>
                       </div>
                     </CardContent>
                   </Card>
@@ -517,6 +581,137 @@ export default function ClientsPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <Dialog open={isPortalInviteOpen} onOpenChange={setIsPortalInviteOpen}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ExternalLink className="h-5 w-5 text-[hsl(36,90%,50%)]" />
+              Send Client Portal Invite
+            </DialogTitle>
+            <DialogDescription>
+              Invite {portalInviteClient?.name} to view project data through the client portal.
+              They'll get read-only access to reports, photos, and project status.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label htmlFor="portal-first-name">First Name</Label>
+                <Input
+                  id="portal-first-name"
+                  value={portalInviteFirstName}
+                  onChange={(e) => setPortalInviteFirstName(e.target.value)}
+                  placeholder="First name"
+                  data-testid="input-portal-first-name"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="portal-last-name">Last Name</Label>
+                <Input
+                  id="portal-last-name"
+                  value={portalInviteLastName}
+                  onChange={(e) => setPortalInviteLastName(e.target.value)}
+                  placeholder="Last name"
+                  data-testid="input-portal-last-name"
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="portal-email">
+                Email Address <span className="text-destructive">*</span>
+              </Label>
+              <Input
+                id="portal-email"
+                type="email"
+                value={portalInviteEmail}
+                onChange={(e) => setPortalInviteEmail(e.target.value)}
+                placeholder="client@example.com"
+                data-testid="input-portal-email"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>
+                Projects to Share <span className="text-destructive">*</span>
+              </Label>
+              <p className="text-xs text-muted-foreground">
+                Select which projects this client can view
+              </p>
+              <div className="border rounded-none max-h-48 overflow-y-auto p-2 space-y-1">
+                {projects.length === 0 ? (
+                  <p className="text-sm text-muted-foreground py-2 text-center">No projects available</p>
+                ) : (
+                  projects.map((project) => (
+                    <label
+                      key={project.id}
+                      className="flex items-center gap-2 p-2 hover:bg-muted/50 cursor-pointer rounded"
+                    >
+                      <Checkbox
+                        checked={portalSelectedProjects.includes(project.id)}
+                        onCheckedChange={(checked) => {
+                          if (checked) {
+                            setPortalSelectedProjects([...portalSelectedProjects, project.id]);
+                          } else {
+                            setPortalSelectedProjects(portalSelectedProjects.filter(id => id !== project.id));
+                          }
+                        }}
+                        data-testid={`checkbox-portal-project-${project.id}`}
+                      />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{project.name}</p>
+                        {project.address && (
+                          <p className="text-xs text-muted-foreground truncate">{project.address}</p>
+                        )}
+                      </div>
+                    </label>
+                  ))
+                )}
+              </div>
+              {portalSelectedProjects.length > 0 && (
+                <p className="text-xs text-muted-foreground">
+                  {portalSelectedProjects.length} project{portalSelectedProjects.length !== 1 ? "s" : ""} selected
+                </p>
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setIsPortalInviteOpen(false)}
+              data-testid="button-cancel-portal-invite"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                if (!portalInviteEmail.trim()) {
+                  toast({ title: "Email is required", variant: "destructive" });
+                  return;
+                }
+                if (portalSelectedProjects.length === 0) {
+                  toast({ title: "Select at least one project", variant: "destructive" });
+                  return;
+                }
+                portalInviteMutation.mutate({
+                  email: portalInviteEmail,
+                  firstName: portalInviteFirstName,
+                  lastName: portalInviteLastName,
+                  clientId: portalInviteClient?.id || "",
+                  projectIds: portalSelectedProjects,
+                  companyId: activeCompany?.id || "",
+                });
+              }}
+              disabled={portalInviteMutation.isPending}
+              className="gap-1"
+              data-testid="button-send-portal-invite"
+            >
+              <Send className="h-4 w-4" />
+              {portalInviteMutation.isPending ? "Sending..." : "Send Invite"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </PageLayout>
   );
 }

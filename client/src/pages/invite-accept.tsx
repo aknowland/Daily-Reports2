@@ -10,8 +10,9 @@ import { Loader2, CheckCircle, XCircle, Shield, HardHat, FolderOpen, LogIn, Buil
 
 interface InviteInfo {
   email: string;
-  role: "inspector" | "admin";
+  role: "inspector" | "admin" | "client";
   isCompanyAdmin?: boolean;
+  isClientPortal?: boolean;
   projectIds: string[];
 }
 
@@ -29,13 +30,15 @@ export default function InviteAcceptPage() {
 
   const acceptMutation = useMutation({
     mutationFn: async () => {
-      return apiRequest("POST", `/api/invites/${token}/accept`);
+      const res = await apiRequest("POST", `/api/invites/${token}/accept`);
+      return res.json();
     },
-    onSuccess: () => {
+    onSuccess: (data: any) => {
       setAccepted(true);
       queryClient.invalidateQueries({ queryKey: ["/api/auth/profile"] });
+      const redirectPath = data?.isClientPortal ? "/client-portal" : "/";
       setTimeout(() => {
-        setLocation("/");
+        setLocation(redirectPath);
       }, 2000);
     },
   });
@@ -88,9 +91,13 @@ export default function InviteAcceptPage() {
         <Card className="w-full max-w-md">
           <CardContent className="flex flex-col items-center justify-center py-12">
             <CheckCircle className="w-12 h-12 text-green-600 mb-4" />
-            <h2 className="text-xl font-semibold mb-2">Welcome to the team!</h2>
+            <h2 className="text-xl font-semibold mb-2">
+              {invite?.isClientPortal ? "Welcome to the Client Portal!" : "Welcome to the team!"}
+            </h2>
             <p className="text-muted-foreground text-center">
-              Your invitation has been accepted. Redirecting you to the dashboard...
+              {invite?.isClientPortal 
+                ? "Your portal access has been activated. Redirecting to your project dashboard..."
+                : "Your invitation has been accepted. Redirecting you to the dashboard..."}
             </p>
           </CardContent>
         </Card>
@@ -112,7 +119,9 @@ export default function InviteAcceptPage() {
             <div className="space-y-4">
               <div className="flex items-center gap-3 p-3 bg-muted rounded-lg">
                 <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
-                  {invite?.role === "admin" ? (
+                  {invite?.isClientPortal ? (
+                    <FolderOpen className="w-5 h-5 text-primary" />
+                  ) : invite?.role === "admin" ? (
                     <Shield className="w-5 h-5 text-primary" />
                   ) : invite?.isCompanyAdmin ? (
                     <Building2 className="w-5 h-5 text-primary" />
@@ -121,7 +130,7 @@ export default function InviteAcceptPage() {
                   )}
                 </div>
                 <div>
-                  <p className="font-medium">Role: {invite?.role === "admin" ? "System Administrator" : invite?.isCompanyAdmin ? "Company Administrator" : "Inspector"}</p>
+                  <p className="font-medium">Role: {invite?.isClientPortal ? "Client Portal Access" : invite?.role === "admin" ? "System Administrator" : invite?.isCompanyAdmin ? "Company Administrator" : "Inspector"}</p>
                   <p className="text-sm text-muted-foreground">{invite?.email}</p>
                 </div>
               </div>
