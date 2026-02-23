@@ -1,5 +1,6 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { PageLayout } from "@/components/layout/page-layout";
+import { PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -312,6 +313,12 @@ export default function CompanyMeetingsPage() {
   return (
     <PageLayout title="Meetings" description="Manage meeting minutes and agendas">
       <div className="space-y-4">
+        <PageHeader icon={CalendarCheck} title="Meetings" subtitle="Manage meeting minutes and agendas">
+          <Button className="bg-[hsl(36,90%,50%)] text-[hsl(216,32%,10%)] hover:bg-[hsl(36,90%,45%)] font-semibold" onClick={() => { setFormData({ ...defaultFormData }); setShowCreateDialog(true); }} data-testid="button-create-meeting">
+            <Plus className="mr-2 h-4 w-4" />
+            New Meeting
+          </Button>
+        </PageHeader>
         <div className="flex flex-wrap items-center gap-2 justify-between">
           <div className="flex items-center gap-2 flex-wrap">
             <div className="relative">
@@ -358,10 +365,6 @@ export default function CompanyMeetingsPage() {
               </SelectContent>
             </Select>
           </div>
-          <Button onClick={() => { setFormData({ ...defaultFormData }); setShowCreateDialog(true); }} data-testid="button-create-meeting">
-            <Plus className="mr-2 h-4 w-4" />
-            New Meeting
-          </Button>
         </div>
 
         {meetingsLoading ? (

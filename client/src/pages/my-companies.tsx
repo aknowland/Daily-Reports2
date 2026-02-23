@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { PageLayout } from "@/components/layout/page-layout";
+import { PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -307,27 +308,12 @@ export default function MyCompaniesPage() {
   return (
     <PageLayout title="My Companies">
       <div className="container px-4 py-6 mx-auto max-w-screen-lg space-y-6">
-        <div className="flex items-center gap-2 mb-2">
-          <Button variant="ghost" size="sm" asChild data-testid="button-back">
-            <Link href="/">
-              <ArrowLeft className="w-4 h-4 mr-1" />
-              Back to Dashboard
-            </Link>
-          </Button>
-        </div>
-
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-bold" data-testid="title-my-companies">My Companies</h1>
-            <p className="text-muted-foreground">
-              Companies you are affiliated with
-            </p>
-          </div>
-          <Button onClick={() => setShowCreateDialog(true)} data-testid="button-create-company">
+        <PageHeader icon={Building2} title="My Companies" subtitle="Companies you are affiliated with">
+          <Button className="bg-[hsl(36,90%,50%)] text-[hsl(216,32%,10%)] hover:bg-[hsl(36,90%,45%)] font-semibold" onClick={() => setShowCreateDialog(true)} data-testid="button-create-company">
             <Plus className="w-4 h-4 mr-2" />
             Create Company
           </Button>
-        </div>
+        </PageHeader>
 
         {joinRequests.filter(r => r.status === "pending").length > 0 && (
           <Card>

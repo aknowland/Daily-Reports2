@@ -1,5 +1,6 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { PageLayout } from "@/components/layout/page-layout";
+import { PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -217,21 +218,7 @@ export default function CompanySettingsPage() {
   return (
     <PageLayout title="Company Settings">
       <div className="container px-4 py-6 mx-auto max-w-screen-lg space-y-6">
-        <div className="flex items-center gap-2 mb-2">
-          <Button variant="ghost" size="sm" asChild data-testid="button-back">
-            <Link href="/">
-              <ArrowLeft className="w-4 h-4 mr-1" />
-              Back to Dashboard
-            </Link>
-          </Button>
-        </div>
-
-        <div>
-          <h1 className="text-2xl font-bold" data-testid="title-settings">Company Settings</h1>
-          <p className="text-muted-foreground">
-            Manage settings for {activeCompany.name}
-          </p>
-        </div>
+        <PageHeader icon={Settings} title="Company Settings" subtitle={`Manage settings for ${activeCompany.name}`} />
 
         <Card>
           <CardHeader>

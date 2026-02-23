@@ -3,6 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { PageLayout } from "@/components/layout/page-layout";
+import { PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -47,6 +48,7 @@ import {
   ChevronDown,
   Check,
   Upload,
+  UserCircle,
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { useTheme } from "@/hooks/use-theme";
@@ -453,55 +455,46 @@ export default function ProfilePage() {
   return (
     <PageLayout title="Profile">
       <div className="max-w-2xl mx-auto space-y-6">
-        <div className="flex items-center justify-between flex-wrap gap-2">
-          <Button variant="ghost" size="sm" asChild data-testid="button-back">
-            <Link href="/">
-              <ArrowLeft className="w-4 h-4 mr-1" />
-              Back to Dashboard
-            </Link>
-          </Button>
-          <div className="flex items-center gap-2 flex-wrap">
-            <input
-              ref={resumeInputRef}
-              type="file"
-              accept=".pdf,.docx,.doc,.txt"
-              className="hidden"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) {
-                  resumeParseMutation.mutate(file);
-                  e.target.value = "";
-                }
-              }}
-              data-testid="input-resume-upload"
-            />
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => resumeInputRef.current?.click()}
-              disabled={resumeParseMutation.isPending}
-              data-testid="button-upload-resume"
-            >
-              {resumeParseMutation.isPending ? (
-                <Loader2 className="w-4 h-4 mr-1 animate-spin" />
-              ) : (
-                <Upload className="w-4 h-4 mr-1" />
-              )}
-              {resumeParseMutation.isPending ? "Parsing..." : "Import Resume"}
-            </Button>
-            {profile && (
-              <Button
-                variant="default"
-                size="sm"
-                onClick={() => window.open(`/api/resume/generate/${profile.userId}`, '_blank')}
-                data-testid="button-generate-resume"
-              >
-                <FileDown className="w-4 h-4 mr-1" />
-                Generate Resume
-              </Button>
+        <PageHeader icon={UserCircle} title="My Profile">
+          <input
+            ref={resumeInputRef}
+            type="file"
+            accept=".pdf,.docx,.doc,.txt"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) {
+                resumeParseMutation.mutate(file);
+                e.target.value = "";
+              }
+            }}
+            data-testid="input-resume-upload"
+          />
+          <Button
+            variant="outline"
+            className="border-white/30 text-white hover:bg-white/10"
+            onClick={() => resumeInputRef.current?.click()}
+            disabled={resumeParseMutation.isPending}
+            data-testid="button-upload-resume"
+          >
+            {resumeParseMutation.isPending ? (
+              <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+            ) : (
+              <Upload className="w-4 h-4 mr-1" />
             )}
-          </div>
-        </div>
+            {resumeParseMutation.isPending ? "Parsing..." : "Import Resume"}
+          </Button>
+          {profile && (
+            <Button
+              className="bg-[hsl(36,90%,50%)] text-[hsl(216,32%,10%)] hover:bg-[hsl(36,90%,45%)] font-semibold"
+              onClick={() => window.open(`/api/resume/generate/${profile.userId}`, '_blank')}
+              data-testid="button-generate-resume"
+            >
+              <FileDown className="w-4 h-4 mr-1" />
+              Generate Resume
+            </Button>
+          )}
+        </PageHeader>
         <Card data-testid="card-user-info">
           <CardHeader>
             <div className="flex items-center gap-4">

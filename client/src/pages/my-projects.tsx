@@ -57,6 +57,7 @@ import { Link } from "wouter";
 import { useState } from "react";
 import { format, startOfMonth, endOfMonth } from "date-fns";
 import { formatPacificDate } from "@/lib/timezone";
+import { PageHeader } from "@/components/layout/page-header";
 import type { Project, Company } from "@shared/schema";
 import { Calendar as CalendarComponent } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -575,54 +576,45 @@ export default function MyProjectsPage() {
 
   return (
     <PageLayout title="My Projects">
-      <div className="container px-4 py-6 mx-auto max-w-screen-lg space-y-6">
-        <div className="flex items-center gap-2 mb-2">
-          <Button variant="ghost" size="sm" asChild data-testid="button-back">
-            <Link href="/">
-              <ArrowLeft className="w-4 h-4 mr-1" />
-              Back to Dashboard
-            </Link>
+      <PageHeader
+        icon={FolderOpen}
+        title="My Projects"
+        subtitle="Projects you are assigned to"
+      >
+        {projects.length >= 2 && (
+          <Button
+            variant="outline"
+            className="border-white/30 text-white hover:bg-white/10"
+            onClick={() => {
+              setSelectedProjectIds([]);
+              setMultiProjectMonth(startOfMonth(new Date()));
+              setShowMultiProjectDialog(true);
+            }}
+            data-testid="button-multi-project-billing"
+          >
+            <FileStack className="w-4 h-4 mr-2" />
+            Multi-Project Billing
           </Button>
-        </div>
+        )}
+        <Button className="bg-[hsl(36,90%,50%)] text-[hsl(216,32%,10%)] hover:bg-[hsl(36,90%,45%)] font-semibold" onClick={() => setShowCreateDialog(true)} data-testid="button-create-project">
+          <Plus className="w-4 h-4 mr-2" />
+          New Project
+        </Button>
+      </PageHeader>
 
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-bold" data-testid="title-my-projects">My Projects</h1>
-            <p className="text-muted-foreground">
-              Projects you are assigned to
-            </p>
-          </div>
-          <div className="flex gap-2 flex-wrap">
-            {projects.length >= 2 && (
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setSelectedProjectIds([]);
-                  setMultiProjectMonth(startOfMonth(new Date()));
-                  setShowMultiProjectDialog(true);
-                }}
-                data-testid="button-multi-project-billing"
-              >
-                <FileStack className="w-4 h-4 mr-2" />
-                Multi-Project Billing
-              </Button>
-            )}
-            <Button onClick={() => setShowCreateDialog(true)} data-testid="button-create-project">
-              <Plus className="w-4 h-4 mr-2" />
-              New Project
-            </Button>
-          </div>
-        </div>
+      <div className="space-y-6">
 
         {projects.length === 0 ? (
-          <Card>
+          <Card className="border-dashed border-2">
             <CardContent className="flex flex-col items-center justify-center py-12">
-              <FolderOpen className="w-12 h-12 text-muted-foreground mb-4" />
-              <p className="text-lg font-medium">No projects yet</p>
-              <p className="text-muted-foreground mb-4">
+              <div className="w-16 h-16 rounded bg-primary/10 flex items-center justify-center mb-4">
+                <FolderOpen className="w-8 h-8 text-primary" />
+              </div>
+              <p className="text-lg font-semibold">No projects yet</p>
+              <p className="text-muted-foreground mb-5">
                 Create your first project to get started
               </p>
-              <Button onClick={() => setShowCreateDialog(true)} data-testid="button-create-first">
+              <Button className="bg-[hsl(36,90%,50%)] text-[hsl(216,32%,10%)] hover:bg-[hsl(36,90%,45%)] font-semibold" onClick={() => setShowCreateDialog(true)} data-testid="button-create-first">
                 <Plus className="w-4 h-4 mr-2" />
                 Create Project
               </Button>
@@ -637,7 +629,7 @@ export default function MyProjectsPage() {
               return (
                 <Card 
                   key={project.id} 
-                  className={`hover-elevate ${isActive ? "ring-2 ring-primary" : ""}`}
+                  className={`hover-elevate border-l-4 ${isActive ? "border-l-[hsl(36,90%,50%)] ring-2 ring-[hsl(36,90%,50%)]/30" : "border-l-primary"}`}
                   data-testid={`card-project-${project.id}`}
                 >
                   <CardHeader>

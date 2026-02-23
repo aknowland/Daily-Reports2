@@ -1,5 +1,6 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { PageLayout } from "@/components/layout/page-layout";
+import { PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -39,6 +40,7 @@ import {
   FolderOpen,
   Search,
   ArrowLeft,
+  Building2,
 } from "lucide-react";
 import { useState } from "react";
 import { useLocation, Link } from "wouter";
@@ -241,26 +243,18 @@ export default function ClientsPage() {
   return (
     <PageLayout title="Clients">
       <div className="space-y-6">
-        <div className="flex items-center gap-2">
-          <Button variant="ghost" size="sm" asChild data-testid="button-back">
-            <Link href="/">
-              <ArrowLeft className="w-4 h-4 mr-1" />
-              Back to Dashboard
-            </Link>
+        <PageHeader icon={Building2} title="Clients" subtitle={activeCompany.name}>
+          <Button className="bg-[hsl(36,90%,50%)] text-[hsl(216,32%,10%)] hover:bg-[hsl(36,90%,45%)] font-semibold" onClick={() => handleOpenDialog()} data-testid="button-add-client">
+            <Plus className="h-4 w-4 mr-2" />
+            Add Client
           </Button>
-        </div>
+        </PageHeader>
         <Card>
           <CardHeader>
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-              <CardTitle className="flex items-center gap-2">
-                <Briefcase className="h-5 w-5" />
-                {activeCompany.name} - Clients
-              </CardTitle>
-              <Button onClick={() => handleOpenDialog()} data-testid="button-add-client">
-                <Plus className="h-4 w-4 mr-2" />
-                Add Client
-              </Button>
-            </div>
+            <CardTitle className="flex items-center gap-2">
+              <Briefcase className="h-5 w-5" />
+              {activeCompany.name} - Clients
+            </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="mb-4">

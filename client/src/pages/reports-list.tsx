@@ -48,6 +48,7 @@ import {
   Mail,
   Loader2
 } from "lucide-react";
+import { PageHeader } from "@/components/layout/page-header";
 import type { DailyReportWithDetails, Project } from "@shared/schema";
 import type { DateRange } from "react-day-picker";
 
@@ -181,31 +182,29 @@ export default function ReportsListPage() {
 
   return (
     <PageLayout title="Reports">
-      <div className="container px-4 py-6 mx-auto max-w-screen-xl space-y-6">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-bold">Daily Reports</h1>
-            <p className="text-muted-foreground">
-              {filteredReports.length} {projectFilter !== "all" ? "reports for this project" : "total reports"}
-            </p>
-          </div>
-          <div className="flex gap-2">
-            <Button 
-              variant="outline" 
-              onClick={handleOpenExportModal}
-              data-testid="button-export-reports"
-            >
-              <Download className="w-4 h-4 mr-2" />
-              Export
-            </Button>
-            <Button asChild data-testid="button-new-report">
-              <Link href="/reports/new">
-                <Plus className="w-4 h-4 mr-2" />
-                New Report
-              </Link>
-            </Button>
-          </div>
-        </div>
+      <PageHeader
+        icon={FileText}
+        title="Daily Reports"
+        subtitle={`${filteredReports.length} ${projectFilter !== "all" ? "reports for this project" : "total reports"}`}
+      >
+        <Button 
+          variant="outline"
+          className="border-white/30 text-white hover:bg-white/10"
+          onClick={handleOpenExportModal}
+          data-testid="button-export-reports"
+        >
+          <Download className="w-4 h-4 mr-2" />
+          Export
+        </Button>
+        <Button asChild className="bg-[hsl(36,90%,50%)] text-[hsl(216,32%,10%)] hover:bg-[hsl(36,90%,45%)] font-semibold" data-testid="button-new-report">
+          <Link href="/reports/new">
+            <Plus className="w-4 h-4 mr-2" />
+            New Report
+          </Link>
+        </Button>
+      </PageHeader>
+
+      <div className="space-y-6">
 
         {selectedProject && (
           <Card className="bg-primary/5 border-primary/20">
@@ -300,18 +299,19 @@ export default function ReportsListPage() {
             </CardContent>
           </Card>
         ) : filteredReports.length === 0 ? (
-          <Card>
-            <CardContent className="p-8 text-center">
-              <FileText className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+          <Card className="border-dashed border-2">
+            <CardContent className="p-10 text-center">
+              <div className="w-16 h-16 rounded bg-primary/10 flex items-center justify-center mx-auto mb-4">
+                <FileText className="w-8 h-8 text-primary" />
+              </div>
               {searchTerm || statusFilter !== "all" || projectFilter !== "all" ? (
                 <>
-                  <p className="text-lg font-medium">No matching reports</p>
-                  <p className="text-sm text-muted-foreground mt-1">
+                  <p className="text-lg font-semibold">No matching reports</p>
+                  <p className="text-sm text-muted-foreground mt-1 mb-5">
                     Try adjusting your search or filter
                   </p>
                   <Button 
                     variant="outline" 
-                    className="mt-4"
                     onClick={() => {
                       setSearchTerm("");
                       setStatusFilter("all");
@@ -325,11 +325,11 @@ export default function ReportsListPage() {
                 </>
               ) : (
                 <>
-                  <p className="text-lg font-medium">No reports yet</p>
-                  <p className="text-sm text-muted-foreground mt-1">
+                  <p className="text-lg font-semibold">No reports yet</p>
+                  <p className="text-sm text-muted-foreground mt-1 mb-5">
                     Create your first daily report to get started
                   </p>
-                  <Button asChild className="mt-4" data-testid="button-create-first-report">
+                  <Button asChild className="bg-[hsl(36,90%,50%)] text-[hsl(216,32%,10%)] hover:bg-[hsl(36,90%,45%)] font-semibold" data-testid="button-create-first-report">
                     <Link href="/reports/new">
                       <Plus className="w-4 h-4 mr-2" />
                       Create Report

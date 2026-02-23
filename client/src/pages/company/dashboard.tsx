@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { PageLayout } from "@/components/layout/page-layout";
+import { PageHeader } from "@/components/layout/page-header";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
@@ -44,6 +45,7 @@ import {
   MessageSquare,
   Send,
   Trash2,
+  LayoutDashboard,
 } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
@@ -571,33 +573,24 @@ export default function CompanyDashboard() {
   return (
     <PageLayout title="Company Dashboard">
       <div className="space-y-6 p-4 overflow-x-hidden">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-bold" data-testid="title-company-dashboard">
-              {activeCompany?.name || "Company"} Dashboard
-            </h1>
-            <p className="text-muted-foreground">
-              Overview of your company's activity
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              onClick={() => setShowCalendar(!showCalendar)}
-              data-testid="button-toggle-calendar"
-            >
-              {showCalendar ? <EyeOff className="w-4 h-4 mr-2" /> : <Eye className="w-4 h-4 mr-2" />}
-              {showCalendar ? "Hide Calendar" : "Show Calendar"}
-            </Button>
-            <SummaryReportDropdown
-              scope="company"
-              entityId={activeCompany?.id || ''}
-              onDownload={handleDownloadReport}
-              onEmail={handleEmailReport}
-              isEmailPending={isEmailPending}
-            />
-          </div>
-        </div>
+        <PageHeader icon={LayoutDashboard} title="Company Dashboard" subtitle={activeCompany?.name || undefined}>
+          <Button
+            variant="outline"
+            className="border-white/30 text-white hover:bg-white/10"
+            onClick={() => setShowCalendar(!showCalendar)}
+            data-testid="button-toggle-calendar"
+          >
+            {showCalendar ? <EyeOff className="w-4 h-4 mr-2" /> : <Eye className="w-4 h-4 mr-2" />}
+            {showCalendar ? "Hide Calendar" : "Show Calendar"}
+          </Button>
+          <SummaryReportDropdown
+            scope="company"
+            entityId={activeCompany?.id || ''}
+            onDownload={handleDownloadReport}
+            onEmail={handleEmailReport}
+            isEmailPending={isEmailPending}
+          />
+        </PageHeader>
 
         {/* Contract Calendar - Collapsible */}
         {showCalendar && (

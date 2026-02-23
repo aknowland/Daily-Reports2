@@ -1,5 +1,6 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { PageLayout } from "@/components/layout/page-layout";
+import { PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -15,7 +16,8 @@ import {
   Building2,
   User,
   ArrowLeft,
-  ExternalLink
+  ExternalLink,
+  Receipt
 } from "lucide-react";
 import { Link } from "wouter";
 import type { UserProfile } from "@shared/schema";
@@ -153,17 +155,14 @@ export default function BillingPage() {
   return (
     <PageLayout title="Billing & Subscription">
       <div className="max-w-4xl mx-auto space-y-6 p-4 md:p-6">
-        <div className="flex items-center gap-4 mb-6">
+        <PageHeader icon={Receipt} title="Billing & Subscription" subtitle="Manage your subscription and billing details">
           <Link href="/profile">
-            <Button variant="ghost" size="icon" data-testid="button-back">
-              <ArrowLeft className="w-4 h-4" />
+            <Button variant="outline" className="border-white/30 text-white hover:bg-white/10" size="sm" data-testid="button-back">
+              <ArrowLeft className="w-4 h-4 mr-1" />
+              Back to Profile
             </Button>
           </Link>
-          <div>
-            <h1 className="text-2xl font-bold">Billing & Subscription</h1>
-            <p className="text-muted-foreground">Manage your subscription and billing details</p>
-          </div>
-        </div>
+        </PageHeader>
 
         <Card data-testid="card-current-plan">
           <CardHeader>

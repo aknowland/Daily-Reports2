@@ -1,5 +1,6 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { PageLayout } from "@/components/layout/page-layout";
+import { PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -675,14 +676,7 @@ export default function BillingManagementPage() {
   return (
     <PageLayout title="Billing">
       <div className="p-4 space-y-6">
-        <div className="flex items-center gap-2 mb-2">
-          <Button variant="ghost" size="sm" asChild data-testid="button-back">
-            <Link href="/">
-              <ArrowLeft className="w-4 h-4 mr-1" />
-              Back to Dashboard
-            </Link>
-          </Button>
-        </div>
+        <PageHeader icon={Receipt} title="Billing Management" subtitle={activeCompany?.name} />
         <Tabs defaultValue="invoices" className="space-y-4">
           <TabsList>
             <TabsTrigger value="invoices" className="gap-2" data-testid="tab-invoices">
