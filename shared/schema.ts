@@ -353,7 +353,9 @@ export const invites = pgTable("invites", {
   invitedBy: varchar("invited_by").references(() => users.id).notNull(),
   status: inviteStatusEnum("status").default("pending").notNull(),
   token: varchar("token").notNull().unique(),
-  inviteCode: varchar("invite_code", { length: 8 }).unique(), // Short alphanumeric code for manual entry
+  inviteCode: varchar("invite_code", { length: 8 }).unique(),
+  isClientPortal: boolean("is_client_portal").default(false),
+  clientId: varchar("client_id"),
   expiresAt: timestamp("expires_at").notNull(),
   createdAt: timestamp("created_at").defaultNow(),
   acceptedAt: timestamp("accepted_at"),
@@ -617,6 +619,27 @@ export const monthlyReportBundles = pgTable("monthly_report_bundles", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// Client Portal - allows external clients to view their project data
+export const clientPortalUsers = pgTable("client_portal_users", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+  companyId: varchar("company_id").references(() => companies.id, { onDelete: "cascade" }).notNull(),
+  clientId: varchar("client_id").references(() => clients.id, { onDelete: "set null" }),
+  isActive: boolean("is_active").default(true).notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  unique().on(table.userId, table.companyId),
+]);
+
+export const clientPortalProjectAccess = pgTable("client_portal_project_access", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  clientPortalUserId: varchar("client_portal_user_id").references(() => clientPortalUsers.id, { onDelete: "cascade" }).notNull(),
+  projectId: varchar("project_id").references(() => projects.id, { onDelete: "cascade" }).notNull(),
+  grantedAt: timestamp("granted_at").defaultNow(),
+}, (table) => [
+  unique().on(table.clientPortalUserId, table.projectId),
+]);
+
 // Relations
 export const companiesRelations = relations(companies, ({ many }) => ({
   projects: many(projects),
@@ -624,6 +647,7 @@ export const companiesRelations = relations(companies, ({ many }) => ({
   contracts: many(contracts),
   clients: many(clients),
   purchaseOrders: many(purchaseOrders),
+  clientPortalUsers: many(clientPortalUsers),
 }));
 
 export const clientsRelations = relations(clients, ({ one, many }) => ({
@@ -764,6 +788,34 @@ export const distributionLogsRelations = relations(distributionLogs, ({ one }) =
   }),
 }));
 
+// Client Portal Relations
+export const clientPortalUsersRelations = relations(clientPortalUsers, ({ one, many }) => ({
+  user: one(users, {
+    fields: [clientPortalUsers.userId],
+    references: [users.id],
+  }),
+  company: one(companies, {
+    fields: [clientPortalUsers.companyId],
+    references: [companies.id],
+  }),
+  client: one(clients, {
+    fields: [clientPortalUsers.clientId],
+    references: [clients.id],
+  }),
+  projectAccess: many(clientPortalProjectAccess),
+}));
+
+export const clientPortalProjectAccessRelations = relations(clientPortalProjectAccess, ({ one }) => ({
+  clientPortalUser: one(clientPortalUsers, {
+    fields: [clientPortalProjectAccess.clientPortalUserId],
+    references: [clientPortalUsers.id],
+  }),
+  project: one(projects, {
+    fields: [clientPortalProjectAccess.projectId],
+    references: [projects.id],
+  }),
+}));
+
 // Insert schemas
 export const insertCompanySchema = createInsertSchema(companies).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertCompanyMemberSchema = createInsertSchema(companyMembers).omit({ id: true, joinedAt: true });
@@ -815,6 +867,8 @@ export const insertProjectBudgetNotificationSchema = createInsertSchema(projectB
 export const insertTimesheetSchema = createInsertSchema(timesheets).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertInvoiceSchema = createInsertSchema(invoices).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertMonthlyReportBundleSchema = createInsertSchema(monthlyReportBundles).omit({ id: true, createdAt: true });
+export const insertClientPortalUserSchema = createInsertSchema(clientPortalUsers).omit({ id: true, createdAt: true });
+export const insertClientPortalProjectAccessSchema = createInsertSchema(clientPortalProjectAccess).omit({ id: true, grantedAt: true });
 
 // Types
 export type Company = typeof companies.$inferSelect;
@@ -873,6 +927,10 @@ export type Invoice = typeof invoices.$inferSelect;
 export type InsertInvoice = z.infer<typeof insertInvoiceSchema>;
 export type MonthlyReportBundle = typeof monthlyReportBundles.$inferSelect;
 export type InsertMonthlyReportBundle = z.infer<typeof insertMonthlyReportBundleSchema>;
+export type ClientPortalUser = typeof clientPortalUsers.$inferSelect;
+export type InsertClientPortalUser = z.infer<typeof insertClientPortalUserSchema>;
+export type ClientPortalProjectAccess = typeof clientPortalProjectAccess.$inferSelect;
+export type InsertClientPortalProjectAccess = z.infer<typeof insertClientPortalProjectAccessSchema>;
 
 // Contract with related projects, client, and attachments
 // Note: contracts can have multiple projects

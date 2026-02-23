@@ -2,6 +2,7 @@ import {
   projects, dailyReports, photos, distributionLogs, appSettings, userProfiles, projectMembers, invites,
   companies, companyMembers, joinRequests, invoices, contracts, clients, contractAttachments, contractOptions, contractOptionInspectors, timesheets, monthlyReportBundles,
   proposals, proposalOptions, proposalOptionInspectors, iorAgreements, purchaseOrders, contractNotifications, budgetNotifications, projectBudgetNotifications, pendingMemberAssignments, teamInspectors, manualTimeEntries, projectBillingRates, projectBaseHours, projectComments, meetings, dismissedAlerts, companyNotes,
+  clientPortalUsers, clientPortalProjectAccess,
   type Project, type InsertProject,
   type ProjectBillingRate, type InsertProjectBillingRate,
   type ProjectBaseHours, type InsertProjectBaseHours,
@@ -36,13 +37,15 @@ import {
   type PendingMemberAssignment, type InsertPendingMemberAssignment,
   type TeamInspector, type InsertTeamInspector,
   type Meeting, type InsertMeeting,
+  type ClientPortalUser, type InsertClientPortalUser,
+  type ClientPortalProjectAccess, type InsertClientPortalProjectAccess,
 } from "@shared/schema";
 import { users, type User } from "@shared/models/auth";
 import { db } from "./db";
 import { eq, desc, asc, and, or, sql, inArray, isNull, gte, lte } from "drizzle-orm";
 
 // Re-export db and schema tables for use in other modules
-export { db, projectComments, projectMembers, users, meetings, companyNotes };
+export { db, projectComments, projectMembers, users, meetings, companyNotes, clientPortalUsers, clientPortalProjectAccess };
 
 // Initialize database sequences (ensures they exist on fresh deployments)
 export async function initDatabaseSequences() {
@@ -346,6 +349,16 @@ export interface IStorage {
   // Dismissed Alerts
   getDismissedAlerts(userId: string, companyId: string): Promise<string[]>;
   dismissAlert(userId: string, alertId: string, companyId: string): Promise<void>;
+
+  // Client Portal
+  getClientPortalUser(userId: string, companyId: string): Promise<ClientPortalUser | undefined>;
+  getClientPortalUsersByUserId(userId: string): Promise<(ClientPortalUser & { company?: Company; client?: Client })[]>;
+  createClientPortalUser(data: InsertClientPortalUser): Promise<ClientPortalUser>;
+  deleteClientPortalUser(id: string): Promise<boolean>;
+  getClientPortalProjectAccess(clientPortalUserId: string): Promise<(ClientPortalProjectAccess & { project?: Project })[]>;
+  addClientPortalProjectAccess(clientPortalUserId: string, projectId: string): Promise<ClientPortalProjectAccess>;
+  removeClientPortalProjectAccess(clientPortalUserId: string, projectId: string): Promise<boolean>;
+  getClientPortalUsersForCompany(companyId: string): Promise<(ClientPortalUser & { user?: User; client?: Client; projectAccess?: (ClientPortalProjectAccess & { project?: Project })[] })[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -2436,6 +2449,88 @@ export class DatabaseStorage implements IStorage {
       .insert(dismissedAlerts)
       .values({ userId, alertId, companyId })
       .onConflictDoNothing();
+  }
+
+  // Client Portal
+  async getClientPortalUser(userId: string, companyId: string): Promise<ClientPortalUser | undefined> {
+    const result = await db.query.clientPortalUsers.findFirst({
+      where: and(
+        eq(clientPortalUsers.userId, userId),
+        eq(clientPortalUsers.companyId, companyId)
+      ),
+    });
+    return result;
+  }
+
+  async getClientPortalUsersByUserId(userId: string): Promise<(ClientPortalUser & { company?: Company; client?: Client })[]> {
+    const results = await db.query.clientPortalUsers.findMany({
+      where: and(
+        eq(clientPortalUsers.userId, userId),
+        eq(clientPortalUsers.isActive, true)
+      ),
+      with: {
+        company: true,
+        client: true,
+      },
+    });
+    return results;
+  }
+
+  async createClientPortalUser(data: InsertClientPortalUser): Promise<ClientPortalUser> {
+    const [result] = await db.insert(clientPortalUsers).values(data).returning();
+    return result;
+  }
+
+  async deleteClientPortalUser(id: string): Promise<boolean> {
+    const result = await db.delete(clientPortalUsers).where(eq(clientPortalUsers.id, id));
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  async getClientPortalProjectAccess(clientPortalUserId: string): Promise<(ClientPortalProjectAccess & { project?: Project })[]> {
+    const results = await db.query.clientPortalProjectAccess.findMany({
+      where: eq(clientPortalProjectAccess.clientPortalUserId, clientPortalUserId),
+      with: {
+        project: true,
+      },
+    });
+    return results;
+  }
+
+  async addClientPortalProjectAccess(clientPortalUserId: string, projectId: string): Promise<ClientPortalProjectAccess> {
+    const [result] = await db
+      .insert(clientPortalProjectAccess)
+      .values({ clientPortalUserId, projectId })
+      .onConflictDoNothing()
+      .returning();
+    return result;
+  }
+
+  async removeClientPortalProjectAccess(clientPortalUserId: string, projectId: string): Promise<boolean> {
+    const result = await db
+      .delete(clientPortalProjectAccess)
+      .where(
+        and(
+          eq(clientPortalProjectAccess.clientPortalUserId, clientPortalUserId),
+          eq(clientPortalProjectAccess.projectId, projectId)
+        )
+      );
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  async getClientPortalUsersForCompany(companyId: string): Promise<(ClientPortalUser & { user?: User; client?: Client; projectAccess?: (ClientPortalProjectAccess & { project?: Project })[] })[]> {
+    const results = await db.query.clientPortalUsers.findMany({
+      where: eq(clientPortalUsers.companyId, companyId),
+      with: {
+        user: true,
+        client: true,
+        projectAccess: {
+          with: {
+            project: true,
+          },
+        },
+      },
+    });
+    return results;
   }
 }
 

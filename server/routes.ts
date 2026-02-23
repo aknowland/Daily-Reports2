@@ -1,6 +1,6 @@
 import type { Express, RequestHandler } from "express";
 import { createServer, type Server } from "http";
-import { storage, db, projectComments, projectMembers, users, companyNotes } from "./storage";
+import { storage, db, projectComments, projectMembers, users, companyNotes, clientPortalUsers } from "./storage";
 import { sql, eq, and, desc } from "drizzle-orm";
 import { setupAuth, isAuthenticated, registerAuthRoutes } from "./replit_integrations/auth";
 import { insertProjectSchema, insertDailyReportSchema, updateUserProfileSchema, WorkActivityRow, VisitorRow, insertContractSchema, insertClientSchema } from "@shared/schema";
@@ -12612,7 +12612,9 @@ export async function registerRoutes(
 
       res.json({
         email: invite.email,
-        role: invite.role,
+        role: invite.isClientPortal ? "client" : invite.role,
+        isClientPortal: invite.isClientPortal || false,
+        isCompanyAdmin: invite.isCompanyAdmin,
         projectIds: invite.projectIds,
       });
     } catch (error) {
@@ -12699,6 +12701,44 @@ export async function registerRoutes(
       });
 
       const projectIds = (invite.projectIds as string[]) || [];
+
+      // Handle client portal invites differently
+      if (invite.isClientPortal) {
+        // Create client portal user
+        const portalUser = await storage.createClientPortalUser({
+          userId,
+          companyId: invite.companyId!,
+          clientId: invite.clientId || null,
+          isActive: true,
+        });
+
+        // Grant access to specified projects
+        for (const projectId of projectIds) {
+          await storage.addClientPortalProjectAccess(portalUser.id, projectId);
+        }
+
+        // Create minimal profile if needed
+        await storage.createOrUpdateUserProfile({
+          userId,
+          role: "inspector",
+          email: invite.email,
+          ...(invite.firstName ? { firstName: invite.firstName } : {}),
+          ...(invite.lastName ? { lastName: invite.lastName } : {}),
+        });
+
+        await storage.updateInviteStatus(invite.id, "accepted");
+
+        return res.json({
+          success: true,
+          message: "Client portal access granted",
+          companyId: invite.companyId,
+          projectsAssigned: projectIds.length,
+          role: "Client",
+          isClientPortal: true,
+          portalUserId: portalUser.id,
+        });
+      }
+
       for (const projectId of projectIds) {
         await storage.addProjectMember(projectId, userId);
       }
@@ -15610,6 +15650,544 @@ Transcript: "${transcript}"`;
     } catch (error) {
       console.error("Error viewing meeting PDF:", error);
       res.status(500).json({ message: "Failed to view meeting PDF" });
+    }
+  });
+
+  // ========== CLIENT PORTAL ROUTES ==========
+
+  // Check if current user is a client portal user
+  app.get("/api/client-portal/status", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const portalUsers = await storage.getClientPortalUsersByUserId(userId);
+      if (portalUsers.length === 0) {
+        return res.json({ isClientPortalUser: false, portals: [] });
+      }
+      res.json({
+        isClientPortalUser: true,
+        portals: portalUsers.map(pu => ({
+          id: pu.id,
+          companyId: pu.companyId,
+          companyName: (pu as any).company?.name || "Unknown",
+          clientName: (pu as any).client?.name || null,
+          isActive: pu.isActive,
+        })),
+      });
+    } catch (error) {
+      console.error("Error checking client portal status:", error);
+      res.status(500).json({ message: "Failed to check portal status" });
+    }
+  });
+
+  // Convenience: Get client portal projects (auto-detect portal user from session)
+  app.get("/api/client-portal/projects", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const portalUsers = await storage.getClientPortalUsersByUserId(userId);
+      if (portalUsers.length === 0) {
+        return res.status(403).json({ message: "Not a client portal user" });
+      }
+      const portalUser = portalUsers[0];
+      const projectAccess = await storage.getClientPortalProjectAccess(portalUser.id);
+      const projectsWithData = await Promise.all(
+        projectAccess.map(async (pa) => {
+          const project = pa.project || await storage.getProject(pa.projectId);
+          if (!project) return null;
+          const reports = await storage.getReportsByProject(project.id);
+          const submittedReports = reports.filter(r => r.status === "submitted");
+          let scheduleProgress = 0;
+          if (project.startDate && project.substantialCompletionDate) {
+            const start = new Date(project.startDate).getTime();
+            const end = new Date(project.substantialCompletionDate).getTime();
+            const now = Date.now();
+            if (end > start) {
+              scheduleProgress = Math.min(100, Math.max(0, Math.round(((now - start) / (end - start)) * 100)));
+            }
+          }
+          return {
+            id: project.id,
+            name: project.name,
+            projectNumber: project.projectNumber,
+            address: project.address,
+            status: submittedReports.length > 0 ? "active" : "pending",
+            startDate: project.startDate,
+            substantialCompletionDate: project.substantialCompletionDate,
+            scheduleProgress,
+            totalReports: submittedReports.length,
+            latestReportDate: submittedReports.length > 0
+              ? submittedReports.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0].date
+              : null,
+          };
+        })
+      );
+      const company = await storage.getCompany(portalUser.companyId);
+      res.json({
+        companyName: company?.name || "Unknown",
+        companyLogo: company?.logoPath || null,
+        projects: projectsWithData.filter(Boolean),
+      });
+    } catch (error) {
+      console.error("Error fetching client portal projects:", error);
+      res.status(500).json({ message: "Failed to fetch projects" });
+    }
+  });
+
+  // Convenience: Get client portal project dashboard data (auto-detect portal user)
+  app.get("/api/client-portal/projects/:projectId", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const portalUsers = await storage.getClientPortalUsersByUserId(userId);
+      if (portalUsers.length === 0) {
+        return res.status(403).json({ message: "Not a client portal user" });
+      }
+      const portalUser = portalUsers[0];
+      const projectAccess = await storage.getClientPortalProjectAccess(portalUser.id);
+      if (!projectAccess.find(pa => pa.projectId === req.params.projectId)) {
+        return res.status(403).json({ message: "No access to this project" });
+      }
+      const project = await storage.getProject(req.params.projectId);
+      if (!project) {
+        return res.status(404).json({ message: "Project not found" });
+      }
+      const company = await storage.getCompany(portalUser.companyId);
+      const allReports = await storage.getReportsByProject(req.params.projectId);
+      const reports = allReports
+        .filter(r => r.status === "submitted")
+        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      const photoPromises = reports.slice(0, 20).map(async r => {
+        const photos = await storage.getPhotosByReport(r.id);
+        return photos.map(p => ({
+          ...p,
+          reportDate: r.date,
+        }));
+      });
+      const allPhotos = (await Promise.all(photoPromises)).flat();
+      let scheduleProgress = 0;
+      if (project.startDate && project.substantialCompletionDate) {
+        const start = new Date(project.startDate).getTime();
+        const end = new Date(project.substantialCompletionDate).getTime();
+        const now = Date.now();
+        if (end > start) {
+          scheduleProgress = Math.min(100, Math.max(0, Math.round(((now - start) / (end - start)) * 100)));
+        }
+      }
+      const issues: any[] = [];
+      const safetyIncidents: any[] = [];
+      for (const r of reports) {
+        if (r.issues) {
+          try {
+            const parsed = typeof r.issues === 'string' ? JSON.parse(r.issues) : r.issues;
+            if (Array.isArray(parsed)) {
+              issues.push(...parsed.map((i: any) => ({ ...i, reportDate: r.date })));
+            }
+          } catch {}
+        }
+        if (r.safetyIncidents) {
+          try {
+            const parsed = typeof r.safetyIncidents === 'string' ? JSON.parse(r.safetyIncidents) : r.safetyIncidents;
+            if (Array.isArray(parsed)) {
+              safetyIncidents.push(...parsed.map((i: any) => ({ ...i, reportDate: r.date })));
+            }
+          } catch {}
+        }
+      }
+      const weatherSummary = reports.slice(0, 7).map(r => ({
+        date: r.date,
+        weather: r.weather,
+        temperature: r.temperature,
+      }));
+      res.json({
+        project: {
+          id: project.id,
+          name: project.name,
+          projectNumber: project.projectNumber,
+          address: project.address,
+          client: project.client,
+          startDate: project.startDate,
+          substantialCompletionDate: project.substantialCompletionDate,
+        },
+        company: {
+          name: company?.name,
+          logoPath: company?.logoPath,
+        },
+        schedule: {
+          progress: scheduleProgress,
+          startDate: project.startDate,
+          endDate: project.substantialCompletionDate,
+        },
+        reports: reports.slice(0, 30).map(r => ({
+          id: r.id,
+          date: r.date,
+          reportNumber: r.reportNumber,
+          weather: r.weather,
+          temperature: r.temperature,
+          inspectorName: r.inspectorName,
+          status: r.status,
+        })),
+        totalReports: reports.length,
+        photos: allPhotos.slice(0, 24),
+        issues: issues.slice(0, 20),
+        safetyIncidents: safetyIncidents.slice(0, 20),
+        weatherSummary,
+      });
+    } catch (error) {
+      console.error("Error fetching client portal project data:", error);
+      res.status(500).json({ message: "Failed to fetch project data" });
+    }
+  });
+
+  // Get client portal projects (with portal user ID)
+  app.get("/api/client-portal/:portalUserId/projects", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const portalUserId = req.params.portalUserId;
+
+      const portalUsers = await storage.getClientPortalUsersByUserId(userId);
+      const portalUser = portalUsers.find(pu => pu.id === portalUserId);
+      if (!portalUser) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const projectAccess = await storage.getClientPortalProjectAccess(portalUserId);
+      const projectsWithData = await Promise.all(
+        projectAccess.map(async (pa) => {
+          const project = pa.project || await storage.getProject(pa.projectId);
+          if (!project) return null;
+
+          // Get basic stats
+          const reports = await storage.getReportsByProject(project.id);
+          const submittedReports = reports.filter(r => r.status === "submitted");
+
+          return {
+            id: project.id,
+            name: project.name,
+            projectNumber: project.projectNumber,
+            address: project.address,
+            startDate: project.startDate,
+            substantialCompletionDate: project.substantialCompletionDate,
+            totalReports: submittedReports.length,
+            latestReportDate: submittedReports.length > 0
+              ? submittedReports.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0].date
+              : null,
+          };
+        })
+      );
+
+      res.json({
+        companyName: (portalUser as any).company?.name || "Unknown",
+        companyLogo: (portalUser as any).company?.logoPath || null,
+        projects: projectsWithData.filter(Boolean),
+      });
+    } catch (error) {
+      console.error("Error fetching client portal projects:", error);
+      res.status(500).json({ message: "Failed to fetch projects" });
+    }
+  });
+
+  // Get client portal project dashboard data
+  app.get("/api/client-portal/:portalUserId/projects/:projectId", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const { portalUserId, projectId } = req.params;
+
+      const portalUsers = await storage.getClientPortalUsersByUserId(userId);
+      const portalUser = portalUsers.find(pu => pu.id === portalUserId);
+      if (!portalUser) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const projectAccess = await storage.getClientPortalProjectAccess(portalUserId);
+      if (!projectAccess.find(pa => pa.projectId === projectId)) {
+        return res.status(403).json({ message: "No access to this project" });
+      }
+
+      const project = await storage.getProject(projectId);
+      if (!project) {
+        return res.status(404).json({ message: "Project not found" });
+      }
+
+      const company = await storage.getCompany(portalUser.companyId);
+
+      // Get reports (submitted only)
+      const allReports = await storage.getReportsByProject(projectId);
+      const reports = allReports
+        .filter(r => r.status === "submitted")
+        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+      // Get photos from submitted reports
+      const photoPromises = reports.slice(0, 20).map(async r => {
+        const photos = await storage.getPhotosByReport(r.id);
+        return photos.map(p => ({
+          ...p,
+          reportDate: r.date,
+        }));
+      });
+      const allPhotos = (await Promise.all(photoPromises)).flat();
+
+      // Calculate schedule progress
+      let scheduleProgress = 0;
+      if (project.startDate && project.substantialCompletionDate) {
+        const start = new Date(project.startDate).getTime();
+        const end = new Date(project.substantialCompletionDate).getTime();
+        const now = Date.now();
+        if (end > start) {
+          scheduleProgress = Math.min(100, Math.max(0, Math.round(((now - start) / (end - start)) * 100)));
+        }
+      }
+
+      // Issues and safety from reports
+      const issues: any[] = [];
+      const safetyIncidents: any[] = [];
+      for (const r of reports) {
+        if (r.issues) {
+          try {
+            const parsed = typeof r.issues === 'string' ? JSON.parse(r.issues) : r.issues;
+            if (Array.isArray(parsed)) {
+              issues.push(...parsed.map((i: any) => ({ ...i, reportDate: r.date })));
+            }
+          } catch {}
+        }
+        if (r.safetyIncidents) {
+          try {
+            const parsed = typeof r.safetyIncidents === 'string' ? JSON.parse(r.safetyIncidents) : r.safetyIncidents;
+            if (Array.isArray(parsed)) {
+              safetyIncidents.push(...parsed.map((i: any) => ({ ...i, reportDate: r.date })));
+            }
+          } catch {}
+        }
+      }
+
+      // Weather summary from recent reports
+      const weatherSummary = reports.slice(0, 7).map(r => ({
+        date: r.date,
+        weather: r.weather,
+        temperature: r.temperature,
+      }));
+
+      res.json({
+        project: {
+          id: project.id,
+          name: project.name,
+          projectNumber: project.projectNumber,
+          address: project.address,
+          client: project.client,
+          startDate: project.startDate,
+          substantialCompletionDate: project.substantialCompletionDate,
+        },
+        company: {
+          name: company?.name,
+          logoPath: company?.logoPath,
+        },
+        schedule: {
+          progress: scheduleProgress,
+          startDate: project.startDate,
+          endDate: project.substantialCompletionDate,
+        },
+        reports: reports.slice(0, 30).map(r => ({
+          id: r.id,
+          date: r.date,
+          reportNumber: r.reportNumber,
+          weather: r.weather,
+          temperature: r.temperature,
+          inspectorName: r.inspectorName,
+          status: r.status,
+        })),
+        totalReports: reports.length,
+        photos: allPhotos.slice(0, 24),
+        issues: issues.slice(0, 20),
+        safetyIncidents: safetyIncidents.slice(0, 20),
+        weatherSummary,
+      });
+    } catch (error) {
+      console.error("Error fetching client portal project data:", error);
+      res.status(500).json({ message: "Failed to fetch project data" });
+    }
+  });
+
+  // Admin: Invite a client to the portal
+  app.post("/api/client-portal/invite", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      const { email, firstName, lastName, companyId, clientId, projectIds } = req.body;
+
+      if (!email || !companyId || !projectIds || projectIds.length === 0) {
+        return res.status(400).json({ message: "Email, company, and at least one project are required" });
+      }
+
+      const isAdmin = await isEffectiveCompanyAdmin(userId, companyId, profile);
+      if (!isAdmin && !isEffectiveSystemAdmin(profile)) {
+        return res.status(403).json({ message: "Only admins can invite clients" });
+      }
+
+      const crypto = await import("crypto");
+      const token = crypto.randomBytes(32).toString("hex");
+      const inviteCode = crypto.randomBytes(4).toString("hex").toUpperCase().slice(0, 8);
+
+      const defaultExpiry = new Date();
+      defaultExpiry.setDate(defaultExpiry.getDate() + 30);
+
+      const invite = await storage.createInvite({
+        email,
+        firstName: firstName || null,
+        lastName: lastName || null,
+        role: "inspector",
+        isCompanyAdmin: false,
+        isClientPortal: true,
+        clientId: clientId || null,
+        companyId,
+        projectIds,
+        token,
+        inviteCode,
+        invitedBy: userId,
+        expiresAt: defaultExpiry,
+        status: "pending",
+      });
+
+      // Send invitation email
+      try {
+        const { sendEmail } = await import('./replit_integrations/email/client');
+        const baseUrl = process.env.REPLIT_DOMAINS
+          ? `https://${process.env.REPLIT_DOMAINS.split(',')[0]}`
+          : process.env.REPLIT_DEV_DOMAIN
+            ? `https://${process.env.REPLIT_DEV_DOMAIN}`
+            : 'http://localhost:5000';
+
+        const inviteLink = `${baseUrl}/accept-invite/${token}`;
+        const company = await storage.getCompany(companyId);
+
+        const emailHtml = `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h2 style="color: #1e3a5f;">Client Portal Access</h2>
+            <p>You have been invited to view project updates on ${company?.name || 'Field Daily Reports'}'s Client Portal.</p>
+            <p>The Client Portal gives you real-time visibility into your project's progress, daily reports, photos, and more.</p>
+            <div style="text-align: center; margin: 30px 0;">
+              <a href="${inviteLink}" style="background-color: #d4942a; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; font-weight: bold;">Access Client Portal</a>
+            </div>
+            <div style="background-color: #f3f4f6; border-radius: 4px; padding: 20px; margin: 20px 0; text-align: center;">
+              <p style="margin: 0 0 8px 0; color: #6b7280; font-size: 14px;">Or enter this code at <strong>${baseUrl}/join</strong>:</p>
+              <p style="margin: 0; font-size: 28px; font-weight: bold; letter-spacing: 4px; color: #1e3a5f; font-family: monospace;">${inviteCode}</p>
+            </div>
+            <p style="color: #6b7280; font-size: 12px;">This invitation expires in 30 days.</p>
+          </div>
+        `;
+
+        await sendEmail({
+          to: email,
+          subject: `${company?.name || 'Field Daily Reports'} - Client Portal Access`,
+          html: emailHtml,
+        });
+      } catch (emailError) {
+        console.error("Failed to send client portal invite email:", emailError);
+      }
+
+      res.status(201).json(invite);
+    } catch (error) {
+      console.error("Error creating client portal invite:", error);
+      res.status(500).json({ message: "Failed to create client portal invite" });
+    }
+  });
+
+  // Admin: List client portal users for a company
+  app.get("/api/client-portal/company/:companyId/users", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      const { companyId } = req.params;
+
+      const isAdmin = await isEffectiveCompanyAdmin(userId, companyId, profile);
+      if (!isAdmin && !isEffectiveSystemAdmin(profile)) {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const portalUsers = await storage.getClientPortalUsersForCompany(companyId);
+      res.json(portalUsers);
+    } catch (error) {
+      console.error("Error fetching client portal users:", error);
+      res.status(500).json({ message: "Failed to fetch client portal users" });
+    }
+  });
+
+  // Admin: Add/remove project access for a client portal user
+  app.post("/api/client-portal/:portalUserId/projects", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      const { portalUserId } = req.params;
+      const { projectId } = req.body;
+
+      const portalUsers = await storage.getClientPortalUsersByUserId(userId);
+      // Need to verify this is admin action
+      const allPortalUsers = await db.query.clientPortalUsers.findFirst({
+        where: eq(clientPortalUsers.id, portalUserId),
+      });
+      if (!allPortalUsers) {
+        return res.status(404).json({ message: "Portal user not found" });
+      }
+
+      const isAdmin = await isEffectiveCompanyAdmin(userId, allPortalUsers.companyId, profile);
+      if (!isAdmin && !isEffectiveSystemAdmin(profile)) {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const access = await storage.addClientPortalProjectAccess(portalUserId, projectId);
+      res.json(access);
+    } catch (error) {
+      console.error("Error adding project access:", error);
+      res.status(500).json({ message: "Failed to add project access" });
+    }
+  });
+
+  app.delete("/api/client-portal/:portalUserId/projects/:projectId", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      const { portalUserId, projectId } = req.params;
+
+      const allPortalUsers = await db.query.clientPortalUsers.findFirst({
+        where: eq(clientPortalUsers.id, portalUserId),
+      });
+      if (!allPortalUsers) {
+        return res.status(404).json({ message: "Portal user not found" });
+      }
+
+      const isAdmin = await isEffectiveCompanyAdmin(userId, allPortalUsers.companyId, profile);
+      if (!isAdmin && !isEffectiveSystemAdmin(profile)) {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      await storage.removeClientPortalProjectAccess(portalUserId, projectId);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error removing project access:", error);
+      res.status(500).json({ message: "Failed to remove project access" });
+    }
+  });
+
+  // Admin: Delete client portal user
+  app.delete("/api/client-portal/:portalUserId", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      const { portalUserId } = req.params;
+
+      const portalUser = await db.query.clientPortalUsers.findFirst({
+        where: eq(clientPortalUsers.id, portalUserId),
+      });
+      if (!portalUser) {
+        return res.status(404).json({ message: "Portal user not found" });
+      }
+
+      const isAdmin = await isEffectiveCompanyAdmin(userId, portalUser.companyId, profile);
+      if (!isAdmin && !isEffectiveSystemAdmin(profile)) {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      await storage.deleteClientPortalUser(portalUserId);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting client portal user:", error);
+      res.status(500).json({ message: "Failed to delete client portal user" });
     }
   });
 

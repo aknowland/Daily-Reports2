@@ -44,6 +44,8 @@ import AIChatPage from "@/pages/company/ai-chat";
 import BillingPage from "@/pages/billing";
 import LearnMorePage from "@/pages/learn-more";
 import PricingPage from "@/pages/pricing";
+import PortalDashboardPage from "@/pages/client-portal/portal-dashboard";
+import PortalProjectPage from "@/pages/client-portal/portal-project";
 
 function LoadingScreen() {
   return (
@@ -81,6 +83,8 @@ function AuthenticatedRoutes() {
       <Route path="/company/dashboard" component={CompanyDashboardPage} />
       <Route path="/company/meetings" component={CompanyMeetingsPage} />
       <Route path="/company/chat" component={AIChatPage} />
+      <Route path="/client-portal" component={PortalDashboardPage} />
+      <Route path="/client-portal/project/:id" component={PortalProjectPage} />
       <Route path="/settings">
         {() => <AdminRoute><AdminSettingsPage /></AdminRoute>}
       </Route>
