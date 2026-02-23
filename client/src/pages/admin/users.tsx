@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
 import { PageLayout } from "@/components/layout/page-layout";
+import { PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -313,22 +314,7 @@ export default function AdminUsersPage() {
   return (
     <PageLayout title="Users" isAdmin>
       <div className="container px-4 py-6 mx-auto max-w-screen-xl space-y-6">
-        <div className="flex items-center gap-2">
-          <Button variant="ghost" size="sm" asChild data-testid="button-back">
-            <Link href="/">
-              <ArrowLeft className="w-4 h-4 mr-1" />
-              Back to Dashboard
-            </Link>
-          </Button>
-        </div>
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-bold">Users</h1>
-            <p className="text-muted-foreground">
-              {users?.length || 0} registered users
-            </p>
-          </div>
-        </div>
+        <PageHeader icon={Users} title="Users" subtitle={`${users?.length || 0} registered users`} />
 
         <div className="relative max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />

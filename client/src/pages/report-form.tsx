@@ -36,7 +36,8 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Loader2, Save, Send, ArrowLeft, FolderPlus, FileText, Crown } from "lucide-react";
+import { Loader2, Save, Send, ArrowLeft, FolderPlus, FileText, Crown, ClipboardEdit } from "lucide-react";
+import { PageHeader } from "@/components/layout/page-header";
 import { format } from "date-fns";
 import type { Project, DailyReport, VisitorRow, WorkActivityRow } from "@shared/schema";
 import { VoiceInput } from "@/components/ui/voice-input";
@@ -455,22 +456,25 @@ export default function ReportFormPage() {
 
   return (
     <PageLayout title={isEditing ? "Edit Report" : "New Report"} showNav={false}>
-      <div className="container px-4 py-6 mx-auto max-w-2xl space-y-6 pb-32">
-        <div className="flex items-center gap-4">
-          <Button 
-            variant="ghost" 
-            size="icon" 
-            onClick={() => window.history.back()}
-            data-testid="button-back"
-          >
-            <ArrowLeft className="w-5 h-5" />
-          </Button>
-          <h1 className="text-2xl font-bold">
-            {isEditing ? "Edit Report" : "New Daily Report"}
-          </h1>
-        </div>
+      <PageHeader
+        icon={ClipboardEdit}
+        title={isEditing ? "Edit Report" : "New Daily Report"}
+        subtitle={isEditing ? "Update your daily field report" : "Record today's site activities"}
+      >
+        <Button 
+          variant="outline"
+          className="border-white/30 text-white hover:bg-white/10"
+          onClick={() => window.history.back()}
+          data-testid="button-back"
+        >
+          <ArrowLeft className="w-4 h-4 mr-2" />
+          Back
+        </Button>
+      </PageHeader>
 
-        <Card>
+      <div className="max-w-2xl mx-auto space-y-6 pb-32">
+
+        <Card className="border-l-4 border-l-primary">
           <CardHeader>
             <CardTitle className="text-lg">Report Details</CardTitle>
           </CardHeader>
@@ -609,7 +613,7 @@ export default function ReportFormPage() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="border-l-4 border-l-primary">
           <CardHeader>
             <CardTitle className="text-lg">Time Tracking</CardTitle>
             <p className="text-sm text-muted-foreground">Record your work hours for invoicing</p>
@@ -670,7 +674,7 @@ export default function ReportFormPage() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="border-l-4 border-l-primary">
           <CardHeader>
             <CardTitle className="text-lg flex items-center justify-between gap-2 flex-wrap">
               <span>Work Activities</span>
@@ -731,7 +735,7 @@ export default function ReportFormPage() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="border-l-4 border-l-primary">
           <CardHeader>
             <CardTitle className="text-lg flex items-center justify-between gap-2 flex-wrap">
               <span>Inspections</span>
@@ -757,7 +761,7 @@ export default function ReportFormPage() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="border-l-4 border-l-primary">
           <CardHeader>
             <CardTitle className="text-lg flex items-center justify-between gap-2 flex-wrap">
               <span>Additional Notes</span>
@@ -783,7 +787,7 @@ export default function ReportFormPage() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="border-l-4 border-l-primary">
           <CardHeader>
             <CardTitle className="text-lg flex items-center justify-between gap-2 flex-wrap">
               <span>Visitors</span>
@@ -841,7 +845,7 @@ export default function ReportFormPage() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="border-l-4 border-l-primary">
           <CardHeader>
             <CardTitle className="text-lg">Issues & Safety</CardTitle>
           </CardHeader>
@@ -914,7 +918,7 @@ export default function ReportFormPage() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="border-l-4 border-l-primary">
           <CardHeader>
             <CardTitle className="text-lg flex items-center justify-between gap-2 flex-wrap">
               <span>Equipment</span>
@@ -940,7 +944,7 @@ export default function ReportFormPage() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="border-l-4 border-l-primary">
           <CardHeader>
             <CardTitle className="text-lg flex items-center justify-between gap-2 flex-wrap">
               <span>Materials Delivered</span>
@@ -966,7 +970,7 @@ export default function ReportFormPage() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="border-l-4 border-l-primary">
           <CardHeader>
             <CardTitle className="text-lg">Photos</CardTitle>
           </CardHeader>
@@ -985,7 +989,7 @@ export default function ReportFormPage() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="border-l-4 border-l-primary">
           <CardHeader>
             <CardTitle className="text-lg">Signature *</CardTitle>
           </CardHeader>
@@ -997,10 +1001,10 @@ export default function ReportFormPage() {
           </CardContent>
         </Card>
 
-        <div className="fixed bottom-0 left-0 right-0 bg-background border-t border-border p-4 flex gap-3">
+        <div className="fixed bottom-0 left-0 right-0 bg-[hsl(216,32%,15%)] border-t-2 border-[hsl(36,90%,50%)] p-4 flex gap-3 z-50">
           <Button
             variant="outline"
-            className="flex-1 h-12"
+            className="flex-1 h-12 border-white/30 text-white hover:bg-white/10"
             onClick={() => handleSubmit("draft")}
             disabled={isSaving}
             data-testid="button-save-draft"
@@ -1013,7 +1017,7 @@ export default function ReportFormPage() {
             Save Draft
           </Button>
           <Button
-            className="flex-1 h-12"
+            className="flex-1 h-12 bg-[hsl(36,90%,50%)] text-[hsl(216,32%,10%)] hover:bg-[hsl(36,90%,45%)] font-semibold"
             onClick={() => handleSubmit("submitted")}
             disabled={isSaving}
             data-testid="button-submit-report"

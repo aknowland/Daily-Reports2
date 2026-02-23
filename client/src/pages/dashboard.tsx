@@ -16,8 +16,10 @@ import {
   Clock, 
   CheckCircle, 
   ChevronRight,
-  AlertCircle
+  AlertCircle,
+  LayoutDashboard
 } from "lucide-react";
+import { PageHeader, SectionHeader } from "@/components/layout/page-header";
 import type { DailyReportWithDetails, UserProfile, CompanyMember, Company } from "@shared/schema";
 
 export default function DashboardPage() {
@@ -91,69 +93,73 @@ export default function DashboardPage() {
 
   return (
     <PageLayout>
-      <div className="container px-4 py-6 mx-auto max-w-screen-xl space-y-6">
-        <div className="space-y-2">
-          <h1 className="text-2xl font-bold" data-testid="text-greeting">
-            {getGreeting()}, {user?.firstName || "Inspector"}
-          </h1>
-          <p className="text-muted-foreground">
-            Here's an overview of your daily reports
-          </p>
-        </div>
+      <PageHeader
+        icon={LayoutDashboard}
+        title={`${getGreeting()}, ${user?.firstName || "Inspector"}`}
+        subtitle="Here's an overview of your daily reports"
+      >
+        <Button asChild className="bg-[hsl(36,90%,50%)] text-[hsl(216,32%,10%)] hover:bg-[hsl(36,90%,45%)] font-semibold" data-testid="button-new-report-header">
+          <Link href="/reports/new">
+            <Plus className="w-4 h-4 mr-2" />
+            New Report
+          </Link>
+        </Button>
+      </PageHeader>
 
+      <div className="space-y-6">
         <SubscriptionBanner />
 
         <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
-          <Card data-testid="card-stat-total">
+          <Card className="border-l-4 border-l-primary" data-testid="card-stat-total">
             <CardContent className="p-4">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                <div className="w-10 h-10 rounded bg-primary/10 flex items-center justify-center">
                   <FileText className="w-5 h-5 text-primary" />
                 </div>
                 <div>
                   <p className="text-2xl font-bold">{stats.total}</p>
-                  <p className="text-sm text-muted-foreground">Total Reports</p>
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Total Reports</p>
                 </div>
               </div>
             </CardContent>
           </Card>
 
-          <Card data-testid="card-stat-drafts">
+          <Card className="border-l-4 border-l-[hsl(36,90%,50%)]" data-testid="card-stat-drafts">
             <CardContent className="p-4">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-lg bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center">
-                  <Clock className="w-5 h-5 text-orange-600 dark:text-orange-400" />
+                <div className="w-10 h-10 rounded bg-[hsl(36,90%,50%)]/10 flex items-center justify-center">
+                  <Clock className="w-5 h-5 text-[hsl(36,90%,50%)]" />
                 </div>
                 <div>
                   <p className="text-2xl font-bold">{stats.drafts}</p>
-                  <p className="text-sm text-muted-foreground">Drafts</p>
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Drafts</p>
                 </div>
               </div>
             </CardContent>
           </Card>
 
-          <Card data-testid="card-stat-submitted">
+          <Card className="border-l-4 border-l-green-600" data-testid="card-stat-submitted">
             <CardContent className="p-4">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-lg bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
-                  <CheckCircle className="w-5 h-5 text-green-600 dark:text-green-400" />
+                <div className="w-10 h-10 rounded bg-green-600/10 flex items-center justify-center">
+                  <CheckCircle className="w-5 h-5 text-green-600" />
                 </div>
                 <div>
                   <p className="text-2xl font-bold">{stats.submitted}</p>
-                  <p className="text-sm text-muted-foreground">Submitted</p>
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Submitted</p>
                 </div>
               </div>
             </CardContent>
           </Card>
 
           <Link href="/reports/new">
-            <Card className="h-full hover-elevate cursor-pointer border-dashed border-2 border-primary/30" data-testid="card-create-report">
+            <Card className="h-full hover-elevate cursor-pointer border-2 border-dashed border-[hsl(36,90%,50%)]/40 bg-[hsl(36,90%,50%)]/5" data-testid="card-create-report">
               <CardContent className="p-4 h-full flex items-center justify-center">
-                <div className="flex flex-col items-center gap-2 text-primary">
-                  <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+                <div className="flex flex-col items-center gap-2 text-[hsl(36,90%,50%)]">
+                  <div className="w-10 h-10 rounded-full bg-[hsl(36,90%,50%)]/15 flex items-center justify-center">
                     <Plus className="w-5 h-5" />
                   </div>
-                  <span className="font-medium text-sm">New Report</span>
+                  <span className="font-semibold text-sm">New Report</span>
                 </div>
               </CardContent>
             </Card>
@@ -161,15 +167,14 @@ export default function DashboardPage() {
         </div>
 
         <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold">Recent Reports</h2>
+          <SectionHeader title="Recent Reports">
             <Button variant="ghost" size="sm" asChild data-testid="link-view-all-reports">
               <Link href="/reports">
                 View All
                 <ChevronRight className="w-4 h-4 ml-1" />
               </Link>
             </Button>
-          </div>
+          </SectionHeader>
 
           {isLoading ? (
             <div className="space-y-3">
@@ -196,14 +201,16 @@ export default function DashboardPage() {
               </CardContent>
             </Card>
           ) : recentReports.length === 0 ? (
-            <Card>
-              <CardContent className="p-8 text-center">
-                <FileText className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
-                <p className="text-lg font-medium">No reports yet</p>
-                <p className="text-sm text-muted-foreground mt-1">
+            <Card className="border-dashed border-2">
+              <CardContent className="p-10 text-center">
+                <div className="w-16 h-16 rounded bg-primary/10 flex items-center justify-center mx-auto mb-4">
+                  <FileText className="w-8 h-8 text-primary" />
+                </div>
+                <p className="text-lg font-semibold">No reports yet</p>
+                <p className="text-sm text-muted-foreground mt-1 mb-5">
                   Create your first daily report to get started
                 </p>
-                <Button asChild className="mt-4" data-testid="button-create-first-report">
+                <Button asChild className="bg-[hsl(36,90%,50%)] text-[hsl(216,32%,10%)] hover:bg-[hsl(36,90%,45%)] font-semibold" data-testid="button-create-first-report">
                   <Link href="/reports/new">
                     <Plus className="w-4 h-4 mr-2" />
                     Create Report

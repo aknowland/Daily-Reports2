@@ -1,5 +1,6 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { PageLayout } from "@/components/layout/page-layout";
+import { PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -965,51 +966,39 @@ export default function ContractDashboard() {
 
   return (
     <PageLayout title="Contract Dashboard">
+      <PageHeader
+        icon={FileText}
+        title={dashboard.contract.name}
+        subtitle={dashboard.contract.contractNumber}
+      >
+        <Link href="/company/contracts">
+          <Button variant="outline" className="border-white/30 text-white hover:bg-white/10" data-testid="button-back">
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Back to Contracts
+          </Button>
+        </Link>
+        <SummaryReportDropdown
+          scope="contract"
+          entityId={contractId || ''}
+          onDownload={handleDownloadReport}
+          onEmail={handleEmailReport}
+          isEmailPending={isEmailPending}
+        />
+        <Button 
+          className="bg-[hsl(36,90%,50%)] text-[hsl(216,32%,10%)] hover:bg-[hsl(36,90%,45%)] font-semibold"
+          onClick={() => setShowEditDialog(true)}
+          data-testid="button-edit-contract"
+        >
+          <Pencil className="h-4 w-4 mr-1" />
+          Edit Contract
+        </Button>
+      </PageHeader>
       <div className="space-y-6">
-        <div className="flex items-center gap-2 mb-4">
-          <Link href="/company/contracts">
-            <Button variant="ghost" size="icon" data-testid="button-back">
-              <ArrowLeft className="h-5 w-5" />
-            </Button>
-          </Link>
-          <h2 className="text-lg font-semibold">Back to Contracts</h2>
+        <div className="flex items-center gap-2 flex-wrap">
+          <Badge variant="outline" data-testid="badge-contract-status">
+            {dashboard.contract.status.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+          </Badge>
         </div>
-        
-        <Card>
-          <CardHeader className="pb-2">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-              <div>
-                <CardTitle className="text-xl" data-testid="text-contract-name">
-                  {dashboard.contract.name}
-                </CardTitle>
-                <CardDescription data-testid="text-contract-number">
-                  {dashboard.contract.contractNumber}
-                </CardDescription>
-              </div>
-              <div className="flex items-center gap-2 flex-wrap">
-                <Badge variant="outline" data-testid="badge-contract-status">
-                  {dashboard.contract.status.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
-                </Badge>
-                <SummaryReportDropdown
-                  scope="contract"
-                  entityId={contractId || ''}
-                  onDownload={handleDownloadReport}
-                  onEmail={handleEmailReport}
-                  isEmailPending={isEmailPending}
-                />
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  onClick={() => setShowEditDialog(true)}
-                  data-testid="button-edit-contract"
-                >
-                  <Pencil className="h-4 w-4 mr-1" />
-                  Edit Contract
-                </Button>
-              </div>
-            </div>
-          </CardHeader>
-        </Card>
 
         <div className="grid gap-6 md:grid-cols-2">
           <Card>

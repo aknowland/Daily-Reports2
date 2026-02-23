@@ -2,6 +2,7 @@ import { useState, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useParams, Link } from "wouter";
 import { PageLayout } from "@/components/layout/page-layout";
+import { PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -126,27 +127,22 @@ export default function ProjectDailyReportsPage() {
 
   return (
     <PageLayout title="Daily Reports">
+      <PageHeader
+        icon={FileText}
+        title="Daily Reports"
+        subtitle={projectQuery.data ? `${projectQuery.data.name}${projectQuery.data.projectNumber ? ` (#${projectQuery.data.projectNumber})` : ""}` : undefined}
+      >
+        <Link href={`/project/${id}/dashboard`}>
+          <Button variant="outline" className="border-white/30 text-white hover:bg-white/10" data-testid="button-back-to-dashboard">
+            <ArrowLeft className="w-4 h-4 mr-2" />
+            Back
+          </Button>
+        </Link>
+        <Badge variant="secondary" data-testid="badge-total-count">
+          {total} {total === 1 ? "report" : "reports"}
+        </Badge>
+      </PageHeader>
       <div className="max-w-4xl mx-auto p-4 space-y-4">
-        <div className="flex items-center gap-3 flex-wrap">
-          <Link href={`/project/${id}/dashboard`}>
-            <Button variant="ghost" size="icon" data-testid="button-back-to-dashboard">
-              <ArrowLeft />
-            </Button>
-          </Link>
-          <div className="flex-1 min-w-0">
-            <h1 className="text-xl font-bold truncate" data-testid="text-page-title">
-              Daily Reports
-            </h1>
-            {projectQuery.data && (
-              <p className="text-sm text-muted-foreground truncate" data-testid="text-project-name">
-                {projectQuery.data.name} {projectQuery.data.projectNumber ? `(#${projectQuery.data.projectNumber})` : ""}
-              </p>
-            )}
-          </div>
-          <Badge variant="secondary" data-testid="badge-total-count">
-            {total} {total === 1 ? "report" : "reports"}
-          </Badge>
-        </div>
 
         <div className="flex items-center gap-2 flex-wrap">
           <div className="flex-1 min-w-[200px] flex gap-2">

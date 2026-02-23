@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueries } from "@tanstack/react-query";
 import { PageLayout } from "@/components/layout/page-layout";
+import { PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -682,29 +683,14 @@ export default function CompanyTeamPage() {
           }}
           data-testid="input-admin-resume-upload"
         />
-        <div className="flex items-center gap-2 mb-2">
-          <Button variant="ghost" size="sm" asChild data-testid="button-back">
-            <Link href="/">
-              <ArrowLeft className="w-4 h-4 mr-1" />
-              Back to Dashboard
-            </Link>
-          </Button>
-        </div>
-
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-bold" data-testid="title-team">Team Management</h1>
-            <p className="text-muted-foreground">
-              Manage team for {activeCompany.name}
-            </p>
-          </div>
+        <PageHeader icon={Users} title="Team" subtitle={`Manage team for ${activeCompany.name}`}>
           <Dialog open={showInviteDialog} onOpenChange={setShowInviteDialog}>
             <DialogTrigger asChild>
-              <Button data-testid="button-invite-user">
+              <Button className="bg-[hsl(36,90%,50%)] text-[hsl(216,32%,10%)] hover:bg-[hsl(36,90%,45%)] font-semibold" data-testid="button-invite-user">
                 <UserPlus className="w-4 h-4 mr-2" />
                 Invite User
-                </Button>
-              </DialogTrigger>
+              </Button>
+            </DialogTrigger>
               <DialogContent className="sm:max-w-md">
                 <DialogHeader>
                   <DialogTitle>Invite Team Member</DialogTitle>
@@ -843,7 +829,7 @@ export default function CompanyTeamPage() {
                 </form>
             </DialogContent>
           </Dialog>
-        </div>
+        </PageHeader>
 
         <Tabs defaultValue="members" className="w-full">
           <TabsList className="mb-4">

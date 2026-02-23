@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { PageLayout } from "@/components/layout/page-layout";
+import { PageHeader } from "@/components/layout/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -14,6 +15,7 @@ import {
   AlertCircle,
   Download,
   Network,
+  ShieldCheck,
 } from "lucide-react";
 import architectureDiagram from "@assets/field-daily-reports-architecture-diagram.png";
 import type { DailyReportWithDetails, Project } from "@shared/schema";
@@ -66,12 +68,7 @@ export default function AdminDashboardPage() {
   return (
     <PageLayout title="Admin Dashboard" isAdmin>
       <div className="container px-4 py-6 mx-auto max-w-screen-xl space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold">Admin Dashboard</h1>
-          <p className="text-muted-foreground">
-            Manage projects, users, and system settings
-          </p>
-        </div>
+        <PageHeader icon={ShieldCheck} title="System Administration" subtitle="Manage projects, users, and system settings" />
 
         <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
           <Card data-testid="card-stat-projects">

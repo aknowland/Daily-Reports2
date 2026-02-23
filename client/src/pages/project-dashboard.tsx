@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
 import { PageLayout } from "@/components/layout/page-layout";
+import { PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -50,6 +51,7 @@ import {
   MessageSquare,
   Send,
   X,
+  FolderOpen,
 } from "lucide-react";
 import { format } from "date-fns";
 import { Textarea } from "@/components/ui/textarea";
@@ -1091,70 +1093,59 @@ export default function ProjectDashboardPage() {
   return (
     <PageLayout title={project.name}>
       <div className="space-y-6 w-full overflow-x-hidden">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 flex-wrap">
-          <Button variant="ghost" size="sm" asChild>
+        <PageHeader
+          icon={FolderOpen}
+          title={project.name}
+          subtitle={`#${project.projectNumber}${project.client ? ` • ${project.client}` : ''}`}
+        >
+          <Button
+            variant="outline"
+            size="sm"
+            className="border-white/30 text-white hover:bg-white/10"
+            asChild
+          >
             <Link href="/my-projects">
               <ArrowLeft className="w-4 h-4 mr-2" />
-              Back to Projects
+              Back
             </Link>
           </Button>
-          <div className="flex-1 min-w-0">
-            <h1 className="text-2xl font-bold truncate" data-testid="text-project-name">{project.name}</h1>
-          </div>
-          <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            className="bg-[hsl(36,90%,50%)] text-[hsl(216,32%,10%)] hover:bg-[hsl(36,90%,45%)] font-semibold"
+            onClick={() => setDailyReportDialogOpen(true)}
+            data-testid="button-new-daily-report-header"
+          >
+            <Plus className="w-4 h-4 mr-2" />
+            New Daily Report
+          </Button>
+          {isEffectiveCompanyAdmin && (
             <Button
+              variant="outline"
               size="sm"
-              onClick={() => setDailyReportDialogOpen(true)}
-              data-testid="button-new-daily-report-header"
+              className="border-white/30 text-white hover:bg-white/10"
+              onClick={openEditDialog}
+              data-testid="button-edit-project"
             >
-              <Plus className="w-4 h-4 mr-2" />
-              New Daily Report
+              <Pencil className="w-4 h-4 mr-2" />
+              Edit
             </Button>
-            {isEffectiveCompanyAdmin && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={openEditDialog}
-                data-testid="button-edit-project"
-              >
-                <Pencil className="w-4 h-4 mr-2" />
-                Edit Project
-              </Button>
-            )}
-            <SummaryReportDropdown
-              scope="project"
-              entityId={id || ''}
-              distributionEmails={project.distributionEmails || []}
-              onDownload={handleDownloadReport}
-              onEmail={handleEmailReport}
+          )}
+          <SummaryReportDropdown
+            scope="project"
+            entityId={id || ''}
+            distributionEmails={project.distributionEmails || []}
+            onDownload={handleDownloadReport}
+            onEmail={handleEmailReport}
               isEmailPending={isEmailPending}
-            />
+          />
+        </PageHeader>
+
+        {project.address && (
+          <div className="flex items-center gap-1 text-sm text-muted-foreground -mt-4">
+            <MapPin className="w-3 h-3" />
+            {project.address}
           </div>
-        </div>
-        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
-          <div className="flex-1 min-w-0">
-            <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground mt-1">
-              {project.projectNumber && (
-                <span className="flex items-center gap-1">
-                  <Hash className="w-3 h-3" />
-                  {project.projectNumber}
-                </span>
-              )}
-              {project.client && (
-                <span className="flex items-center gap-1">
-                  <Building2 className="w-3 h-3" />
-                  {project.client}
-                </span>
-              )}
-              {project.address && (
-                <span className="flex items-center gap-1">
-                  <MapPin className="w-3 h-3" />
-                  {project.address}
-                </span>
-              )}
-            </div>
-          </div>
-        </div>
+        )}
 
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           <Card data-testid="card-schedule-progress">

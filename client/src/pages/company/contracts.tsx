@@ -1,5 +1,6 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { PageLayout } from "@/components/layout/page-layout";
+import { PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -1321,39 +1322,35 @@ export default function ContractsPage() {
       title="Contract Management"
       description={`Manage contracts for ${activeCompany?.name || "your company"}`}
     >
-      <div className="flex items-center justify-between gap-2 mb-4 flex-wrap">
-        <Button variant="ghost" size="sm" asChild data-testid="button-back">
-          <Link href="/">
-            <ArrowLeft className="w-4 h-4 mr-1" />
-            Back to Dashboard
-          </Link>
-        </Button>
+      <PageHeader icon={FileText} title="Contracts" subtitle={`Manage contracts for ${activeCompany?.name || "your company"}`}>
         {isEffectiveCompanyAdmin && (
-          <div className="flex gap-2">
-          <Button 
-            variant="outline"
-            onClick={() => {
-              setEditingProposal(null);
-              setShowProposalDialog(true);
-            }}
-            data-testid="button-create-proposal"
-          >
-            <FileText className="w-4 h-4 mr-2" />
-            Create Quick Proposal
-          </Button>
-          <Button 
-            onClick={() => {
-              setFormData(emptyFormData);
-              setShowCreateDialog(true);
-            }}
-            data-testid="button-new-contract"
-          >
-            <Plus className="w-4 h-4 mr-2" />
-            New Contract
-          </Button>
-          </div>
+          <>
+            <Button 
+              variant="outline"
+              className="border-white/30 text-white hover:bg-white/10"
+              onClick={() => {
+                setEditingProposal(null);
+                setShowProposalDialog(true);
+              }}
+              data-testid="button-create-proposal"
+            >
+              <FileText className="w-4 h-4 mr-2" />
+              Create Quick Proposal
+            </Button>
+            <Button 
+              className="bg-[hsl(36,90%,50%)] text-[hsl(216,32%,10%)] hover:bg-[hsl(36,90%,45%)] font-semibold"
+              onClick={() => {
+                setFormData(emptyFormData);
+                setShowCreateDialog(true);
+              }}
+              data-testid="button-new-contract"
+            >
+              <Plus className="w-4 h-4 mr-2" />
+              New Contract
+            </Button>
+          </>
         )}
-      </div>
+      </PageHeader>
 
       {!isLoading && contracts.length > 0 && (
         <ContractGanttChart contracts={contracts} />

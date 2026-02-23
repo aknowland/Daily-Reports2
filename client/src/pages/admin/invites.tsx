@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { PageLayout } from "@/components/layout/page-layout";
+import { PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -30,6 +31,7 @@ import {
   Plus,
   Search,
   Mail,
+  MailPlus,
   Trash2,
   Loader2,
   AlertCircle,
@@ -266,25 +268,10 @@ export default function AdminInvitesPage() {
   return (
     <PageLayout title="Invites" isAdmin>
       <div className="container px-4 py-6 mx-auto max-w-screen-xl space-y-6">
-        <div className="flex items-center gap-2">
-          <Button variant="ghost" size="sm" asChild data-testid="button-back">
-            <Link href="/">
-              <ArrowLeft className="w-4 h-4 mr-1" />
-              Back to Dashboard
-            </Link>
-          </Button>
-        </div>
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-bold">Invitations</h1>
-            <p className="text-muted-foreground">
-              {invites?.length || 0} total invites
-            </p>
-          </div>
-
+        <PageHeader icon={MailPlus} title="Invitations" subtitle={`${invites?.length || 0} total invites`}>
           <Dialog open={showDialog} onOpenChange={setShowDialog}>
             <DialogTrigger asChild>
-              <Button data-testid="button-new-invite">
+              <Button className="bg-[hsl(36,90%,50%)] text-[hsl(216,32%,10%)] hover:bg-[hsl(36,90%,45%)] font-semibold" data-testid="button-new-invite">
                 <Plus className="w-4 h-4 mr-2" />
                 New Invite
               </Button>
@@ -574,7 +561,7 @@ export default function AdminInvitesPage() {
               </form>
             </DialogContent>
           </Dialog>
-        </div>
+        </PageHeader>
 
         <div className="relative max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />

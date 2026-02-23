@@ -2,8 +2,10 @@ import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link, useParams, useLocation } from "wouter";
 import { PageLayout } from "@/components/layout/page-layout";
+import { PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -40,6 +42,7 @@ import {
   AlertCircle,
   Trash2,
   ClipboardCheck,
+  ClipboardList,
   Wrench,
   Package,
 } from "lucide-react";
@@ -187,37 +190,38 @@ export default function ReportDetailPage() {
 
   return (
     <PageLayout>
-      <div className="container px-4 py-6 mx-auto max-w-2xl space-y-6">
-        <div className="flex items-center gap-4">
-          <Button 
-            variant="ghost" 
-            size="icon" 
-            onClick={() => navigate("/reports")}
-            data-testid="button-back"
-          >
-            <ArrowLeft className="w-5 h-5" />
+      <PageHeader
+        icon={ClipboardList}
+        title="Daily Report"
+        subtitle={`${report.project?.name || report.customProjectName || "Unassigned Report"} ${report.date ? `• ${formatPacificDate(report.date, "MMMM d, yyyy")}` : ""}`}
+      >
+        <Button
+          variant="outline"
+          className="border-white/30 text-white hover:bg-white/10"
+          onClick={() => navigate("/reports")}
+          data-testid="button-back"
+        >
+          <ArrowLeft className="w-4 h-4 mr-2" />
+          Back
+        </Button>
+        {report.status === "draft" && (
+          <Button asChild className="bg-[hsl(36,90%,50%)] text-[hsl(216,32%,10%)] hover:bg-[hsl(36,90%,45%)] font-semibold" data-testid="button-edit-report">
+            <Link href={`/reports/${id}/edit`}>
+              <Edit className="w-4 h-4 mr-2" />
+              Edit
+            </Link>
           </Button>
-          <div className="flex-1">
-            <div className="flex items-center gap-2 flex-wrap">
-              <h1 className="text-xl font-bold">{report.project?.name || report.customProjectName || "Unassigned Report"}</h1>
-              <StatusBadge status={report.status || "draft"} />
-            </div>
-            <p className="text-sm text-muted-foreground">
-              {report.project?.projectNumber ? `#${report.project.projectNumber}` : ""}
-              {report.project?.client && ` • ${report.project.client}`}
-            </p>
-          </div>
+        )}
+      </PageHeader>
+      <div className="container px-4 py-6 mx-auto max-w-2xl space-y-6">
+        <div className="flex items-center gap-2 flex-wrap">
+          <StatusBadge status={report.status || "draft"} />
+          {report.project?.projectNumber && (
+            <Badge variant="outline">#{report.project.projectNumber}</Badge>
+          )}
         </div>
 
         <div className="flex flex-wrap gap-2">
-          {report.status === "draft" && (
-            <Button asChild variant="outline" data-testid="button-edit-report">
-              <Link href={`/reports/${id}/edit`}>
-                <Edit className="w-4 h-4 mr-2" />
-                Edit
-              </Link>
-            </Button>
-          )}
           <Button
             variant="outline"
             onClick={() => generatePdfMutation.mutate()}
