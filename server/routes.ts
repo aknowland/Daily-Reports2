@@ -16020,6 +16020,13 @@ Transcript: "${transcript}"`;
         return res.status(403).json({ message: "Only admins can invite clients" });
       }
 
+      const companyProjects = await storage.getProjectsByCompany(companyId);
+      const companyProjectIds = new Set(companyProjects.map(p => p.id));
+      const invalidProjects = projectIds.filter((pid: string) => !companyProjectIds.has(pid));
+      if (invalidProjects.length > 0) {
+        return res.status(400).json({ message: "One or more selected projects do not belong to this company" });
+      }
+
       const crypto = await import("crypto");
       const token = crypto.randomBytes(32).toString("hex");
       const inviteCode = crypto.randomBytes(4).toString("hex").toUpperCase().slice(0, 8);
