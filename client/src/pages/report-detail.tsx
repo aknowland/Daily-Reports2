@@ -73,10 +73,9 @@ export default function ReportDetailPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/reports", id] });
-      window.open(`/api/reports/${id}/pdf`, "_blank");
       toast({
         title: "PDF Generated",
-        description: "Your PDF has been generated and will open in a new tab",
+        description: "Your PDF is ready. Click View PDF to open it.",
       });
     },
     onError: (error) => {
@@ -222,25 +221,49 @@ export default function ReportDetailPage() {
         </div>
 
         <div className="flex flex-wrap gap-2">
-          <Button
-            variant="outline"
-            onClick={() => generatePdfMutation.mutate()}
-            disabled={generatePdfMutation.isPending}
-            data-testid="button-generate-pdf"
-          >
-            {generatePdfMutation.isPending ? (
-              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-            ) : (
-              <FileText className="w-4 h-4 mr-2" />
-            )}
-            {report.pdfPath ? "View PDF" : "Generate PDF"}
-          </Button>
+          {report.pdfPath ? (
+            <Button variant="outline" asChild data-testid="button-view-pdf">
+              <a href={`/api/reports/${id}/pdf`} target="_blank" rel="noopener noreferrer">
+                <FileText className="w-4 h-4 mr-2" />
+                View PDF
+              </a>
+            </Button>
+          ) : (
+            <Button
+              variant="outline"
+              onClick={() => generatePdfMutation.mutate()}
+              disabled={generatePdfMutation.isPending}
+              data-testid="button-generate-pdf"
+            >
+              {generatePdfMutation.isPending ? (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              ) : (
+                <FileText className="w-4 h-4 mr-2" />
+              )}
+              Generate PDF
+            </Button>
+          )}
           {report.pdfPath && (
             <Button variant="outline" asChild data-testid="button-download-pdf">
               <a href={`/api/reports/${id}/pdf?download=true`} download>
                 <Download className="w-4 h-4 mr-2" />
                 Download
               </a>
+            </Button>
+          )}
+          {report.pdfPath && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => generatePdfMutation.mutate()}
+              disabled={generatePdfMutation.isPending}
+              data-testid="button-regenerate-pdf"
+              className="text-muted-foreground text-xs"
+            >
+              {generatePdfMutation.isPending ? (
+                <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+              ) : null}
+              Regenerate
             </Button>
           )}
           {report.status === "submitted" && (

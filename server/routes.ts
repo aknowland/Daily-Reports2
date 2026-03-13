@@ -9628,7 +9628,7 @@ export async function registerRoutes(
         }
         
         // Project team members can access reports for their project
-        const isMember = await isUserMemberOfProject(userId, report.projectId);
+        const isMember = await storage.isUserMemberOfProject(report.projectId, userId);
         if (isMember) {
           return res.json(report);
         }
