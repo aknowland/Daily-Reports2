@@ -164,6 +164,13 @@ type ContractFormData = {
   premiumRate: string;
   budgetTrackingMode: BudgetTrackingMode;
   notes: string;
+  agency: string;
+  serviceType: string;
+  questionDeadline: string;
+  addendumCount: string;
+  lastAddendumDate: string;
+  assignedToUserId: string;
+  sharepointFolderUrl: string;
 };
 
 const emptyFormData: ContractFormData = {
@@ -188,6 +195,13 @@ const emptyFormData: ContractFormData = {
   premiumRate: "",
   budgetTrackingMode: "daily_reports",
   notes: "",
+  agency: "",
+  serviceType: "",
+  questionDeadline: "",
+  addendumCount: "",
+  lastAddendumDate: "",
+  assignedToUserId: "",
+  sharepointFolderUrl: "",
 };
 
 type DashboardData = {
@@ -646,6 +660,11 @@ export default function ContractDashboard() {
     }
   };
 
+  const { data: companyMembers = [] } = useQuery<any[]>({
+    queryKey: ["/api/companies", activeCompany?.id, "members"],
+    enabled: !!activeCompany?.id,
+  });
+
   const { data: dashboard, isLoading } = useQuery<DashboardData>({
     queryKey: ["/api/contracts", contractId, "dashboard"],
     queryFn: async () => {
@@ -882,6 +901,13 @@ export default function ContractDashboard() {
         premiumRate: contractDetails.premiumRate || "",
         budgetTrackingMode: contractDetails.budgetTrackingMode || "daily_reports",
         notes: contractDetails.notes || "",
+        agency: (contractDetails as any).agency || "",
+        serviceType: (contractDetails as any).serviceType || "",
+        questionDeadline: formatDateStr((contractDetails as any).questionDeadline),
+        addendumCount: (contractDetails as any).addendumCount?.toString() || "",
+        lastAddendumDate: formatDateStr((contractDetails as any).lastAddendumDate),
+        assignedToUserId: (contractDetails as any).assignedToUserId || "",
+        sharepointFolderUrl: (contractDetails as any).sharepointFolderUrl || "",
       });
       
       // Populate options from contract details
@@ -3046,6 +3072,98 @@ export default function ContractDashboard() {
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
+            </div>
+
+            <div className="border-t pt-3">
+              <p className="text-sm font-medium text-muted-foreground mb-3">Bid Tracking</p>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="edit-agency">Agency / Owner</Label>
+                  <Input
+                    id="edit-agency"
+                    value={editFormData.agency}
+                    onChange={(e) => setEditFormData({ ...editFormData, agency: e.target.value })}
+                    placeholder="e.g. City of Los Angeles"
+                    data-testid="input-edit-agency"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-serviceType">Service Type</Label>
+                  <Input
+                    id="edit-serviceType"
+                    value={editFormData.serviceType}
+                    onChange={(e) => setEditFormData({ ...editFormData, serviceType: e.target.value })}
+                    placeholder="e.g. Special Inspection"
+                    data-testid="input-edit-service-type"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4 mt-3">
+                <div className="space-y-2">
+                  <Label htmlFor="edit-questionDeadline">Question Deadline</Label>
+                  <Input
+                    id="edit-questionDeadline"
+                    type="date"
+                    value={editFormData.questionDeadline}
+                    onChange={(e) => setEditFormData({ ...editFormData, questionDeadline: e.target.value })}
+                    data-testid="input-edit-question-deadline"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-assignedTo">Assigned To</Label>
+                  <Select
+                    value={editFormData.assignedToUserId || "none"}
+                    onValueChange={(v) => setEditFormData({ ...editFormData, assignedToUserId: v === "none" ? "" : v })}
+                  >
+                    <SelectTrigger data-testid="select-edit-assigned-to">
+                      <SelectValue placeholder="Select team member" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Unassigned</SelectItem>
+                      {companyMembers.map((m: any) => (
+                        <SelectItem key={m.userId} value={m.userId}>
+                          {m.profile?.firstName || ""} {m.profile?.lastName || ""}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4 mt-3">
+                <div className="space-y-2">
+                  <Label htmlFor="edit-addendumCount">Addendum Count</Label>
+                  <Input
+                    id="edit-addendumCount"
+                    type="number"
+                    min="0"
+                    value={editFormData.addendumCount}
+                    onChange={(e) => setEditFormData({ ...editFormData, addendumCount: e.target.value })}
+                    placeholder="0"
+                    data-testid="input-edit-addendum-count"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-lastAddendumDate">Last Addendum Date</Label>
+                  <Input
+                    id="edit-lastAddendumDate"
+                    type="date"
+                    value={editFormData.lastAddendumDate}
+                    onChange={(e) => setEditFormData({ ...editFormData, lastAddendumDate: e.target.value })}
+                    data-testid="input-edit-last-addendum-date"
+                  />
+                </div>
+              </div>
+              <div className="mt-3 space-y-2">
+                <Label htmlFor="edit-sharepointFolderUrl">SharePoint Folder URL</Label>
+                <Input
+                  id="edit-sharepointFolderUrl"
+                  type="url"
+                  value={editFormData.sharepointFolderUrl}
+                  onChange={(e) => setEditFormData({ ...editFormData, sharepointFolderUrl: e.target.value })}
+                  placeholder="https://..."
+                  data-testid="input-edit-sharepoint-url"
+                />
               </div>
             </div>
 

@@ -6300,7 +6300,7 @@ export async function registerRoutes(
 
   // Helper to preprocess contract data - converts date strings to Date objects
   const preprocessContractData = (data: any) => {
-    const dateFields = ['bidReleaseDate', 'bidDueDate', 'awardDate', 'startDate', 'substantialCompletionDate', 'finalCloseoutDate'];
+    const dateFields = ['bidReleaseDate', 'bidDueDate', 'awardDate', 'startDate', 'substantialCompletionDate', 'finalCloseoutDate', 'questionDeadline', 'lastAddendumDate'];
     const numericFields = ['originalValue', 'currentValue', 'budgetedHours', 'regularRate', 'overtimeRate', 'premiumRate'];
     const processed = { ...data };
     
@@ -6335,6 +6335,21 @@ export async function registerRoutes(
     // Convert empty purchaseOrderId to null
     if (processed.purchaseOrderId === '' || processed.purchaseOrderId === 'none') {
       processed.purchaseOrderId = null;
+    }
+
+    // Convert empty assignedToUserId to null
+    if (processed.assignedToUserId === '' || processed.assignedToUserId === 'none') {
+      processed.assignedToUserId = null;
+    }
+
+    // Convert addendumCount string to integer
+    if (processed.addendumCount !== undefined) {
+      if (processed.addendumCount === '' || processed.addendumCount === null) {
+        processed.addendumCount = 0;
+      } else {
+        const n = parseInt(processed.addendumCount, 10);
+        processed.addendumCount = isNaN(n) ? 0 : n;
+      }
     }
     
     return processed;
@@ -16353,13 +16368,93 @@ Transcript: "${transcript}"`;
     }
   });
 
+  // Helper: normalize a contract into the standard GPT-facing shape
+  const normalizeContract = async (contract: any): Promise<any> => {
+    let assignedToName: string | null = null;
+    if (contract.assignedToUserId) {
+      const assignedProfile = await storage.getUserProfile(contract.assignedToUserId);
+      const fn = assignedProfile?.firstName || "";
+      const ln = assignedProfile?.lastName || "";
+      assignedToName = `${fn} ${ln}`.trim() || null;
+    }
+    const primaryProject = contract.projects?.[0];
+    return {
+      id: contract.id,
+      contract_number: contract.contractNumber,
+      name: contract.name,
+      agency: contract.agency ?? null,
+      project_name: primaryProject?.name ?? contract.name,
+      service_type: contract.serviceType ?? null,
+      status: contract.status,
+      proposal_due_date: contract.bidDueDate ?? null,
+      question_deadline: contract.questionDeadline ?? null,
+      addendum_count: contract.addendumCount ?? 0,
+      last_addendum_date: contract.lastAddendumDate ?? null,
+      assigned_to: assignedToName,
+      sharepoint_folder_url: contract.sharepointFolderUrl ?? null,
+      client_name: contract.client?.name ?? null,
+      contract_type: contract.contractType,
+      original_value: contract.originalValue ?? null,
+      current_value: contract.currentValue ?? null,
+      bid_release_date: contract.bidReleaseDate ?? null,
+      award_date: contract.awardDate ?? null,
+      start_date: contract.startDate ?? null,
+      substantial_completion_date: contract.substantialCompletionDate ?? null,
+      notes: contract.notes ?? null,
+      projects: (contract.projects ?? []).map((p: any) => ({ id: p.id, name: p.name, projectNumber: p.projectNumber })),
+      created_at: contract.createdAt,
+      updated_at: contract.updatedAt,
+    };
+  };
+
   app.get("/api/v1/contracts", apiKeyAuth, async (req: any, res) => {
     try {
       const { companyId } = req.apiKey;
-      const contracts = await storage.getContracts(companyId);
-      res.json({ contracts });
+      const { status, serviceType, assignedUser, dueDate, dueBefore, dueAfter, limit = "50" } = req.query as any;
+      let contracts = await storage.getContracts(companyId);
+
+      // Apply filters
+      if (status) {
+        const statuses = status.split(",").map((s: string) => s.trim());
+        contracts = contracts.filter((c: any) => statuses.includes(c.status));
+      }
+      if (serviceType) {
+        contracts = contracts.filter((c: any) =>
+          c.serviceType?.toLowerCase().includes(serviceType.toLowerCase())
+        );
+      }
+      if (assignedUser) {
+        contracts = contracts.filter((c: any) => c.assignedToUserId === assignedUser);
+      }
+      if (dueDate) {
+        const d = new Date(dueDate);
+        contracts = contracts.filter((c: any) => c.bidDueDate && new Date(c.bidDueDate).toDateString() === d.toDateString());
+      }
+      if (dueBefore) {
+        contracts = contracts.filter((c: any) => c.bidDueDate && new Date(c.bidDueDate) <= new Date(dueBefore));
+      }
+      if (dueAfter) {
+        contracts = contracts.filter((c: any) => c.bidDueDate && new Date(c.bidDueDate) >= new Date(dueAfter));
+      }
+
+      contracts = contracts.slice(0, Math.min(parseInt(limit), 200));
+      const normalized = await Promise.all(contracts.map(normalizeContract));
+      res.json({ contracts: normalized, total: normalized.length });
     } catch (error) {
+      console.error("Error fetching v1 contracts:", error);
       res.status(500).json({ message: "Failed to fetch contracts" });
+    }
+  });
+
+  app.get("/api/v1/contracts/:id", apiKeyAuth, async (req: any, res) => {
+    try {
+      const { companyId } = req.apiKey;
+      const contract = await storage.getContract(req.params.id);
+      if (!contract || contract.companyId !== companyId) return res.status(404).json({ message: "Contract not found" });
+      const normalized = await normalizeContract(contract);
+      res.json({ contract: normalized });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch contract" });
     }
   });
 
@@ -16483,12 +16578,67 @@ Transcript: "${transcript}"`;
         "/api/v1/contracts": {
           get: {
             operationId: "listContracts",
-            summary: "List all contracts",
-            description: "Returns all contracts for the company associated with the API key",
+            summary: "List contracts with optional filters",
+            description: "Returns contracts for the company. Each contract includes normalized fields: agency, project_name, service_type, proposal_due_date, question_deadline, addendum_count, last_addendum_date, status, assigned_to, sharepoint_folder_url.",
+            parameters: [
+              { name: "status", in: "query", required: false, schema: { type: "string" }, description: "Filter by status (comma-separated). Values: bid_release, bid_received, under_review, awarded, not_awarded, cancelled, in_execution, substantial_completion, final_closeout" },
+              { name: "serviceType", in: "query", required: false, schema: { type: "string" }, description: "Filter by service type (partial match)" },
+              { name: "assignedUser", in: "query", required: false, schema: { type: "string" }, description: "Filter by assigned user ID" },
+              { name: "dueDate", in: "query", required: false, schema: { type: "string", format: "date" }, description: "Filter by exact proposal due date (YYYY-MM-DD)" },
+              { name: "dueBefore", in: "query", required: false, schema: { type: "string", format: "date" }, description: "Filter proposals due on or before this date" },
+              { name: "dueAfter", in: "query", required: false, schema: { type: "string", format: "date" }, description: "Filter proposals due on or after this date" },
+              { name: "limit", in: "query", required: false, schema: { type: "integer", default: 50, maximum: 200 }, description: "Max number of contracts to return" },
+            ],
             responses: {
               "200": {
-                description: "List of contracts",
-                content: { "application/json": { schema: { type: "object", properties: { contracts: { type: "array" } } } } },
+                description: "List of normalized contracts",
+                content: {
+                  "application/json": {
+                    schema: {
+                      type: "object",
+                      properties: {
+                        contracts: {
+                          type: "array",
+                          items: {
+                            type: "object",
+                            properties: {
+                              id: { type: "string" },
+                              contract_number: { type: "string" },
+                              name: { type: "string" },
+                              agency: { type: "string", nullable: true },
+                              project_name: { type: "string" },
+                              service_type: { type: "string", nullable: true },
+                              status: { type: "string" },
+                              proposal_due_date: { type: "string", format: "date-time", nullable: true },
+                              question_deadline: { type: "string", format: "date-time", nullable: true },
+                              addendum_count: { type: "integer" },
+                              last_addendum_date: { type: "string", format: "date-time", nullable: true },
+                              assigned_to: { type: "string", nullable: true },
+                              sharepoint_folder_url: { type: "string", nullable: true },
+                              client_name: { type: "string", nullable: true },
+                              notes: { type: "string", nullable: true },
+                            },
+                          },
+                        },
+                        total: { type: "integer" },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        "/api/v1/contracts/{id}": {
+          get: {
+            operationId: "getContract",
+            summary: "Get a specific contract by ID",
+            description: "Returns full normalized contract detail including all fields",
+            parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+            responses: {
+              "200": {
+                description: "Contract detail",
+                content: { "application/json": { schema: { type: "object" } } },
               },
             },
           },

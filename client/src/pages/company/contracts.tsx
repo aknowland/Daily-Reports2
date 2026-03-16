@@ -164,6 +164,14 @@ type ContractFormData = {
   premiumRate: string;
   budgetTrackingMode: BudgetTrackingMode;
   notes: string;
+  // Extended fields
+  agency: string;
+  serviceType: string;
+  questionDeadline: string;
+  addendumCount: string;
+  lastAddendumDate: string;
+  assignedToUserId: string;
+  sharepointFolderUrl: string;
 };
 
 const emptyFormData: ContractFormData = {
@@ -188,6 +196,13 @@ const emptyFormData: ContractFormData = {
   premiumRate: "",
   budgetTrackingMode: "daily_reports",
   notes: "",
+  agency: "",
+  serviceType: "",
+  questionDeadline: "",
+  addendumCount: "",
+  lastAddendumDate: "",
+  assignedToUserId: "",
+  sharepointFolderUrl: "",
 };
 
 export default function ContractsPage() {
@@ -200,6 +215,10 @@ export default function ContractsPage() {
   const [formData, setFormData] = useState<ContractFormData>(emptyFormData);
   const [activeTab, setActiveTab] = useState("list");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [serviceTypeFilter, setServiceTypeFilter] = useState<string>("");
+  const [assignedUserFilter, setAssignedUserFilter] = useState<string>("all");
+  const [dueBefore, setDueBefore] = useState<string>("");
+  const [dueAfter, setDueAfter] = useState<string>("");
   const [searchQuery, setSearchQuery] = useState("");
   const [archivedSearchQuery, setArchivedSearchQuery] = useState("");
   const [proposalSearchQuery, setProposalSearchQuery] = useState("");
@@ -515,6 +534,11 @@ export default function ContractsPage() {
 
   const { data: contracts = [], isLoading } = useQuery<ContractWithProjects[]>({
     queryKey: ["/api/contracts"],
+    enabled: !!activeCompany?.id,
+  });
+
+  const { data: companyMembers = [] } = useQuery<any[]>({
+    queryKey: ["/api/companies", activeCompany?.id, "members"],
     enabled: !!activeCompany?.id,
   });
 
@@ -854,6 +878,13 @@ export default function ContractsPage() {
       premiumRate: contract.premiumRate || "",
       budgetTrackingMode: (contract.budgetTrackingMode as BudgetTrackingMode) || "daily_reports",
       notes: contract.notes || "",
+      agency: (contract as any).agency || "",
+      serviceType: (contract as any).serviceType || "",
+      questionDeadline: (contract as any).questionDeadline ? format(parseDateSafe((contract as any).questionDeadline), "yyyy-MM-dd") : "",
+      addendumCount: (contract as any).addendumCount?.toString() || "",
+      lastAddendumDate: (contract as any).lastAddendumDate ? format(parseDateSafe((contract as any).lastAddendumDate), "yyyy-MM-dd") : "",
+      assignedToUserId: (contract as any).assignedToUserId || "",
+      sharepointFolderUrl: (contract as any).sharepointFolderUrl || "",
     });
     
     // Initialize options from contract
@@ -1022,13 +1053,36 @@ export default function ContractsPage() {
     // Apply text search filter
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
-      result = result.filter((c) =>
+      result = result.filter((c: any) =>
         c.name.toLowerCase().includes(query) ||
         c.contractNumber?.toLowerCase().includes(query) ||
         c.client?.name?.toLowerCase().includes(query) ||
         c.description?.toLowerCase().includes(query) ||
-        c.projects?.some(p => p.name.toLowerCase().includes(query))
+        c.agency?.toLowerCase().includes(query) ||
+        c.serviceType?.toLowerCase().includes(query) ||
+        c.projects?.some((p: any) => p.name.toLowerCase().includes(query))
       );
+    }
+
+    // Apply service type filter
+    if (serviceTypeFilter.trim()) {
+      const st = serviceTypeFilter.toLowerCase();
+      result = result.filter((c: any) => c.serviceType?.toLowerCase().includes(st));
+    }
+
+    // Apply assigned user filter
+    if (assignedUserFilter !== "all") {
+      result = result.filter((c: any) => c.assignedToUserId === assignedUserFilter);
+    }
+
+    // Apply due date range filters
+    if (dueBefore) {
+      const before = new Date(dueBefore);
+      result = result.filter((c: any) => c.bidDueDate && new Date(c.bidDueDate) <= before);
+    }
+    if (dueAfter) {
+      const after = new Date(dueAfter);
+      result = result.filter((c: any) => c.bidDueDate && new Date(c.bidDueDate) >= after);
     }
     
     // Sort: 1) Bid Released/Received by upcoming bid due date, 2) Under Review by bid due date (oldest first),
@@ -1393,28 +1447,90 @@ export default function ContractsPage() {
 
         <TabsContent value="list">
           {contracts.length > 0 && (
-            <div className="flex flex-col sm:flex-row gap-3 mb-4">
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input
-                  placeholder="Search contracts by name, number, client, or project..."
-                  value={searchQuery}
-                  onChange={(e) => handleSearchChange(e.target.value)}
-                  className="pl-9"
-                  data-testid="input-search-contracts"
-                />
+            <div className="flex flex-col gap-2 mb-4">
+              <div className="flex flex-col sm:flex-row gap-3">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Search by name, number, agency, service type, client, or project..."
+                    value={searchQuery}
+                    onChange={(e) => handleSearchChange(e.target.value)}
+                    className="pl-9"
+                    data-testid="input-search-contracts"
+                  />
+                </div>
+                <Select value={statusFilter} onValueChange={handleStatusFilterChange}>
+                  <SelectTrigger className="w-full sm:w-[180px]" data-testid="filter-status">
+                    <SelectValue placeholder="Filter by status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Statuses</SelectItem>
+                    {ACTIVE_STATUS_OPTIONS.map(status => (
+                      <SelectItem key={status.value} value={status.value}>{status.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
-              <Select value={statusFilter} onValueChange={handleStatusFilterChange}>
-                <SelectTrigger className="w-full sm:w-[200px]" data-testid="filter-status">
-                  <SelectValue placeholder="Filter by status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Statuses</SelectItem>
-                  {ACTIVE_STATUS_OPTIONS.map(status => (
-                    <SelectItem key={status.value} value={status.value}>{status.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="flex flex-col sm:flex-row gap-3">
+                <Input
+                  placeholder="Filter by service type..."
+                  value={serviceTypeFilter}
+                  onChange={(e) => { setServiceTypeFilter(e.target.value); setContractsDisplayCount(10); }}
+                  className="flex-1"
+                  data-testid="input-filter-service-type"
+                />
+                <Select value={assignedUserFilter} onValueChange={(v) => { setAssignedUserFilter(v); setContractsDisplayCount(10); }}>
+                  <SelectTrigger className="w-full sm:w-[180px]" data-testid="filter-assigned-user">
+                    <SelectValue placeholder="Assigned to" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Assigned</SelectItem>
+                    {companyMembers.map((m: any) => (
+                      <SelectItem key={m.userId} value={m.userId}>
+                        {m.profile?.firstName || ""} {m.profile?.lastName || ""}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <div className="flex gap-2 items-center">
+                  <div className="flex items-center gap-1">
+                    <Label className="text-xs text-muted-foreground whitespace-nowrap">Due After</Label>
+                    <Input
+                      type="date"
+                      value={dueAfter}
+                      onChange={(e) => { setDueAfter(e.target.value); setContractsDisplayCount(10); }}
+                      className="w-36"
+                      data-testid="input-filter-due-after"
+                    />
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <Label className="text-xs text-muted-foreground whitespace-nowrap">Due Before</Label>
+                    <Input
+                      type="date"
+                      value={dueBefore}
+                      onChange={(e) => { setDueBefore(e.target.value); setContractsDisplayCount(10); }}
+                      className="w-36"
+                      data-testid="input-filter-due-before"
+                    />
+                  </div>
+                </div>
+              </div>
+              {(searchQuery || statusFilter !== "all" || serviceTypeFilter || assignedUserFilter !== "all" || dueBefore || dueAfter) && (
+                <div className="flex justify-end">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setSearchQuery(""); setStatusFilter("all"); setServiceTypeFilter("");
+                      setAssignedUserFilter("all"); setDueBefore(""); setDueAfter("");
+                      setContractsDisplayCount(10);
+                    }}
+                    data-testid="button-clear-all-filters"
+                  >
+                    <X className="w-3 h-3 mr-1" /> Clear All Filters
+                  </Button>
+                </div>
+              )}
             </div>
           )}
 
@@ -1428,13 +1544,13 @@ export default function ContractsPage() {
             <Card>
               <CardContent className="p-6 text-center text-muted-foreground">
                 <FileText className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                {searchQuery.trim() || statusFilter !== "all" ? (
+                {searchQuery.trim() || statusFilter !== "all" || serviceTypeFilter || assignedUserFilter !== "all" || dueBefore || dueAfter ? (
                   <>
                     <p>No contracts found matching your filters.</p>
                     <Button 
                       variant="outline" 
                       className="mt-4"
-                      onClick={() => { setSearchQuery(""); setStatusFilter("all"); }}
+                      onClick={() => { setSearchQuery(""); setStatusFilter("all"); setServiceTypeFilter(""); setAssignedUserFilter("all"); setDueBefore(""); setDueAfter(""); }}
                       data-testid="button-clear-filters"
                     >
                       Clear Filters
@@ -1505,13 +1621,25 @@ export default function ContractsPage() {
                               <FileText className="w-3 h-3" />
                               {contract.contractNumber}
                             </span>
-                            {contract.client && (
+                            {(contract as any).agency && (
+                              <span className="flex items-center gap-1">
+                                <Building2 className="w-3 h-3" />
+                                {(contract as any).agency}
+                              </span>
+                            )}
+                            {!(contract as any).agency && contract.client && (
                               <span className="flex items-center gap-1">
                                 <Building2 className="w-3 h-3" />
                                 {contract.client.name}
                               </span>
                             )}
-                            {contract.contractType && (
+                            {(contract as any).serviceType && (
+                              <span className="flex items-center gap-1">
+                                <Clock className="w-3 h-3" />
+                                {(contract as any).serviceType}
+                              </span>
+                            )}
+                            {!(contract as any).serviceType && contract.contractType && (
                               <span className="flex items-center gap-1">
                                 <Clock className="w-3 h-3" />
                                 {getContractTypeName(contract.contractType)}
@@ -2856,6 +2984,98 @@ export default function ContractsPage() {
                   </Card>
                 );
               })}
+            </div>
+
+            <div className="border-t pt-3">
+              <p className="text-sm font-medium text-muted-foreground mb-3">Bid Tracking</p>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="agency">Agency / Owner</Label>
+                  <Input
+                    id="agency"
+                    value={formData.agency}
+                    onChange={(e) => setFormData({ ...formData, agency: e.target.value })}
+                    placeholder="e.g. City of Los Angeles"
+                    data-testid="input-agency"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="serviceType">Service Type</Label>
+                  <Input
+                    id="serviceType"
+                    value={formData.serviceType}
+                    onChange={(e) => setFormData({ ...formData, serviceType: e.target.value })}
+                    placeholder="e.g. Special Inspection, Geotechnical"
+                    data-testid="input-service-type"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4 mt-3">
+                <div className="space-y-2">
+                  <Label htmlFor="questionDeadline">Question Deadline</Label>
+                  <Input
+                    id="questionDeadline"
+                    type="date"
+                    value={formData.questionDeadline}
+                    onChange={(e) => setFormData({ ...formData, questionDeadline: e.target.value })}
+                    data-testid="input-question-deadline"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="assignedToUserId">Assigned To</Label>
+                  <Select
+                    value={formData.assignedToUserId || "none"}
+                    onValueChange={(v) => setFormData({ ...formData, assignedToUserId: v === "none" ? "" : v })}
+                  >
+                    <SelectTrigger data-testid="select-assigned-to">
+                      <SelectValue placeholder="Select team member" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Unassigned</SelectItem>
+                      {companyMembers.map((m: any) => (
+                        <SelectItem key={m.userId} value={m.userId}>
+                          {m.profile?.firstName || ""} {m.profile?.lastName || ""}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4 mt-3">
+                <div className="space-y-2">
+                  <Label htmlFor="addendumCount">Addendum Count</Label>
+                  <Input
+                    id="addendumCount"
+                    type="number"
+                    min="0"
+                    value={formData.addendumCount}
+                    onChange={(e) => setFormData({ ...formData, addendumCount: e.target.value })}
+                    placeholder="0"
+                    data-testid="input-addendum-count"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="lastAddendumDate">Last Addendum Date</Label>
+                  <Input
+                    id="lastAddendumDate"
+                    type="date"
+                    value={formData.lastAddendumDate}
+                    onChange={(e) => setFormData({ ...formData, lastAddendumDate: e.target.value })}
+                    data-testid="input-last-addendum-date"
+                  />
+                </div>
+              </div>
+              <div className="mt-3 space-y-2">
+                <Label htmlFor="sharepointFolderUrl">SharePoint Folder URL</Label>
+                <Input
+                  id="sharepointFolderUrl"
+                  type="url"
+                  value={formData.sharepointFolderUrl}
+                  onChange={(e) => setFormData({ ...formData, sharepointFolderUrl: e.target.value })}
+                  placeholder="https://..."
+                  data-testid="input-sharepoint-url"
+                />
+              </div>
             </div>
 
             <div className="space-y-2">
