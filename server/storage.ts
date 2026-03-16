@@ -39,6 +39,7 @@ import {
   type Meeting, type InsertMeeting,
   type ClientPortalUser, type InsertClientPortalUser,
   type ClientPortalProjectAccess, type InsertClientPortalProjectAccess,
+  apiKeys, type ApiKey, type InsertApiKey,
 } from "@shared/schema";
 import { users, type User } from "@shared/models/auth";
 import { db } from "./db";
@@ -349,6 +350,13 @@ export interface IStorage {
   // Dismissed Alerts
   getDismissedAlerts(userId: string, companyId: string): Promise<string[]>;
   dismissAlert(userId: string, alertId: string, companyId: string): Promise<void>;
+
+  // API Keys
+  getApiKeysByCompany(companyId: string): Promise<ApiKey[]>;
+  getApiKeyByHash(hash: string): Promise<ApiKey | undefined>;
+  createApiKey(data: InsertApiKey): Promise<ApiKey>;
+  revokeApiKey(id: string, companyId: string): Promise<boolean>;
+  touchApiKey(id: string): Promise<void>;
 
   // Client Portal
   getClientPortalUser(userId: string, companyId: string): Promise<ClientPortalUser | undefined>;
@@ -2515,6 +2523,35 @@ export class DatabaseStorage implements IStorage {
         )
       );
     return (result.rowCount ?? 0) > 0;
+  }
+
+  // API Keys
+  async getApiKeysByCompany(companyId: string): Promise<ApiKey[]> {
+    return db.select().from(apiKeys)
+      .where(and(eq(apiKeys.companyId, companyId), eq(apiKeys.isActive, true)))
+      .orderBy(desc(apiKeys.createdAt));
+  }
+
+  async getApiKeyByHash(hash: string): Promise<ApiKey | undefined> {
+    const [key] = await db.select().from(apiKeys)
+      .where(and(eq(apiKeys.keyHash, hash), eq(apiKeys.isActive, true)));
+    return key;
+  }
+
+  async createApiKey(data: InsertApiKey): Promise<ApiKey> {
+    const [key] = await db.insert(apiKeys).values(data).returning();
+    return key;
+  }
+
+  async revokeApiKey(id: string, companyId: string): Promise<boolean> {
+    const result = await db.update(apiKeys)
+      .set({ isActive: false })
+      .where(and(eq(apiKeys.id, id), eq(apiKeys.companyId, companyId)));
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  async touchApiKey(id: string): Promise<void> {
+    await db.update(apiKeys).set({ lastUsedAt: new Date() }).where(eq(apiKeys.id, id));
   }
 
   async getClientPortalUsersForCompany(companyId: string): Promise<(ClientPortalUser & { user?: User; client?: Client; projectAccess?: (ClientPortalProjectAccess & { project?: Project })[] })[]> {

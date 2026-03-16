@@ -40,6 +40,7 @@ import ContractDashboardPage from "@/pages/company/contract-dashboard";
 import ProjectDashboardPage from "@/pages/project-dashboard";
 import ProjectDailyReportsPage from "@/pages/project-daily-reports";
 import CompanyMeetingsPage from "@/pages/company/meetings";
+import ApiKeysPage from "@/pages/company/api-keys";
 import AIChatPage from "@/pages/company/ai-chat";
 import BillingPage from "@/pages/billing";
 import LearnMorePage from "@/pages/learn-more";
@@ -82,6 +83,7 @@ function AuthenticatedRoutes() {
       <Route path="/company/settings" component={CompanySettingsPage} />
       <Route path="/company/dashboard" component={CompanyDashboardPage} />
       <Route path="/company/meetings" component={CompanyMeetingsPage} />
+      <Route path="/company/api-keys" component={ApiKeysPage} />
       <Route path="/company/chat" component={AIChatPage} />
       <Route path="/client-portal" component={PortalDashboardPage} />
       <Route path="/client-portal/project/:id" component={PortalProjectPage} />

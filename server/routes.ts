@@ -16198,5 +16198,305 @@ Transcript: "${transcript}"`;
     }
   });
 
+  // ============================================================
+  // API KEY MANAGEMENT (for Custom GPT Actions integration)
+  // ============================================================
+
+  const { createHash } = await import("crypto");
+
+  const hashApiKey = (raw: string) => createHash("sha256").update(raw).digest("hex");
+
+  const generateRawKey = async () => {
+    const { randomBytes } = await import("crypto");
+    return "fdr_" + randomBytes(20).toString("hex");
+  };
+
+  // Middleware for API key auth (used by v1 routes)
+  const apiKeyAuth = async (req: any, res: any, next: any) => {
+    const authHeader = req.headers["authorization"] || req.headers["x-api-key"];
+    if (!authHeader) return res.status(401).json({ message: "API key required" });
+    const rawKey = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : authHeader;
+    const hash = hashApiKey(rawKey);
+    const key = await storage.getApiKeyByHash(hash);
+    if (!key) return res.status(401).json({ message: "Invalid or revoked API key" });
+    storage.touchApiKey(key.id).catch(() => {});
+    req.apiKey = key;
+    next();
+  };
+
+  // List API keys for a company
+  app.get("/api/api-keys", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      const { companyId } = req.query as any;
+      if (!companyId) return res.status(400).json({ message: "companyId required" });
+      const isAdmin = await isEffectiveCompanyAdmin(userId, companyId, profile);
+      if (!isAdmin && !isEffectiveSystemAdmin(profile)) {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+      const keys = await storage.getApiKeysByCompany(companyId);
+      res.json(keys);
+    } catch (error) {
+      console.error("Error listing API keys:", error);
+      res.status(500).json({ message: "Failed to list API keys" });
+    }
+  });
+
+  // Create a new API key
+  app.post("/api/api-keys", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      const { name, companyId } = req.body;
+      if (!name || !companyId) return res.status(400).json({ message: "Name and companyId required" });
+      const isAdmin = await isEffectiveCompanyAdmin(userId, companyId, profile);
+      if (!isAdmin && !isEffectiveSystemAdmin(profile)) {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+      const rawKey = await generateRawKey();
+      const keyHash = hashApiKey(rawKey);
+      const keyPrefix = rawKey.slice(0, 12);
+      const key = await storage.createApiKey({ name, keyHash, keyPrefix, companyId, createdByUserId: userId, isActive: true });
+      res.json({ ...key, rawKey }); // rawKey only returned once
+    } catch (error) {
+      console.error("Error creating API key:", error);
+      res.status(500).json({ message: "Failed to create API key" });
+    }
+  });
+
+  // Revoke an API key
+  app.delete("/api/api-keys/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      const companyId = (req.query.companyId || req.body?.companyId) as string;
+      if (!companyId) return res.status(400).json({ message: "companyId required" });
+      const isAdmin = await isEffectiveCompanyAdmin(userId, companyId, profile);
+      if (!isAdmin && !isEffectiveSystemAdmin(profile)) {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+      const ok = await storage.revokeApiKey(req.params.id, companyId);
+      if (!ok) return res.status(404).json({ message: "Key not found" });
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error revoking API key:", error);
+      res.status(500).json({ message: "Failed to revoke API key" });
+    }
+  });
+
+  // ============================================================
+  // V1 PUBLIC READ API (used by Custom GPT Actions)
+  // ============================================================
+
+  app.get("/api/v1/projects", apiKeyAuth, async (req: any, res) => {
+    try {
+      const { companyId } = req.apiKey;
+      const projects = await storage.getProjectsByCompany(companyId);
+      res.json({ projects });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch projects" });
+    }
+  });
+
+  app.get("/api/v1/projects/:id", apiKeyAuth, async (req: any, res) => {
+    try {
+      const { companyId } = req.apiKey;
+      const project = await storage.getProject(req.params.id);
+      if (!project || project.companyId !== companyId) return res.status(404).json({ message: "Project not found" });
+      const reports = await storage.getReportsByProject(req.params.id);
+      res.json({ project, recentReports: reports.slice(0, 10) });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch project" });
+    }
+  });
+
+  app.get("/api/v1/reports", apiKeyAuth, async (req: any, res) => {
+    try {
+      const { companyId } = req.apiKey;
+      const { projectId, startDate, endDate, limit = "20" } = req.query as any;
+      let reports: any[];
+      if (projectId) {
+        const project = await storage.getProject(projectId);
+        if (!project || project.companyId !== companyId) return res.status(404).json({ message: "Project not found" });
+        reports = await storage.getReportsByProject(projectId);
+      } else {
+        const projects = await storage.getProjectsByCompany(companyId);
+        const allReports: any[] = [];
+        for (const p of projects) {
+          const r = await storage.getReportsByProject(p.id);
+          allReports.push(...r.map((rep: any) => ({ ...rep, projectName: p.name })));
+        }
+        reports = allReports.sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      }
+      if (startDate) reports = reports.filter((r: any) => new Date(r.date) >= new Date(startDate));
+      if (endDate) reports = reports.filter((r: any) => new Date(r.date) <= new Date(endDate));
+      reports = reports.slice(0, Math.min(parseInt(limit), 100));
+      res.json({ reports, total: reports.length });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch reports" });
+    }
+  });
+
+  app.get("/api/v1/reports/:id", apiKeyAuth, async (req: any, res) => {
+    try {
+      const { companyId } = req.apiKey;
+      const report = await storage.getReport(req.params.id);
+      if (!report) return res.status(404).json({ message: "Report not found" });
+      if (report.projectId) {
+        const project = await storage.getProject(report.projectId);
+        if (!project || project.companyId !== companyId) return res.status(403).json({ message: "Access denied" });
+      }
+      res.json({ report });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch report" });
+    }
+  });
+
+  app.get("/api/v1/contracts", apiKeyAuth, async (req: any, res) => {
+    try {
+      const { companyId } = req.apiKey;
+      const contracts = await storage.getContracts(companyId);
+      res.json({ contracts });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch contracts" });
+    }
+  });
+
+  app.get("/api/v1/summary", apiKeyAuth, async (req: any, res) => {
+    try {
+      const { companyId } = req.apiKey;
+      const projects = await storage.getProjectsByCompany(companyId);
+      const contracts = await storage.getContracts(companyId);
+      const recentReports: any[] = [];
+      for (const p of projects.slice(0, 5)) {
+        const r = await storage.getReportsByProject(p.id);
+        if (r.length > 0) recentReports.push({ projectName: p.name, latestReport: r[0].date, totalReports: r.length });
+      }
+      res.json({
+        company: { id: companyId },
+        totalProjects: projects.length,
+        activeProjects: projects.filter(p => p.status === "active").length,
+        totalContracts: contracts.length,
+        recentActivity: recentReports,
+      });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch summary" });
+    }
+  });
+
+  // OpenAPI spec for Custom GPT Actions
+  app.get("/api/v1/openapi.json", async (req: any, res) => {
+    const host = req.headers["x-forwarded-host"] || req.headers.host || "localhost:5000";
+    const protocol = req.headers["x-forwarded-proto"] || "https";
+    const baseUrl = `${protocol}://${host}`;
+    const spec = {
+      openapi: "3.1.0",
+      info: {
+        title: "Field Daily Reports API",
+        description: "Read-only API to access construction project reports, projects, and contracts. Authenticate with an API key using the Authorization header as 'Bearer <your-api-key>'.",
+        version: "1.0.0",
+      },
+      servers: [{ url: baseUrl }],
+      security: [{ ApiKeyAuth: [] }],
+      components: {
+        securitySchemes: {
+          ApiKeyAuth: {
+            type: "http",
+            scheme: "bearer",
+            description: "Your API key, obtained from Company Settings → API Keys",
+          },
+        },
+      },
+      paths: {
+        "/api/v1/summary": {
+          get: {
+            operationId: "getSummary",
+            summary: "Get a high-level summary of company activity",
+            description: "Returns total project count, contract count, and recent reporting activity",
+            responses: {
+              "200": {
+                description: "Summary data",
+                content: { "application/json": { schema: { type: "object" } } },
+              },
+            },
+          },
+        },
+        "/api/v1/projects": {
+          get: {
+            operationId: "listProjects",
+            summary: "List all projects",
+            description: "Returns all projects for the company associated with the API key",
+            responses: {
+              "200": {
+                description: "List of projects",
+                content: { "application/json": { schema: { type: "object", properties: { projects: { type: "array" } } } } },
+              },
+            },
+          },
+        },
+        "/api/v1/projects/{id}": {
+          get: {
+            operationId: "getProject",
+            summary: "Get a specific project with recent reports",
+            parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+            responses: {
+              "200": {
+                description: "Project details with recent reports",
+                content: { "application/json": { schema: { type: "object" } } },
+              },
+            },
+          },
+        },
+        "/api/v1/reports": {
+          get: {
+            operationId: "listReports",
+            summary: "List daily reports",
+            description: "Returns daily reports, optionally filtered by project, date range, or limited in count",
+            parameters: [
+              { name: "projectId", in: "query", required: false, schema: { type: "string" }, description: "Filter by project ID" },
+              { name: "startDate", in: "query", required: false, schema: { type: "string", format: "date" }, description: "Filter reports on or after this date (YYYY-MM-DD)" },
+              { name: "endDate", in: "query", required: false, schema: { type: "string", format: "date" }, description: "Filter reports on or before this date (YYYY-MM-DD)" },
+              { name: "limit", in: "query", required: false, schema: { type: "integer", default: 20, maximum: 100 }, description: "Max number of reports to return" },
+            ],
+            responses: {
+              "200": {
+                description: "List of reports",
+                content: { "application/json": { schema: { type: "object", properties: { reports: { type: "array" }, total: { type: "integer" } } } } },
+              },
+            },
+          },
+        },
+        "/api/v1/reports/{id}": {
+          get: {
+            operationId: "getReport",
+            summary: "Get a specific daily report",
+            parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+            responses: {
+              "200": {
+                description: "Report details",
+                content: { "application/json": { schema: { type: "object" } } },
+              },
+            },
+          },
+        },
+        "/api/v1/contracts": {
+          get: {
+            operationId: "listContracts",
+            summary: "List all contracts",
+            description: "Returns all contracts for the company associated with the API key",
+            responses: {
+              "200": {
+                description: "List of contracts",
+                content: { "application/json": { schema: { type: "object", properties: { contracts: { type: "array" } } } } },
+              },
+            },
+          },
+        },
+      },
+    };
+    res.json(spec);
+  });
+
   return httpServer;
 }
