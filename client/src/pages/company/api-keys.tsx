@@ -18,7 +18,7 @@ import {
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { useQuery as useAuthQuery } from "@tanstack/react-query";
+import { useAuth } from "@/hooks/use-auth";
 import {
   Key,
   Plus,
@@ -52,11 +52,8 @@ export default function ApiKeysPage() {
   const [newKeyName, setNewKeyName] = useState("");
   const [newKeyCreated, setNewKeyCreated] = useState<ApiKeyWithRaw | null>(null);
 
-  const { data: profile } = useAuthQuery<any>({ queryKey: ["/api/profile"] });
-  const { data: companies } = useAuthQuery<any[]>({ queryKey: ["/api/companies"] });
-
-  const adminCompany = companies?.find((c: any) => c.role === "admin" || c.role === "owner");
-  const companyId = adminCompany?.companyId || adminCompany?.company?.id;
+  const { activeCompany, isEffectiveCompanyAdmin } = useAuth();
+  const companyId = activeCompany?.id;
 
   const { data: keys = [], isLoading } = useQuery<ApiKey[]>({
     queryKey: ["/api/api-keys", companyId],
@@ -112,14 +109,14 @@ export default function ApiKeysPage() {
     return new Date(dateStr).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
   };
 
-  if (!companyId) {
+  if (!companyId || !isEffectiveCompanyAdmin) {
     return (
       <PageLayout>
         <PageHeader icon={Key} title="API Keys" subtitle="Manage API keys for Custom GPT integration" />
         <div className="container px-4 py-8 mx-auto max-w-3xl">
           <Card>
             <CardContent className="p-8 text-center text-muted-foreground">
-              You must be a company admin to manage API keys.
+              You must be a company admin to manage API keys. Make sure you have admin access and are not in Inspector mode.
             </CardContent>
           </Card>
         </div>
