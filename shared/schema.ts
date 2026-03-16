@@ -449,6 +449,14 @@ export const contracts = pgTable("contracts", {
   baseBudgetSpent: varchar("base_budget_spent"), // Manual starting point for mid-project onboarding (dollar amount)
   budgetTrackingMode: budgetTrackingModeEnum("budget_tracking_mode").default("daily_reports"), // How budget is calculated
   notes: text("notes"),
+  // Extended fields for GPT/bid tracking
+  agency: text("agency"),
+  serviceType: text("service_type"),
+  questionDeadline: timestamp("question_deadline"),
+  addendumCount: integer("addendum_count").default(0),
+  lastAddendumDate: timestamp("last_addendum_date"),
+  assignedToUserId: varchar("assigned_to_user_id").references(() => users.id, { onDelete: "set null" }),
+  sharepointFolderUrl: text("sharepoint_folder_url"),
   createdById: varchar("created_by_id").references(() => users.id),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
