@@ -220,7 +220,7 @@ export default function CompanyRecruitingPage() {
         const name = `${c.firstName} ${c.lastName}`.toLowerCase();
         const cert = c.certNumber?.toLowerCase() || '';
         const county = c.county?.toLowerCase() || '';
-        const email = (c as any).availabilityEmail?.toLowerCase() || '';
+        const email = c.availabilityEmail?.toLowerCase() || '';
         if (!name.includes(q) && !cert.includes(q) && !county.includes(q) && !email.includes(q)) return false;
       }
       if (classFilter !== "all") {
@@ -725,9 +725,9 @@ export default function CompanyRecruitingPage() {
                       </Select>
                     </div>
                   </div>
-                  {!selectedCandidate.availableBy && !selectedCandidate.timeBase && (
+                  {!selectedCandidate.availableBy && !selectedCandidate.timeBase && !selectedCandidate.availabilityEmail && !(selectedCandidate.availabilityCounties && (selectedCandidate.availabilityCounties as string[]).length > 0) && (
                     <p className="text-xs text-muted-foreground">
-                      Set manually above or upload the DSA Availability List (.xlsx) to populate automatically.
+                      No availability data — import the DSA Availability List to populate or set manually above.
                     </p>
                   )}
                   {selectedCandidate.availabilityCounties && (selectedCandidate.availabilityCounties as string[]).length > 0 && (
