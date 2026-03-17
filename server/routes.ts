@@ -16722,7 +16722,7 @@ Transcript: "${transcript}"`;
         return res.status(404).json({ message: "Candidate not found" });
       }
       const updateSchema = z.object({
-        status: z.enum(["prospect", "contacted", "responded", "interested", "not_available", "not_interested", "hired"]).optional(),
+        status: z.enum(["prospect", "contacted", "interested", "not_available", "not_interested", "hired"]).optional(),
         notes: z.string().nullable().optional(),
         lastContactDate: z.string().or(z.date()).transform(val => val ? new Date(val) : null).nullable().optional(),
       });

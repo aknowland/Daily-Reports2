@@ -117,21 +117,19 @@ export default function CompanyTeamPage() {
     if (params.get("addInspector") === "true") {
       const county = params.get("county") || "";
       const certNumber = params.get("certNumber") || "";
-      const classInfo = certNumber ? `DSA Cert #${certNumber}` : "";
-      const locationInfo = county ? `County: ${county}` : "";
-      const noteParts = [classInfo, locationInfo].filter(Boolean).join(". ");
       const prefillData = {
         id: "",
         companyId: "",
         firstName: params.get("firstName") || "",
         lastName: params.get("lastName") || "",
         phone: params.get("phone") || "",
+        county: county,
         licenseNumber: certNumber,
         licenseState: "CA",
         email: "",
         title: "DSA Certified Inspector",
         certifications: ["DSA Certified"] as string[],
-        notes: noteParts ? `Recruited from DSA registry. ${noteParts}` : "Recruited from DSA registry.",
+        notes: "Recruited from DSA registry.",
         bio: "",
         profilePhotoUrl: "",
         yearsExperience: null,
@@ -1995,6 +1993,7 @@ function TeamInspectorDialog({
     email?: string;
     phone?: string;
     title?: string;
+    county?: string;
     licenseNumber?: string;
     licenseState?: string;
     certifications?: string[];
@@ -2008,6 +2007,7 @@ function TeamInspectorDialog({
     email: "",
     phone: "",
     title: "",
+    county: "",
     licenseNumber: "",
     licenseState: "",
     certifications: "",
@@ -2024,6 +2024,7 @@ function TeamInspectorDialog({
           email: inspector.email || "",
           phone: inspector.phone || "",
           title: inspector.title || "",
+          county: inspector.county || "",
           licenseNumber: inspector.licenseNumber || "",
           licenseState: inspector.licenseState || "",
           certifications: inspector.certifications?.join(", ") || "",
@@ -2036,6 +2037,7 @@ function TeamInspectorDialog({
           email: "",
           phone: "",
           title: "",
+          county: "",
           licenseNumber: "",
           licenseState: "",
           certifications: "",
@@ -2063,6 +2065,7 @@ function TeamInspectorDialog({
       email: formData.email || undefined,
       phone: formData.phone || undefined,
       title: formData.title || undefined,
+      county: formData.county || undefined,
       licenseNumber: formData.licenseNumber || undefined,
       licenseState: formData.licenseState || undefined,
       certifications: certArray.length > 0 ? certArray : undefined,
@@ -2141,6 +2144,17 @@ function TeamInspectorDialog({
               onChange={(e) => setFormData({ ...formData, title: e.target.value })}
               placeholder="Project Inspector"
               data-testid="input-inspector-title"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="county">County</Label>
+            <Input
+              id="county"
+              value={formData.county}
+              onChange={(e) => setFormData({ ...formData, county: e.target.value })}
+              placeholder="Los Angeles"
+              data-testid="input-inspector-county"
             />
           </div>
 
