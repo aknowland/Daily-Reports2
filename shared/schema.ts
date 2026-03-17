@@ -1352,11 +1352,11 @@ export type InsertApiKey = z.infer<typeof insertApiKeySchema>;
 export const recruitingStatusEnum = pgEnum("recruiting_status", [
   "prospect",
   "contacted",
-  "responded",
   "interested",
   "not_available",
   "not_interested",
-  "hired"
+  "hired",
+  "responded"
 ]);
 
 export const inspectorCandidates = pgTable("inspector_candidates", {
