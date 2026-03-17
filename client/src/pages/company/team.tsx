@@ -115,18 +115,23 @@ export default function CompanyTeamPage() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get("addInspector") === "true") {
+      const county = params.get("county") || "";
+      const certNumber = params.get("certNumber") || "";
+      const classInfo = certNumber ? `DSA Cert #${certNumber}` : "";
+      const locationInfo = county ? `County: ${county}` : "";
+      const noteParts = [classInfo, locationInfo].filter(Boolean).join(". ");
       const prefillData = {
         id: "",
         companyId: "",
         firstName: params.get("firstName") || "",
         lastName: params.get("lastName") || "",
         phone: params.get("phone") || "",
-        licenseNumber: params.get("certNumber") || "",
-        licenseState: params.get("county") || "",
+        licenseNumber: certNumber,
+        licenseState: "CA",
         email: "",
         title: "DSA Certified Inspector",
-        certifications: [] as string[],
-        notes: "",
+        certifications: ["DSA Certified"] as string[],
+        notes: noteParts ? `Recruited from DSA registry. ${noteParts}` : "Recruited from DSA registry.",
         bio: "",
         profilePhotoUrl: "",
         yearsExperience: null,

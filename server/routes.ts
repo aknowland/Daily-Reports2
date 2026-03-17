@@ -16723,6 +16723,7 @@ Transcript: "${transcript}"`;
       }
       const updateSchema = z.object({
         status: z.enum(["prospect", "contacted", "responded", "interested", "not_available", "not_interested", "hired"]).optional(),
+        notes: z.string().nullable().optional(),
         lastContactDate: z.string().or(z.date()).transform(val => val ? new Date(val) : null).nullable().optional(),
       });
       const parsed = updateSchema.safeParse(req.body);

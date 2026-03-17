@@ -1372,6 +1372,7 @@ export const inspectorCandidates = pgTable("inspector_candidates", {
   class2: boolean("class_2").default(false),
   class3: boolean("class_3").default(false),
   status: recruitingStatusEnum("status").default("prospect").notNull(),
+  notes: text("notes"),
   lastContactDate: timestamp("last_contact_date"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
