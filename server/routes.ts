@@ -3,7 +3,7 @@ import { createServer, type Server } from "http";
 import { storage, db, projectComments, projectMembers, users, companyNotes, clientPortalUsers } from "./storage";
 import { sql, eq, and, desc } from "drizzle-orm";
 import { setupAuth, isAuthenticated, registerAuthRoutes } from "./replit_integrations/auth";
-import { insertProjectSchema, insertDailyReportSchema, updateUserProfileSchema, WorkActivityRow, VisitorRow, insertContractSchema, insertClientSchema } from "@shared/schema";
+import { insertProjectSchema, insertDailyReportSchema, updateUserProfileSchema, WorkActivityRow, VisitorRow, insertContractSchema, insertClientSchema, InsertInspectorCandidate } from "@shared/schema";
 import { ObjectStorageService, registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 import multer from "multer";
 import path from "path";
@@ -17003,8 +17003,8 @@ Transcript: "${transcript}"`;
       const lastNameCol = col('Last Name');
       const phoneCol = col('Phone');
       const emailCol = col('Email');
-      const timeBaseCol = col('Time Base Available');
-      const availableByCol = col('Available by:');
+      const timeBaseCol = col('Time Base Available') >= 0 ? col('Time Base Available') : col('Time Base (Full-Time/Part-Time)');
+      const availableByCol = col('Available by:') >= 0 ? col('Available by:') : col('Available by');
       const certNumberCol = col('Certification Number');
       const inspectorClassCol = col('Inspector Class');
       const countyStartCol = inspectorClassCol >= 0 ? inspectorClassCol + 1 : -1;
@@ -17053,7 +17053,7 @@ Transcript: "${transcript}"`;
         const existing = await storage.getInspectorCandidateByCertNumber(companyId, certNumber);
 
         if (existing) {
-          const updateData: any = {
+          const updateData: Partial<InsertInspectorCandidate> = {
             availableBy,
             timeBase,
             availabilityEmail: email || existing.availabilityEmail,
@@ -17062,7 +17062,7 @@ Transcript: "${transcript}"`;
           };
 
           if (availableBy && availableBy <= ninetyDaysFromNow && (existing.status === 'prospect' || existing.status === 'contacted')) {
-            updateData.status = 'interested';
+            updateData.status = 'interested' as const;
             const dateStr = availableBy.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
             await storage.createInspectorCandidateNote({
               candidateId: existing.id,
