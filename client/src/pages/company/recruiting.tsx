@@ -19,14 +19,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import {
   Sheet,
   SheetContent,
   SheetHeader,
@@ -55,13 +47,16 @@ import {
   Filter,
   X,
   HardHat,
-  ArrowLeft,
   AlertCircle,
   Clock,
   Send,
+  Upload,
+  ArrowUpDown,
+  CheckCircle2,
+  Mail,
 } from "lucide-react";
 import { Link } from "wouter";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import type { InspectorCandidate, InspectorCandidateNote } from "@shared/schema";
 import type { User } from "@shared/models/auth";
@@ -84,6 +79,23 @@ function getStatusBadge(status: string) {
   return opt || { value: status, label: status, color: "bg-gray-100 text-gray-700" };
 }
 
+function formatAvailDate(d: string | Date | null): string {
+  if (!d) return '';
+  const date = typeof d === 'string' ? new Date(d) : d;
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function getAvailabilityInfo(availableBy: string | Date | null) {
+  if (!availableBy) return null;
+  const date = typeof availableBy === 'string' ? new Date(availableBy) : availableBy;
+  const now = new Date();
+  const days = Math.ceil((date.getTime() - now.getTime()) / 86400000);
+  if (days <= 0) return { label: "Available Now", color: "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300", days };
+  if (days <= 30) return { label: `Avail. ${formatAvailDate(date)}`, color: "bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300", days };
+  if (days <= 90) return { label: `Avail. ${formatAvailDate(date)}`, color: "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300", days };
+  return { label: `Avail. ${formatAvailDate(date)}`, color: "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400", days };
+}
+
 export default function CompanyRecruitingPage() {
   const { toast } = useToast();
   const { activeCompany, isEffectiveCompanyAdmin } = useAuth();
@@ -91,9 +103,13 @@ export default function CompanyRecruitingPage() {
   const [classFilter, setClassFilter] = useState<string>("all");
   const [countyFilter, setCountyFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [availabilityFilter, setAvailabilityFilter] = useState<string>("all");
+  const [sortBy, setSortBy] = useState<string>("name_asc");
   const [selectedCandidate, setSelectedCandidate] = useState<InspectorCandidate | null>(null);
   const [newNote, setNewNote] = useState("");
   const [showImportConfirm, setShowImportConfirm] = useState(false);
+  const [isUploadingAvailability, setIsUploadingAvailability] = useState(false);
+  const availabilityInputRef = useRef<HTMLInputElement>(null);
 
   const { data: candidates = [], isLoading } = useQuery<InspectorCandidate[]>({
     queryKey: ["/api/recruiting/candidates"],
@@ -132,16 +148,16 @@ export default function CompanyRecruitingPage() {
     },
   });
 
-  const updateStatusMutation = useMutation({
-    mutationFn: async ({ id, status }: { id: string; status: string }) => {
-      return apiRequest("PATCH", `/api/recruiting/candidates/${id}`, { status });
+  const updateCandidateMutation = useMutation({
+    mutationFn: async ({ id, ...data }: { id: string; status?: string; availableBy?: string | null; timeBase?: string | null }) => {
+      return apiRequest("PATCH", `/api/recruiting/candidates/${id}`, data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/recruiting/candidates"] });
-      toast({ title: "Status updated" });
+      toast({ title: "Updated" });
     },
     onError: () => {
-      toast({ title: "Failed to update status", variant: "destructive" });
+      toast({ title: "Failed to update", variant: "destructive" });
     },
   });
 
@@ -159,19 +175,53 @@ export default function CompanyRecruitingPage() {
     },
   });
 
+  async function handleAvailabilityUpload(file: File) {
+    setIsUploadingAvailability(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await fetch('/api/recruiting/import-availability', {
+        method: 'POST',
+        body: formData,
+        credentials: 'include',
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ message: 'Upload failed' }));
+        throw new Error(err.message);
+      }
+      const data = await res.json();
+      queryClient.invalidateQueries({ queryKey: ["/api/recruiting/candidates"] });
+      toast({
+        title: "Availability Import Complete",
+        description: `${data.updated} updated, ${data.created} new, ${data.skipped} skipped. Total: ${data.total}`,
+      });
+    } catch (error: any) {
+      toast({
+        title: "Availability Import Failed",
+        description: error.message || "Failed to import availability list",
+        variant: "destructive",
+      });
+    } finally {
+      setIsUploadingAvailability(false);
+      if (availabilityInputRef.current) availabilityInputRef.current.value = '';
+    }
+  }
+
   const counties = useMemo(() => {
     const set = new Set(candidates.map(c => c.county).filter(Boolean));
     return Array.from(set).sort() as string[];
   }, [candidates]);
 
-  const filteredCandidates = useMemo(() => {
-    return candidates.filter(c => {
+  const filteredAndSortedCandidates = useMemo(() => {
+    const now = new Date();
+    let filtered = candidates.filter(c => {
       if (searchQuery) {
         const q = searchQuery.toLowerCase();
         const name = `${c.firstName} ${c.lastName}`.toLowerCase();
         const cert = c.certNumber?.toLowerCase() || '';
         const county = c.county?.toLowerCase() || '';
-        if (!name.includes(q) && !cert.includes(q) && !county.includes(q)) return false;
+        const email = (c as any).availabilityEmail?.toLowerCase() || '';
+        if (!name.includes(q) && !cert.includes(q) && !county.includes(q) && !email.includes(q)) return false;
       }
       if (classFilter !== "all") {
         if (classFilter === "class1" && !c.class1) return false;
@@ -180,11 +230,41 @@ export default function CompanyRecruitingPage() {
       }
       if (countyFilter !== "all" && c.county !== countyFilter) return false;
       if (statusFilter !== "all" && c.status !== statusFilter) return false;
+      if (availabilityFilter !== "all") {
+        const ab = c.availableBy ? new Date(c.availableBy) : null;
+        if (availabilityFilter === "now") {
+          if (!ab || ab > now) return false;
+        } else if (availabilityFilter === "30days") {
+          if (!ab || ab > new Date(now.getTime() + 30 * 86400000)) return false;
+        } else if (availabilityFilter === "90days") {
+          if (!ab || ab > new Date(now.getTime() + 90 * 86400000)) return false;
+        } else if (availabilityFilter === "has_data") {
+          if (!ab) return false;
+        }
+      }
       return true;
     });
-  }, [candidates, searchQuery, classFilter, countyFilter, statusFilter]);
 
-  const hasActiveFilters = classFilter !== "all" || countyFilter !== "all" || statusFilter !== "all" || searchQuery.trim() !== "";
+    filtered.sort((a, b) => {
+      if (sortBy === "name_asc") return `${a.lastName} ${a.firstName}`.localeCompare(`${b.lastName} ${b.firstName}`);
+      if (sortBy === "name_desc") return `${b.lastName} ${b.firstName}`.localeCompare(`${a.lastName} ${a.firstName}`);
+      if (sortBy === "available_soonest") {
+        const aDate = a.availableBy ? new Date(a.availableBy).getTime() : Infinity;
+        const bDate = b.availableBy ? new Date(b.availableBy).getTime() : Infinity;
+        return aDate - bDate;
+      }
+      if (sortBy === "cert_expiry") {
+        const aExp = a.certExpDate || 'zzzz';
+        const bExp = b.certExpDate || 'zzzz';
+        return aExp.localeCompare(bExp);
+      }
+      return 0;
+    });
+
+    return filtered;
+  }, [candidates, searchQuery, classFilter, countyFilter, statusFilter, availabilityFilter, sortBy]);
+
+  const hasActiveFilters = classFilter !== "all" || countyFilter !== "all" || statusFilter !== "all" || availabilityFilter !== "all" || searchQuery.trim() !== "";
 
   const statusCounts = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -192,6 +272,11 @@ export default function CompanyRecruitingPage() {
       counts[c.status] = (counts[c.status] || 0) + 1;
     });
     return counts;
+  }, [candidates]);
+
+  const availableNowCount = useMemo(() => {
+    const now = new Date();
+    return candidates.filter(c => c.availableBy && new Date(c.availableBy) <= now).length;
   }, [candidates]);
 
   if (!activeCompany || !isEffectiveCompanyAdmin) {
@@ -246,17 +331,49 @@ export default function CompanyRecruitingPage() {
                     {statusCounts.hired} hired
                   </Badge>
                 )}
+                {availableNowCount > 0 && (
+                  <Badge variant="outline" className="text-xs bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300 border-green-300 dark:border-green-700" data-testid="badge-available-now">
+                    <CheckCircle2 className="w-3 h-3 mr-1" />
+                    {availableNowCount} available now
+                  </Badge>
+                )}
               </>
             )}
           </div>
-          <Button
-            onClick={() => setShowImportConfirm(true)}
-            className="bg-[hsl(36,90%,50%)] text-[hsl(216,32%,10%)] hover:bg-[hsl(36,90%,45%)] font-semibold"
-            data-testid="button-import-dsa"
-          >
-            <Download className="w-4 h-4 mr-2" />
-            Import from DSA
-          </Button>
+          <div className="flex gap-2 flex-wrap">
+            <input
+              type="file"
+              accept=".xlsx"
+              ref={availabilityInputRef}
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) handleAvailabilityUpload(file);
+              }}
+              data-testid="input-availability-file"
+            />
+            <Button
+              variant="outline"
+              onClick={() => availabilityInputRef.current?.click()}
+              disabled={isUploadingAvailability}
+              data-testid="button-import-availability"
+            >
+              {isUploadingAvailability ? (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              ) : (
+                <Upload className="w-4 h-4 mr-2" />
+              )}
+              {isUploadingAvailability ? "Importing..." : "Import Availability"}
+            </Button>
+            <Button
+              onClick={() => setShowImportConfirm(true)}
+              className="bg-[hsl(36,90%,50%)] text-[hsl(216,32%,10%)] hover:bg-[hsl(36,90%,45%)] font-semibold"
+              data-testid="button-import-dsa"
+            >
+              <Download className="w-4 h-4 mr-2" />
+              Import from DSA
+            </Button>
+          </div>
         </div>
 
         {candidates.length > 0 && (
@@ -264,7 +381,7 @@ export default function CompanyRecruitingPage() {
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Search by name, cert #, or county..."
+                placeholder="Search by name, cert #, county, or email..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-9"
@@ -304,11 +421,35 @@ export default function CompanyRecruitingPage() {
                 ))}
               </SelectContent>
             </Select>
+            <Select value={availabilityFilter} onValueChange={setAvailabilityFilter}>
+              <SelectTrigger className="w-full sm:w-[170px]" data-testid="select-availability-filter">
+                <SelectValue placeholder="Availability" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Availability</SelectItem>
+                <SelectItem value="now">Available Now</SelectItem>
+                <SelectItem value="30days">Within 30 Days</SelectItem>
+                <SelectItem value="90days">Within 90 Days</SelectItem>
+                <SelectItem value="has_data">Has Availability</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={sortBy} onValueChange={setSortBy}>
+              <SelectTrigger className="w-full sm:w-[170px]" data-testid="select-sort">
+                <ArrowUpDown className="w-3 h-3 mr-1" />
+                <SelectValue placeholder="Sort" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="name_asc">Name A–Z</SelectItem>
+                <SelectItem value="name_desc">Name Z–A</SelectItem>
+                <SelectItem value="available_soonest">Available Soonest</SelectItem>
+                <SelectItem value="cert_expiry">Cert Expiry Soonest</SelectItem>
+              </SelectContent>
+            </Select>
             {hasActiveFilters && (
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => { setSearchQuery(""); setClassFilter("all"); setCountyFilter("all"); setStatusFilter("all"); }}
+                onClick={() => { setSearchQuery(""); setClassFilter("all"); setCountyFilter("all"); setStatusFilter("all"); setAvailabilityFilter("all"); }}
                 className="text-muted-foreground"
                 data-testid="button-clear-filters"
               >
@@ -333,26 +474,38 @@ export default function CompanyRecruitingPage() {
               <p className="text-muted-foreground mb-4">
                 Import DSA-certified inspectors from the California Division of the State Architect registry to start building your recruiting pipeline.
               </p>
-              <Button
-                onClick={() => setShowImportConfirm(true)}
-                className="bg-[hsl(36,90%,50%)] text-[hsl(216,32%,10%)] hover:bg-[hsl(36,90%,45%)] font-semibold"
-                data-testid="button-import-empty"
-              >
-                <Download className="w-4 h-4 mr-2" />
-                Import from DSA
-              </Button>
+              <div className="flex gap-2 justify-center flex-wrap">
+                <Button
+                  onClick={() => setShowImportConfirm(true)}
+                  className="bg-[hsl(36,90%,50%)] text-[hsl(216,32%,10%)] hover:bg-[hsl(36,90%,45%)] font-semibold"
+                  data-testid="button-import-empty"
+                >
+                  <Download className="w-4 h-4 mr-2" />
+                  Import from DSA
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => availabilityInputRef.current?.click()}
+                  disabled={isUploadingAvailability}
+                  data-testid="button-import-availability-empty"
+                >
+                  <Upload className="w-4 h-4 mr-2" />
+                  Import Availability List
+                </Button>
+              </div>
             </CardContent>
           </Card>
         ) : (
           <>
             {hasActiveFilters && (
               <p className="text-sm text-muted-foreground">
-                Showing {filteredCandidates.length} of {candidates.length} inspectors
+                Showing {filteredAndSortedCandidates.length} of {candidates.length} inspectors
               </p>
             )}
             <div className="space-y-2">
-              {filteredCandidates.map(candidate => {
+              {filteredAndSortedCandidates.map(candidate => {
                 const statusInfo = getStatusBadge(candidate.status);
+                const availInfo = getAvailabilityInfo(candidate.availableBy);
                 return (
                   <Card
                     key={candidate.id}
@@ -370,7 +523,7 @@ export default function CompanyRecruitingPage() {
                             <Select
                               value={candidate.status}
                               onValueChange={(val) => {
-                                updateStatusMutation.mutate({ id: candidate.id, status: val });
+                                updateCandidateMutation.mutate({ id: candidate.id, status: val });
                               }}
                             >
                               <SelectTrigger
@@ -388,6 +541,17 @@ export default function CompanyRecruitingPage() {
                                 ))}
                               </SelectContent>
                             </Select>
+                            {availInfo && (
+                              <span className={`inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-medium ${availInfo.color}`} data-testid={`badge-availability-${candidate.id}`}>
+                                <Calendar className="w-2.5 h-2.5" />
+                                {availInfo.label}
+                              </span>
+                            )}
+                            {candidate.timeBase && (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground font-medium">
+                                {candidate.timeBase === 'full_time' ? 'FT' : 'PT'}
+                              </span>
+                            )}
                           </div>
                           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1 text-xs text-muted-foreground">
                             {candidate.certNumber && (
@@ -402,16 +566,22 @@ export default function CompanyRecruitingPage() {
                                 {candidate.county}
                               </span>
                             )}
-                            {candidate.phone && (
+                            {(candidate.phone || candidate.availabilityPhone) && (
                               <span className="flex items-center gap-1">
                                 <Phone className="w-3 h-3" />
-                                {candidate.phone}
+                                {candidate.phone || candidate.availabilityPhone}
                               </span>
                             )}
                             {candidate.certExpDate && (
                               <span className="flex items-center gap-1">
                                 <Calendar className="w-3 h-3" />
                                 Exp: {candidate.certExpDate}
+                              </span>
+                            )}
+                            {candidate.availabilityEmail && (
+                              <span className="flex items-center gap-1">
+                                <Mail className="w-3 h-3" />
+                                {candidate.availabilityEmail}
                               </span>
                             )}
                           </div>
@@ -432,7 +602,7 @@ export default function CompanyRecruitingPage() {
                   </Card>
                 );
               })}
-              {filteredCandidates.length === 0 && hasActiveFilters && (
+              {filteredAndSortedCandidates.length === 0 && hasActiveFilters && (
                 <Card>
                   <CardContent className="p-8 text-center">
                     <Filter className="mx-auto h-8 w-8 text-muted-foreground mb-2" />
@@ -494,7 +664,7 @@ export default function CompanyRecruitingPage() {
                   <Select
                     value={selectedCandidate.status}
                     onValueChange={(val) => {
-                      updateStatusMutation.mutate({ id: selectedCandidate.id, status: val });
+                      updateCandidateMutation.mutate({ id: selectedCandidate.id, status: val });
                       setSelectedCandidate({ ...selectedCandidate, status: val as RecruitingStatus });
                     }}
                   >
@@ -507,6 +677,82 @@ export default function CompanyRecruitingPage() {
                       ))}
                     </SelectContent>
                   </Select>
+                </div>
+
+                <div className="border rounded-lg p-4 space-y-4" data-testid="section-availability">
+                  <div className="flex items-center gap-2">
+                    <Calendar className="w-4 h-4 text-[hsl(36,90%,50%)]" />
+                    <Label className="text-xs text-muted-foreground uppercase tracking-wider">Availability</Label>
+                    {(() => {
+                      const info = getAvailabilityInfo(selectedCandidate.availableBy);
+                      if (info) return <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${info.color}`}>{info.label}</span>;
+                      return null;
+                    })()}
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label className="text-xs text-muted-foreground">Available By</Label>
+                      <Input
+                        type="date"
+                        value={selectedCandidate.availableBy ? (() => { try { const d = new Date(selectedCandidate.availableBy); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; } catch { return ''; } })() : ''}
+                        onChange={(e) => {
+                          const val = e.target.value || null;
+                          updateCandidateMutation.mutate({ id: selectedCandidate.id, availableBy: val });
+                          setSelectedCandidate({ ...selectedCandidate, availableBy: val ? new Date(val + 'T12:00:00') : null });
+                        }}
+                        className="mt-1"
+                        data-testid="input-available-by"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs text-muted-foreground">Time Base</Label>
+                      <Select
+                        value={selectedCandidate.timeBase || "none"}
+                        onValueChange={(val) => {
+                          const tb = val === "none" ? null : val;
+                          updateCandidateMutation.mutate({ id: selectedCandidate.id, timeBase: tb });
+                          setSelectedCandidate({ ...selectedCandidate, timeBase: tb });
+                        }}
+                      >
+                        <SelectTrigger className="mt-1" data-testid="select-time-base">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">Not Set</SelectItem>
+                          <SelectItem value="full_time">Full-Time</SelectItem>
+                          <SelectItem value="part_time">Part-Time</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  {!selectedCandidate.availableBy && !selectedCandidate.timeBase && (
+                    <p className="text-xs text-muted-foreground">
+                      Set manually above or upload the DSA Availability List (.xlsx) to populate automatically.
+                    </p>
+                  )}
+                  {selectedCandidate.availabilityCounties && (selectedCandidate.availabilityCounties as string[]).length > 0 && (
+                    <div>
+                      <Label className="text-xs text-muted-foreground">Available Counties</Label>
+                      <div className="flex flex-wrap gap-1 mt-1">
+                        {(selectedCandidate.availabilityCounties as string[]).map(county => (
+                          <Badge key={county} variant="outline" className="text-[10px]">
+                            {county}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {selectedCandidate.availabilityEmail && (
+                    <div>
+                      <Label className="text-xs text-muted-foreground">Email (from availability list)</Label>
+                      <p className="font-medium mt-1 text-sm">
+                        <a href={`mailto:${selectedCandidate.availabilityEmail}`} className="text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1">
+                          <Mail className="w-3 h-3" />
+                          {selectedCandidate.availabilityEmail}
+                        </a>
+                      </p>
+                    </div>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">

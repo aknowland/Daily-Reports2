@@ -375,6 +375,7 @@ export interface IStorage {
   getInspectorCandidates(companyId: string): Promise<InspectorCandidate[]>;
   getInspectorCandidate(id: string): Promise<InspectorCandidate | undefined>;
   getInspectorCandidateByDsaId(companyId: string, dsaInspectorId: string): Promise<InspectorCandidate | undefined>;
+  getInspectorCandidateByCertNumber(companyId: string, certNumber: string): Promise<InspectorCandidate | undefined>;
   createInspectorCandidate(data: InsertInspectorCandidate): Promise<InspectorCandidate>;
   updateInspectorCandidate(id: string, data: Partial<InsertInspectorCandidate>): Promise<InspectorCandidate | undefined>;
   deleteInspectorCandidate(id: string): Promise<boolean>;
@@ -2600,6 +2601,12 @@ export class DatabaseStorage implements IStorage {
   async getInspectorCandidateByDsaId(companyId: string, dsaInspectorId: string): Promise<InspectorCandidate | undefined> {
     const [candidate] = await db.select().from(inspectorCandidates)
       .where(and(eq(inspectorCandidates.companyId, companyId), eq(inspectorCandidates.dsaInspectorId, dsaInspectorId)));
+    return candidate;
+  }
+
+  async getInspectorCandidateByCertNumber(companyId: string, certNumber: string): Promise<InspectorCandidate | undefined> {
+    const [candidate] = await db.select().from(inspectorCandidates)
+      .where(and(eq(inspectorCandidates.companyId, companyId), eq(inspectorCandidates.certNumber, certNumber)));
     return candidate;
   }
 
