@@ -197,7 +197,7 @@ export default function CompanyRecruitingPage() {
   if (!activeCompany || !isEffectiveCompanyAdmin) {
     return (
       <PageLayout>
-        <PageHeader title="Recruiting" icon={<HardHat className="h-5 w-5" />} />
+        <PageHeader title="Recruiting" icon={HardHat} />
         <div className="p-4">
           <Card>
             <CardContent className="p-8 text-center">
@@ -214,7 +214,7 @@ export default function CompanyRecruitingPage() {
     <PageLayout>
       <PageHeader
         title="Inspector Recruiting"
-        icon={<HardHat className="h-5 w-5" />}
+        icon={HardHat}
         backHref="/company/dashboard"
       />
 
