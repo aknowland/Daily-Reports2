@@ -239,7 +239,7 @@ export default function CompanyRecruitingPage() {
         } else if (availabilityFilter === "90days") {
           if (!ab || ab > new Date(now.getTime() + 90 * 86400000)) return false;
         } else if (availabilityFilter === "has_data") {
-          if (!ab) return false;
+          if (!ab && !c.timeBase && !c.availabilityEmail && !(c.availabilityCounties && (c.availabilityCounties as string[]).length > 0)) return false;
         }
       }
       return true;
@@ -254,9 +254,14 @@ export default function CompanyRecruitingPage() {
         return aDate - bDate;
       }
       if (sortBy === "cert_expiry") {
-        const aExp = a.certExpDate || 'zzzz';
-        const bExp = b.certExpDate || 'zzzz';
-        return aExp.localeCompare(bExp);
+        const parseExpiry = (d: string | null) => {
+          if (!d) return Infinity;
+          const parts = d.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+          if (parts) return new Date(parseInt(parts[3]), parseInt(parts[1]) - 1, parseInt(parts[2])).getTime();
+          const ts = Date.parse(d);
+          return isNaN(ts) ? Infinity : ts;
+        };
+        return parseExpiry(a.certExpDate) - parseExpiry(b.certExpDate);
       }
       return 0;
     });
