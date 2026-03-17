@@ -1348,3 +1348,50 @@ export const insertApiKeySchema = createInsertSchema(apiKeys).omit({ id: true, c
 export type ApiKey = typeof apiKeys.$inferSelect;
 export type InsertApiKey = z.infer<typeof insertApiKeySchema>;
 
+export const recruitingStatusEnum = pgEnum("recruiting_status", [
+  "prospect",
+  "contacted",
+  "responded",
+  "interested",
+  "not_available",
+  "not_interested",
+  "hired"
+]);
+
+export const inspectorCandidates = pgTable("inspector_candidates", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").references(() => companies.id, { onDelete: "cascade" }).notNull(),
+  dsaInspectorId: varchar("dsa_inspector_id"),
+  firstName: varchar("first_name").notNull(),
+  lastName: varchar("last_name").notNull(),
+  certNumber: varchar("cert_number"),
+  certExpDate: varchar("cert_exp_date"),
+  county: varchar("county"),
+  phone: varchar("phone"),
+  class1: boolean("class_1").default(false),
+  class2: boolean("class_2").default(false),
+  class3: boolean("class_3").default(false),
+  status: recruitingStatusEnum("status").default("prospect").notNull(),
+  lastContactDate: timestamp("last_contact_date"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  unique().on(table.companyId, table.dsaInspectorId),
+]);
+
+export const inspectorCandidateNotes = pgTable("inspector_candidate_notes", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  candidateId: varchar("candidate_id").references(() => inspectorCandidates.id, { onDelete: "cascade" }).notNull(),
+  userId: varchar("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+  note: text("note").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertInspectorCandidateSchema = createInsertSchema(inspectorCandidates).omit({ id: true, createdAt: true, updatedAt: true });
+export type InspectorCandidate = typeof inspectorCandidates.$inferSelect;
+export type InsertInspectorCandidate = z.infer<typeof insertInspectorCandidateSchema>;
+
+export const insertInspectorCandidateNoteSchema = createInsertSchema(inspectorCandidateNotes).omit({ id: true, createdAt: true });
+export type InspectorCandidateNote = typeof inspectorCandidateNotes.$inferSelect;
+export type InsertInspectorCandidateNote = z.infer<typeof insertInspectorCandidateNoteSchema>;
+
