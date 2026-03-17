@@ -16825,6 +16825,10 @@ Transcript: "${transcript}"`;
 
       for (const page of dsaPages) {
         const response = await fetch(page.url);
+        if (!response.ok) {
+          console.error(`Failed to fetch DSA page ${page.url}: ${response.status} ${response.statusText}`);
+          continue;
+        }
         const html = await response.text();
 
         const rows = html.match(/<tr>[\s\S]*?<\/tr>/g) || [];
