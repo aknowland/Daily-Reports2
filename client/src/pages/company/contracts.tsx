@@ -61,6 +61,9 @@ import {
   Search,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
+  BarChart3,
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import {
@@ -214,6 +217,7 @@ export default function ContractsPage() {
   const [editingContract, setEditingContract] = useState<ContractWithProjects | null>(null);
   const [formData, setFormData] = useState<ContractFormData>(emptyFormData);
   const [activeTab, setActiveTab] = useState("list");
+  const [showGantt, setShowGantt] = useState(true);
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [serviceTypeFilter, setServiceTypeFilter] = useState<string>("");
   const [assignedUserFilter, setAssignedUserFilter] = useState<string>("all");
@@ -1407,7 +1411,18 @@ export default function ContractsPage() {
       </PageHeader>
 
       {!isLoading && contracts.length > 0 && (
-        <ContractGanttChart contracts={contracts} />
+        <div className="mb-4">
+          <button
+            onClick={() => setShowGantt(v => !v)}
+            className="flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors mb-2 w-full text-left"
+            data-testid="button-toggle-gantt"
+          >
+            <BarChart3 className="w-4 h-4" />
+            Schedule Timeline
+            {showGantt ? <ChevronUp className="w-4 h-4 ml-auto" /> : <ChevronDown className="w-4 h-4 ml-auto" />}
+          </button>
+          {showGantt && <ContractGanttChart contracts={contracts} />}
+        </div>
       )}
 
       <Tabs value={activeTab} onValueChange={(tab) => {
