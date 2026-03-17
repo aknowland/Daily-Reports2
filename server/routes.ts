@@ -16831,8 +16831,8 @@ Transcript: "${transcript}"`;
         }
         const html = await response.text();
 
-        const rows = html.match(/<tr>[\s\S]*?<\/tr>/g) || [];
-        for (const row of rows.slice(1)) {
+        const rows = html.match(/<tr[^>]*>[\s\S]*?<\/tr>/g) || [];
+        for (const row of rows) {
           const nameMatch = row.match(/InspId=(\d+)[^>]*>(.*?)<\/a>/);
           if (!nameMatch) continue;
 
