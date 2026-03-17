@@ -1375,6 +1375,11 @@ export const inspectorCandidates = pgTable("inspector_candidates", {
   status: recruitingStatusEnum("status").default("prospect").notNull(),
   notes: text("notes"),
   lastContactDate: timestamp("last_contact_date"),
+  availableBy: timestamp("available_by"),
+  timeBase: varchar("time_base"),
+  availabilityEmail: varchar("availability_email"),
+  availabilityPhone: varchar("availability_phone"),
+  availabilityCounties: json("availability_counties").$type<string[]>().default([]),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [

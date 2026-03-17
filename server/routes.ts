@@ -8,7 +8,8 @@ import { ObjectStorageService, registerObjectStorageRoutes } from "./replit_inte
 import multer from "multer";
 import path from "path";
 import fs from "fs";
-import { randomUUID, randomBytes } from "crypto";
+import { randomUUID, randomBytes, createHash } from "crypto";
+import zlib from "zlib";
 import { z } from "zod";
 import PDFDocument from "pdfkit";
 import { PDFDocument as PDFLibDocument } from "pdf-lib";
@@ -176,6 +177,14 @@ const resumeUpload = multer({
 const audioUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 100 * 1024 * 1024 }, // 100MB for audio
+});
+
+const availabilityUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (_req: any, file: any, cb: any) => {
+    cb(null, file.originalname.endsWith('.xlsx') || file.mimetype === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  },
 });
 
 // Validation schemas
@@ -16725,6 +16734,8 @@ Transcript: "${transcript}"`;
         status: z.enum(["prospect", "contacted", "interested", "not_available", "not_interested", "hired"]).optional(),
         notes: z.string().nullable().optional(),
         lastContactDate: z.string().or(z.date()).transform(val => val ? new Date(val) : null).nullable().optional(),
+        availableBy: z.string().or(z.date()).transform(val => val ? new Date(val) : null).nullable().optional(),
+        timeBase: z.enum(["full_time", "part_time"]).nullable().optional(),
       });
       const parsed = updateSchema.safeParse(req.body);
       if (!parsed.success) {
@@ -16883,6 +16894,211 @@ Transcript: "${transcript}"`;
     } catch (error) {
       console.error("Error importing DSA inspectors:", error);
       res.status(500).json({ message: "Failed to import DSA inspector list" });
+    }
+  });
+
+  app.post("/api/recruiting/import-availability", isAuthenticated, availabilityUpload.single('file'), async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      const companyId = profile?.activeCompanyId;
+      if (!companyId || !(await isEffectiveCompanyAdmin(userId, companyId, profile))) {
+        return res.status(403).json({ message: "Company admin access required" });
+      }
+      if (!req.file) {
+        return res.status(400).json({ message: "No file uploaded" });
+      }
+
+      const data = req.file.buffer as Buffer;
+      const MAX_DECOMPRESSED = 50 * 1024 * 1024;
+      const MAX_ENTRIES = 100;
+      let offset = 0;
+      const zipFiles: { name: string; method: number; size: number; start: number }[] = [];
+      while (offset < data.length - 4 && zipFiles.length < MAX_ENTRIES) {
+        if (data[offset] === 0x50 && data[offset + 1] === 0x4B && data[offset + 2] === 0x03 && data[offset + 3] === 0x04) {
+          const fnLen = data.readUInt16LE(offset + 26);
+          const extraLen = data.readUInt16LE(offset + 28);
+          const compSize = data.readUInt32LE(offset + 18);
+          const compMethod = data.readUInt16LE(offset + 8);
+          const fn = data.slice(offset + 30, offset + 30 + fnLen).toString();
+          const dataStart = offset + 30 + fnLen + extraLen;
+          zipFiles.push({ name: fn, method: compMethod, size: compSize, start: dataStart });
+          offset = dataStart + compSize;
+        } else {
+          offset++;
+        }
+      }
+
+      function extractFile(name: string): string {
+        const f = zipFiles.find(x => x.name === name);
+        if (!f) return '';
+        const compressed = data.slice(f.start, f.start + f.size);
+        if (f.method === 8) {
+          const result = zlib.inflateRawSync(compressed, { maxOutputLength: MAX_DECOMPRESSED });
+          return result.toString();
+        }
+        return compressed.toString();
+      }
+
+      function colLetterToIndex(letters: string): number {
+        let idx = 0;
+        for (let i = 0; i < letters.length; i++) {
+          idx = idx * 26 + (letters.charCodeAt(i) - 64);
+        }
+        return idx - 1;
+      }
+
+      const sharedXml = extractFile('xl/sharedStrings.xml');
+      const sharedStrings: string[] = [];
+      const siMatches = sharedXml.match(/<si>[\s\S]*?<\/si>/g) || [];
+      siMatches.forEach(si => {
+        const text = (si.match(/<t[^>]*>([\s\S]*?)<\/t>/g) || []).map((t: string) => t.replace(/<[^>]*>/g, '').trim()).join('');
+        sharedStrings.push(text);
+      });
+
+      function getCellValue(cellXml: string): string {
+        const t = cellXml.match(/t="([^"]*)"/);
+        const v = cellXml.match(/<v>([\s\S]*?)<\/v>/);
+        if (!v) {
+          const is = cellXml.match(/<is>[\s\S]*?<t[^>]*>([\s\S]*?)<\/t>[\s\S]*?<\/is>/);
+          return is ? is[1].trim() : '';
+        }
+        if (t && t[1] === 's') return sharedStrings[parseInt(v[1])] || '';
+        return v[1];
+      }
+
+      function parseRow(rowXml: string): Map<number, string> {
+        const cellMap = new Map<number, string>();
+        const cells = rowXml.match(/<c [^>]*>[\s\S]*?<\/c>|<c [^\/]*\/>/g) || [];
+        for (const cell of cells) {
+          const ref = cell.match(/r="([A-Z]+)\d+"/);
+          if (!ref) continue;
+          const colIdx = colLetterToIndex(ref[1]);
+          cellMap.set(colIdx, getCellValue(cell));
+        }
+        return cellMap;
+      }
+
+      const sheetXml = extractFile('xl/worksheets/sheet1.xml');
+      const xmlRows = sheetXml.match(/<row[^>]*>[\s\S]*?<\/row>/g) || [];
+
+      let headerColMap: Map<string, number> = new Map();
+      const parsedRows: Map<number, string>[] = [];
+      for (const row of xmlRows) {
+        const cellMap = parseRow(row);
+        const values = Array.from(cellMap.values());
+        if (values.some(v => v === 'First Name') && values.some(v => v === 'Certification Number')) {
+          cellMap.forEach((val, colIdx) => {
+            if (val) headerColMap.set(val, colIdx);
+          });
+          continue;
+        }
+        if (headerColMap.size > 0 && cellMap.size >= 4) {
+          parsedRows.push(cellMap);
+        }
+      }
+
+      const col = (name: string) => headerColMap.get(name) ?? -1;
+      const firstNameCol = col('First Name');
+      const lastNameCol = col('Last Name');
+      const phoneCol = col('Phone');
+      const emailCol = col('Email');
+      const timeBaseCol = col('Time Base Available');
+      const availableByCol = col('Available by:');
+      const certNumberCol = col('Certification Number');
+      const inspectorClassCol = col('Inspector Class');
+      const countyStartCol = inspectorClassCol >= 0 ? inspectorClassCol + 1 : -1;
+
+      let updatedCount = 0;
+      let createdCount = 0;
+      let skippedCount = 0;
+      const now = new Date();
+      const ninetyDaysFromNow = new Date(now.getTime() + 90 * 86400000);
+
+      for (const cellMap of parsedRows) {
+        const firstName = (firstNameCol >= 0 ? cellMap.get(firstNameCol) : '')?.trim() || '';
+        const lastName = (lastNameCol >= 0 ? cellMap.get(lastNameCol) : '')?.trim() || '';
+        const phone = (phoneCol >= 0 ? cellMap.get(phoneCol) : '')?.trim() || '';
+        const email = (emailCol >= 0 ? cellMap.get(emailCol) : '')?.trim() || '';
+        const timeBaseRaw = (timeBaseCol >= 0 ? cellMap.get(timeBaseCol) : '')?.trim() || '';
+        const availableByRaw = (availableByCol >= 0 ? cellMap.get(availableByCol) : '')?.trim() || '';
+        const certNumber = (certNumberCol >= 0 ? cellMap.get(certNumberCol) : '')?.trim() || '';
+        const inspectorClass = (inspectorClassCol >= 0 ? cellMap.get(inspectorClassCol) : '')?.trim() || '';
+
+        if (!certNumber || !firstName) {
+          skippedCount++;
+          continue;
+        }
+
+        const timeBase = timeBaseRaw.toLowerCase().includes('full') ? 'full_time' : timeBaseRaw.toLowerCase().includes('part') ? 'part_time' : null;
+
+        let availableBy: Date | null = null;
+        if (availableByRaw) {
+          const parts = availableByRaw.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+          if (parts) {
+            availableBy = new Date(parseInt(parts[3]), parseInt(parts[1]) - 1, parseInt(parts[2]), 12, 0, 0);
+          }
+        }
+
+        const counties: string[] = [];
+        if (countyStartCol >= 0) {
+          headerColMap.forEach((colIdx, headerName) => {
+            if (colIdx >= countyStartCol) {
+              const val = cellMap.get(colIdx)?.trim();
+              if (val) counties.push(headerName);
+            }
+          });
+        }
+
+        const existing = await storage.getInspectorCandidateByCertNumber(companyId, certNumber);
+
+        if (existing) {
+          const updateData: any = {
+            availableBy,
+            timeBase,
+            availabilityEmail: email || existing.availabilityEmail,
+            availabilityPhone: phone || existing.availabilityPhone,
+            availabilityCounties: counties.length > 0 ? counties : existing.availabilityCounties,
+          };
+
+          if (availableBy && availableBy <= ninetyDaysFromNow && (existing.status === 'prospect' || existing.status === 'contacted')) {
+            updateData.status = 'interested';
+            const dateStr = availableBy.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
+            await storage.createInspectorCandidateNote({
+              candidateId: existing.id,
+              userId,
+              note: `Auto-updated to Interested: inspector reported availability by ${dateStr} on DSA Availability List`,
+            });
+          }
+
+          await storage.updateInspectorCandidate(existing.id, updateData);
+          updatedCount++;
+        } else {
+          await storage.createInspectorCandidate({
+            companyId,
+            firstName,
+            lastName,
+            certNumber,
+            phone: phone || null,
+            county: counties[0] || null,
+            class1: inspectorClass === '1',
+            class2: inspectorClass === '2',
+            class3: inspectorClass === '3',
+            status: 'prospect',
+            availableBy,
+            timeBase,
+            availabilityEmail: email || null,
+            availabilityPhone: phone || null,
+            availabilityCounties: counties,
+          });
+          createdCount++;
+        }
+      }
+
+      res.json({ success: true, updated: updatedCount, created: createdCount, skipped: skippedCount, total: parsedRows.length });
+    } catch (error) {
+      console.error("Error importing availability list:", error);
+      res.status(500).json({ message: "Failed to import availability list" });
     }
   });
 
