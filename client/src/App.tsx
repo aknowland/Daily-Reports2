@@ -42,6 +42,7 @@ import ProjectDailyReportsPage from "@/pages/project-daily-reports";
 import CompanyMeetingsPage from "@/pages/company/meetings";
 import ApiKeysPage from "@/pages/company/api-keys";
 import AIChatPage from "@/pages/company/ai-chat";
+import CompanyRecruitingPage from "@/pages/company/recruiting";
 import BillingPage from "@/pages/billing";
 import LearnMorePage from "@/pages/learn-more";
 import PricingPage from "@/pages/pricing";
@@ -85,6 +86,7 @@ function AuthenticatedRoutes() {
       <Route path="/company/meetings" component={CompanyMeetingsPage} />
       <Route path="/company/api-keys" component={ApiKeysPage} />
       <Route path="/company/chat" component={AIChatPage} />
+      <Route path="/company/recruiting" component={CompanyRecruitingPage} />
       <Route path="/client-portal" component={PortalDashboardPage} />
       <Route path="/client-portal/project/:id" component={PortalProjectPage} />
       <Route path="/settings">

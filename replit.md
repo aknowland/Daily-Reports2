@@ -27,6 +27,7 @@ The application is built with a modern web stack, utilizing **React, TypeScript,
 -   **Client Portal**: Allows external clients read-only access to project data, including reports, photos, and issues.
 -   **Resume Generation**: Generates professional two-column PDF resumes for inspectors and team members based on profile data.
 -   **Custom GPT Actions API**: Company admins can generate API keys to connect a ChatGPT Custom GPT to their company's data. A read-only REST API (`/api/v1/`) is exposed with projects, reports, contracts, and summary endpoints. An OpenAPI spec is served at `/api/v1/openapi.json` for use in ChatGPT's Action setup.
+-   **Inspector Recruiting Module**: Imports DSA-certified inspector lists (Class 1/2/3) from the California Division of the State Architect registry. Company admins can track recruiting status (Prospect → Contacted → Interested → Hired), filter by class/county/status, and log timestamped notes per candidate. "Add to Team" promotion button for hired inspectors. DB tables: `inspector_candidates`, `inspector_candidate_notes`. Routes: `/api/recruiting/*`. Page: `/company/recruiting`.
 
 **Core Features:**
 

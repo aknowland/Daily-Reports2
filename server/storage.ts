@@ -40,6 +40,9 @@ import {
   type ClientPortalUser, type InsertClientPortalUser,
   type ClientPortalProjectAccess, type InsertClientPortalProjectAccess,
   apiKeys, type ApiKey, type InsertApiKey,
+  inspectorCandidates, inspectorCandidateNotes,
+  type InspectorCandidate, type InsertInspectorCandidate,
+  type InspectorCandidateNote, type InsertInspectorCandidateNote,
 } from "@shared/schema";
 import { users, type User } from "@shared/models/auth";
 import { db } from "./db";
@@ -367,6 +370,19 @@ export interface IStorage {
   addClientPortalProjectAccess(clientPortalUserId: string, projectId: string): Promise<ClientPortalProjectAccess>;
   removeClientPortalProjectAccess(clientPortalUserId: string, projectId: string): Promise<boolean>;
   getClientPortalUsersForCompany(companyId: string): Promise<(ClientPortalUser & { user?: User; client?: Client; projectAccess?: (ClientPortalProjectAccess & { project?: Project })[] })[]>;
+
+  // Inspector Candidates (Recruiting)
+  getInspectorCandidates(companyId: string): Promise<InspectorCandidate[]>;
+  getInspectorCandidate(id: string): Promise<InspectorCandidate | undefined>;
+  getInspectorCandidateByDsaId(companyId: string, dsaInspectorId: string): Promise<InspectorCandidate | undefined>;
+  createInspectorCandidate(data: InsertInspectorCandidate): Promise<InspectorCandidate>;
+  updateInspectorCandidate(id: string, data: Partial<InsertInspectorCandidate>): Promise<InspectorCandidate | undefined>;
+  deleteInspectorCandidate(id: string): Promise<boolean>;
+  upsertInspectorCandidate(data: InsertInspectorCandidate): Promise<InspectorCandidate>;
+
+  // Inspector Candidate Notes
+  getInspectorCandidateNotes(candidateId: string): Promise<(InspectorCandidateNote & { user?: User })[]>;
+  createInspectorCandidateNote(data: InsertInspectorCandidateNote): Promise<InspectorCandidateNote>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -2568,6 +2584,74 @@ export class DatabaseStorage implements IStorage {
       },
     });
     return results;
+  }
+
+  async getInspectorCandidates(companyId: string): Promise<InspectorCandidate[]> {
+    return db.select().from(inspectorCandidates)
+      .where(eq(inspectorCandidates.companyId, companyId))
+      .orderBy(asc(inspectorCandidates.lastName), asc(inspectorCandidates.firstName));
+  }
+
+  async getInspectorCandidate(id: string): Promise<InspectorCandidate | undefined> {
+    const [candidate] = await db.select().from(inspectorCandidates).where(eq(inspectorCandidates.id, id));
+    return candidate;
+  }
+
+  async getInspectorCandidateByDsaId(companyId: string, dsaInspectorId: string): Promise<InspectorCandidate | undefined> {
+    const [candidate] = await db.select().from(inspectorCandidates)
+      .where(and(eq(inspectorCandidates.companyId, companyId), eq(inspectorCandidates.dsaInspectorId, dsaInspectorId)));
+    return candidate;
+  }
+
+  async createInspectorCandidate(data: InsertInspectorCandidate): Promise<InspectorCandidate> {
+    const [candidate] = await db.insert(inspectorCandidates).values(data).returning();
+    return candidate;
+  }
+
+  async updateInspectorCandidate(id: string, data: Partial<InsertInspectorCandidate>): Promise<InspectorCandidate | undefined> {
+    const [candidate] = await db.update(inspectorCandidates)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(inspectorCandidates.id, id))
+      .returning();
+    return candidate;
+  }
+
+  async deleteInspectorCandidate(id: string): Promise<boolean> {
+    await db.delete(inspectorCandidates).where(eq(inspectorCandidates.id, id));
+    return true;
+  }
+
+  async upsertInspectorCandidate(data: InsertInspectorCandidate): Promise<InspectorCandidate> {
+    const existing = data.dsaInspectorId ? await this.getInspectorCandidateByDsaId(data.companyId, data.dsaInspectorId) : null;
+    if (existing) {
+      const updated = await this.updateInspectorCandidate(existing.id, {
+        firstName: data.firstName,
+        lastName: data.lastName,
+        certNumber: data.certNumber,
+        certExpDate: data.certExpDate,
+        county: data.county,
+        phone: data.phone,
+        class1: data.class1 || existing.class1,
+        class2: data.class2 || existing.class2,
+        class3: data.class3 || existing.class3,
+      });
+      return updated!;
+    }
+    return this.createInspectorCandidate(data);
+  }
+
+  async getInspectorCandidateNotes(candidateId: string): Promise<(InspectorCandidateNote & { user?: User })[]> {
+    const results = await db.select()
+      .from(inspectorCandidateNotes)
+      .leftJoin(users, eq(inspectorCandidateNotes.userId, users.id))
+      .where(eq(inspectorCandidateNotes.candidateId, candidateId))
+      .orderBy(desc(inspectorCandidateNotes.createdAt));
+    return results.map(r => ({ ...r.inspector_candidate_notes, user: r.users || undefined }));
+  }
+
+  async createInspectorCandidateNote(data: InsertInspectorCandidateNote): Promise<InspectorCandidateNote> {
+    const [note] = await db.insert(inspectorCandidateNotes).values(data).returning();
+    return note;
   }
 }
 

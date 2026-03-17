@@ -16648,5 +16648,214 @@ Transcript: "${transcript}"`;
     res.json(spec);
   });
 
+  // ==================== RECRUITING ROUTES ====================
+
+  app.get("/api/recruiting/candidates", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      const companyId = profile?.activeCompanyId;
+      if (!companyId || !(await isEffectiveCompanyAdmin(userId, companyId, profile))) {
+        return res.status(403).json({ message: "Company admin access required" });
+      }
+      const candidates = await storage.getInspectorCandidates(companyId);
+      res.json(candidates);
+    } catch (error) {
+      console.error("Error fetching candidates:", error);
+      res.status(500).json({ message: "Failed to fetch candidates" });
+    }
+  });
+
+  app.get("/api/recruiting/candidates/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      const companyId = profile?.activeCompanyId;
+      if (!companyId || !(await isEffectiveCompanyAdmin(userId, companyId, profile))) {
+        return res.status(403).json({ message: "Company admin access required" });
+      }
+      const candidate = await storage.getInspectorCandidate(req.params.id);
+      if (!candidate || candidate.companyId !== companyId) {
+        return res.status(404).json({ message: "Candidate not found" });
+      }
+      res.json(candidate);
+    } catch (error) {
+      console.error("Error fetching candidate:", error);
+      res.status(500).json({ message: "Failed to fetch candidate" });
+    }
+  });
+
+  app.patch("/api/recruiting/candidates/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      const companyId = profile?.activeCompanyId;
+      if (!companyId || !(await isEffectiveCompanyAdmin(userId, companyId, profile))) {
+        return res.status(403).json({ message: "Company admin access required" });
+      }
+      const candidate = await storage.getInspectorCandidate(req.params.id);
+      if (!candidate || candidate.companyId !== companyId) {
+        return res.status(404).json({ message: "Candidate not found" });
+      }
+      const updateSchema = z.object({
+        status: z.enum(["prospect", "contacted", "responded", "interested", "not_available", "not_interested", "hired"]).optional(),
+        lastContactDate: z.string().or(z.date()).transform(val => val ? new Date(val) : null).nullable().optional(),
+      });
+      const parsed = updateSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid update data", errors: parsed.error.errors });
+      }
+      const updated = await storage.updateInspectorCandidate(req.params.id, parsed.data);
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating candidate:", error);
+      res.status(500).json({ message: "Failed to update candidate" });
+    }
+  });
+
+  app.delete("/api/recruiting/candidates/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      const companyId = profile?.activeCompanyId;
+      if (!companyId || !(await isEffectiveCompanyAdmin(userId, companyId, profile))) {
+        return res.status(403).json({ message: "Company admin access required" });
+      }
+      const candidate = await storage.getInspectorCandidate(req.params.id);
+      if (!candidate || candidate.companyId !== companyId) {
+        return res.status(404).json({ message: "Candidate not found" });
+      }
+      await storage.deleteInspectorCandidate(req.params.id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting candidate:", error);
+      res.status(500).json({ message: "Failed to delete candidate" });
+    }
+  });
+
+  app.get("/api/recruiting/candidates/:id/notes", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      const companyId = profile?.activeCompanyId;
+      if (!companyId || !(await isEffectiveCompanyAdmin(userId, companyId, profile))) {
+        return res.status(403).json({ message: "Company admin access required" });
+      }
+      const candidate = await storage.getInspectorCandidate(req.params.id);
+      if (!candidate || candidate.companyId !== companyId) {
+        return res.status(404).json({ message: "Candidate not found" });
+      }
+      const notes = await storage.getInspectorCandidateNotes(req.params.id);
+      res.json(notes);
+    } catch (error) {
+      console.error("Error fetching candidate notes:", error);
+      res.status(500).json({ message: "Failed to fetch notes" });
+    }
+  });
+
+  app.post("/api/recruiting/candidates/:id/notes", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      const companyId = profile?.activeCompanyId;
+      if (!companyId || !(await isEffectiveCompanyAdmin(userId, companyId, profile))) {
+        return res.status(403).json({ message: "Company admin access required" });
+      }
+      const candidate = await storage.getInspectorCandidate(req.params.id);
+      if (!candidate || candidate.companyId !== companyId) {
+        return res.status(404).json({ message: "Candidate not found" });
+      }
+      const { note } = req.body;
+      if (!note || typeof note !== 'string' || !note.trim()) {
+        return res.status(400).json({ message: "Note text is required" });
+      }
+      const created = await storage.createInspectorCandidateNote({
+        candidateId: req.params.id,
+        userId,
+        note: note.trim(),
+      });
+      res.json(created);
+    } catch (error) {
+      console.error("Error creating candidate note:", error);
+      res.status(500).json({ message: "Failed to create note" });
+    }
+  });
+
+  app.post("/api/recruiting/import", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      const companyId = profile?.activeCompanyId;
+      if (!companyId || !(await isEffectiveCompanyAdmin(userId, companyId, profile))) {
+        return res.status(403).json({ message: "Company admin access required" });
+      }
+
+      const dsaPages = [
+        { url: "https://www.apps2.dgs.ca.gov/DSA/Tracker/InspByCategory.aspx?Id=07", classField: "class1" },
+        { url: "https://www.apps2.dgs.ca.gov/DSA/Tracker/InspByCategory.aspx?Id=08", classField: "class2" },
+        { url: "https://www.apps2.dgs.ca.gov/DSA/Tracker/InspByCategory.aspx?Id=09", classField: "class3" },
+      ];
+
+      const allInspectors = new Map<string, any>();
+
+      for (const page of dsaPages) {
+        const response = await fetch(page.url);
+        const html = await response.text();
+
+        const rows = html.match(/<tr>[\s\S]*?<\/tr>/g) || [];
+        for (const row of rows.slice(1)) {
+          const nameMatch = row.match(/InspId=(\d+)[^>]*>(.*?)<\/a>/);
+          if (!nameMatch) continue;
+
+          const dsaId = nameMatch[1];
+          const cells = (row.match(/<td[^>]*>([\s\S]*?)<\/td>/g) || []).map((c: string) => c.replace(/<[^>]+>/g, '').trim());
+          const fullName = cells[0] || '';
+          const nameParts = fullName.split(',').map((s: string) => s.trim());
+          const lastName = nameParts[0] || '';
+          const firstName = nameParts[1] || '';
+
+          const existing = allInspectors.get(dsaId);
+          if (existing) {
+            existing[page.classField] = true;
+          } else {
+            allInspectors.set(dsaId, {
+              dsaInspectorId: dsaId,
+              firstName,
+              lastName,
+              certNumber: cells[1] || null,
+              certExpDate: cells[2] || null,
+              county: cells[3] || null,
+              phone: cells[4] || null,
+              class1: page.classField === 'class1',
+              class2: page.classField === 'class2',
+              class3: page.classField === 'class3',
+            });
+          }
+        }
+      }
+
+      let imported = 0;
+      let updated = 0;
+      for (const inspector of allInspectors.values()) {
+        const existing = await storage.getInspectorCandidateByDsaId(companyId, inspector.dsaInspectorId);
+        if (existing) {
+          updated++;
+        } else {
+          imported++;
+        }
+        await storage.upsertInspectorCandidate({
+          ...inspector,
+          companyId,
+          status: existing?.status || "prospect",
+        });
+      }
+
+      res.json({ success: true, imported, updated, total: allInspectors.size });
+    } catch (error) {
+      console.error("Error importing DSA inspectors:", error);
+      res.status(500).json({ message: "Failed to import DSA inspector list" });
+    }
+  });
+
   return httpServer;
 }
