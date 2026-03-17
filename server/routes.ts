@@ -16658,7 +16658,31 @@ Transcript: "${transcript}"`;
       if (!companyId || !(await isEffectiveCompanyAdmin(userId, companyId, profile))) {
         return res.status(403).json({ message: "Company admin access required" });
       }
-      const candidates = await storage.getInspectorCandidates(companyId);
+      let candidates = await storage.getInspectorCandidates(companyId);
+
+      const { classFilter, county, status, search } = req.query;
+      if (classFilter && classFilter !== "all") {
+        candidates = candidates.filter((c: any) => {
+          if (classFilter === "class1") return c.class1;
+          if (classFilter === "class2") return c.class2;
+          if (classFilter === "class3") return c.class3;
+          return true;
+        });
+      }
+      if (county && county !== "all") {
+        candidates = candidates.filter((c: any) => c.county === county);
+      }
+      if (status && status !== "all") {
+        candidates = candidates.filter((c: any) => c.status === status);
+      }
+      if (search) {
+        const q = (search as string).toLowerCase();
+        candidates = candidates.filter((c: any) => {
+          const name = `${c.firstName} ${c.lastName}`.toLowerCase();
+          return name.includes(q) || (c.certNumber || '').toLowerCase().includes(q) || (c.county || '').toLowerCase().includes(q);
+        });
+      }
+
       res.json(candidates);
     } catch (error) {
       console.error("Error fetching candidates:", error);
