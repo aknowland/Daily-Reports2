@@ -104,6 +104,7 @@ export const teamInspectors = pgTable("team_inspectors", {
   phone: varchar("phone"),
   // Professional info (resume-style)
   title: varchar("title"),
+  county: varchar("county"),
   licenseNumber: varchar("license_number"),
   licenseState: varchar("license_state"),
   certifications: json("certifications").$type<string[]>().default([]),

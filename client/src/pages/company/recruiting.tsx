@@ -68,12 +68,11 @@ import type { User } from "@shared/models/auth";
 
 type NoteWithUser = InspectorCandidateNote & { user?: User };
 
-type RecruitingStatus = "prospect" | "contacted" | "responded" | "interested" | "not_available" | "not_interested" | "hired";
+type RecruitingStatus = "prospect" | "contacted" | "interested" | "not_available" | "not_interested" | "hired";
 
 const STATUS_OPTIONS = [
   { value: "prospect", label: "Prospect", color: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300" },
   { value: "contacted", label: "Contacted", color: "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300" },
-  { value: "responded", label: "Responded", color: "bg-cyan-100 text-cyan-700 dark:bg-cyan-900 dark:text-cyan-300" },
   { value: "interested", label: "Interested", color: "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300" },
   { value: "not_available", label: "Not Available", color: "bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300" },
   { value: "not_interested", label: "Not Interested", color: "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300" },
@@ -368,9 +367,27 @@ export default function CompanyRecruitingPage() {
                             <h3 className="font-semibold text-sm sm:text-base truncate" data-testid={`text-candidate-name-${candidate.id}`}>
                               {candidate.firstName} {candidate.lastName}
                             </h3>
-                            <Badge className={`text-xs ${statusInfo.color}`} data-testid={`badge-status-${candidate.id}`}>
-                              {statusInfo.label}
-                            </Badge>
+                            <Select
+                              value={candidate.status}
+                              onValueChange={(val) => {
+                                updateStatusMutation.mutate({ id: candidate.id, status: val });
+                              }}
+                            >
+                              <SelectTrigger
+                                className={`h-6 text-xs px-2 py-0 w-auto border-0 ${statusInfo.color}`}
+                                data-testid={`select-status-${candidate.id}`}
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent onClick={(e) => e.stopPropagation()}>
+                                {STATUS_OPTIONS.map(opt => (
+                                  <SelectItem key={opt.value} value={opt.value} data-testid={`option-status-${opt.value}-${candidate.id}`}>
+                                    {opt.label}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
                           </div>
                           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1 text-xs text-muted-foreground">
                             {candidate.certNumber && (
