@@ -110,6 +110,36 @@ export default function CompanyTeamPage() {
   const [showResumePreview, setShowResumePreview] = useState(false);
   const resumeInputRef = useRef<HTMLInputElement>(null);
   const [editingMemberName, setEditingMemberName] = useState<{userId: string; firstName: string; lastName: string} | null>(null);
+  const [recruitingPrefill, setRecruitingPrefill] = useState<TeamInspector | null>(null);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("addInspector") === "true") {
+      const prefillData = {
+        id: "",
+        companyId: "",
+        firstName: params.get("firstName") || "",
+        lastName: params.get("lastName") || "",
+        phone: params.get("phone") || "",
+        licenseNumber: params.get("certNumber") || "",
+        licenseState: params.get("county") || "",
+        email: "",
+        title: "DSA Certified Inspector",
+        certifications: [] as string[],
+        notes: "",
+        bio: "",
+        profilePhotoUrl: "",
+        yearsExperience: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      } as TeamInspector;
+      setRecruitingPrefill(prefillData);
+      setEditingTeamInspector(prefillData);
+      setShowTeamInspectorDialog(true);
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+  }, []);
+
   const [inviteForm, setInviteForm] = useState({
     email: "",
     firstName: "",
@@ -1571,11 +1601,14 @@ export default function CompanyTeamPage() {
         open={showTeamInspectorDialog}
         onOpenChange={(open) => {
           setShowTeamInspectorDialog(open);
-          if (!open) setEditingTeamInspector(null);
+          if (!open) {
+            setEditingTeamInspector(null);
+            setRecruitingPrefill(null);
+          }
         }}
         inspector={editingTeamInspector}
         onSave={(data) => {
-          if (editingTeamInspector) {
+          if (editingTeamInspector && editingTeamInspector.id && !recruitingPrefill) {
             updateTeamInspectorMutation.mutate({ id: editingTeamInspector.id, data });
           } else {
             createTeamInspectorMutation.mutate(data);

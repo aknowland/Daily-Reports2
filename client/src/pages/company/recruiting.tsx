@@ -68,6 +68,8 @@ import type { User } from "@shared/models/auth";
 
 type NoteWithUser = InspectorCandidateNote & { user?: User };
 
+type RecruitingStatus = "prospect" | "contacted" | "responded" | "interested" | "not_available" | "not_interested" | "hired";
+
 const STATUS_OPTIONS = [
   { value: "prospect", label: "Prospect", color: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300" },
   { value: "contacted", label: "Contacted", color: "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300" },
@@ -476,7 +478,7 @@ export default function CompanyRecruitingPage() {
                     value={selectedCandidate.status}
                     onValueChange={(val) => {
                       updateStatusMutation.mutate({ id: selectedCandidate.id, status: val });
-                      setSelectedCandidate({ ...selectedCandidate, status: val as any });
+                      setSelectedCandidate({ ...selectedCandidate, status: val as RecruitingStatus });
                     }}
                   >
                     <SelectTrigger className="mt-1" data-testid="select-detail-status">
@@ -539,7 +541,7 @@ export default function CompanyRecruitingPage() {
 
                 {selectedCandidate.status === "hired" && (
                   <div>
-                    <Link href={`/company/team?addInspector=true&firstName=${encodeURIComponent(selectedCandidate.firstName)}&lastName=${encodeURIComponent(selectedCandidate.lastName)}&phone=${encodeURIComponent(selectedCandidate.phone || '')}&certNumber=${encodeURIComponent(selectedCandidate.certNumber || '')}`}>
+                    <Link href={`/company/team?addInspector=true&firstName=${encodeURIComponent(selectedCandidate.firstName)}&lastName=${encodeURIComponent(selectedCandidate.lastName)}&phone=${encodeURIComponent(selectedCandidate.phone || '')}&certNumber=${encodeURIComponent(selectedCandidate.certNumber || '')}&county=${encodeURIComponent(selectedCandidate.county || '')}`}>
                       <Button
                         className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
                         data-testid="button-add-to-team"
