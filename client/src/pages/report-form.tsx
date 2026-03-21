@@ -36,7 +36,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Loader2, Save, Send, ArrowLeft, FolderPlus, FileText, Crown, ClipboardEdit } from "lucide-react";
+import { Loader2, Save, Send, ArrowLeft, FolderPlus, FileText, ClipboardEdit } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { format } from "date-fns";
 import type { Project, DailyReport, VisitorRow, WorkActivityRow } from "@shared/schema";
@@ -142,8 +142,6 @@ export default function ReportFormPage() {
   const [showEmailDialog, setShowEmailDialog] = useState(false);
   const [submittedReportId, setSubmittedReportId] = useState<string | null>(null);
   const [showNoProjectsDialog, setShowNoProjectsDialog] = useState(false);
-  const [showUpgradeDialog, setShowUpgradeDialog] = useState(false);
-  const [reportLimitInfo, setReportLimitInfo] = useState<{ currentCount: number; limit: number } | null>(null);
   const [hasShownNoProjectsDialog, setHasShownNoProjectsDialog] = useState(false);
   const [lastFetchedProjectId, setLastFetchedProjectId] = useState<string | null>(null);
 
@@ -298,11 +296,6 @@ export default function ReportFormPage() {
         
         if (!response.ok) {
           const errorData = await response.json();
-          if (errorData.error === "REPORT_LIMIT_EXCEEDED") {
-            setReportLimitInfo({ currentCount: errorData.currentCount, limit: errorData.limit });
-            setShowUpgradeDialog(true);
-            throw new Error("Free tier limit reached");
-          }
           throw new Error(errorData.message || "Failed to create report");
         }
         const result = await response.json();
@@ -1089,53 +1082,6 @@ export default function ReportFormPage() {
         />
       )}
 
-      {/* Upgrade Dialog - Free Tier Limit Reached */}
-      <Dialog open={showUpgradeDialog} onOpenChange={setShowUpgradeDialog}>
-        <DialogContent data-testid="dialog-upgrade">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Crown className="w-5 h-5 text-amber-500" />
-              Free Tier Limit Reached
-            </DialogTitle>
-            <DialogDescription>
-              You've used all {reportLimitInfo?.limit || 5} of your free monthly reports. 
-              Upgrade to Independent Pro for unlimited reports.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="py-4">
-            <div className="p-4 bg-muted/50 rounded-lg mb-4">
-              <p className="text-sm text-muted-foreground">
-                Reports used this month: <strong>{reportLimitInfo?.currentCount || 0}</strong> / {reportLimitInfo?.limit || 5}
-              </p>
-            </div>
-            <div className="text-sm text-muted-foreground">
-              With Independent Pro ($49/month), you get:
-              <ul className="list-disc list-inside mt-2 space-y-1">
-                <li>Unlimited daily reports</li>
-                <li>PDF generation & email distribution</li>
-                <li>Voice-to-text transcription</li>
-                <li>Invoice generation</li>
-              </ul>
-            </div>
-          </div>
-          <DialogFooter className="gap-2">
-            <Button 
-              variant="outline" 
-              onClick={() => setShowUpgradeDialog(false)}
-              data-testid="button-cancel-upgrade"
-            >
-              Maybe Later
-            </Button>
-            <Button 
-              onClick={() => navigate("/billing")}
-              data-testid="button-upgrade"
-            >
-              <Crown className="w-4 h-4 mr-2" />
-              Upgrade Now
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </PageLayout>
   );
 }

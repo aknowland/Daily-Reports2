@@ -8,7 +8,6 @@ import { ReportCard } from "@/components/reports/report-card";
 import { ReportDetailPanel } from "@/components/reports/report-detail-panel";
 import { Skeleton } from "@/components/ui/skeleton";
 import { OnboardingModal } from "@/components/onboarding-modal";
-import { SubscriptionBanner } from "@/components/ui/subscription-banner";
 import { useAuth } from "@/hooks/use-auth";
 import { 
   Plus, 
@@ -107,8 +106,6 @@ export default function DashboardPage() {
       </PageHeader>
 
       <div className="space-y-6">
-        <SubscriptionBanner />
-
         <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
           <Card className="border-l-4 border-l-primary" data-testid="card-stat-total">
             <CardContent className="p-4">
