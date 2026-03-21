@@ -32,7 +32,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Loader2, Save, Send, Crown, ChevronDown, ChevronUp } from "lucide-react";
+import { Loader2, Save, Send, ChevronDown, ChevronUp } from "lucide-react";
 import type { VisitorRow, WorkActivityRow } from "@shared/schema";
 import { VoiceInput } from "@/components/ui/voice-input";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -108,8 +108,6 @@ export function DailyReportDialog({ open, onOpenChange, project, onSuccess }: Da
   const [isSaving, setIsSaving] = useState(false);
   const [showEmailDialog, setShowEmailDialog] = useState(false);
   const [submittedReportId, setSubmittedReportId] = useState<string | null>(null);
-  const [showUpgradeDialog, setShowUpgradeDialog] = useState(false);
-  const [reportLimitInfo, setReportLimitInfo] = useState<{ currentCount: number; limit: number } | null>(null);
   const [hasFetchedDefaults, setHasFetchedDefaults] = useState(false);
 
   // Collapsible sections state
@@ -245,11 +243,6 @@ export function DailyReportDialog({ open, onOpenChange, project, onSuccess }: Da
       
       if (!response.ok) {
         const errorData = await response.json();
-        if (errorData.error === "REPORT_LIMIT_EXCEEDED") {
-          setReportLimitInfo({ currentCount: errorData.currentCount, limit: errorData.limit });
-          setShowUpgradeDialog(true);
-          throw new Error("Free tier limit reached");
-        }
         throw new Error(errorData.message || "Failed to create report");
       }
       const result = await response.json();
@@ -874,37 +867,6 @@ export function DailyReportDialog({ open, onOpenChange, project, onSuccess }: Da
         />
       )}
 
-      {/* Upgrade Dialog */}
-      <Dialog open={showUpgradeDialog} onOpenChange={setShowUpgradeDialog}>
-        <DialogContent data-testid="dialog-upgrade-report">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Crown className="w-5 h-5 text-amber-500" />
-              Free Tier Limit Reached
-            </DialogTitle>
-          </DialogHeader>
-          <div className="py-4">
-            <p className="text-sm text-muted-foreground mb-4">
-              You've used all {reportLimitInfo?.limit || 5} of your free monthly reports. 
-              Upgrade to continue creating reports.
-            </p>
-            <div className="p-4 bg-muted/50 rounded-lg">
-              <p className="text-sm">
-                Reports used this month: <strong>{reportLimitInfo?.currentCount || 0}</strong> / {reportLimitInfo?.limit || 5}
-              </p>
-            </div>
-          </div>
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={() => setShowUpgradeDialog(false)}>
-              Maybe Later
-            </Button>
-            <Button onClick={() => window.location.href = "/billing"}>
-              <Crown className="w-4 h-4 mr-2" />
-              Upgrade Now
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
     </>
   );
 }
