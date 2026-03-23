@@ -101,9 +101,9 @@ export function Header({ title = "Field Daily Reports" }: HeaderProps) {
           <Link key={`${keyPrefix}${item.href}`} href={item.href} onClick={() => setSheetOpen(false)}>
             <div
               className={cn(
-                "flex items-center gap-3 px-3 py-2 rounded transition-colors",
+                "flex items-center gap-3 px-3 py-2 rounded-lg transition-colors",
                 isActive 
-                  ? "bg-[hsl(36,90%,50%)] text-[hsl(216,32%,10%)] font-semibold" 
+                  ? "bg-[hsl(38,95%,52%)] text-[hsl(216,42%,8%)] font-semibold" 
                   : "text-white/80 hover:text-white hover:bg-white/10"
               )}
               data-testid={`nav-${item.label.toLowerCase().replace(/\s+/g, '-')}`}
@@ -118,7 +118,7 @@ export function Header({ title = "Field Daily Reports" }: HeaderProps) {
   );
 
   return (
-    <header className="sticky top-0 z-40 w-full bg-[hsl(216,32%,15%)] text-white border-b-2 border-[hsl(36,90%,50%)]">
+    <header className="sticky top-0 z-40 w-full bg-[hsl(216,42%,13%)] text-white border-b border-[hsl(38,95%,52%)/0.6] shadow-sm">
       <div className="flex h-14 items-center justify-between gap-4 px-4">
         <div className="flex items-center gap-2">
           {user && (
@@ -128,11 +128,11 @@ export function Header({ title = "Field Daily Reports" }: HeaderProps) {
                   <Menu className="w-5 h-5" />
                 </Button>
               </SheetTrigger>
-              <SheetContent side="left" className="w-64 overflow-y-auto bg-[hsl(216,32%,15%)] text-white border-r-2 border-[hsl(36,90%,50%)]">
+              <SheetContent side="left" className="w-64 overflow-y-auto bg-[hsl(216,42%,13%)] text-white border-r border-[hsl(216,32%,20%)]">
                 <SheetHeader>
                   <SheetTitle className="flex items-center gap-2 text-white">
-                    <div className="w-8 h-8 rounded bg-[hsl(36,90%,50%)] flex items-center justify-center">
-                      <HardHat className="w-5 h-5 text-[hsl(216,32%,10%)]" />
+                    <div className="w-8 h-8 rounded-lg bg-[hsl(38,95%,52%)] flex items-center justify-center">
+                      <HardHat className="w-5 h-5 text-[hsl(216,42%,8%)]" />
                     </div>
                     Field Daily Reports
                   </SheetTitle>
@@ -172,9 +172,9 @@ export function Header({ title = "Field Daily Reports" }: HeaderProps) {
                               <Link key={item.href} href={item.href} onClick={() => setSheetOpen(false)}>
                                 <div
                                   className={cn(
-                                    "flex items-center gap-3 px-3 py-2 rounded transition-colors",
+                                    "flex items-center gap-3 px-3 py-2 rounded-lg transition-colors",
                                     isActive 
-                                      ? "bg-[hsl(36,90%,50%)] text-[hsl(216,32%,10%)] font-semibold" 
+                                      ? "bg-[hsl(38,95%,52%)] text-[hsl(216,42%,8%)] font-semibold" 
                                       : "text-white/80 hover:text-white hover:bg-white/10"
                                   )}
                                   data-testid={`nav-admin-${item.label.toLowerCase().replace(/\s+/g, '-')}`}
@@ -209,8 +209,8 @@ export function Header({ title = "Field Daily Reports" }: HeaderProps) {
           )}
           <Link href="/">
             <div className="flex items-center gap-2 cursor-pointer" data-testid="link-home">
-              <div className="w-8 h-8 rounded bg-[hsl(36,90%,50%)] flex items-center justify-center">
-                <HardHat className="w-5 h-5 text-[hsl(216,32%,10%)]" />
+              <div className="w-8 h-8 rounded-lg bg-[hsl(38,95%,52%)] flex items-center justify-center">
+                <HardHat className="w-5 h-5 text-[hsl(216,42%,8%)]" />
               </div>
               <span className="font-semibold text-lg hidden sm:inline tracking-tight">{title}</span>
             </div>
@@ -229,7 +229,7 @@ export function Header({ title = "Field Daily Reports" }: HeaderProps) {
                 <Button variant="ghost" size="icon" className="rounded-full text-white/80 hover:text-white hover:bg-white/10" data-testid="button-user-menu">
                   <Avatar className="h-9 w-9">
                     <AvatarImage src={user.profileImageUrl || undefined} alt={getDisplayName()} />
-                    <AvatarFallback className="bg-[hsl(36,90%,50%)] text-[hsl(216,32%,10%)] text-sm font-medium">
+                    <AvatarFallback className="bg-[hsl(38,95%,52%)] text-[hsl(216,42%,8%)] text-sm font-medium">
                       {getInitials(user.firstName, user.lastName)}
                     </AvatarFallback>
                   </Avatar>
@@ -313,7 +313,7 @@ export function Header({ title = "Field Daily Reports" }: HeaderProps) {
               </DropdownMenuContent>
             </DropdownMenu>
           ) : (
-            <Button asChild className="bg-[hsl(36,90%,50%)] text-[hsl(216,32%,10%)] hover:bg-[hsl(36,90%,45%)] font-semibold" data-testid="button-login">
+            <Button asChild className="bg-[hsl(38,95%,52%)] text-[hsl(216,42%,8%)] hover:bg-[hsl(38,95%,47%)] font-semibold" data-testid="button-login">
               <a href="/api/login">Sign in</a>
             </Button>
           )}
