@@ -10455,15 +10455,15 @@ export async function registerRoutes(
           .text(sub.label, ML + 6, curY + 2, { lineBreak: false });
         curY += subLabelH;
 
-        if (sub.content && sub.content !== '--') {
-          const availH = Math.min(55, wpBottomLimit - curY - 8);
-          if (availH > 10) {
-            doc.rect(ML, curY, CW, availH).fill('#fff');
-            doc.rect(ML, curY, CW, availH).stroke('#cccccc');
-            doc.fontSize(8).font('Helvetica').fillColor(NAVY)
-              .text(sub.content, ML + 6, curY + 4, { width: CW - 12, height: availH - 6 });
-            curY += availH;
-          }
+        const availH = Math.min(55, wpBottomLimit - curY - 8);
+        if (availH > 10) {
+          const displayText = (sub.content && sub.content !== '--') ? sub.content : '--';
+          const textColor   = (sub.content && sub.content !== '--') ? NAVY : '#aaaaaa';
+          doc.rect(ML, curY, CW, availH).fill('#fff');
+          doc.rect(ML, curY, CW, availH).stroke('#cccccc');
+          doc.fontSize(8).font('Helvetica').fillColor(textColor)
+            .text(displayText, ML + 6, curY + 4, { width: CW - 12, height: availH - 6 });
+          curY += availH;
         }
       }
       curY += 3;
