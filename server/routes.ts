@@ -10678,19 +10678,27 @@ export async function registerRoutes(
         .text(certText2, ML + 6, curY + 5, { width: CW - 12, lineBreak: false, ellipsis: true });
       curY += certTxtH2;
       const certSigH = certBodyH - certTxtH2;
-      // Prepared By box
+      // Prepared By box — name/title/date on left, signature image on right
       doc.rect(ML, curY, certColW, certSigH).stroke('#cccccc');
       doc.fontSize(6).font('Helvetica').fillColor('#666').text('PREPARED BY', ML + 4, curY + 4, { lineBreak: false });
-      doc.fontSize(9).font('Helvetica-Bold').fillColor(NAVY).text(inspectorName, ML + 4, curY + 15, { lineBreak: false });
+      const pbTextW = Math.floor(certColW * 0.44);  // left column for text
+      const pbSigX  = ML + pbTextW + 4;             // right column for signature
+      const pbSigW  = certColW - pbTextW - 8;
+      // Text: name, title, date — left column
+      doc.fontSize(9).font('Helvetica-Bold').fillColor(NAVY)
+        .text(inspectorName, ML + 4, curY + 15, { width: pbTextW - 6, lineBreak: false, ellipsis: true });
       if ((inspectorProfile as any)?.title) {
-        doc.fontSize(7.5).font('Helvetica').fillColor('#555').text((inspectorProfile as any).title, ML + 4, curY + 27, { lineBreak: false });
+        doc.fontSize(7.5).font('Helvetica').fillColor('#555')
+          .text((inspectorProfile as any).title, ML + 4, curY + 27, { width: pbTextW - 6, lineBreak: false, ellipsis: true });
       }
-      doc.fontSize(7.5).font('Helvetica').fillColor('#555').text(`Date: ${dateStr}`, ML + 4, curY + 38, { lineBreak: false });
+      doc.fontSize(7.5).font('Helvetica').fillColor('#555')
+        .text(`Date: ${dateStr}`, ML + 4, curY + 38, { width: pbTextW - 6, lineBreak: false });
+      // Signature image — right column, vertically centred
       if (report.signaturePath) {
         try {
           const sigBuf2 = await loadImageBuffer(report.signaturePath as string);
           if (sigBuf2) {
-            doc.image(sigBuf2, ML + 4, curY + 12, { fit: [certColW - 16, certSigH - 14], align: 'left', valign: 'center' });
+            doc.image(sigBuf2, pbSigX, curY + 4, { fit: [pbSigW, certSigH - 8], align: 'center', valign: 'center' });
           }
         } catch (_se) {}
       }
