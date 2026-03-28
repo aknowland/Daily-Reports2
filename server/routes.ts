@@ -10207,12 +10207,12 @@ export async function registerRoutes(
       // --- COMPANY HEADER ---
       let curY = MT;
 
-      // Logo left side
+      // Logo top-left (fits in a 180×52 box so it's prominent without crowding)
       if (company?.logoPath) {
         try {
           const logoBuffer = await loadImageBuffer(company.logoPath);
           if (logoBuffer) {
-            doc.image(logoBuffer, ML, curY, { fit: [120, 40], valign: 'top', align: 'left' });
+            doc.image(logoBuffer, ML, curY, { fit: [180, 52], valign: 'top', align: 'left' });
           }
         } catch (err) {
           console.error('Error adding company logo:', err);
@@ -10220,18 +10220,18 @@ export async function registerRoutes(
       }
 
       // Company name & contact - right side
-      const hdrTextX = ML + 130;
-      doc.fontSize(11).font('Helvetica-Bold').fillColor('#000').text(companyName, hdrTextX, curY, { width: CW - 130, align: 'right' });
+      const hdrTextX = ML + 190;
+      doc.fontSize(11).font('Helvetica-Bold').fillColor('#000').text(companyName, hdrTextX, curY, { width: CW - 190, align: 'right' });
       if (contactLine) {
-        doc.fontSize(7).font('Helvetica').fillColor('#555').text(contactLine, hdrTextX, curY + 14, { width: CW - 130, align: 'right' });
+        doc.fontSize(7).font('Helvetica').fillColor('#555').text(contactLine, hdrTextX, curY + 14, { width: CW - 190, align: 'right' });
       }
       doc.fillColor('#000');
 
-      // Amber accent line under header
-      curY += 46;
-      doc.rect(ML, curY, CW, 3).fill('#f59e0b');
+      // Thin navy rule under header (no amber line)
+      curY += 54;
+      doc.rect(ML, curY, CW, 1).fill('#1a2e4a');
       doc.fill('#000');
-      curY += 8;
+      curY += 6;
 
       // Report title + report number boxes
       const titleY = curY;
@@ -10484,10 +10484,10 @@ export async function registerRoutes(
       doc.addPage();
       let p2Y = MT;
 
-      // Page 2 header bar
-      doc.rect(ML, p2Y, CW, 3).fill('#f59e0b');
+      // Page 2 header bar — navy rule, no amber line
+      doc.rect(ML, p2Y, CW, 1).fill('#1a2e4a');
       doc.fill('#000');
-      p2Y += 6;
+      p2Y += 4;
       doc.fontSize(10).font('Helvetica-Bold').text(companyName, ML, p2Y, { width: CW * 0.6 });
       doc.fontSize(8).font('Helvetica').fillColor('#555').text(`${projectName}  —  ${dateStr}  —  Report #${reportNumber}`, ML, p2Y + 14, { width: CW });
       doc.fillColor('#000');
