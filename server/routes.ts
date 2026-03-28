@@ -10291,34 +10291,34 @@ export async function registerRoutes(
       // ─── HEADER ──────────────────────────────────────────────────────
       // Logo (left, 60 px tall)
       if (headerLogoBuffer) {
-        doc.image(headerLogoBuffer, ML, MT, { fit: [110, 40], valign: 'center', align: 'left' });
+        doc.image(headerLogoBuffer, ML, MT, { fit: [130, 45], valign: 'center', align: 'left' });
       }
 
-      // Centre block: org name + subtitle + address
+      // Centre block: "DAILY REPORT" title + report ID
       const ctrX = ML + 185;
       const ctrW = CW - 185 - 165;
+      const rptIdLabel = report.reportNumber ? `DR-${report.reportNumber}` : '--';
+      doc.fontSize(18).font('Helvetica-Bold').fillColor(NAVY)
+        .text('DAILY REPORT', ctrX, MT + 4, { width: ctrW, align: 'center', lineBreak: false });
+      doc.fontSize(9.5).font('Helvetica-Bold').fillColor(NAVY)
+        .text(rptIdLabel, ctrX, MT + 27, { width: ctrW, align: 'center', lineBreak: false });
+
+      // Right block: company name + address + contact
+      const rblkX = PW - MR - 160;
       const orgName = company?.name || 'KNOWLAND CONSTRUCTION SERVICES';
-      doc.fontSize(12).font('Helvetica-Bold').fillColor(NAVY)
-        .text(orgName, ctrX, MT + 4, { width: ctrW, lineBreak: false });
       const orgPhone = (company as any)?.phone || '';
       const orgEmail = (company as any)?.email || '';
       const orgAddr  = (company as any)?.address || '';
+      doc.fontSize(9).font('Helvetica-Bold').fillColor(NAVY)
+        .text(orgName, rblkX, MT + 4, { width: 160, align: 'right', lineBreak: false });
       if (orgAddr) {
         doc.fontSize(7.5).font('Helvetica').fillColor('#555')
-          .text(orgAddr, ctrX, MT + 20, { width: ctrW, lineBreak: false });
+          .text(orgAddr, rblkX, MT + 18, { width: 160, align: 'right', lineBreak: false });
       }
       if (orgPhone || orgEmail) {
         doc.fontSize(7.5).font('Helvetica').fillColor('#555')
-          .text([orgPhone, orgEmail].filter(Boolean).join('   •   '), ctrX, MT + 30, { width: ctrW, lineBreak: false });
+          .text([orgPhone, orgEmail].filter(Boolean).join('  •  '), rblkX, MT + 30, { width: 160, align: 'right', lineBreak: false });
       }
-
-      // Right block: "DAILY REPORT" bold + report ID
-      const rblkX = PW - MR - 155;
-      doc.fontSize(18).font('Helvetica-Bold').fillColor(NAVY)
-        .text('DAILY REPORT', rblkX, MT + 4, { width: 155, align: 'right', lineBreak: false });
-      const rptIdLabel = report.reportNumber ? `DR-${report.reportNumber}` : '--';
-      doc.fontSize(9.5).font('Helvetica-Bold').fillColor(NAVY)
-        .text(rptIdLabel, rblkX, MT + 27, { width: 155, align: 'right', lineBreak: false });
       doc.fillColor('#000');
 
       // Thin navy separator below header
