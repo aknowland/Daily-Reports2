@@ -220,6 +220,8 @@ const createProjectSchema = z.object({
   budgetTrackingMode: z.enum(["daily_reports", "scheduled", "hybrid"]).nullable().optional(),
   inheritBillingRates: z.boolean().optional().default(true),
   scopeOfWork: z.string().nullable().optional(),
+  projectValue: z.string().nullable().optional(),
+  dsaFileNo: z.string().nullable().optional(),
 });
 
 const updateProjectSchema = createProjectSchema.partial();
@@ -234,23 +236,45 @@ const createReportSchema = z.object({
   }),
   weatherType: z.enum(["clear", "cloudy", "rain", "wind", "heat", "cold"]).optional(),
   weatherNotes: z.string().optional(),
+  weatherAM: z.string().optional(),
+  weatherPM: z.string().optional(),
+  precipitation: z.string().optional(),
+  siteConditions: z.string().optional(),
   typeOfWork: z.array(z.string()).optional().default([]),
   workPerformed: z.string().optional(),
   trades: z.array(z.object({ trade: z.string(), headcount: z.number() })).optional().default([]),
   manpower: z.array(z.object({ description: z.string(), count: z.number() })).optional().default([]),
   workActivities: z.array(z.object({ 
+    trade: z.string().optional(),
     contractor: z.string(), 
     headcount: z.number(), 
     workDescription: z.string() 
   })).optional().default([]),
   visitors: z.array(z.object({ name: z.string(), company: z.string(), notes: z.string().optional() })).optional().default([]),
   equipment: z.string().optional(),
+  equipmentRows: z.array(z.object({
+    equipment: z.string(),
+    hours: z.string().optional(),
+    status: z.string().optional(),
+    usage: z.string().optional(),
+  })).optional().default([]),
   inspections: z.string().optional(),
   materialsDelivered: z.string().optional(),
+  materialRows: z.array(z.object({
+    material: z.string(),
+    quantity: z.string().optional(),
+    status: z.string().optional(),
+    supplierNotes: z.string().optional(),
+  })).optional().default([]),
   issuesFlag: z.boolean().optional(),
   issuesDetails: z.string().optional(),
   safetyFlag: z.boolean().optional(),
   safetyDetails: z.string().optional(),
+  safetyIncidents: z.number().optional(),
+  safetyNearMisses: z.number().optional(),
+  safetyAttendees: z.number().nullable().optional(),
+  safetySiteConditions: z.string().optional(),
+  toolboxTalkTopic: z.string().optional(),
   notes: z.string().optional(),
   status: z.enum(["draft", "submitted"]).optional(),
   // Time tracking fields
@@ -10059,10 +10083,10 @@ export async function registerRoutes(
         return res.status(403).json({ message: "Access denied" });
       }
 
-      // Generate PDF using pdfkit - Koury Engineering format
+      // Generate PDF using pdfkit - DSA/Government format
       const filename = `${req.params.id}.pdf`;
 
-      const doc = new PDFDocument({ margin: 25, bufferPages: true });
+      const doc = new PDFDocument({ size: 'LETTER', margin: 36, bufferPages: true });
       
       const pdfChunks: Buffer[] = [];
       doc.on('data', (chunk: Buffer) => pdfChunks.push(chunk));
@@ -10072,9 +10096,17 @@ export async function registerRoutes(
         doc.on('error', reject);
       });
 
-      const pageWidth = doc.page.width - 50;
-      const startX = 25;
+      const PW = 612; // Letter width in points
+      const PH = 792; // Letter height in points
+      const ML = 36;  // Left margin
+      const MR = 36;  // Right margin
+      const MT = 36;  // Top margin
+      const MB = 36;  // Bottom margin
+      const CW = PW - ML - MR; // Content width = 540
+      const FOOTER_H = 20;
+      const HEADER_H = 54;
       const checkSize = 7;
+      const startX = ML;
 
       // Helper to load images - handles both old /storage/uploads/ and new /objects/ paths
       const loadImageBuffer = async (imagePath: string): Promise<Buffer | null> => {
@@ -10119,167 +10151,153 @@ export async function registerRoutes(
       // Get inspector profile for license info
       const inspectorProfile = await storage.getUserProfile(report.inspectorId);
 
-      // ===== HEADER - Logo left, Company name right =====
-      // Company name and contact info - upper right
-      const companyName = (company?.name || 'FIELD DAILY REPORTS').toUpperCase();
-      const contactLine = [company?.address, company?.phone, company?.email].filter(Boolean).join('  |  ');
-      const headerTextY = 12;
-      doc.fontSize(11).font('Helvetica-Bold').text(companyName, 280, headerTextY, { width: 290, align: 'right' });
-      if (contactLine) {
-        doc.fontSize(7.5).font('Helvetica').text(contactLine, 280, headerTextY + 14, { width: 290, align: 'right' });
+      // ===== HELPERS =====
+      const formatTimeDisplay = (time: string | null | undefined): string => {
+        if (!time) return '--';
+        const [h, m] = time.split(':').map(Number);
+        if (isNaN(h) || isNaN(m)) return '--';
+        const ampm = h >= 12 ? 'PM' : 'AM';
+        const h12 = h % 12 || 12;
+        return `${h12}:${m.toString().padStart(2, '0')} ${ampm}`;
+      };
+
+      const drawCell = (x: number, y: number, w: number, h: number, label: string, value: string, labelFontSize = 6, valueFontSize = 8.5) => {
+        doc.rect(x, y, w, h).stroke();
+        doc.fontSize(labelFontSize).font('Helvetica').fillColor('#555').text(label.toUpperCase(), x + 3, y + 3, { width: w - 6, lineBreak: false });
+        doc.fontSize(valueFontSize).font('Helvetica-Bold').fillColor('#000').text(value || '--', x + 3, y + 3 + labelFontSize + 2, { width: w - 6, lineBreak: false, ellipsis: true });
+      };
+
+      const drawSectionHeader = (x: number, y: number, w: number, label: string) => {
+        doc.rect(x, y, w, 14).fillAndStroke('#1a2e4a', '#1a2e4a');
+        doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#ffffff').text(label, x + 4, y + 3.5, { width: w - 8, lineBreak: false });
+        doc.fillColor('#000');
+      };
+
+      let dateStr = '--';
+      if (report.date instanceof Date) {
+        const m = String(report.date.getUTCMonth() + 1).padStart(2, '0');
+        const d = String(report.date.getUTCDate()).padStart(2, '0');
+        const y = String(report.date.getUTCFullYear());
+        dateStr = `${m}/${d}/${y}`;
+      } else if (typeof report.date === 'string') {
+        const match = report.date.match(/^(\d{4})-(\d{2})-(\d{2})/);
+        if (match) {
+          dateStr = `${match[2]}/${match[3]}/${match[1]}`;
+        }
       }
 
-      // Logo - constrained to header row height, top-aligned with company name
+      const companyName = (company?.name || 'FIELD DAILY REPORTS').toUpperCase();
+      const contactLine = [company?.address, company?.phone, company?.email].filter(Boolean).join('   |   ');
+      const projectName = report.project?.name || report.customProjectName || 'Unassigned Report';
+      const projectAddress = report.project?.address || '';
+      const inspectorName = report.inspectorName || 'Unknown';
+      const clientName = report.project?.client || '';
+      const dsaFileNo = (report.project as any)?.dsaFileNo || '';
+      const projectNumber = report.project?.projectNumber || '';
+      const reportNumber = report.reportNumber ? `${report.reportNumber}` : '--';
+
+      const photos = report.photos || [];
+      const workActivities = (report.workActivities as WorkActivityRow[]) || [];
+      const equipmentRows = ((report as any).equipmentRows as any[]) || [];
+      const materialRows = ((report as any).materialRows as any[]) || [];
+      const visitors = (report.visitors as VisitorRow[]) || [];
+
+      // ===== PAGE 1 =====
+
+      // --- COMPANY HEADER ---
+      let curY = MT;
+
+      // Logo left side
       if (company?.logoPath) {
         try {
           const logoBuffer = await loadImageBuffer(company.logoPath);
           if (logoBuffer) {
-            doc.image(logoBuffer, startX, headerTextY, { fit: [500, 45], valign: 'top', align: 'left' });
+            doc.image(logoBuffer, ML, curY, { fit: [120, 40], valign: 'top', align: 'left' });
           }
         } catch (err) {
           console.error('Error adding company logo:', err);
         }
       }
 
-      // Form grid boxes - right side
-      const gridX = 380;
-      const gridTop = 72;
-      let dateStr = '--';
-      if (report.date instanceof Date) {
-        const m = String(report.date.getUTCMonth() + 1).padStart(2, '0');
-        const d = String(report.date.getUTCDate()).padStart(2, '0');
-        const y = String(report.date.getUTCFullYear()).slice(-2);
-        dateStr = `${m}/${d}/${y}`;
-      } else if (typeof report.date === 'string') {
-        const match = report.date.match(/^(\d{4})-(\d{2})-(\d{2})/);
-        if (match) {
-          dateStr = `${match[2]}/${match[3]}/${match[1].slice(-2)}`;
-        }
+      // Company name & contact - right side
+      const hdrTextX = ML + 130;
+      doc.fontSize(11).font('Helvetica-Bold').fillColor('#000').text(companyName, hdrTextX, curY, { width: CW - 130, align: 'right' });
+      if (contactLine) {
+        doc.fontSize(7).font('Helvetica').fillColor('#555').text(contactLine, hdrTextX, curY + 14, { width: CW - 130, align: 'right' });
       }
-      // Time cell shows when report was submitted (signedAt); if not signed, show "--"
-      const timeStr = report.signedAt 
-        ? new Date(report.signedAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'America/Los_Angeles' })
-        : '--';
+      doc.fillColor('#000');
+
+      // Amber accent line under header
+      curY += 46;
+      doc.rect(ML, curY, CW, 3).fill('#f59e0b');
+      doc.fill('#000');
+      curY += 8;
+
+      // Report title + report number boxes
+      const titleY = curY;
+      doc.fontSize(16).font('Helvetica-Bold').text('DAILY REPORT', ML, titleY, { lineBreak: false });
+
+      // Report info boxes - right side (4 small boxes stacked 2x2)
+      const infoBoxW = 90;
+      const infoBoxH = 20;
+      const infoX = PW - MR - infoBoxW * 2;
       
-      doc.strokeColor('#000').lineWidth(0.5);
+      drawCell(infoX, titleY, infoBoxW, infoBoxH, 'Report No.', reportNumber);
+      drawCell(infoX + infoBoxW, titleY, infoBoxW, infoBoxH, 'Status', (report.status || 'DRAFT').toUpperCase());
+      drawCell(infoX, titleY + infoBoxH, infoBoxW, infoBoxH, 'Report Date', dateStr);
+      drawCell(infoX + infoBoxW, titleY + infoBoxH, infoBoxW, infoBoxH, 'Time Submitted', 
+        report.signedAt ? new Date(report.signedAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'America/Los_Angeles' }) : '--'
+      );
 
-      // Row 1: Project #, Report No., Status
-      doc.rect(gridX, gridTop, 60, 18).stroke();
-      doc.fontSize(7).font('Helvetica').text('Project #', gridX + 2, gridTop + 2);
-      doc.fontSize(9).font('Helvetica-Bold').text(report.project?.projectNumber || 'N/A', gridX + 2, gridTop + 9);
+      curY = titleY + infoBoxH * 2 + 10;
 
-      doc.rect(gridX + 60, gridTop, 50, 18).stroke();
-      doc.fontSize(7).font('Helvetica').text('Report No.', gridX + 62, gridTop + 2);
-      doc.fontSize(9).font('Helvetica-Bold').text(report.reportNumber ? String(report.reportNumber) : '--', gridX + 62, gridTop + 9);
+      // --- PROJECT INFO ROW (3-col) ---
+      const row1H = 30;
+      const col3 = Math.floor(CW / 3);
+      drawSectionHeader(ML, curY, CW, 'PROJECT INFORMATION');
+      curY += 14;
+      drawCell(ML, curY, col3, row1H, 'Project', projectName);
+      drawCell(ML + col3, curY, col3, row1H, 'Client', clientName);
+      drawCell(ML + col3 * 2, curY, CW - col3 * 2, row1H, 'Project Address', projectAddress);
+      curY += row1H;
 
-      doc.rect(gridX + 110, gridTop, 55, 18).stroke();
-      doc.fontSize(7).font('Helvetica').text('Status', gridX + 112, gridTop + 2);
-      doc.fontSize(9).font('Helvetica-Bold').text((report.status || 'draft').toUpperCase(), gridX + 112, gridTop + 9);
+      // --- PROJECT DETAILS ROW (4-col) ---
+      const row2H = 22;
+      const col4 = Math.floor(CW / 4);
+      drawCell(ML, curY, col4, row2H, 'Project No.', projectNumber);
+      drawCell(ML + col4, curY, col4, row2H, 'DSA File No.', dsaFileNo);
+      drawCell(ML + col4 * 2, curY, col4, row2H, 'Report Date', dateStr);
+      drawCell(ML + col4 * 3, curY, CW - col4 * 3, row2H, 'Inspector', inspectorName);
+      curY += row2H;
 
-      // Row 2: DSA File No., Date, Time
-      doc.rect(gridX, gridTop + 18, 60, 18).stroke();
-      doc.fontSize(7).font('Helvetica').text('DSA File No.', gridX + 2, gridTop + 20);
-      doc.fontSize(9).font('Helvetica-Bold').text('--', gridX + 2, gridTop + 27);
+      // --- PREPARED BY / TIME ROW ---
+      const row3H = 22;
+      const orgName = company?.name || '';
+      const timeInStr = formatTimeDisplay(report.timeIn);
+      const timeOutStr = formatTimeDisplay(report.timeOut);
+      drawCell(ML, curY, col4, row3H, 'Prepared By', inspectorName);
+      drawCell(ML + col4, curY, col4, row3H, 'Organization', orgName);
+      drawCell(ML + col4 * 2, curY, col4, row3H, 'Work Start', timeInStr);
+      drawCell(ML + col4 * 3, curY, CW - col4 * 3, row3H, 'Work End', timeOutStr);
+      curY += row3H;
 
-      doc.rect(gridX + 60, gridTop + 18, 50, 18).stroke();
-      doc.fontSize(7).font('Helvetica').text('Date', gridX + 62, gridTop + 20);
-      doc.fontSize(9).font('Helvetica-Bold').text(dateStr, gridX + 62, gridTop + 27);
+      // License & Hours row
+      const row4H = 22;
+      const licenseNo = inspectorProfile?.licenseNumber || '';
+      const regHrs = report.regularHours ? `${report.regularHours} hrs` : '--';
+      const otHrs = report.otHours ? `${report.otHours} hrs OT` : '--';
+      drawCell(ML, curY, col4, row4H, 'License No.', licenseNo);
+      drawCell(ML + col4, curY, col4, row4H, 'Regular Hours', regHrs);
+      drawCell(ML + col4 * 2, curY, col4, row4H, 'OT Hours', otHrs);
+      drawCell(ML + col4 * 3, curY, CW - col4 * 3, row4H, 'Total Hours', 
+        (parseFloat(report.regularHours || '0') + parseFloat(report.otHours || '0')).toFixed(2) + ' hrs');
+      curY += row4H + 8;
 
-      doc.rect(gridX + 110, gridTop + 18, 55, 18).stroke();
-      doc.fontSize(7).font('Helvetica').text('Time', gridX + 112, gridTop + 20);
-      doc.fontSize(9).font('Helvetica-Bold').text(timeStr, gridX + 112, gridTop + 27);
-
-      // Title - aligned with the 2x3 grid cells
-      doc.fontSize(14).font('Helvetica-Bold').text('DAILY FIELD REPORT', startX, gridTop + 10);
-
-      // Weather row with drawn icon
-      doc.y = gridTop + 44;
-      const weatherType = (report.weatherType || 'clear').toLowerCase();
-      const weatherText = `${report.weatherNotes || ''}`.trim();
-      const weatherLabel = (report.weatherType || 'Clear').charAt(0).toUpperCase() + (report.weatherType || 'clear').slice(1);
-      
-      const weatherY = doc.y;
-      doc.fontSize(8).font('Helvetica-Bold').text('WEATHER:', startX, weatherY);
-      
-      // Draw weather icon based on type - aligned with text baseline
-      const iconX = startX + 55;
-      const iconY = weatherY + 4;
-      const iconSize = 6;
-      
-      if (weatherType === 'clear' || weatherType === 'sunny' || weatherType === 'hot') {
-        // Sun icon - circle with rays
-        doc.circle(iconX, iconY, iconSize - 1).fill('#f59e0b');
-        doc.lineWidth(0.5).strokeColor('#f59e0b');
-        for (let i = 0; i < 8; i++) {
-          const angle = (i * Math.PI) / 4;
-          const x1 = iconX + Math.cos(angle) * (iconSize + 1);
-          const y1 = iconY + Math.sin(angle) * (iconSize + 1);
-          const x2 = iconX + Math.cos(angle) * (iconSize + 3);
-          const y2 = iconY + Math.sin(angle) * (iconSize + 3);
-          doc.moveTo(x1, y1).lineTo(x2, y2).stroke();
-        }
-        doc.strokeColor('#000');
-      } else if (weatherType === 'cloudy' || weatherType === 'overcast') {
-        // Cloud icon - overlapping circles
-        doc.circle(iconX - 2, iconY, 3).fill('#9ca3af');
-        doc.circle(iconX + 2, iconY - 1, 3.5).fill('#9ca3af');
-        doc.circle(iconX + 5, iconY, 2.5).fill('#9ca3af');
-      } else if (weatherType === 'partly-cloudy') {
-        // Sun behind cloud
-        doc.circle(iconX - 3, iconY - 2, 3).fill('#f59e0b');
-        doc.circle(iconX, iconY + 1, 2.5).fill('#9ca3af');
-        doc.circle(iconX + 3, iconY, 3).fill('#9ca3af');
-      } else if (weatherType === 'rainy' || weatherType === 'rain') {
-        // Cloud with rain drops
-        doc.circle(iconX - 2, iconY - 2, 2.5).fill('#6b7280');
-        doc.circle(iconX + 2, iconY - 2, 3).fill('#6b7280');
-        doc.lineWidth(0.8).strokeColor('#3b82f6');
-        doc.moveTo(iconX - 2, iconY + 2).lineTo(iconX - 3, iconY + 5).stroke();
-        doc.moveTo(iconX + 2, iconY + 2).lineTo(iconX + 1, iconY + 5).stroke();
-        doc.strokeColor('#000');
-      } else if (weatherType === 'stormy') {
-        // Cloud with lightning
-        doc.circle(iconX - 2, iconY - 2, 2.5).fill('#4b5563');
-        doc.circle(iconX + 2, iconY - 2, 3).fill('#4b5563');
-        doc.moveTo(iconX, iconY + 1).lineTo(iconX - 2, iconY + 4).lineTo(iconX + 1, iconY + 4).lineTo(iconX - 1, iconY + 7).fill('#fbbf24');
-      } else if (weatherType === 'snowy' || weatherType === 'snow' || weatherType === 'cold') {
-        // Snowflake - star pattern
-        doc.lineWidth(0.8).strokeColor('#3b82f6');
-        for (let i = 0; i < 6; i++) {
-          const angle = (i * Math.PI) / 3;
-          doc.moveTo(iconX, iconY).lineTo(iconX + Math.cos(angle) * 5, iconY + Math.sin(angle) * 5).stroke();
-        }
-        doc.strokeColor('#000');
-      } else if (weatherType === 'windy') {
-        // Wind lines
-        doc.lineWidth(0.8).strokeColor('#6b7280');
-        doc.moveTo(iconX - 4, iconY - 2).quadraticCurveTo(iconX, iconY - 3, iconX + 5, iconY - 2).stroke();
-        doc.moveTo(iconX - 4, iconY + 1).quadraticCurveTo(iconX + 2, iconY, iconX + 6, iconY + 1).stroke();
-        doc.moveTo(iconX - 3, iconY + 4).quadraticCurveTo(iconX, iconY + 3, iconX + 4, iconY + 4).stroke();
-        doc.strokeColor('#000');
-      } else if (weatherType === 'foggy' || weatherType === 'fog') {
-        // Fog lines
-        doc.lineWidth(1).strokeColor('#9ca3af');
-        doc.moveTo(iconX - 5, iconY - 2).lineTo(iconX + 5, iconY - 2).stroke();
-        doc.moveTo(iconX - 4, iconY + 1).lineTo(iconX + 6, iconY + 1).stroke();
-        doc.moveTo(iconX - 5, iconY + 4).lineTo(iconX + 5, iconY + 4).stroke();
-        doc.strokeColor('#000');
-      } else {
-        // Default: simple sun
-        doc.circle(iconX, iconY, iconSize - 1).fill('#f59e0b');
-      }
-      
-      // Reset all colors and line width back to defaults
-      doc.fillColor('#000').strokeColor('#000').lineWidth(1);
-      doc.fontSize(8).font('Helvetica').text(`${weatherLabel}${weatherText ? ' - ' + weatherText : ''}`, startX + 70, weatherY);
-
-      // ===== TYPE OF WORK - Checkboxes =====
-      doc.y += 16;
-      const typeY = doc.y;
-      doc.fontSize(8).font('Helvetica-Bold').text('TYPE OF WORK', startX, typeY);
-      
-      // Mapping from form values to PDF labels
-      const inspectionTypeMapping: { value: string; label: string }[] = [
+      // --- TYPE OF WORK CHECKBOXES ---
+      drawSectionHeader(ML, curY, CW, 'TYPE OF WORK');
+      curY += 14;
+      const towY = curY;
+      const towItems = [
         { value: 'reinf_concrete', label: 'Reinf. Concrete' },
         { value: 'structural_steel', label: 'Structural Steel' },
         { value: 'reinf_masonry', label: 'Reinf. Masonry' },
@@ -10289,374 +10307,352 @@ export async function registerRoutes(
         { value: 'other', label: 'Other' },
       ];
       const selectedTypes = (report.typeOfWork as string[]) || [];
-      let typeX = startX + 95;
-      inspectionTypeMapping.forEach((typeItem) => {
-        const isChecked = selectedTypes.includes(typeItem.value);
-        doc.rect(typeX, typeY - 1, checkSize, checkSize).stroke();
+      const towBoxW = 10;
+      const towSpacing = Math.floor(CW / towItems.length);
+      towItems.forEach((item, idx) => {
+        const towX = ML + idx * towSpacing;
+        const isChecked = selectedTypes.includes(item.value);
+        doc.rect(towX, towY, towBoxW, towBoxW).strokeColor('#555').stroke();
         if (isChecked) {
-          // Draw checkmark inside the checkbox
-          doc.lineWidth(1.2);
-          doc.moveTo(typeX + 2, typeY + 2).lineTo(typeX + 4, typeY + 5).lineTo(typeX + 7, typeY - 1).stroke();
-          doc.lineWidth(1);
+          doc.rect(towX + 2, towY + 2, towBoxW - 4, towBoxW - 4).fill('#1a2e4a');
         }
-        doc.fontSize(7).font('Helvetica').text(typeItem.label, typeX + 9, typeY);
-        typeX += 68;
+        doc.fontSize(7).font('Helvetica').fillColor('#000').text(item.label, towX + towBoxW + 3, towY + 1, { width: towSpacing - towBoxW - 4 });
       });
+      doc.strokeColor('#000').fill('#000');
+      curY += 18;
 
-      // ===== PROJECT INFO SECTION =====
-      doc.y = typeY + 18;
-      const projY = doc.y;
-      const col1W = pageWidth * 0.55;
-      const col2W = pageWidth * 0.45;
+      // --- WEATHER CONDITIONS (4-col) ---
+      drawSectionHeader(ML, curY, CW, 'WEATHER CONDITIONS');
+      curY += 14;
+      const wRow = 22;
+      const wCol = Math.floor(CW / 4);
+      const weatherAM = (report as any).weatherAM || report.weatherNotes || '';
+      const weatherPM = (report as any).weatherPM || '';
+      const precipitation = (report as any).precipitation || '';
+      const siteConditions = (report as any).siteConditions || '';
+      drawCell(ML, curY, wCol, wRow, 'Morning (AM)', weatherAM);
+      drawCell(ML + wCol, curY, wCol, wRow, 'Afternoon (PM)', weatherPM);
+      drawCell(ML + wCol * 2, curY, wCol, wRow, 'Precipitation', precipitation);
+      drawCell(ML + wCol * 3, curY, CW - wCol * 3, wRow, 'Site Conditions', siteConditions);
+      curY += wRow + 8;
 
-      const projectName = report.project?.name || report.customProjectName || 'Unassigned Report';
-      const projectAddress = report.project?.address || 'N/A';
-      const inspectorName = report.inspectorName || 'Unknown';
-      const clientName = report.project?.client || 'N/A';
+      // --- WORKFORCE / WORK ACTIVITIES TABLE ---
+      drawSectionHeader(ML, curY, CW, 'WORKFORCE & WORK ACTIVITIES');
+      curY += 14;
 
-      // Project Name row
-      doc.rect(startX, projY, 75, 18).fillAndStroke('#000', '#000');
-      doc.fillColor('#fff').fontSize(8).font('Helvetica-Bold').text('Project Name', startX + 3, projY + 5);
-      doc.fillColor('#000');
-      doc.rect(startX + 75, projY, col1W - 75, 18).stroke();
-      doc.fontSize(9).font('Helvetica-Bold').text(projectName, startX + 78, projY + 5, { width: col1W - 85 });
+      // Table headers
+      const waColTrade = 120;
+      const waColContractor = 130;
+      const waColCount = 40;
+      const waColDesc = CW - waColTrade - waColContractor - waColCount;
+      const waHeaderH = 14;
 
-      doc.rect(startX + col1W, projY, 55, 18).fillAndStroke('#000', '#000');
-      doc.fillColor('#fff').fontSize(8).font('Helvetica-Bold').text('Inspector', startX + col1W + 3, projY + 5);
-      doc.fillColor('#000');
-      doc.rect(startX + col1W + 55, projY, col2W - 55, 18).stroke();
-      doc.fontSize(9).font('Helvetica-Bold').text(inspectorName, startX + col1W + 58, projY + 5, { width: col2W - 65 });
+      doc.rect(ML, curY, waColTrade, waHeaderH).fillAndStroke('#e8ecf0', '#000');
+      doc.rect(ML + waColTrade, curY, waColContractor, waHeaderH).fillAndStroke('#e8ecf0', '#000');
+      doc.rect(ML + waColTrade + waColContractor, curY, waColCount, waHeaderH).fillAndStroke('#e8ecf0', '#000');
+      doc.rect(ML + waColTrade + waColContractor + waColCount, curY, waColDesc, waHeaderH).fillAndStroke('#e8ecf0', '#000');
+      doc.fontSize(7).font('Helvetica-Bold').fillColor('#000');
+      doc.text('TRADE', ML + 3, curY + 4);
+      doc.text('CONTRACTOR', ML + waColTrade + 3, curY + 4);
+      doc.text('COUNT', ML + waColTrade + waColContractor + 3, curY + 4);
+      doc.text('WORK DESCRIPTION', ML + waColTrade + waColContractor + waColCount + 3, curY + 4);
+      curY += waHeaderH;
 
-      // Project Address row
-      doc.rect(startX, projY + 18, 75, 18).fillAndStroke('#000', '#000');
-      doc.fillColor('#fff').fontSize(8).font('Helvetica-Bold').text('Project Address', startX + 3, projY + 23);
-      doc.fillColor('#000');
-      doc.rect(startX + 75, projY + 18, col1W - 75, 18).stroke();
-      doc.fontSize(9).font('Helvetica-Bold').text(projectAddress, startX + 78, projY + 23, { width: col1W - 85 });
-
-      doc.rect(startX + col1W, projY + 18, 55, 18).fillAndStroke('#000', '#000');
-      doc.fillColor('#fff').fontSize(8).font('Helvetica-Bold').text('Client', startX + col1W + 3, projY + 23);
-      doc.fillColor('#000');
-      doc.rect(startX + col1W + 55, projY + 18, col2W - 55, 18).stroke();
-      doc.fontSize(9).font('Helvetica-Bold').text(clientName, startX + col1W + 58, projY + 23, { width: col2W - 65 });
-
-      // ===== WORK ACTIVITIES TABLE =====
-      doc.y = projY + 42;
-      doc.fontSize(9).font('Helvetica-Bold').text('WORK ACTIVITIES', startX, doc.y);
-      doc.y += 14;
-
-      const waY = doc.y;
-      const waCols = [130, 50, pageWidth - 180];
-      
-      // Header row
-      doc.rect(startX, waY, waCols[0], 16).fillAndStroke('#e0e0e0', '#000');
-      doc.rect(startX + waCols[0], waY, waCols[1], 16).fillAndStroke('#e0e0e0', '#000');
-      doc.rect(startX + waCols[0] + waCols[1], waY, waCols[2], 16).fillAndStroke('#e0e0e0', '#000');
-      doc.fillColor('#000').fontSize(8).font('Helvetica-Bold');
-      doc.text('CONTRACTOR / TRADE', startX + 3, waY + 4);
-      doc.text('COUNT', startX + waCols[0] + 3, waY + 4);
-      doc.text('WORK DESCRIPTION', startX + waCols[0] + waCols[1] + 3, waY + 4);
-
-      const workActivities = (report.workActivities as WorkActivityRow[]) || [];
-      let currentWaY = waY + 16;
-      const maxDisplayRows = 6; // Maximum rows to display to prevent page overflow
-      const rowCount = Math.min(Math.max(workActivities.length, 2), maxDisplayRows);
-      const minRowHeight = 16;
-      const maxRowHeight = 32; // Limit row height to prevent overflow
-      
-      for (let i = 0; i < rowCount; i++) {
-        const activity = workActivities[i];
-        
-        // Calculate row height based on content, with maximum limit
-        let rowHeight = minRowHeight;
-        if (activity) {
+      const minWaRowH = 16;
+      const maxWaRowH = 28;
+      const displayRows = Math.max(workActivities.length, 3);
+      for (let i = 0; i < displayRows; i++) {
+        const act = workActivities[i];
+        let rowH = minWaRowH;
+        if (act) {
           doc.fontSize(8).font('Helvetica');
-          const contractorHeight = doc.heightOfString(activity.contractor || '', { width: waCols[0] - 6 });
-          const descHeight = doc.heightOfString(activity.workDescription || '', { width: waCols[2] - 6 });
-          rowHeight = Math.min(maxRowHeight, Math.max(minRowHeight, contractorHeight + 8, descHeight + 8));
+          const descH = doc.heightOfString(act.workDescription || '', { width: waColDesc - 6 });
+          rowH = Math.min(maxWaRowH, Math.max(minWaRowH, descH + 8));
         }
-        
-        doc.rect(startX, currentWaY, waCols[0], rowHeight).stroke();
-        doc.rect(startX + waCols[0], currentWaY, waCols[1], rowHeight).stroke();
-        doc.rect(startX + waCols[0] + waCols[1], currentWaY, waCols[2], rowHeight).stroke();
-        if (activity) {
-          doc.fontSize(8).font('Helvetica');
-          doc.text(activity.contractor || '', startX + 3, currentWaY + 4, { width: waCols[0] - 6, height: rowHeight - 6, ellipsis: true });
-          doc.text(String(activity.headcount || ''), startX + waCols[0] + 18, currentWaY + 4);
-          doc.text(activity.workDescription || '', startX + waCols[0] + waCols[1] + 3, currentWaY + 4, { width: waCols[2] - 6, height: rowHeight - 6, ellipsis: true });
+        doc.rect(ML, curY, waColTrade, rowH).stroke();
+        doc.rect(ML + waColTrade, curY, waColContractor, rowH).stroke();
+        doc.rect(ML + waColTrade + waColContractor, curY, waColCount, rowH).stroke();
+        doc.rect(ML + waColTrade + waColContractor + waColCount, curY, waColDesc, rowH).stroke();
+        if (act) {
+          doc.fontSize(8).font('Helvetica').fillColor('#000');
+          doc.text(act.trade || '', ML + 3, curY + 4, { width: waColTrade - 6, height: rowH - 6, ellipsis: true });
+          doc.text(act.contractor || '', ML + waColTrade + 3, curY + 4, { width: waColContractor - 6, height: rowH - 6, ellipsis: true });
+          doc.text(String(act.headcount || ''), ML + waColTrade + waColContractor + 12, curY + 4);
+          doc.text(act.workDescription || '', ML + waColTrade + waColContractor + waColCount + 3, curY + 4, { width: waColDesc - 6, height: rowH - 6, ellipsis: true });
         }
-        currentWaY += rowHeight;
+        curY += rowH;
+      }
+      curY += 8;
+
+      // --- WORK PERFORMED / INSPECTIONS ---
+      const summaryText = [report.inspections, report.workPerformed].filter(Boolean).join('\n\n') || 'No inspection details recorded.';
+      drawSectionHeader(ML, curY, CW, 'WORK PERFORMED / INSPECTIONS');
+      curY += 14;
+      doc.fontSize(8).font('Helvetica').fillColor('#000');
+      const sumH = Math.min(80, Math.max(36, doc.heightOfString(summaryText, { width: CW - 8 }) + 10));
+      doc.rect(ML, curY, CW, sumH).stroke();
+      doc.text(summaryText, ML + 4, curY + 4, { width: CW - 8, height: sumH - 8, ellipsis: true });
+      curY += sumH + 8;
+
+      // --- SAFETY SECTION ---
+      drawSectionHeader(ML, curY, CW, 'SAFETY');
+      curY += 14;
+
+      const safetyIncidents = (report as any).safetyIncidents ?? 0;
+      const safetyNearMisses = (report as any).safetyNearMisses ?? 0;
+      const safetyAttendees = (report as any).safetyAttendees;
+      const toolboxTalkTopic = (report as any).toolboxTalkTopic || '';
+      const safetySiteConditions = (report as any).safetySiteConditions || '';
+
+      const sfCol = Math.floor(CW / 4);
+      const sfH = 22;
+      drawCell(ML, curY, sfCol, sfH, 'Incidents', String(safetyIncidents));
+      drawCell(ML + sfCol, curY, sfCol, sfH, 'Near Misses', String(safetyNearMisses));
+      drawCell(ML + sfCol * 2, curY, sfCol, sfH, 'Safety Mtg. Attendees', safetyAttendees != null ? String(safetyAttendees) : '--');
+      drawCell(ML + sfCol * 3, curY, CW - sfCol * 3, sfH, 'Issues/Delays', report.issuesFlag ? 'YES' : 'NO');
+      curY += sfH;
+
+      if (toolboxTalkTopic) {
+        const ttH = 22;
+        drawCell(ML, curY, CW, ttH, 'Toolbox Talk Topic', toolboxTalkTopic);
+        curY += ttH;
       }
 
-      // ===== DAILY SUMMARY =====
-      doc.y = currentWaY + 8;
-      doc.fontSize(9).font('Helvetica-Bold').text('DAILY SUMMARY', startX, doc.y);
-      doc.y += 14;
-
-      const sumY = doc.y;
-      const summaryParts: string[] = [];
-      if (report.inspections) summaryParts.push(report.inspections);
-      if (report.workPerformed) summaryParts.push(report.workPerformed);
-      if (report.notes) summaryParts.push(report.notes);
-      const summaryText = summaryParts.join('\n\n') || 'No inspection details recorded.';
-      
-      // Calculate dynamic height based on content, with maximum limit
-      doc.fontSize(9).font('Helvetica');
-      const summaryTextHeight = doc.heightOfString(summaryText, { width: pageWidth - 8 });
-      const maxSumH = 80; // Maximum height to prevent overflow
-      const sumH = Math.min(maxSumH, Math.max(50, summaryTextHeight + 12));
-      doc.rect(startX, sumY, pageWidth, sumH).stroke();
-      
-      doc.text(summaryText, startX + 4, sumY + 4, { width: pageWidth - 8, height: sumH - 8, ellipsis: true });
-
-      // ===== QC CHECKLIST ROW =====
-      doc.y = sumY + sumH + 8;
-      const qcY = doc.y;
-      doc.fontSize(8).font('Helvetica-Bold').text('QC CHECKLIST:', startX, qcY);
-      
-      const qcItems = ['FSA-5', 'On Time', 'File # Checked', 'Plan Reviewed', 'Specs Reviewed', 'Prev Reports', 'Tests per Spec'];
-      let qcX = startX + 75;
-      qcItems.forEach((item) => {
-        doc.rect(qcX, qcY - 1, checkSize, checkSize).stroke();
-        doc.fontSize(7).font('Helvetica').text(item, qcX + 9, qcY);
-        qcX += 60;
-      });
-
-      // ===== EQUIPMENT & MATERIALS =====
-      doc.y = qcY + 16;
-      const maxEqMatH = 24; // Maximum height for equipment/materials text
-      
-      if (report.equipment || report.materialsDelivered) {
-        const eqMatY = doc.y;
-        const halfWidth = (pageWidth - 8) / 2;
-        
-        // Equipment section
-        doc.fontSize(8).font('Helvetica-Bold').text('EQUIPMENT:', startX, eqMatY);
-        const equipmentText = report.equipment || 'None';
-        doc.fontSize(8).font('Helvetica');
-        const equipH = Math.min(maxEqMatH, doc.heightOfString(equipmentText, { width: halfWidth - 60 }));
-        doc.text(equipmentText, startX + 60, eqMatY, { width: halfWidth - 60, height: equipH, ellipsis: true });
-        
-        // Materials section
-        doc.fontSize(8).font('Helvetica-Bold').text('MATERIALS:', startX + halfWidth + 4, eqMatY);
-        const materialsText = report.materialsDelivered || 'None';
-        doc.fontSize(8).font('Helvetica');
-        const matH = Math.min(maxEqMatH, doc.heightOfString(materialsText, { width: halfWidth - 60 }));
-        doc.text(materialsText, startX + halfWidth + 64, eqMatY, { width: halfWidth - 60, height: matH, ellipsis: true });
-        
-        doc.y = eqMatY + Math.max(equipH, matH, 12) + 8;
+      if (safetySiteConditions) {
+        const scH = Math.min(36, Math.max(22, doc.heightOfString(safetySiteConditions, { width: CW - 8 }) + 10));
+        doc.fontSize(6).font('Helvetica').fillColor('#555').text('SITE SAFETY CONDITIONS', ML + 3, curY + 3, { lineBreak: false });
+        doc.rect(ML, curY, CW, scH).stroke();
+        doc.fontSize(8).font('Helvetica').fillColor('#000').text(safetySiteConditions, ML + 4, curY + 3 + 8, { width: CW - 8, height: scH - 14, ellipsis: true });
+        curY += scH;
       }
 
-      // ===== FLAGS ROW: Issues / Safety =====
-      const flagY = doc.y;
-
-      doc.fontSize(8).font('Helvetica-Bold').text('ISSUES/DELAYS:', startX, flagY);
-      doc.rect(startX + 70, flagY - 1, checkSize, checkSize).stroke();
-      if (report.issuesFlag) doc.rect(startX + 71, flagY, 5, 5).fill('#000');
-      doc.fontSize(7).font('Helvetica').text('Yes', startX + 79, flagY);
-      doc.rect(startX + 98, flagY - 1, checkSize, checkSize).stroke();
-      if (!report.issuesFlag) doc.rect(startX + 99, flagY, 5, 5).fill('#000');
-      doc.text('No', startX + 107, flagY);
-
-      doc.fontSize(8).font('Helvetica-Bold').text('SAFETY INCIDENTS:', startX + 135, flagY);
-      doc.rect(startX + 215, flagY - 1, checkSize, checkSize).stroke();
-      if (report.safetyFlag) doc.rect(startX + 216, flagY, 5, 5).fill('#000');
-      doc.fontSize(7).font('Helvetica').text('Yes', startX + 224, flagY);
-      doc.rect(startX + 245, flagY - 1, checkSize, checkSize).stroke();
-      if (!report.safetyFlag) doc.rect(startX + 246, flagY, 5, 5).fill('#000');
-      doc.text('No', startX + 254, flagY);
-
-      doc.y = flagY + 12;
-      const maxDetailsH = 20; // Maximum height for issues/safety details
-      
-      // Show issues details if flagged
       if (report.issuesFlag && report.issuesDetails) {
-        const issueDetailsY = doc.y;
-        doc.fontSize(8).font('Helvetica-Oblique').fillColor('#333');
-        const issueDetailsH = Math.min(maxDetailsH, doc.heightOfString(report.issuesDetails, { width: pageWidth - 10 }));
-        doc.text(`Issues: ${report.issuesDetails}`, startX + 5, issueDetailsY, { width: pageWidth - 10, height: issueDetailsH, ellipsis: true });
+        const idH = Math.min(36, Math.max(20, doc.heightOfString(report.issuesDetails, { width: CW - 8 }) + 10));
+        doc.fontSize(6).font('Helvetica').fillColor('#555').text('ISSUES / DELAYS DETAIL', ML + 3, curY + 3, { lineBreak: false });
+        doc.rect(ML, curY, CW, idH).stroke();
+        doc.fontSize(8).font('Helvetica-Oblique').fillColor('#c00').text(report.issuesDetails, ML + 4, curY + 3 + 8, { width: CW - 8, height: idH - 14, ellipsis: true });
         doc.fillColor('#000');
-        doc.y = issueDetailsY + issueDetailsH + 4;
+        curY += idH;
       }
-      
-      // Show safety details if flagged
-      if (report.safetyFlag && report.safetyDetails) {
-        const safetyDetailsY = doc.y;
-        doc.fontSize(8).font('Helvetica-Oblique').fillColor('#333');
-        const safetyDetailsH = Math.min(maxDetailsH, doc.heightOfString(report.safetyDetails, { width: pageWidth - 10 }));
-        doc.text(`Safety: ${report.safetyDetails}`, startX + 5, safetyDetailsY, { width: pageWidth - 10, height: safetyDetailsH, ellipsis: true });
-        doc.fillColor('#000');
-        doc.y = safetyDetailsY + safetyDetailsH + 4;
-      }
+      curY += 8;
 
-      // ===== VISITORS SECTION =====
-      doc.y += 4;
-      const visitorsY = doc.y;
-      const visitors = (report.visitors as VisitorRow[]) || [];
-      const visitorsText = visitors.length > 0 
-        ? visitors.map(v => {
-            let text = v.name;
-            if (v.company) text += ` (${v.company})`;
-            if (v.notes) text += ` - ${v.notes}`;
-            return text;
-          }).join('; ')
-        : 'None';
-      doc.fontSize(8).font('Helvetica-Bold').text('VISITORS:', startX, visitorsY);
-      doc.fontSize(8).font('Helvetica');
-      const maxVisitorsH = 20; // Maximum height for visitors text
-      const visitorsH = Math.min(maxVisitorsH, doc.heightOfString(visitorsText, { width: pageWidth - 55 }));
-      doc.text(visitorsText, startX + 50, visitorsY, { width: pageWidth - 55, height: visitorsH, ellipsis: true });
-      doc.y = visitorsY + Math.max(visitorsH, 10) + 8;
+      // --- CERTIFICATION / SIGNATURE BLOCK ---
+      // Place at bottom of page 1, anchor to bottom
+      const sigBlockH = 72;
+      const sigY = Math.max(curY, PH - MB - FOOTER_H - sigBlockH - 4);
 
-      // ===== PHOTOS ATTACHED =====
-      const photos = report.photos || [];
-      doc.fontSize(8).font('Helvetica-Bold').text('PHOTOS ATTACHED:', startX, doc.y, { lineBreak: false });
-      doc.font('Helvetica').text(`${photos.length} photo(s) - See attached sheet`, startX + 95, doc.y, { lineBreak: false });
+      drawSectionHeader(ML, sigY, CW, 'CERTIFICATION');
+      const certY = sigY + 14;
+      const certTextH = 18;
+      doc.fontSize(7).font('Helvetica').fillColor('#333').text(
+        'I hereby certify that I have inspected the above described work and that to the best of my knowledge the materials used and the methods of construction are in accordance with the approved plans, specifications, and applicable sections of the building laws.',
+        ML + 4, certY + 2, { width: CW - 8, height: certTextH }
+      );
+      doc.fillColor('#000');
 
-      // ===== SIGNATURE SECTION =====
-      // DEBUG: Log Y position and page info before signature
-      const preSignaturePages = doc.bufferedPageRange().count;
-      console.log(`PDF Debug: Before signature - doc.y=${doc.y.toFixed(0)}, page.height=${doc.page.height.toFixed(0)}, pages=${preSignaturePages}`);
-      
-      // Ensure signature fits on page 1 by clamping Y position
-      const maxSignatureStartY = doc.page.height - 130; // Leave room for signature + footer
-      doc.y = Math.min(doc.y + 20, maxSignatureStartY);
-      const sigY = doc.y;
-
-      doc.fontSize(7).font('Helvetica').text('SIGNATURE OF INSPECTOR', startX, sigY, { lineBreak: false });
-      
+      const sigLineY = certY + certTextH + 4;
       if (report.signaturePath) {
         const sigBuffer = await loadImageBuffer(report.signaturePath);
         if (sigBuffer) {
           try {
-            doc.image(sigBuffer, startX, sigY + 8, { width: 140, height: 35, fit: [140, 35] });
+            doc.image(sigBuffer, ML, sigLineY, { width: 130, height: 32, fit: [130, 32] });
           } catch (err) {
             console.error('Error adding signature:', err);
           }
         }
       }
-      
-      doc.moveTo(startX, sigY + 48).lineTo(startX + 200, sigY + 48).stroke();
+      doc.moveTo(ML, sigLineY + 34).lineTo(ML + 160, sigLineY + 34).strokeColor('#000').lineWidth(0.5).stroke();
+      doc.fontSize(6.5).font('Helvetica').fillColor('#555').text('SIGNATURE OF INSPECTOR', ML, sigLineY + 36);
 
-      doc.fontSize(7).text('INSPECTOR NAME', startX, sigY + 52, { lineBreak: false });
-      doc.font('Helvetica-Bold').text(inspectorName, startX + 75, sigY + 52, { lineBreak: false });
-      
-      doc.fontSize(7).font('Helvetica').text('LICENSE NO.', startX, sigY + 64, { lineBreak: false });
-      doc.font('Helvetica-Bold').text(inspectorProfile?.licenseNumber || 'N/A', startX + 60, sigY + 64, { lineBreak: false });
+      doc.fontSize(8).font('Helvetica-Bold').fillColor('#000').text(inspectorName, ML + 170, sigLineY + 4, { lineBreak: false });
+      doc.fontSize(6.5).font('Helvetica').fillColor('#555').text('INSPECTOR NAME', ML + 170, sigLineY + 15, { lineBreak: false });
+      doc.fontSize(8).font('Helvetica-Bold').fillColor('#000').text(licenseNo || '--', ML + 170, sigLineY + 24, { lineBreak: false });
+      doc.fontSize(6.5).font('Helvetica').fillColor('#555').text('LICENSE NO.', ML + 170, sigLineY + 35, { lineBreak: false });
 
-      // Time tracking boxes - right side
-      const timeX = 320;
-      
-      // Format time from 24h HH:MM to 12h format
-      const formatTimeDisplay = (time: string | null | undefined): string => {
-        if (!time) return '--';
-        const [h, m] = time.split(':').map(Number);
-        if (isNaN(h) || isNaN(m)) return '--';
-        const ampm = h >= 12 ? 'PM' : 'AM';
-        const h12 = h % 12 || 12;
-        return `${h12}:${m.toString().padStart(2, '0')}${ampm}`;
-      };
-      
-      const timeInStr = formatTimeDisplay(report.timeIn);
-      const timeOutStr = formatTimeDisplay(report.timeOut);
-      const regHrsStr = report.regularHours || '--';
-      const otHrsStr = report.otHours || '--';
-      
-      doc.rect(timeX, sigY, 45, 28).stroke();
-      doc.fontSize(7).font('Helvetica').text('TIME IN', timeX + 2, sigY + 2, { lineBreak: false });
-      doc.fontSize(9).font('Helvetica-Bold').text(timeInStr, timeX + 2, sigY + 12, { lineBreak: false });
+      doc.moveTo(ML + 330, sigLineY + 34).lineTo(PW - MR, sigLineY + 34).strokeColor('#000').lineWidth(0.5).stroke();
+      doc.fontSize(6.5).font('Helvetica').fillColor('#555').text('APPROVED BY / SIGNATURE', ML + 330, sigLineY + 36, { lineBreak: false });
+      doc.fillColor('#000').strokeColor('#000');
 
-      doc.rect(timeX + 45, sigY, 45, 28).stroke();
-      doc.fontSize(7).font('Helvetica').text('TIME OUT', timeX + 47, sigY + 2, { lineBreak: false });
-      doc.fontSize(9).font('Helvetica-Bold').text(timeOutStr, timeX + 47, sigY + 12, { lineBreak: false });
+      // ===== PAGE 2 =====
+      doc.addPage();
+      let p2Y = MT;
 
-      doc.rect(timeX + 90, sigY, 40, 28).stroke();
-      doc.fontSize(7).font('Helvetica').text('REG HRS', timeX + 92, sigY + 2, { lineBreak: false });
-      doc.fontSize(10).font('Helvetica-Bold').text(regHrsStr, timeX + 102, sigY + 12, { lineBreak: false });
+      // Page 2 header bar
+      doc.rect(ML, p2Y, CW, 3).fill('#f59e0b');
+      doc.fill('#000');
+      p2Y += 6;
+      doc.fontSize(10).font('Helvetica-Bold').text(companyName, ML, p2Y, { width: CW * 0.6 });
+      doc.fontSize(8).font('Helvetica').fillColor('#555').text(`${projectName}  —  ${dateStr}  —  Report #${reportNumber}`, ML, p2Y + 14, { width: CW });
+      doc.fillColor('#000');
+      p2Y += 32;
 
-      doc.rect(timeX + 130, sigY, 40, 28).stroke();
-      doc.fontSize(7).font('Helvetica').text('OT HRS', timeX + 132, sigY + 2, { lineBreak: false });
-      doc.fontSize(10).font('Helvetica-Bold').text(otHrsStr, timeX + 142, sigY + 12, { lineBreak: false });
+      // --- EQUIPMENT TABLE ---
+      drawSectionHeader(ML, p2Y, CW, 'EQUIPMENT ON SITE');
+      p2Y += 14;
 
-      // Approval line
-      doc.fontSize(7).font('Helvetica').text('Approved By: ______________________________________', timeX, sigY + 36, { lineBreak: false });
+      const eqColEq = 200;
+      const eqColHrs = 60;
+      const eqColStatus = 70;
+      const eqColUsage = CW - eqColEq - eqColHrs - eqColStatus;
+      const eqHdrH = 14;
 
-      // ===== PHOTOS ON PAGE 2 =====
-      // DEBUG: Log page count after signature section
-      const postSignaturePages = doc.bufferedPageRange().count;
-      console.log(`PDF Debug: After signature section - pages=${postSignaturePages}`);
-      
+      doc.rect(ML, p2Y, eqColEq, eqHdrH).fillAndStroke('#e8ecf0', '#000');
+      doc.rect(ML + eqColEq, p2Y, eqColHrs, eqHdrH).fillAndStroke('#e8ecf0', '#000');
+      doc.rect(ML + eqColEq + eqColHrs, p2Y, eqColStatus, eqHdrH).fillAndStroke('#e8ecf0', '#000');
+      doc.rect(ML + eqColEq + eqColHrs + eqColStatus, p2Y, eqColUsage, eqHdrH).fillAndStroke('#e8ecf0', '#000');
+      doc.fontSize(7).font('Helvetica-Bold').fillColor('#000');
+      doc.text('EQUIPMENT', ML + 3, p2Y + 4);
+      doc.text('HOURS', ML + eqColEq + 3, p2Y + 4);
+      doc.text('STATUS', ML + eqColEq + eqColHrs + 3, p2Y + 4);
+      doc.text('USAGE / NOTES', ML + eqColEq + eqColHrs + eqColStatus + 3, p2Y + 4);
+      p2Y += eqHdrH;
+
+      const minEqRowH = 16;
+      const displayEqRows = Math.max(equipmentRows.length, 3);
+      for (let i = 0; i < displayEqRows; i++) {
+        const eq = equipmentRows[i];
+        doc.rect(ML, p2Y, eqColEq, minEqRowH).stroke();
+        doc.rect(ML + eqColEq, p2Y, eqColHrs, minEqRowH).stroke();
+        doc.rect(ML + eqColEq + eqColHrs, p2Y, eqColStatus, minEqRowH).stroke();
+        doc.rect(ML + eqColEq + eqColHrs + eqColStatus, p2Y, eqColUsage, minEqRowH).stroke();
+        if (eq) {
+          doc.fontSize(8).font('Helvetica').fillColor('#000');
+          doc.text(eq.equipment || '', ML + 3, p2Y + 4, { width: eqColEq - 6, ellipsis: true, lineBreak: false });
+          doc.text(eq.hours || '', ML + eqColEq + 3, p2Y + 4, { width: eqColHrs - 6, ellipsis: true, lineBreak: false });
+          doc.text(eq.status || '', ML + eqColEq + eqColHrs + 3, p2Y + 4, { width: eqColStatus - 6, ellipsis: true, lineBreak: false });
+          doc.text(eq.usage || '', ML + eqColEq + eqColHrs + eqColStatus + 3, p2Y + 4, { width: eqColUsage - 6, ellipsis: true, lineBreak: false });
+        }
+        p2Y += minEqRowH;
+      }
+      p2Y += 10;
+
+      // --- MATERIALS TABLE ---
+      drawSectionHeader(ML, p2Y, CW, 'MATERIAL DELIVERIES');
+      p2Y += 14;
+
+      const matColMat = 200;
+      const matColQty = 70;
+      const matColStatus = 80;
+      const matColNotes = CW - matColMat - matColQty - matColStatus;
+
+      doc.rect(ML, p2Y, matColMat, eqHdrH).fillAndStroke('#e8ecf0', '#000');
+      doc.rect(ML + matColMat, p2Y, matColQty, eqHdrH).fillAndStroke('#e8ecf0', '#000');
+      doc.rect(ML + matColMat + matColQty, p2Y, matColStatus, eqHdrH).fillAndStroke('#e8ecf0', '#000');
+      doc.rect(ML + matColMat + matColQty + matColStatus, p2Y, matColNotes, eqHdrH).fillAndStroke('#e8ecf0', '#000');
+      doc.fontSize(7).font('Helvetica-Bold').fillColor('#000');
+      doc.text('MATERIAL', ML + 3, p2Y + 4);
+      doc.text('QUANTITY', ML + matColMat + 3, p2Y + 4);
+      doc.text('STATUS', ML + matColMat + matColQty + 3, p2Y + 4);
+      doc.text('SUPPLIER / NOTES', ML + matColMat + matColQty + matColStatus + 3, p2Y + 4);
+      p2Y += eqHdrH;
+
+      const displayMatRows = Math.max(materialRows.length, 3);
+      for (let i = 0; i < displayMatRows; i++) {
+        const mat = materialRows[i];
+        doc.rect(ML, p2Y, matColMat, minEqRowH).stroke();
+        doc.rect(ML + matColMat, p2Y, matColQty, minEqRowH).stroke();
+        doc.rect(ML + matColMat + matColQty, p2Y, matColStatus, minEqRowH).stroke();
+        doc.rect(ML + matColMat + matColQty + matColStatus, p2Y, matColNotes, minEqRowH).stroke();
+        if (mat) {
+          doc.fontSize(8).font('Helvetica').fillColor('#000');
+          doc.text(mat.material || '', ML + 3, p2Y + 4, { width: matColMat - 6, ellipsis: true, lineBreak: false });
+          doc.text(mat.quantity || '', ML + matColMat + 3, p2Y + 4, { width: matColQty - 6, ellipsis: true, lineBreak: false });
+          doc.text(mat.status || '', ML + matColMat + matColQty + 3, p2Y + 4, { width: matColStatus - 6, ellipsis: true, lineBreak: false });
+          doc.text(mat.supplierNotes || '', ML + matColMat + matColQty + matColStatus + 3, p2Y + 4, { width: matColNotes - 6, ellipsis: true, lineBreak: false });
+        }
+        p2Y += minEqRowH;
+      }
+      p2Y += 10;
+
+      // --- VISITORS ---
+      drawSectionHeader(ML, p2Y, CW, 'VISITORS');
+      p2Y += 14;
+
+      const visCol1 = 180;
+      const visCol2 = 180;
+      const visCol3 = CW - visCol1 - visCol2;
+      doc.rect(ML, p2Y, visCol1, eqHdrH).fillAndStroke('#e8ecf0', '#000');
+      doc.rect(ML + visCol1, p2Y, visCol2, eqHdrH).fillAndStroke('#e8ecf0', '#000');
+      doc.rect(ML + visCol1 + visCol2, p2Y, visCol3, eqHdrH).fillAndStroke('#e8ecf0', '#000');
+      doc.fontSize(7).font('Helvetica-Bold').fillColor('#000');
+      doc.text('NAME', ML + 3, p2Y + 4);
+      doc.text('COMPANY', ML + visCol1 + 3, p2Y + 4);
+      doc.text('NOTES', ML + visCol1 + visCol2 + 3, p2Y + 4);
+      p2Y += eqHdrH;
+
+      const displayVisRows = Math.max(visitors.length, 2);
+      for (let i = 0; i < displayVisRows; i++) {
+        const vis = visitors[i];
+        doc.rect(ML, p2Y, visCol1, minEqRowH).stroke();
+        doc.rect(ML + visCol1, p2Y, visCol2, minEqRowH).stroke();
+        doc.rect(ML + visCol1 + visCol2, p2Y, visCol3, minEqRowH).stroke();
+        if (vis) {
+          doc.fontSize(8).font('Helvetica').fillColor('#000');
+          doc.text(vis.name || '', ML + 3, p2Y + 4, { width: visCol1 - 6, ellipsis: true, lineBreak: false });
+          doc.text(vis.company || '', ML + visCol1 + 3, p2Y + 4, { width: visCol2 - 6, ellipsis: true, lineBreak: false });
+          doc.text(vis.notes || '', ML + visCol1 + visCol2 + 3, p2Y + 4, { width: visCol3 - 6, ellipsis: true, lineBreak: false });
+        }
+        p2Y += minEqRowH;
+      }
+      p2Y += 10;
+
+      // --- SUPERINTENDENT NOTES ---
+      if (report.notes) {
+        drawSectionHeader(ML, p2Y, CW, 'SUPERINTENDENT NOTES');
+        p2Y += 14;
+        const notesH = Math.min(60, Math.max(28, doc.heightOfString(report.notes, { width: CW - 8 }) + 10));
+        doc.rect(ML, p2Y, CW, notesH).stroke();
+        doc.fontSize(8).font('Helvetica').fillColor('#000').text(report.notes, ML + 4, p2Y + 4, { width: CW - 8, height: notesH - 8, ellipsis: true });
+        p2Y += notesH + 10;
+      }
+
+      // --- PHOTOS ---
       if (photos.length > 0) {
-        const photoGap = 12;
-        const photoWidth = (pageWidth - photoGap) / 2;
-        const photoHeight = 160;
-        const captionHeight = 18;
-        const rowHeight = photoHeight + captionHeight + 8;
-        const headerHeight = 55; // Space for header on each photo page
-        
-        // Helper to add photo page header
-        const addPhotoPageHeader = () => {
-          doc.fontSize(12).font('Helvetica-Bold').text('PHOTO DOCUMENTATION', startX, 25, { lineBreak: false });
-          doc.fontSize(9).font('Helvetica').text(`${projectName} - ${dateStr}`, startX, 42, { lineBreak: false });
-        };
-        
-        // Start first photo page
-        doc.addPage();
-        console.log(`PDF Debug: Added page 2 for photos, now pages=${doc.bufferedPageRange().count}`);
-        addPhotoPageHeader();
-        
-        let currentPhotoY = headerHeight;
-        let currentPhotoX = startX;
-        
+        const photoGap = 10;
+        const photoW = (CW - photoGap) / 2;
+        const photoH = 155;
+        const capH = 16;
+        const photoRowH = photoH + capH + 8;
+        let pPhotoX = ML;
+        let pPhotoY = p2Y;
+
+        drawSectionHeader(ML, p2Y, CW, `PHOTO DOCUMENTATION  (${photos.length} photos)`);
+        p2Y += 14;
+        pPhotoY = p2Y;
+
         for (let i = 0; i < photos.length; i++) {
-          // Check if we need a new page BEFORE starting a new row (not mid-row)
-          // Only check when starting a new row (left column position)
-          if (currentPhotoX === startX && currentPhotoY + rowHeight > doc.page.height - 35) {
+          if (pPhotoX === ML && pPhotoY + photoRowH > PH - MB - FOOTER_H - 10) {
             doc.addPage();
-            console.log(`PDF Debug: Added additional page for photos, now pages=${doc.bufferedPageRange().count}`);
-            addPhotoPageHeader();
-            currentPhotoY = headerHeight;
+            p2Y = MT + 8;
+            pPhotoY = p2Y;
+            pPhotoX = ML;
           }
-          
+
           const photo = photos[i];
           const photoBuffer = await loadImageBuffer(photo.filePath);
-          
           if (photoBuffer) {
             try {
-              doc.strokeColor('#ccc').lineWidth(0.5)
-                .rect(currentPhotoX, currentPhotoY, photoWidth, photoHeight).stroke();
-              doc.strokeColor('#000');
-              
-              doc.image(photoBuffer, currentPhotoX + 2, currentPhotoY + 2, {
-                width: photoWidth - 4,
-                height: photoHeight - 4,
-                fit: [photoWidth - 4, photoHeight - 4],
-                align: 'center',
-                valign: 'center'
+              doc.rect(pPhotoX, pPhotoY, photoW, photoH).strokeColor('#aaa').lineWidth(0.5).stroke();
+              doc.lineWidth(1).strokeColor('#000');
+              doc.image(photoBuffer, pPhotoX + 2, pPhotoY + 2, {
+                width: photoW - 4, height: photoH - 4,
+                fit: [photoW - 4, photoH - 4], align: 'center', valign: 'center'
               });
-              
               if (photo.caption) {
-                doc.fontSize(8).font('Helvetica-Oblique').fillColor('#333')
-                  .text(photo.caption, currentPhotoX, currentPhotoY + photoHeight + 2, {
-                    width: photoWidth,
-                    height: captionHeight,
-                    align: 'center',
-                    ellipsis: true,
-                    lineBreak: false
-                  });
+                doc.fontSize(7.5).font('Helvetica-Oblique').fillColor('#333')
+                  .text(photo.caption, pPhotoX, pPhotoY + photoH + 2, { width: photoW, height: capH, align: 'center', ellipsis: true, lineBreak: false });
                 doc.fillColor('#000');
               }
             } catch (err) {
-              console.error('Error adding photo to PDF:', err);
+              console.error('Error adding photo:', err);
             }
           }
-          
-          // Move to next position in grid (2 photos per row)
-          if (currentPhotoX === startX) {
-            currentPhotoX = startX + photoWidth + photoGap;
+
+          if (pPhotoX === ML) {
+            pPhotoX = ML + photoW + photoGap;
           } else {
-            currentPhotoX = startX;
-            currentPhotoY += rowHeight;
+            pPhotoX = ML;
+            pPhotoY += photoRowH;
           }
         }
       }
@@ -10664,11 +10660,19 @@ export async function registerRoutes(
       // ===== FOOTER ON ALL PAGES =====
       const range = doc.bufferedPageRange();
       const totalPages = range.count;
-      
-      // DEBUG: Log page count
-      console.log(`PDF Generation Debug: Total pages = ${totalPages} (page 1 = report, remaining = photos)`);
-      
-      
+
+      for (let pageIdx = 0; pageIdx < totalPages; pageIdx++) {
+        doc.switchToPage(range.start + pageIdx);
+        const footerY = PH - MB - 14;
+        doc.rect(ML, footerY, CW, 0.5).fill('#1a2e4a');
+        doc.fill('#000');
+        doc.fontSize(7).font('Helvetica').fillColor('#555');
+        doc.text(companyName, ML, footerY + 4, { width: CW / 3, lineBreak: false });
+        doc.text(`Project: ${projectName}`, ML + CW / 3, footerY + 4, { width: CW / 3, align: 'center', lineBreak: false });
+        doc.text(`Page ${pageIdx + 1} of ${totalPages}`, ML, footerY + 4, { width: CW, align: 'right', lineBreak: false });
+        doc.fillColor('#000');
+      }
+
       doc.end();
 
       // Wait for PDF generation to complete
