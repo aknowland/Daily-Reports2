@@ -10449,10 +10449,9 @@ export async function registerRoutes(
       ]);
       curY += waHdrH;
 
-      // Guard: how many rows fit before safety+work-performed must start
+      // Allow workforce table to use all available page space before Safety
       const safetyBlockH = 13 + 26 + 26 + 4;
-      const workPerfMinH  = 60;
-      const waAvailH = PH - MB - FOOTER_H - curY - safetyBlockH - workPerfMinH;
+      const waAvailH = PH - MB - FOOTER_H - curY - safetyBlockH - 20;
 
       // Pre-calculate dynamic row heights (description column wraps; others truncate)
       const waDescW = waW[3] - 8;
@@ -10493,53 +10492,47 @@ export async function registerRoutes(
       }
       curY += 8;
 
-      // ─── WORK PERFORMED ───────────────────────────────────────────────
-      const wpBottomLimit = PH - MB - FOOTER_H - safetyBlockH - 4;
-
-      // Size Work Performed and Inspections boxes based on actual text height
-      const perSecHdrH = 13;
-      const wpTotalAvail = Math.max(40, wpBottomLimit - curY);
-
-      const measureTextH = (text: string) =>
+      // ─── WORK PERFORMED & INSPECTIONS ─────────────────────────────────
+      // Measure natural heights — no artificial caps
+      const measureSection = (text: string) =>
         text?.trim()
-          ? doc.fontSize(8).heightOfString(text, { width: CW - 12 }) + 10
+          ? Math.max(20, doc.fontSize(8).heightOfString(text, { width: CW - 12 }) + 10)
           : 20;
 
-      const wpNaturalH   = measureTextH(workPerformedText);
-      const inspNaturalH = measureTextH(inspectionsText);
-      const totalNeeded  = 2 * perSecHdrH + wpNaturalH + inspNaturalH + 16;
+      const wpNaturalH   = measureSection(workPerformedText);
+      const inspNaturalH = measureSection(inspectionsText);
 
-      let wpContentH: number, inspContentH: number;
-      if (totalNeeded <= wpTotalAvail) {
-        // Both fit at natural height
-        wpContentH   = Math.max(20, wpNaturalH);
-        inspContentH = Math.max(20, inspNaturalH);
-      } else {
-        // Scale each proportionally within available space
-        const availContent = Math.max(40, wpTotalAvail - 2 * perSecHdrH - 16);
-        const totalNatural  = wpNaturalH + inspNaturalH || 1;
-        wpContentH   = Math.max(20, Math.floor(availContent * wpNaturalH   / totalNatural));
-        inspContentH = Math.max(20, availContent - wpContentH);
-      }
-
+      // Render a text section at its natural height, no height clipping
       const drawTextSection = (label: string, text: string, contentH: number) => {
-        if (curY + perSecHdrH + contentH > wpBottomLimit + 10) return;
         drawSectionHdr(curY, label);
-        curY += perSecHdrH;
+        curY += 13;
         const hasText = text && text.trim().length > 0;
         doc.rect(ML, curY, CW, contentH).fill('#fff');
         doc.rect(ML, curY, CW, contentH).stroke('#cccccc');
         doc.fontSize(8).font('Helvetica').fillColor(hasText ? NAVY : '#aaaaaa')
-          .text(hasText ? text : '--', ML + 6, curY + 4, { width: CW - 12, height: contentH - 6 });
+          .text(hasText ? text : '--', ML + 6, curY + 4, { width: CW - 12 });
         curY += contentH + 8;
       };
 
-      drawTextSection('WORK PERFORMED', workPerformedText, wpContentH);
-      drawTextSection('INSPECTIONS',    inspectionsText,   inspContentH);
+      drawTextSection('WORK PERFORMED', workPerformedText, wpNaturalH);
+      drawTextSection('INSPECTIONS',    inspectionsText,   inspNaturalH);
 
       // ─── SAFETY ───────────────────────────────────────────────────────
+      // If Safety no longer fits on this page, start a fresh page for it
       if (curY + safetyBlockH > PH - MB - FOOTER_H) {
-        curY = PH - MB - FOOTER_H - safetyBlockH;
+        doc.addPage();
+        curY = MT;
+        // Compact continuation header
+        const chH = 20;
+        doc.rect(ML, curY, CW, chH).fill('#f1f5f9');
+        doc.rect(ML, curY, CW, chH).stroke('#cccccc');
+        doc.fontSize(7.5).font('Helvetica-Bold').fillColor(NAVY)
+          .text(
+            [company?.name || 'KNOWLAND CONSTRUCTION SERVICES', '—', projectName, rptIdLabel, '— Safety'].join('   '),
+            ML + 6, curY + (chH - 7.5) / 2, { width: CW - 12, lineBreak: false, ellipsis: true }
+          );
+        doc.fillColor('#000');
+        curY += chH + 4;
       }
       drawSectionHdr(curY, 'SAFETY');
       curY += 13;
