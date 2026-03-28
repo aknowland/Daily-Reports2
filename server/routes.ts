@@ -10225,37 +10225,33 @@ export async function registerRoutes(
         doc.image(headerLogoBuffer, ML, curY, { fit: [180, 52], valign: 'top', align: 'left' });
       }
 
-      // Company name & contact - right side
-      const hdrTextX = ML + 190;
-      doc.fontSize(11).font('Helvetica-Bold').fillColor('#000').text(companyName, hdrTextX, curY, { width: CW - 190, align: 'right' });
-      if (contactLine) {
-        doc.fontSize(7).font('Helvetica').fillColor('#555').text(contactLine, hdrTextX, curY + 14, { width: CW - 190, align: 'right' });
+      // Company name & contact — only shown when no logo (logo already contains company name)
+      // Constrain to the space left of the info boxes (infoX = PW-MR-180 = 396)
+      if (!headerLogoBuffer) {
+        const hdrTextX = ML + 8;
+        const hdrTextW = (PW - MR - 180) - hdrTextX - 8; // stop before info boxes
+        doc.fontSize(11).font('Helvetica-Bold').fillColor('#000').text(companyName, hdrTextX, curY + 6, { width: hdrTextW });
+        if (contactLine) {
+          doc.fontSize(7).font('Helvetica').fillColor('#555').text(contactLine, hdrTextX, curY + 20, { width: hdrTextW });
+        }
       }
       doc.fillColor('#000');
 
-      // Thin navy rule under header (no amber line)
-      curY += 54;
-      doc.rect(ML, curY, CW, 1).fill('#1a2e4a');
-      doc.fill('#000');
-      curY += 6;
-
-      // Report title + report number boxes
-      const titleY = curY;
-      doc.fontSize(16).font('Helvetica-Bold').text('DAILY REPORT', ML, titleY, { lineBreak: false });
-
-      // Report info boxes - right side (4 small boxes stacked 2x2)
+      // Report info boxes — 2×2 grid, right side, vertically centred with the logo (52px tall)
       const infoBoxW = 90;
       const infoBoxH = 20;
       const infoX = PW - MR - infoBoxW * 2;
-      
-      drawCell(infoX, titleY, infoBoxW, infoBoxH, 'Report No.', reportNumber);
-      drawCell(infoX + infoBoxW, titleY, infoBoxW, infoBoxH, 'Status', (report.status || 'DRAFT').toUpperCase());
-      drawCell(infoX, titleY + infoBoxH, infoBoxW, infoBoxH, 'Report Date', dateStr);
-      drawCell(infoX + infoBoxW, titleY + infoBoxH, infoBoxW, infoBoxH, 'Time Submitted', 
+      const infoY = MT + Math.floor((52 - infoBoxH * 2) / 2); // vertically centre within logo height
+
+      drawCell(infoX, infoY, infoBoxW, infoBoxH, 'Report No.', reportNumber);
+      drawCell(infoX + infoBoxW, infoY, infoBoxW, infoBoxH, 'Status', (report.status || 'DRAFT').toUpperCase());
+      drawCell(infoX, infoY + infoBoxH, infoBoxW, infoBoxH, 'Report Date', dateStr);
+      drawCell(infoX + infoBoxW, infoY + infoBoxH, infoBoxW, infoBoxH, 'Time Submitted',
         report.signedAt ? new Date(report.signedAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'America/Los_Angeles' }) : '--'
       );
 
-      curY = titleY + infoBoxH * 2 + 10;
+      // Move past the logo/header row before starting content
+      curY = MT + 52 + 8;
 
       // --- PROJECT INFO ROW (3-col) ---
       const row1H = 30;
