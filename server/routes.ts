@@ -10437,9 +10437,12 @@ export async function registerRoutes(
       curY += 8;
 
       // --- CERTIFICATION / SIGNATURE BLOCK ---
-      // Place at bottom of page 1, anchor to bottom
+      // Always anchor at the bottom of page 1 (fixed position)
       const sigBlockH = 72;
-      const sigY = Math.max(curY, PH - MB - FOOTER_H - sigBlockH - 4);
+      const sigYBase = PH - MB - FOOTER_H - sigBlockH - 4;
+      // If content has overflowed past the cert zone, start from curY (it goes onto page 2
+      // which PDFKit handles by extending with the bufferPages option)
+      const sigY = sigYBase;
 
       drawSectionHeader(ML, sigY, CW, 'CERTIFICATION');
       const certY = sigY + 14;
@@ -10606,62 +10609,80 @@ export async function registerRoutes(
         p2Y += notesH + 10;
       }
 
-      // --- PHOTOS ---
-      if (photos.length > 0) {
-        const photoGap = 10;
-        const photoW = (CW - photoGap) / 2;
-        const photoH = 155;
-        const capH = 16;
-        const photoRowH = photoH + capH + 8;
-        let pPhotoX = ML;
-        let pPhotoY = p2Y;
+      // --- PHOTO REFERENCE TABLE ---
+      const phRefHdrH = 14;
+      const phRefRowH = 16;
+      const phColId = 60;
+      const phColCap = CW - phColId - 120;
+      const phColBy = 120;
+      const phCertReserve = 76; // space for cert block + footer
 
-        drawSectionHeader(ML, p2Y, CW, `PHOTO DOCUMENTATION  (${photos.length} photos)`);
-        p2Y += 14;
-        pPhotoY = p2Y;
+      drawSectionHeader(ML, p2Y, CW, `PHOTO DOCUMENTATION  (${photos.length} photo${photos.length !== 1 ? 's' : ''})`);
+      p2Y += 14;
+
+      // Table header
+      const availBeforeCert = (PH - MB - FOOTER_H - phCertReserve) - p2Y;
+      if (availBeforeCert >= phRefHdrH + phRefRowH) {
+        doc.rect(ML, p2Y, phColId, phRefHdrH).fillAndStroke('#e8ecf0', '#000');
+        doc.rect(ML + phColId, p2Y, phColCap, phRefHdrH).fillAndStroke('#e8ecf0', '#000');
+        doc.rect(ML + phColId + phColCap, p2Y, phColBy, phRefHdrH).fillAndStroke('#e8ecf0', '#000');
+        doc.fontSize(7).font('Helvetica-Bold').fillColor('#000');
+        doc.text('PHOTO ID', ML + 3, p2Y + 4);
+        doc.text('CAPTION / DESCRIPTION', ML + phColId + 3, p2Y + 4);
+        doc.text('SUBMITTED BY', ML + phColId + phColCap + 3, p2Y + 4);
+        p2Y += phRefHdrH;
 
         for (let i = 0; i < photos.length; i++) {
-          if (pPhotoX === ML && pPhotoY + photoRowH > PH - MB - FOOTER_H - 10) {
+          // Page break if needed
+          if (p2Y + phRefRowH > PH - MB - FOOTER_H - phCertReserve) {
             doc.addPage();
-            p2Y = MT + 8;
-            pPhotoY = p2Y;
-            pPhotoX = ML;
+            p2Y = MT;
+            // Repeat table header on new page
+            drawSectionHeader(ML, p2Y, CW, `PHOTO DOCUMENTATION (continued)`);
+            p2Y += 14;
+            doc.rect(ML, p2Y, phColId, phRefHdrH).fillAndStroke('#e8ecf0', '#000');
+            doc.rect(ML + phColId, p2Y, phColCap, phRefHdrH).fillAndStroke('#e8ecf0', '#000');
+            doc.rect(ML + phColId + phColCap, p2Y, phColBy, phRefHdrH).fillAndStroke('#e8ecf0', '#000');
+            doc.fontSize(7).font('Helvetica-Bold').fillColor('#000');
+            doc.text('PHOTO ID', ML + 3, p2Y + 4);
+            doc.text('CAPTION / DESCRIPTION', ML + phColId + 3, p2Y + 4);
+            doc.text('SUBMITTED BY', ML + phColId + phColCap + 3, p2Y + 4);
+            p2Y += phRefHdrH;
           }
 
           const photo = photos[i];
-          const photoBuffer = await loadImageBuffer(photo.filePath);
-          if (photoBuffer) {
-            try {
-              doc.rect(pPhotoX, pPhotoY, photoW, photoH).strokeColor('#aaa').lineWidth(0.5).stroke();
-              doc.lineWidth(1).strokeColor('#000');
-              doc.image(photoBuffer, pPhotoX + 2, pPhotoY + 2, {
-                width: photoW - 4, height: photoH - 4,
-                fit: [photoW - 4, photoH - 4], align: 'center', valign: 'center'
-              });
-              if (photo.caption) {
-                doc.fontSize(7.5).font('Helvetica-Oblique').fillColor('#333')
-                  .text(photo.caption, pPhotoX, pPhotoY + photoH + 2, { width: photoW, height: capH, align: 'center', ellipsis: true, lineBreak: false });
-                doc.fillColor('#000');
-              }
-            } catch (err) {
-              console.error('Error adding photo:', err);
-            }
-          }
-
-          if (pPhotoX === ML) {
-            pPhotoX = ML + photoW + photoGap;
+          const photoId = `P${String(i + 1).padStart(3, '0')}`;
+          const altRow = i % 2 === 1;
+          if (altRow) {
+            doc.rect(ML, p2Y, CW, phRefRowH).fillAndStroke('#f9fafb', '#000');
           } else {
-            pPhotoX = ML;
-            pPhotoY += photoRowH;
+            doc.rect(ML, p2Y, phColId, phRefRowH).stroke();
+            doc.rect(ML + phColId, p2Y, phColCap, phRefRowH).stroke();
+            doc.rect(ML + phColId + phColCap, p2Y, phColBy, phRefRowH).stroke();
           }
+          doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#1a2e4a').text(photoId, ML + 3, p2Y + 4, { lineBreak: false });
+          doc.fontSize(7.5).font('Helvetica').fillColor('#000').text(photo.caption || '—', ML + phColId + 3, p2Y + 4, { width: phColCap - 6, ellipsis: true, lineBreak: false });
+          doc.text(inspectorName, ML + phColId + phColCap + 3, p2Y + 4, { width: phColBy - 6, ellipsis: true, lineBreak: false });
+          p2Y += phRefRowH;
+        }
+
+        if (photos.length === 0) {
+          doc.rect(ML, p2Y, CW, phRefRowH).stroke();
+          doc.fontSize(7.5).font('Helvetica').fillColor('#888').text('No photos attached to this report.', ML + 4, p2Y + 4, { lineBreak: false });
+          doc.fillColor('#000');
+          p2Y += phRefRowH;
         }
       }
 
       // --- LAST PAGE CERTIFICATION / SIGNATURE BLOCK ---
       // Two-column: Inspector (left) | Approver (right)
-      // Write to whatever the current last page is (page 2, or last photo page)
       const p2SigBlockH = 68;
-      const p2SigY = PH - MB - FOOTER_H - p2SigBlockH - 4;
+      const certMinY = PH - MB - FOOTER_H - p2SigBlockH - 4;
+      // If content has overflowed past the cert zone, add a fresh page for cert
+      if (p2Y > certMinY - 4) {
+        doc.addPage();
+      }
+      const p2SigY = certMinY;
       const p2SigColW = CW / 2 - 4;
 
       drawSectionHeader(ML, p2SigY, CW, 'CERTIFICATION & APPROVAL');
