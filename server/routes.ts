@@ -10430,42 +10430,29 @@ export async function registerRoutes(
       drawSectionHdr(curY, 'WORK PERFORMED');
       curY += 13;
 
-      // Build subsection list from typeOfWork + text fields
-      const subsections: Array<{ label: string; content: string }> = [];
-      if (typeOfWork.length > 0) {
-        typeOfWork.forEach((t, i) => {
-          const content = i === 0 && inspectionsText ? inspectionsText
-                        : i === typeOfWork.length - 1 && workPerformedText ? workPerformedText
-                        : workPerformedText;
-          subsections.push({ label: t.toUpperCase(), content });
-        });
-      } else {
-        if (inspectionsText)   subsections.push({ label: 'INSPECTIONS', content: inspectionsText });
-        if (workPerformedText) subsections.push({ label: 'GENERAL',     content: workPerformedText });
-        if (subsections.length === 0) subsections.push({ label: 'GENERAL', content: '--' });
-      }
-
       const wpBottomLimit = PH - MB - FOOTER_H - safetyBlockH - 4;
-      const subLabelH = 11;
-      for (let si = 0; si < subsections.length && curY < wpBottomLimit - 20; si++) {
-        const sub = subsections[si];
-        // Sub-section label row (3-color striped)
-        doc.rect(ML, curY, CW, subLabelH).fill(getRowBg(si));
-        doc.fontSize(7).font('Helvetica-Bold').fillColor(NAVY)
-          .text(sub.label, ML + 6, curY + 2, { lineBreak: false });
-        curY += subLabelH;
 
+      // Helper to draw a labeled text block
+      const drawWpBlock = (label: string, text: string, rowIdx: number) => {
+        if (curY >= wpBottomLimit - 20) return;
+        const subLabelH = 11;
+        doc.rect(ML, curY, CW, subLabelH).fill(getRowBg(rowIdx));
+        doc.fontSize(7).font('Helvetica-Bold').fillColor(NAVY)
+          .text(label, ML + 6, curY + 2, { lineBreak: false });
+        curY += subLabelH;
         const availH = Math.min(55, wpBottomLimit - curY - 8);
         if (availH > 10) {
-          const displayText = (sub.content && sub.content !== '--') ? sub.content : '--';
-          const textColor   = (sub.content && sub.content !== '--') ? NAVY : '#aaaaaa';
+          const hasText = text && text.trim().length > 0;
           doc.rect(ML, curY, CW, availH).fill('#fff');
           doc.rect(ML, curY, CW, availH).stroke('#cccccc');
-          doc.fontSize(8).font('Helvetica').fillColor(textColor)
-            .text(displayText, ML + 6, curY + 4, { width: CW - 12, height: availH - 6 });
+          doc.fontSize(8).font('Helvetica').fillColor(hasText ? NAVY : '#aaaaaa')
+            .text(hasText ? text : '--', ML + 6, curY + 4, { width: CW - 12, height: availH - 6 });
           curY += availH;
         }
-      }
+      };
+
+      drawWpBlock('WORK PERFORMED', workPerformedText, 0);
+      drawWpBlock('INSPECTIONS',    inspectionsText,    1);
       curY += 3;
 
       // ─── SAFETY ───────────────────────────────────────────────────────
