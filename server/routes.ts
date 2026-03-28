@@ -3,7 +3,7 @@ import { createServer, type Server } from "http";
 import { storage, db, projectComments, projectMembers, users, companyNotes, clientPortalUsers } from "./storage";
 import { sql, eq, and, desc } from "drizzle-orm";
 import { setupAuth, isAuthenticated, registerAuthRoutes } from "./replit_integrations/auth";
-import { insertProjectSchema, insertDailyReportSchema, updateUserProfileSchema, WorkActivityRow, VisitorRow, EquipmentRow, MaterialRow, insertContractSchema, insertClientSchema, InsertInspectorCandidate } from "@shared/schema";
+import { insertProjectSchema, insertDailyReportSchema, updateUserProfileSchema, WorkActivityRow, VisitorRow, EquipmentRow, MaterialRow, insertContractSchema, insertClientSchema, InsertInspectorCandidate, companyMembers, userProfiles, dailyReports as dailyReportsTable } from "@shared/schema";
 import { ObjectStorageService, registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 import multer from "multer";
 import path from "path";
@@ -17166,6 +17166,85 @@ Transcript: "${transcript}"`;
     } catch (error) {
       console.error("Error importing availability list:", error);
       res.status(500).json({ message: "Failed to import availability list" });
+    }
+  });
+
+  // ── TEMP: One-time account consolidation (Buckman Outlook → Gmail) ──────
+  // DELETE THIS ENDPOINT after running once in production.
+  app.post("/api/admin/consolidate-buckman-accounts", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      if (!isEffectiveSystemAdmin(profile)) {
+        return res.status(403).json({ message: "System admin access required" });
+      }
+
+      const OUTLOOK_ID = '55030529'; // tbuckmaninspectionservices@outlook.com (old)
+      const GMAIL_ID   = '55631269'; // tebuckman@gmail.com (new primary)
+
+      // 1. Reassign all reports from Outlook → Gmail
+      const reportsUpdated = await db
+        .update(dailyReportsTable)
+        .set({ inspectorId: GMAIL_ID })
+        .where(eq(dailyReportsTable.inspectorId, OUTLOOK_ID))
+        .returning({ id: dailyReportsTable.id });
+
+      // 2. Check if Gmail already has a company membership
+      const existingMembership = await db
+        .select()
+        .from(companyMembers)
+        .where(eq(companyMembers.userId, GMAIL_ID));
+
+      // 3. Get Outlook's company membership and profile
+      const [outlookMembership] = await db
+        .select()
+        .from(companyMembers)
+        .where(eq(companyMembers.userId, OUTLOOK_ID));
+
+      const [outlookProfile] = await db
+        .select()
+        .from(userProfiles)
+        .where(eq(userProfiles.userId, OUTLOOK_ID));
+
+      // 4. Copy membership to Gmail if not already a member
+      let membershipResult = 'skipped (already has membership)';
+      if (existingMembership.length === 0 && outlookMembership) {
+        await db.insert(companyMembers).values({
+          userId: GMAIL_ID,
+          companyId: outlookMembership.companyId,
+          role: outlookMembership.role,
+        });
+        membershipResult = `added as ${outlookMembership.role} in company ${outlookMembership.companyId}`;
+      }
+
+      // 5. Copy profile to Gmail if no profile exists
+      const [existingGmailProfile] = await db
+        .select()
+        .from(userProfiles)
+        .where(eq(userProfiles.userId, GMAIL_ID));
+
+      let profileResult = 'skipped (already has profile)';
+      if (!existingGmailProfile && outlookProfile) {
+        const { userId: _uid, ...profileData } = outlookProfile;
+        await db.insert(userProfiles).values({ ...profileData, userId: GMAIL_ID });
+        profileResult = `copied: ${outlookProfile.firstName} ${outlookProfile.lastName}`;
+      }
+
+      // 6. Remove Outlook's company membership (it's no longer the active account)
+      await db
+        .delete(companyMembers)
+        .where(eq(companyMembers.userId, OUTLOOK_ID));
+
+      res.json({
+        success: true,
+        reportsReassigned: reportsUpdated.length,
+        membership: membershipResult,
+        profile: profileResult,
+        note: 'Outlook account membership removed. Delete this endpoint after confirming.'
+      });
+    } catch (error: any) {
+      console.error("Consolidation error:", error);
+      res.status(500).json({ message: error.message });
     }
   });
 
