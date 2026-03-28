@@ -10393,27 +10393,31 @@ export async function registerRoutes(
       const TOW_ORDER = ['reinf_concrete', 'structural_steel', 'reinf_masonry', 'fire_proofing', 'shotcrete', 'anchors', 'other'];
       drawSectionHdr(curY, 'TYPE OF WORK');
       curY += 13;
-      const towRowH = 18;
+      const towRowH = 20;
       const towItemW = CW / TOW_ORDER.length;
       // Background row
-      doc.rect(ML, curY, CW, towRowH).fill('#f8fafc');
-      doc.rect(ML, curY, CW, towRowH).stroke('#cccccc');
+      doc.rect(ML, curY, CW, towRowH).fillAndStroke('#f8fafc', '#cccccc');
       TOW_ORDER.forEach((key, i) => {
         const checked = typeOfWork.includes(key);
         const ix = ML + i * towItemW;
-        const boxSize = 7;
+        const boxSize = 8;
+        const boxX = ix + 5;
         const boxY = curY + (towRowH - boxSize) / 2;
-        // Checkbox border
-        doc.rect(ix + 6, boxY, boxSize, boxSize).stroke(NAVY);
-        // Checkmark fill
         if (checked) {
-          doc.rect(ix + 6, boxY, boxSize, boxSize).fill(NAVY);
-          doc.fontSize(6).font('Helvetica-Bold').fillColor('#ffffff')
-            .text('✓', ix + 6.5, boxY + 0.5, { width: boxSize, align: 'center', lineBreak: false });
+          // Solid navy filled square
+          doc.rect(boxX, boxY, boxSize, boxSize).fill(NAVY);
+          // Small white inner square to look like a checked box
+          doc.rect(boxX + 2, boxY + 2, boxSize - 4, boxSize - 4).fill('#ffffff');
+        } else {
+          // Empty outlined square
+          doc.rect(boxX, boxY, boxSize, boxSize).fillAndStroke('#ffffff', '#999999');
         }
-        doc.fontSize(6.5).font(checked ? 'Helvetica-Bold' : 'Helvetica').fillColor(checked ? NAVY : '#666666')
-          .text(TOW_LABELS[key] || key, ix + 16, curY + (towRowH - 8) / 2, { width: towItemW - 18, lineBreak: false });
+        // Reset fill color before text
+        doc.fillColor(checked ? NAVY : '#555555');
+        doc.fontSize(6.5).font(checked ? 'Helvetica-Bold' : 'Helvetica')
+          .text(TOW_LABELS[key] || key, ix + 16, curY + (towRowH - 7) / 2, { width: towItemW - 18, lineBreak: false });
       });
+      doc.fillColor('#000000');
       curY += towRowH + 3;
 
       // ─── WORKFORCE ────────────────────────────────────────────────────
