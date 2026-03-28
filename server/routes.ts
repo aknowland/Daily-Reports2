@@ -10212,8 +10212,8 @@ export async function registerRoutes(
 
       // ─── Color / dimension constants ────────────────────────────────────
       const NAVY    = '#1a2e4a';
-      const ROWCOLS = ['#ffffff', '#e8f4fc', '#c2d9f0'] as const;
-      const getRowBg = (i: number) => ROWCOLS[i % 3];
+      const ROWCOLS = ['#ffffff', '#e8f4fc'] as const;
+      const getRowBg = (i: number) => ROWCOLS[i % 2];
 
       // ─── Helpers ────────────────────────────────────────────────────────
 
