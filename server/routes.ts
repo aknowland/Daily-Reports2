@@ -10552,29 +10552,7 @@ export async function registerRoutes(
       drawInfoCell(sfX2[0], curY, sfW2[0], sfH, 'ATTENDEES',           String(report.safetyAttendees ?? '--'));
       drawInfoCell(sfX2[1], curY, sfW2[1], sfH, 'SITE SAFETY CONDITIONS', (report.safetySiteConditions as string) || '--');
       curY += sfH;
-
-
-      // ══════════════════════════════════════════════════════════════════
-      // PAGE 2
-      // ══════════════════════════════════════════════════════════════════
-      doc.addPage();
-      curY = MT;
-
-      // ─── Page 2 compact header ────────────────────────────────────────
-      const p2H = 20;
-      doc.rect(ML, curY, CW, p2H).fill('#f1f5f9');
-      doc.rect(ML, curY, CW, p2H).stroke('#cccccc');
-      const p2Label = [
-        company?.name || 'KNOWLAND CONSTRUCTION SERVICES',
-        '—',
-        projectName,
-        rptIdLabel,
-        '—  Equipment, Materials & Notes',
-      ].join('   ');
-      doc.fontSize(7.5).font('Helvetica-Bold').fillColor(NAVY)
-        .text(p2Label, ML + 6, curY + (p2H - 7.5) / 2, { width: CW - 12, lineBreak: false, ellipsis: true });
-      doc.fillColor('#000');
-      curY += p2H + 4;
+      curY += 12;
 
       // ─── EQUIPMENT ON SITE ────────────────────────────────────────────
       drawSectionHdr(curY, 'EQUIPMENT ON SITE');
