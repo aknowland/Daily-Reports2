@@ -126,6 +126,7 @@ export function DailyReportDialog({ open, onOpenChange, project, onSuccess }: Da
 
   const [sectionsOpen, setSectionsOpen] = useState({
     workActivities: false,
+    workPerformed: false,
     inspections: false,
     additionalNotes: false,
     visitors: false,
@@ -588,11 +589,37 @@ export function DailyReportDialog({ open, onOpenChange, project, onSuccess }: Da
                 </CollapsibleContent>
               </Collapsible>
 
+              {/* Work Performed */}
+              <Collapsible open={sectionsOpen.workPerformed} onOpenChange={() => toggleSection('workPerformed')}>
+                <CollapsibleTrigger asChild>
+                  <Button variant="ghost" className="w-full justify-between p-4 h-auto bg-muted/30 hover:bg-muted/50" data-testid="dialog-toggle-work-performed">
+                    <span className="font-medium text-sm">Work Performed {formData.workPerformed && "(filled)"}</span>
+                    {sectionsOpen.workPerformed ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                  </Button>
+                </CollapsibleTrigger>
+                <CollapsibleContent className="p-4 pt-2 space-y-2 border rounded-b-lg border-t-0">
+                  <div className="flex items-center justify-between">
+                    <VoiceInput
+                      onTranscript={(text) => {
+                        setFormData(prev => ({ ...prev, workPerformed: prev.workPerformed ? `${prev.workPerformed} ${text}` : text }));
+                      }}
+                    />
+                  </div>
+                  <Textarea
+                    value={formData.workPerformed}
+                    onChange={(e) => setFormData(prev => ({ ...prev, workPerformed: e.target.value }))}
+                    placeholder="Describe all work performed today across all trades and activities..."
+                    rows={4}
+                    data-testid="dialog-textarea-work-performed"
+                  />
+                </CollapsibleContent>
+              </Collapsible>
+
               {/* Inspections */}
               <Collapsible open={sectionsOpen.inspections} onOpenChange={() => toggleSection('inspections')}>
                 <CollapsibleTrigger asChild>
                   <Button variant="ghost" className="w-full justify-between p-4 h-auto bg-muted/30 hover:bg-muted/50" data-testid="dialog-toggle-inspections">
-                    <span className="font-medium text-sm">Work Performed / Inspections {formData.inspections && "(filled)"}</span>
+                    <span className="font-medium text-sm">Inspections {formData.inspections && "(filled)"}</span>
                     {sectionsOpen.inspections ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                   </Button>
                 </CollapsibleTrigger>
@@ -607,7 +634,7 @@ export function DailyReportDialog({ open, onOpenChange, project, onSuccess }: Da
                   <Textarea
                     value={formData.inspections}
                     onChange={(e) => setFormData(prev => ({ ...prev, inspections: e.target.value }))}
-                    placeholder="Describe work performed and inspections today..."
+                    placeholder="Describe inspection activities, results, and observations..."
                     rows={4}
                     data-testid="dialog-textarea-inspections"
                   />
