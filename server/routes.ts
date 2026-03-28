@@ -10202,12 +10202,59 @@ export async function registerRoutes(
       const materialRows = (report.materialRows as MaterialRow[] | null) || [];
       const visitors = (report.visitors as VisitorRow[]) || [];
 
-      // ===== PAGE 1 =====
+      // ===== PDF REDESIGN — matches reference PDF layout =====
 
-      // --- COMPANY HEADER ---
-      let curY = MT;
+      // ─── Color / dimension constants ────────────────────────────────────
+      const NAVY    = '#1a2e4a';
+      const ROWCOLS = ['#ffffff', '#e8f4fc', '#c2d9f0'] as const;
+      const getRowBg = (i: number) => ROWCOLS[i % 3];
 
-      // Knowland logo top-left — use static asset, fall back to company logo
+      // ─── Helpers ────────────────────────────────────────────────────────
+
+      /** Navy bar with white bold text */
+      const drawSectionHdr = (y: number, label: string) => {
+        doc.rect(ML, y, CW, 13).fill(NAVY);
+        doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#fff')
+          .text(label, ML + 4, y + 2.5, { lineBreak: false });
+        doc.fillColor('#000');
+      };
+
+      /** Navy bar with white small-caps column labels */
+      const drawColHeaders = (y: number, hdrH: number, cols: Array<{ x: number; w: number; label: string }>) => {
+        doc.rect(ML, y, CW, hdrH).fill(NAVY);
+        doc.fontSize(6.5).font('Helvetica-Bold').fillColor('#fff');
+        for (const c of cols) {
+          doc.text(c.label, c.x + 4, y + (hdrH - 6.5) / 2, { width: c.w - 8, lineBreak: false });
+        }
+        doc.fillColor('#000');
+      };
+
+      /** Small label on top, bold value below */
+      const drawInfoCell = (x: number, y: number, w: number, h: number, label: string, value: string) => {
+        doc.rect(x, y, w, h).stroke('#cccccc');
+        doc.fontSize(6).font('Helvetica').fillColor('#666')
+          .text(label.toUpperCase(), x + 4, y + 3, { width: w - 8, lineBreak: false });
+        doc.fontSize(8.5).font('Helvetica-Bold').fillColor(NAVY)
+          .text(value || '--', x + 4, y + 12, { width: w - 8, lineBreak: false, ellipsis: true });
+        doc.fillColor('#000');
+      };
+
+      /** Coloured pill badge for equipment / material status */
+      const drawStatusBadge = (x: number, y: number, colW: number, rowH: number, status: string) => {
+        const s = (status || '').toUpperCase();
+        let bg = '#6b7280';
+        if (['ACTIVE', 'DELIVERED', 'COMPLETE', 'APPROVED', 'FINAL'].includes(s)) bg = '#16a34a';
+        else if (['STANDBY', 'ORDERED', 'PENDING', 'SUBMITTED'].includes(s)) bg = '#d97706';
+        else if (['DELAYED', 'REJECTED', 'FAILED', 'ON HOLD'].includes(s)) bg = '#dc2626';
+        const bw = Math.min(colW - 10, 58), bh = 10;
+        const bx = x + (colW - bw) / 2, by = y + (rowH - bh) / 2;
+        doc.rect(bx, by, bw, bh).fill(bg);
+        doc.fontSize(6).font('Helvetica-Bold').fillColor('#fff')
+          .text(s || '--', bx, by + 2, { width: bw, align: 'center', lineBreak: false });
+        doc.fillColor('#000');
+      };
+
+      // ─── Derived values ──────────────────────────────────────────────────
       const knowlandLogoPath = 'attached_assets/trans_logo_1774663108517.png';
       let headerLogoBuffer: Buffer | null = null;
       try {
@@ -10221,569 +10268,446 @@ export async function registerRoutes(
       if (!headerLogoBuffer && company?.logoPath) {
         headerLogoBuffer = await loadImageBuffer(company.logoPath);
       }
+
+      // ─── Long-form report date (e.g. "Thursday, February 20, 2025") ─────
+      const reportLongDate = (() => {
+        let d: Date | null = null;
+        if (report.date instanceof Date) d = report.date;
+        else if (typeof report.date === 'string') d = new Date((report.date as string) + 'T12:00:00Z');
+        if (!d) return dateStr;
+        return d.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' });
+      })();
+
+      const typeOfWork: string[] = Array.isArray(report.typeOfWork) ? (report.typeOfWork as string[]) : [];
+      const workPerformedText = (report.workPerformed as string) || '';
+      const inspectionsText   = (report.inspections   as string) || '';
+
+      let curY = MT;
+
+      // ══════════════════════════════════════════════════════════════════
+      // PAGE 1
+      // ══════════════════════════════════════════════════════════════════
+
+      // ─── HEADER ──────────────────────────────────────────────────────
+      // Logo (left, 60 px tall)
       if (headerLogoBuffer) {
-        doc.image(headerLogoBuffer, ML, curY, { fit: [180, 52], valign: 'top', align: 'left' });
+        doc.image(headerLogoBuffer, ML, MT, { fit: [180, 60], valign: 'center', align: 'left' });
       }
 
-      // Company name & contact — only shown when no logo (logo already contains company name)
-      // Constrain to the space left of the info boxes (infoX = PW-MR-180 = 396)
-      if (!headerLogoBuffer) {
-        const hdrTextX = ML + 8;
-        const hdrTextW = (PW - MR - 180) - hdrTextX - 8; // stop before info boxes
-        doc.fontSize(11).font('Helvetica-Bold').fillColor('#000').text(companyName, hdrTextX, curY + 6, { width: hdrTextW });
-        if (contactLine) {
-          doc.fontSize(7).font('Helvetica').fillColor('#555').text(contactLine, hdrTextX, curY + 20, { width: hdrTextW });
-        }
+      // Centre block: org name + subtitle + address
+      const ctrX = ML + 185;
+      const ctrW = CW - 185 - 165;
+      const orgName = company?.name || 'KNOWLAND CONSTRUCTION SERVICES';
+      doc.fontSize(12).font('Helvetica-Bold').fillColor(NAVY)
+        .text(orgName, ctrX, MT + 4, { width: ctrW, lineBreak: false });
+      const orgPhone = (company as any)?.phone || '';
+      const orgEmail = (company as any)?.email || '';
+      const orgAddr  = (company as any)?.address || '';
+      if (orgAddr) {
+        doc.fontSize(7.5).font('Helvetica').fillColor('#555')
+          .text(orgAddr, ctrX, MT + 20, { width: ctrW, lineBreak: false });
       }
+      if (orgPhone || orgEmail) {
+        doc.fontSize(7.5).font('Helvetica').fillColor('#555')
+          .text([orgPhone, orgEmail].filter(Boolean).join('   •   '), ctrX, MT + 30, { width: ctrW, lineBreak: false });
+      }
+
+      // Right block: "DAILY REPORT" bold + report ID
+      const rblkX = PW - MR - 155;
+      doc.fontSize(18).font('Helvetica-Bold').fillColor(NAVY)
+        .text('DAILY REPORT', rblkX, MT + 4, { width: 155, align: 'right', lineBreak: false });
+      const rptIdLabel = report.reportNumber ? `DR-${report.reportNumber}` : '--';
+      doc.fontSize(9.5).font('Helvetica-Bold').fillColor(NAVY)
+        .text(rptIdLabel, rblkX, MT + 27, { width: 155, align: 'right', lineBreak: false });
       doc.fillColor('#000');
 
-      // Report info boxes — 2×2 grid, right side, vertically centred with the logo (52px tall)
-      const infoBoxW = 90;
-      const infoBoxH = 20;
-      const infoX = PW - MR - infoBoxW * 2;
-      const infoY = MT + Math.floor((52 - infoBoxH * 2) / 2); // vertically centre within logo height
+      // Thin navy separator below header
+      curY = MT + 65;
+      doc.rect(ML, curY, CW, 1).fill(NAVY);
+      curY += 4;
 
-      drawCell(infoX, infoY, infoBoxW, infoBoxH, 'Report No.', reportNumber);
-      drawCell(infoX + infoBoxW, infoY, infoBoxW, infoBoxH, 'Status', (report.status || 'DRAFT').toUpperCase());
-      drawCell(infoX, infoY + infoBoxH, infoBoxW, infoBoxH, 'Report Date', dateStr);
-      drawCell(infoX + infoBoxW, infoY + infoBoxH, infoBoxW, infoBoxH, 'Time Submitted',
-        report.signedAt ? new Date(report.signedAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'America/Los_Angeles' }) : '--'
-      );
+      // ─── PROJECT INFO ROW (4 labeled cells, full-width) ──────────────
+      const piH = 30;
+      const piW = [CW * 0.40, CW * 0.18, CW * 0.18, 0];
+      piW[3] = CW - piW[0] - piW[1] - piW[2];
+      const piX = [ML, ML + piW[0], ML + piW[0] + piW[1], ML + piW[0] + piW[1] + piW[2]];
+      drawInfoCell(piX[0], curY, piW[0], piH, 'PROJECT', projectName);
+      drawInfoCell(piX[1], curY, piW[1], piH, 'PROJECT NO.', projectNumber);
+      drawInfoCell(piX[2], curY, piW[2], piH, 'DSA FILE NO.', dsaFileNo);
+      drawInfoCell(piX[3], curY, piW[3], piH, 'REPORT DATE', reportLongDate);
+      curY += piH;
 
-      // Move past the logo/header row before starting content
-      curY = MT + 52 + 8;
+      // ─── REPORT LINE + STATUS BADGE ───────────────────────────────────
+      const rlH = 18;
+      doc.rect(ML, curY, CW, rlH).fill('#f1f5f9');
+      doc.fontSize(8.5).font('Helvetica-Bold').fillColor(NAVY)
+        .text(`Daily Construction Report — Report #${report.reportNumber || '--'}`, ML + 6, curY + (rlH - 8.5) / 2, { lineBreak: false });
+      // Status pill
+      const stText = (report.status || 'DRAFT').toUpperCase();
+      const stColors: Record<string, string> = { SUBMITTED: NAVY, APPROVED: '#16a34a', FINAL: '#16a34a', DRAFT: '#6b7280' };
+      const stBg = stColors[stText] || '#6b7280';
+      const stW = 60, stH = 12, stX = ML + CW - stW - 6, stY = curY + (rlH - stH) / 2;
+      doc.rect(stX, stY, stW, stH).fill(stBg);
+      doc.fontSize(6.5).font('Helvetica-Bold').fillColor('#fff')
+        .text(stText, stX, stY + 2.5, { width: stW, align: 'center', lineBreak: false });
+      doc.fillColor('#000');
+      curY += rlH + 3;
 
-      // --- PROJECT INFO ROW (3-col) ---
-      const row1H = 30;
-      const col3 = Math.floor(CW / 3);
-      drawSectionHeader(ML, curY, CW, 'PROJECT INFORMATION');
-      curY += 14;
-      drawCell(ML, curY, col3, row1H, 'Project', projectName);
-      drawCell(ML + col3, curY, col3, row1H, 'Client', clientName);
-      drawCell(ML + col3 * 2, curY, CW - col3 * 2, row1H, 'Project Address', projectAddress);
-      curY += row1H;
+      // ─── REPORT DETAILS ───────────────────────────────────────────────
+      drawSectionHdr(curY, 'REPORT DETAILS');
+      curY += 13;
+      const rdH = 26;
+      const rdW = [CW * 0.34, CW * 0.24, CW * 0.21, 0];
+      rdW[3] = CW - rdW[0] - rdW[1] - rdW[2];
+      const rdX = [ML, ML + rdW[0], ML + rdW[0] + rdW[1], ML + rdW[0] + rdW[1] + rdW[2]];
+      const inspTitle = (inspectorProfile as any)?.title || '';
+      drawInfoCell(rdX[0], curY, rdW[0], rdH, 'PREPARED BY', inspectorName + (inspTitle ? ', ' + inspTitle : ''));
+      drawInfoCell(rdX[1], curY, rdW[1], rdH, 'ORGANIZATION', company?.name || '--');
+      drawInfoCell(rdX[2], curY, rdW[2], rdH, 'WORK START', formatTimeDisplay(report.timeIn  as string));
+      drawInfoCell(rdX[3], curY, rdW[3], rdH, 'WORK END',   formatTimeDisplay(report.timeOut as string));
+      curY += rdH + 3;
 
-      // --- PROJECT DETAILS ROW (4-col) ---
-      const row2H = 22;
-      const col4 = Math.floor(CW / 4);
-      drawCell(ML, curY, col4, row2H, 'Project No.', projectNumber);
-      drawCell(ML + col4, curY, col4, row2H, 'DSA File No.', dsaFileNo);
-      drawCell(ML + col4 * 2, curY, col4, row2H, 'Report Date', dateStr);
-      drawCell(ML + col4 * 3, curY, CW - col4 * 3, row2H, 'Inspector', inspectorName);
-      curY += row2H;
+      // ─── WEATHER CONDITIONS ───────────────────────────────────────────
+      drawSectionHdr(curY, 'WEATHER CONDITIONS');
+      curY += 13;
+      const wH = 26;
+      const wW = [CW * 0.28, CW * 0.28, CW * 0.16, 0];
+      wW[3] = CW - wW[0] - wW[1] - wW[2];
+      const wX = [ML, ML + wW[0], ML + wW[0] + wW[1], ML + wW[0] + wW[1] + wW[2]];
+      drawInfoCell(wX[0], curY, wW[0], wH, 'MORNING (AM)',    (report.weatherAM       as string) || '--');
+      drawInfoCell(wX[1], curY, wW[1], wH, 'AFTERNOON (PM)',  (report.weatherPM       as string) || '--');
+      drawInfoCell(wX[2], curY, wW[2], wH, 'PRECIPITATION',   (report.precipitation   as string) || '--');
+      drawInfoCell(wX[3], curY, wW[3], wH, 'SITE CONDITIONS', (report.siteConditions  as string) || '--');
+      curY += wH + 3;
 
-      // --- PREPARED BY / TIME ROW ---
-      const row3H = 22;
-      const orgName = company?.name || '';
-      const timeInStr = formatTimeDisplay(report.timeIn);
-      const timeOutStr = formatTimeDisplay(report.timeOut);
-      drawCell(ML, curY, col4, row3H, 'Prepared By', inspectorName);
-      drawCell(ML + col4, curY, col4, row3H, 'Organization', orgName);
-      drawCell(ML + col4 * 2, curY, col4, row3H, 'Work Start', timeInStr);
-      drawCell(ML + col4 * 3, curY, CW - col4 * 3, row3H, 'Work End', timeOutStr);
-      curY += row3H;
+      // ─── WORKFORCE ────────────────────────────────────────────────────
+      const totalWorkers = workActivities.reduce((s, r) => s + (Number(r.headcount) || 0), 0);
+      drawSectionHdr(curY, `WORKFORCE${totalWorkers > 0 ? ` (${totalWorkers} WORKERS ON-SITE)` : ''}`);
+      curY += 13;
 
-      // License & Hours row
-      const row4H = 22;
-      const licenseNo = inspectorProfile?.licenseNumber || '';
-      const regHrs = report.regularHours ? `${report.regularHours} hrs` : '--';
-      const otHrs = report.otHours ? `${report.otHours} hrs OT` : '--';
-      drawCell(ML, curY, col4, row4H, 'License No.', licenseNo);
-      drawCell(ML + col4, curY, col4, row4H, 'Regular Hours', regHrs);
-      drawCell(ML + col4 * 2, curY, col4, row4H, 'OT Hours', otHrs);
-      drawCell(ML + col4 * 3, curY, CW - col4 * 3, row4H, 'Total Hours', 
-        (parseFloat(report.regularHours || '0') + parseFloat(report.otHours || '0')).toFixed(2) + ' hrs');
-      curY += row4H + 8;
+      const waRowH = 16, waHdrH = 12;
+      const waW = [CW * 0.24, CW * 0.08, CW * 0.22, 0];
+      waW[3] = CW - waW[0] - waW[1] - waW[2];
+      const waX = [ML, ML + waW[0], ML + waW[0] + waW[1], ML + waW[0] + waW[1] + waW[2]];
+      drawColHeaders(curY, waHdrH, [
+        { x: waX[0], w: waW[0], label: 'TRADE' },
+        { x: waX[1], w: waW[1], label: 'COUNT' },
+        { x: waX[2], w: waW[2], label: 'CONTRACTOR' },
+        { x: waX[3], w: waW[3], label: 'WORK DESCRIPTION' },
+      ]);
+      curY += waHdrH;
 
-      // --- TYPE OF WORK CHECKBOXES ---
-      drawSectionHeader(ML, curY, CW, 'TYPE OF WORK');
-      curY += 14;
-      const towY = curY;
-      const towItems = [
-        { value: 'reinf_concrete', label: 'Reinf. Concrete' },
-        { value: 'structural_steel', label: 'Structural Steel' },
-        { value: 'reinf_masonry', label: 'Reinf. Masonry' },
-        { value: 'fire_proofing', label: 'Fire Proofing' },
-        { value: 'shotcrete', label: 'Shotcrete' },
-        { value: 'anchors', label: 'Anchors' },
-        { value: 'other', label: 'Other' },
-      ];
-      const selectedTypes = (report.typeOfWork as string[]) || [];
-      const towBoxW = 10;
-      const towSpacing = Math.floor(CW / towItems.length);
-      towItems.forEach((item, idx) => {
-        const towX = ML + idx * towSpacing;
-        const isChecked = selectedTypes.includes(item.value);
-        doc.rect(towX, towY, towBoxW, towBoxW).strokeColor('#555').stroke();
-        if (isChecked) {
-          doc.rect(towX + 2, towY + 2, towBoxW - 4, towBoxW - 4).fill('#1a2e4a');
-        }
-        doc.fontSize(7).font('Helvetica').fillColor('#000').text(item.label, towX + towBoxW + 3, towY + 1, { width: towSpacing - towBoxW - 4 });
+      // Guard: how many rows fit before safety+work-performed must start
+      const safetyBlockH = 13 + 26 + 26 + 4;
+      const workPerfMinH  = 60;
+      const maxWaRows = Math.max(1, Math.floor((PH - MB - FOOTER_H - curY - safetyBlockH - workPerfMinH) / waRowH));
+
+      workActivities.slice(0, maxWaRows).forEach((row, idx) => {
+        doc.rect(ML, curY, CW, waRowH).fill(getRowBg(idx));
+        doc.rect(ML, curY, CW, waRowH).stroke('#cccccc');
+        const ty = curY + (waRowH - 8) / 2;
+        doc.fontSize(8).font('Helvetica').fillColor(NAVY);
+        doc.text(row.trade       || '--', waX[0] + 4, ty, { width: waW[0] - 8, lineBreak: false, ellipsis: true });
+        doc.text(String(row.headcount || ''), waX[1] + 4, ty, { width: waW[1] - 8, lineBreak: false });
+        doc.text(row.contractor  || '--', waX[2] + 4, ty, { width: waW[2] - 8, lineBreak: false, ellipsis: true });
+        doc.text(row.workDescription || '--', waX[3] + 4, ty, { width: waW[3] - 8, lineBreak: false, ellipsis: true });
+        curY += waRowH;
       });
-      doc.strokeColor('#000').fill('#000');
-      curY += 18;
 
-      // --- WEATHER CONDITIONS (4-col) ---
-      drawSectionHeader(ML, curY, CW, 'WEATHER CONDITIONS');
-      curY += 14;
-      const wRow = 22;
-      const wCol = Math.floor(CW / 4);
-      const weatherAM = report.weatherAM || report.weatherNotes || '';
-      const weatherPM = report.weatherPM || '';
-      const precipitation = report.precipitation || '';
-      const siteConditions = report.siteConditions || '';
-      drawCell(ML, curY, wCol, wRow, 'Morning (AM)', weatherAM);
-      drawCell(ML + wCol, curY, wCol, wRow, 'Afternoon (PM)', weatherPM);
-      drawCell(ML + wCol * 2, curY, wCol, wRow, 'Precipitation', precipitation);
-      drawCell(ML + wCol * 3, curY, CW - wCol * 3, wRow, 'Site Conditions', siteConditions);
-      curY += wRow + 8;
-
-      // --- WORKFORCE / WORK ACTIVITIES TABLE ---
-      drawSectionHeader(ML, curY, CW, 'WORKFORCE & WORK ACTIVITIES');
-      curY += 14;
-
-      // Table headers
-      const waColTrade = 120;
-      const waColContractor = 130;
-      const waColCount = 40;
-      const waColDesc = CW - waColTrade - waColContractor - waColCount;
-      const waHeaderH = 14;
-
-      doc.rect(ML, curY, waColTrade, waHeaderH).fillAndStroke('#e8ecf0', '#000');
-      doc.rect(ML + waColTrade, curY, waColContractor, waHeaderH).fillAndStroke('#e8ecf0', '#000');
-      doc.rect(ML + waColTrade + waColContractor, curY, waColCount, waHeaderH).fillAndStroke('#e8ecf0', '#000');
-      doc.rect(ML + waColTrade + waColContractor + waColCount, curY, waColDesc, waHeaderH).fillAndStroke('#e8ecf0', '#000');
-      doc.fontSize(7).font('Helvetica-Bold').fillColor('#000');
-      doc.text('TRADE', ML + 3, curY + 4);
-      doc.text('CONTRACTOR', ML + waColTrade + 3, curY + 4);
-      doc.text('COUNT', ML + waColTrade + waColContractor + 3, curY + 4);
-      doc.text('WORK DESCRIPTION', ML + waColTrade + waColContractor + waColCount + 3, curY + 4);
-      curY += waHeaderH;
-
-      const minWaRowH = 16;
-      const maxWaRowH = 28;
-      // Cap rows to prevent overflowing into the page 1 cert zone
-      // Reserve space for: work-performed (50), safety (80), cert (80), footer (20)
-      const p1CertReserve = 230;
-      const maxWaRows = Math.floor((PH - MB - p1CertReserve - curY) / minWaRowH);
-      const displayRows = Math.min(Math.max(workActivities.length, 3), Math.max(3, maxWaRows));
-      for (let i = 0; i < displayRows; i++) {
-        const act = workActivities[i];
-        let rowH = minWaRowH;
-        if (act) {
-          doc.fontSize(8).font('Helvetica');
-          const descH = doc.heightOfString(act.workDescription || '', { width: waColDesc - 6 });
-          rowH = Math.min(maxWaRowH, Math.max(minWaRowH, descH + 8));
-        }
-        doc.rect(ML, curY, waColTrade, rowH).stroke();
-        doc.rect(ML + waColTrade, curY, waColContractor, rowH).stroke();
-        doc.rect(ML + waColTrade + waColContractor, curY, waColCount, rowH).stroke();
-        doc.rect(ML + waColTrade + waColContractor + waColCount, curY, waColDesc, rowH).stroke();
-        if (act) {
-          doc.fontSize(8).font('Helvetica').fillColor('#000');
-          doc.text(act.trade || '', ML + 3, curY + 4, { width: waColTrade - 6, height: rowH - 6, ellipsis: true });
-          doc.text(act.contractor || '', ML + waColTrade + 3, curY + 4, { width: waColContractor - 6, height: rowH - 6, ellipsis: true });
-          doc.text(String(act.headcount || ''), ML + waColTrade + waColContractor + 12, curY + 4);
-          doc.text(act.workDescription || '', ML + waColTrade + waColContractor + waColCount + 3, curY + 4, { width: waColDesc - 6, height: rowH - 6, ellipsis: true });
-        }
-        curY += rowH;
+      // TOTAL ON-SITE row (navy)
+      if (workActivities.length > 0) {
+        doc.rect(ML, curY, CW, waRowH).fill(NAVY);
+        const ty = curY + (waRowH - 8) / 2;
+        doc.fontSize(8).font('Helvetica-Bold').fillColor('#fff');
+        doc.text('TOTAL ON-SITE', waX[0] + 4, ty, { width: waW[0] - 8, lineBreak: false });
+        doc.text(String(totalWorkers), waX[1] + 4, ty, { width: waW[1] - 8, lineBreak: false });
+        doc.fillColor('#000');
+        curY += waRowH;
       }
-      curY += 8;
+      curY += 3;
 
-      // --- WORK PERFORMED / INSPECTIONS ---
-      const summaryText = [report.inspections, report.workPerformed].filter(Boolean).join('\n\n') || 'No inspection details recorded.';
-      drawSectionHeader(ML, curY, CW, 'WORK PERFORMED / INSPECTIONS');
-      curY += 14;
-      doc.fontSize(8).font('Helvetica').fillColor('#000');
-      const sumH = Math.min(80, Math.max(36, doc.heightOfString(summaryText, { width: CW - 8 }) + 10));
-      doc.rect(ML, curY, CW, sumH).stroke();
-      doc.text(summaryText, ML + 4, curY + 4, { width: CW - 8, height: sumH - 8, ellipsis: true });
-      curY += sumH + 8;
+      // ─── WORK PERFORMED ───────────────────────────────────────────────
+      drawSectionHdr(curY, 'WORK PERFORMED');
+      curY += 13;
 
-      // --- SAFETY SECTION ---
-      drawSectionHeader(ML, curY, CW, 'SAFETY');
-      curY += 14;
+      // Build subsection list from typeOfWork + text fields
+      const subsections: Array<{ label: string; content: string }> = [];
+      if (typeOfWork.length > 0) {
+        typeOfWork.forEach((t, i) => {
+          const content = i === 0 && inspectionsText ? inspectionsText
+                        : i === typeOfWork.length - 1 && workPerformedText ? workPerformedText
+                        : workPerformedText;
+          subsections.push({ label: t.toUpperCase(), content });
+        });
+      } else {
+        if (inspectionsText)   subsections.push({ label: 'INSPECTIONS', content: inspectionsText });
+        if (workPerformedText) subsections.push({ label: 'GENERAL',     content: workPerformedText });
+        if (subsections.length === 0) subsections.push({ label: 'GENERAL', content: '--' });
+      }
 
-      const safetyIncidents = report.safetyIncidents ?? 0;
-      const safetyNearMisses = report.safetyNearMisses ?? 0;
-      const safetyAttendees = report.safetyAttendees;
-      const toolboxTalkTopic = report.toolboxTalkTopic || '';
-      const safetySiteConditions = report.safetySiteConditions || '';
+      const wpBottomLimit = PH - MB - FOOTER_H - safetyBlockH - 4;
+      const subLabelH = 11;
+      for (let si = 0; si < subsections.length && curY < wpBottomLimit - 20; si++) {
+        const sub = subsections[si];
+        // Sub-section label row (3-color striped)
+        doc.rect(ML, curY, CW, subLabelH).fill(getRowBg(si));
+        doc.fontSize(7).font('Helvetica-Bold').fillColor(NAVY)
+          .text(sub.label, ML + 6, curY + 2, { lineBreak: false });
+        curY += subLabelH;
 
-      const sfCol = Math.floor(CW / 4);
-      const sfH = 22;
-      drawCell(ML, curY, sfCol, sfH, 'Incidents', String(safetyIncidents));
-      drawCell(ML + sfCol, curY, sfCol, sfH, 'Near Misses', String(safetyNearMisses));
-      drawCell(ML + sfCol * 2, curY, sfCol, sfH, 'Safety Mtg. Attendees', safetyAttendees != null ? String(safetyAttendees) : '--');
-      drawCell(ML + sfCol * 3, curY, CW - sfCol * 3, sfH, 'Issues/Delays', report.issuesFlag ? 'YES' : 'NO');
+        if (sub.content && sub.content !== '--') {
+          const availH = Math.min(55, wpBottomLimit - curY - 8);
+          if (availH > 10) {
+            doc.rect(ML, curY, CW, availH).fill('#fff');
+            doc.rect(ML, curY, CW, availH).stroke('#cccccc');
+            doc.fontSize(8).font('Helvetica').fillColor(NAVY)
+              .text(sub.content, ML + 6, curY + 4, { width: CW - 12, height: availH - 6 });
+            curY += availH;
+          }
+        }
+      }
+      curY += 3;
+
+      // ─── SAFETY ───────────────────────────────────────────────────────
+      if (curY + safetyBlockH > PH - MB - FOOTER_H) {
+        curY = PH - MB - FOOTER_H - safetyBlockH;
+      }
+      drawSectionHdr(curY, 'SAFETY');
+      curY += 13;
+      const sfH = 26;
+      // Row 1: INCIDENTS | NEAR MISSES | TOOLBOX TALK TOPIC (wide)
+      const sfW1 = [CW * 0.16, CW * 0.16, 0];
+      sfW1[2] = CW - sfW1[0] - sfW1[1];
+      const sfX1 = [ML, ML + sfW1[0], ML + sfW1[0] + sfW1[1]];
+      drawInfoCell(sfX1[0], curY, sfW1[0], sfH, 'INCIDENTS',    String(report.safetyIncidents  ?? '0'));
+      drawInfoCell(sfX1[1], curY, sfW1[1], sfH, 'NEAR MISSES',  String(report.safetyNearMisses ?? '0'));
+      drawInfoCell(sfX1[2], curY, sfW1[2], sfH, 'TOOLBOX TALK TOPIC', (report.toolboxTalkTopic as string) || '--');
+      curY += sfH;
+      // Row 2: ATTENDEES | SITE SAFETY CONDITIONS
+      const sfW2 = [CW * 0.16, 0];
+      sfW2[1] = CW - sfW2[0];
+      const sfX2 = [ML, ML + sfW2[0]];
+      drawInfoCell(sfX2[0], curY, sfW2[0], sfH, 'ATTENDEES',           String(report.safetyAttendees ?? '--'));
+      drawInfoCell(sfX2[1], curY, sfW2[1], sfH, 'SITE SAFETY CONDITIONS', (report.safetySiteConditions as string) || '--');
       curY += sfH;
 
-      if (toolboxTalkTopic) {
-        const ttH = 22;
-        drawCell(ML, curY, CW, ttH, 'Toolbox Talk Topic', toolboxTalkTopic);
-        curY += ttH;
-      }
 
-      if (safetySiteConditions) {
-        const scH = Math.min(36, Math.max(22, doc.heightOfString(safetySiteConditions, { width: CW - 8 }) + 10));
-        doc.fontSize(6).font('Helvetica').fillColor('#555').text('SITE SAFETY CONDITIONS', ML + 3, curY + 3, { lineBreak: false });
-        doc.rect(ML, curY, CW, scH).stroke();
-        doc.fontSize(8).font('Helvetica').fillColor('#000').text(safetySiteConditions, ML + 4, curY + 3 + 8, { width: CW - 8, height: scH - 14, ellipsis: true });
-        curY += scH;
-      }
-
-      if (report.issuesFlag && report.issuesDetails) {
-        const idH = Math.min(36, Math.max(20, doc.heightOfString(report.issuesDetails, { width: CW - 8 }) + 10));
-        doc.fontSize(6).font('Helvetica').fillColor('#555').text('ISSUES / DELAYS DETAIL', ML + 3, curY + 3, { lineBreak: false });
-        doc.rect(ML, curY, CW, idH).stroke();
-        doc.fontSize(8).font('Helvetica-Oblique').fillColor('#c00').text(report.issuesDetails, ML + 4, curY + 3 + 8, { width: CW - 8, height: idH - 14, ellipsis: true });
-        doc.fillColor('#000');
-        curY += idH;
-      }
-      curY += 8;
-
-      // --- CERTIFICATION / SIGNATURE BLOCK ---
-      // Always anchor at the bottom of page 1 (fixed position)
-      const sigBlockH = 72;
-      const sigYBase = PH - MB - FOOTER_H - sigBlockH - 4;
-      // If content has overflowed past the cert zone, start from curY (it goes onto page 2
-      // which PDFKit handles by extending with the bufferPages option)
-      const sigY = sigYBase;
-
-      drawSectionHeader(ML, sigY, CW, 'CERTIFICATION');
-      const certY = sigY + 14;
-      const certTextH = 18;
-      doc.fontSize(7).font('Helvetica').fillColor('#333').text(
-        'I hereby certify that I have inspected the above described work and that to the best of my knowledge the materials used and the methods of construction are in accordance with the approved plans, specifications, and applicable sections of the building laws.',
-        ML + 4, certY + 2, { width: CW - 8, height: certTextH }
-      );
-      doc.fillColor('#000');
-
-      const sigLineY = certY + certTextH + 4;
-      if (report.signaturePath) {
-        const sigBuffer = await loadImageBuffer(report.signaturePath);
-        if (sigBuffer) {
-          try {
-            doc.image(sigBuffer, ML, sigLineY, { width: 130, height: 32, fit: [130, 32] });
-          } catch (err) {
-            console.error('Error adding signature:', err);
-          }
-        }
-      }
-      doc.moveTo(ML, sigLineY + 34).lineTo(ML + 160, sigLineY + 34).strokeColor('#000').lineWidth(0.5).stroke();
-      doc.fontSize(6.5).font('Helvetica').fillColor('#555').text('SIGNATURE OF INSPECTOR', ML, sigLineY + 36);
-
-      doc.fontSize(8).font('Helvetica-Bold').fillColor('#000').text(inspectorName, ML + 170, sigLineY + 4, { lineBreak: false });
-      doc.fontSize(6.5).font('Helvetica').fillColor('#555').text('INSPECTOR NAME', ML + 170, sigLineY + 15, { lineBreak: false });
-      doc.fontSize(8).font('Helvetica-Bold').fillColor('#000').text(licenseNo || '--', ML + 170, sigLineY + 24, { lineBreak: false });
-      doc.fontSize(6.5).font('Helvetica').fillColor('#555').text('LICENSE NO.', ML + 170, sigLineY + 35, { lineBreak: false });
-
-      doc.moveTo(ML + 330, sigLineY + 34).lineTo(PW - MR, sigLineY + 34).strokeColor('#000').lineWidth(0.5).stroke();
-      doc.fontSize(6.5).font('Helvetica').fillColor('#555').text('APPROVED BY / SIGNATURE', ML + 330, sigLineY + 36, { lineBreak: false });
-      doc.fillColor('#000').strokeColor('#000');
-
-      // ===== PAGE 2 =====
+      // ══════════════════════════════════════════════════════════════════
+      // PAGE 2
+      // ══════════════════════════════════════════════════════════════════
       doc.addPage();
-      let p2Y = MT;
+      curY = MT;
 
-      // Page 2 header bar — navy rule, no amber line
-      doc.rect(ML, p2Y, CW, 1).fill('#1a2e4a');
-      doc.fill('#000');
-      p2Y += 4;
-      doc.fontSize(10).font('Helvetica-Bold').text(companyName, ML, p2Y, { width: CW * 0.6 });
-      doc.fontSize(8).font('Helvetica').fillColor('#555').text(`${projectName}  —  ${dateStr}  —  Report #${reportNumber}`, ML, p2Y + 14, { width: CW });
+      // ─── Page 2 compact header ────────────────────────────────────────
+      const p2H = 20;
+      doc.rect(ML, curY, CW, p2H).fill('#f1f5f9');
+      doc.rect(ML, curY, CW, p2H).stroke('#cccccc');
+      const p2Label = [
+        company?.name || 'KNOWLAND CONSTRUCTION SERVICES',
+        '—',
+        projectName,
+        rptIdLabel,
+        '—  Equipment, Materials & Notes',
+      ].join('   ');
+      doc.fontSize(7.5).font('Helvetica-Bold').fillColor(NAVY)
+        .text(p2Label, ML + 6, curY + (p2H - 7.5) / 2, { width: CW - 12, lineBreak: false, ellipsis: true });
       doc.fillColor('#000');
-      p2Y += 32;
+      curY += p2H + 4;
 
-      // --- EQUIPMENT TABLE ---
-      drawSectionHeader(ML, p2Y, CW, 'EQUIPMENT ON SITE');
-      p2Y += 14;
-
-      const eqColEq = 200;
-      const eqColHrs = 60;
-      const eqColStatus = 70;
-      const eqColUsage = CW - eqColEq - eqColHrs - eqColStatus;
-      const eqHdrH = 14;
-
-      doc.rect(ML, p2Y, eqColEq, eqHdrH).fillAndStroke('#e8ecf0', '#000');
-      doc.rect(ML + eqColEq, p2Y, eqColHrs, eqHdrH).fillAndStroke('#e8ecf0', '#000');
-      doc.rect(ML + eqColEq + eqColHrs, p2Y, eqColStatus, eqHdrH).fillAndStroke('#e8ecf0', '#000');
-      doc.rect(ML + eqColEq + eqColHrs + eqColStatus, p2Y, eqColUsage, eqHdrH).fillAndStroke('#e8ecf0', '#000');
-      doc.fontSize(7).font('Helvetica-Bold').fillColor('#000');
-      doc.text('EQUIPMENT', ML + 3, p2Y + 4);
-      doc.text('HOURS', ML + eqColEq + 3, p2Y + 4);
-      doc.text('STATUS', ML + eqColEq + eqColHrs + 3, p2Y + 4);
-      doc.text('USAGE / NOTES', ML + eqColEq + eqColHrs + eqColStatus + 3, p2Y + 4);
-      p2Y += eqHdrH;
-
-      const minEqRowH = 16;
-      const displayEqRows = Math.max(equipmentRows.length, 3);
-      for (let i = 0; i < displayEqRows; i++) {
-        const eq = equipmentRows[i];
-        doc.rect(ML, p2Y, eqColEq, minEqRowH).stroke();
-        doc.rect(ML + eqColEq, p2Y, eqColHrs, minEqRowH).stroke();
-        doc.rect(ML + eqColEq + eqColHrs, p2Y, eqColStatus, minEqRowH).stroke();
-        doc.rect(ML + eqColEq + eqColHrs + eqColStatus, p2Y, eqColUsage, minEqRowH).stroke();
-        if (eq) {
-          doc.fontSize(8).font('Helvetica').fillColor('#000');
-          doc.text(eq.equipment || '', ML + 3, p2Y + 4, { width: eqColEq - 6, ellipsis: true, lineBreak: false });
-          doc.text(eq.hours || '', ML + eqColEq + 3, p2Y + 4, { width: eqColHrs - 6, ellipsis: true, lineBreak: false });
-          doc.text(eq.status || '', ML + eqColEq + eqColHrs + 3, p2Y + 4, { width: eqColStatus - 6, ellipsis: true, lineBreak: false });
-          doc.text(eq.usage || '', ML + eqColEq + eqColHrs + eqColStatus + 3, p2Y + 4, { width: eqColUsage - 6, ellipsis: true, lineBreak: false });
-        }
-        p2Y += minEqRowH;
-      }
-      p2Y += 10;
-
-      // --- MATERIALS TABLE ---
-      drawSectionHeader(ML, p2Y, CW, 'MATERIAL DELIVERIES');
-      p2Y += 14;
-
-      const matColMat = 200;
-      const matColQty = 70;
-      const matColStatus = 80;
-      const matColNotes = CW - matColMat - matColQty - matColStatus;
-
-      doc.rect(ML, p2Y, matColMat, eqHdrH).fillAndStroke('#e8ecf0', '#000');
-      doc.rect(ML + matColMat, p2Y, matColQty, eqHdrH).fillAndStroke('#e8ecf0', '#000');
-      doc.rect(ML + matColMat + matColQty, p2Y, matColStatus, eqHdrH).fillAndStroke('#e8ecf0', '#000');
-      doc.rect(ML + matColMat + matColQty + matColStatus, p2Y, matColNotes, eqHdrH).fillAndStroke('#e8ecf0', '#000');
-      doc.fontSize(7).font('Helvetica-Bold').fillColor('#000');
-      doc.text('MATERIAL', ML + 3, p2Y + 4);
-      doc.text('QUANTITY', ML + matColMat + 3, p2Y + 4);
-      doc.text('STATUS', ML + matColMat + matColQty + 3, p2Y + 4);
-      doc.text('SUPPLIER / NOTES', ML + matColMat + matColQty + matColStatus + 3, p2Y + 4);
-      p2Y += eqHdrH;
-
-      const displayMatRows = Math.max(materialRows.length, 3);
-      for (let i = 0; i < displayMatRows; i++) {
-        const mat = materialRows[i];
-        doc.rect(ML, p2Y, matColMat, minEqRowH).stroke();
-        doc.rect(ML + matColMat, p2Y, matColQty, minEqRowH).stroke();
-        doc.rect(ML + matColMat + matColQty, p2Y, matColStatus, minEqRowH).stroke();
-        doc.rect(ML + matColMat + matColQty + matColStatus, p2Y, matColNotes, minEqRowH).stroke();
-        if (mat) {
-          doc.fontSize(8).font('Helvetica').fillColor('#000');
-          doc.text(mat.material || '', ML + 3, p2Y + 4, { width: matColMat - 6, ellipsis: true, lineBreak: false });
-          doc.text(mat.quantity || '', ML + matColMat + 3, p2Y + 4, { width: matColQty - 6, ellipsis: true, lineBreak: false });
-          doc.text(mat.status || '', ML + matColMat + matColQty + 3, p2Y + 4, { width: matColStatus - 6, ellipsis: true, lineBreak: false });
-          doc.text(mat.supplierNotes || '', ML + matColMat + matColQty + matColStatus + 3, p2Y + 4, { width: matColNotes - 6, ellipsis: true, lineBreak: false });
-        }
-        p2Y += minEqRowH;
-      }
-      p2Y += 10;
-
-      // --- VISITORS ---
-      drawSectionHeader(ML, p2Y, CW, 'VISITORS');
-      p2Y += 14;
-
-      const visCol1 = 180;
-      const visCol2 = 180;
-      const visCol3 = CW - visCol1 - visCol2;
-      doc.rect(ML, p2Y, visCol1, eqHdrH).fillAndStroke('#e8ecf0', '#000');
-      doc.rect(ML + visCol1, p2Y, visCol2, eqHdrH).fillAndStroke('#e8ecf0', '#000');
-      doc.rect(ML + visCol1 + visCol2, p2Y, visCol3, eqHdrH).fillAndStroke('#e8ecf0', '#000');
-      doc.fontSize(7).font('Helvetica-Bold').fillColor('#000');
-      doc.text('NAME', ML + 3, p2Y + 4);
-      doc.text('COMPANY', ML + visCol1 + 3, p2Y + 4);
-      doc.text('NOTES', ML + visCol1 + visCol2 + 3, p2Y + 4);
-      p2Y += eqHdrH;
-
-      const displayVisRows = Math.max(visitors.length, 2);
-      for (let i = 0; i < displayVisRows; i++) {
-        const vis = visitors[i];
-        doc.rect(ML, p2Y, visCol1, minEqRowH).stroke();
-        doc.rect(ML + visCol1, p2Y, visCol2, minEqRowH).stroke();
-        doc.rect(ML + visCol1 + visCol2, p2Y, visCol3, minEqRowH).stroke();
-        if (vis) {
-          doc.fontSize(8).font('Helvetica').fillColor('#000');
-          doc.text(vis.name || '', ML + 3, p2Y + 4, { width: visCol1 - 6, ellipsis: true, lineBreak: false });
-          doc.text(vis.company || '', ML + visCol1 + 3, p2Y + 4, { width: visCol2 - 6, ellipsis: true, lineBreak: false });
-          doc.text(vis.notes || '', ML + visCol1 + visCol2 + 3, p2Y + 4, { width: visCol3 - 6, ellipsis: true, lineBreak: false });
-        }
-        p2Y += minEqRowH;
-      }
-      p2Y += 10;
-
-      // --- SUPERINTENDENT NOTES (always rendered) ---
-      drawSectionHeader(ML, p2Y, CW, 'SUPERINTENDENT NOTES');
-      p2Y += 14;
-      const notesText = report.notes || '';
-      const notesH = notesText ? Math.min(60, Math.max(28, doc.heightOfString(notesText, { width: CW - 8 }) + 10)) : 28;
-      doc.rect(ML, p2Y, CW, notesH).stroke();
-      if (notesText) {
-        doc.fontSize(8).font('Helvetica').fillColor('#000').text(notesText, ML + 4, p2Y + 4, { width: CW - 8, height: notesH - 8, ellipsis: true });
+      // ─── EQUIPMENT ON SITE ────────────────────────────────────────────
+      drawSectionHdr(curY, 'EQUIPMENT ON SITE');
+      curY += 13;
+      const eqRowH = 15, eqHdrH = 12;
+      const eqW = [CW * 0.37, CW * 0.12, CW * 0.16, 0];
+      eqW[3] = CW - eqW[0] - eqW[1] - eqW[2];
+      const eqX = [ML, ML + eqW[0], ML + eqW[0] + eqW[1], ML + eqW[0] + eqW[1] + eqW[2]];
+      drawColHeaders(curY, eqHdrH, [
+        { x: eqX[0], w: eqW[0], label: 'EQUIPMENT' },
+        { x: eqX[1], w: eqW[1], label: 'HOURS' },
+        { x: eqX[2], w: eqW[2], label: 'STATUS' },
+        { x: eqX[3], w: eqW[3], label: 'USAGE' },
+      ]);
+      curY += eqHdrH;
+      if (equipmentRows.length === 0) {
+        doc.rect(ML, curY, CW, eqRowH).fill('#fff').stroke('#cccccc');
+        doc.fontSize(7.5).font('Helvetica').fillColor('#888')
+          .text('No equipment recorded.', ML + 6, curY + (eqRowH - 7.5) / 2, { lineBreak: false });
+        curY += eqRowH;
       } else {
-        doc.fontSize(7.5).font('Helvetica').fillColor('#aaa').text('No superintendent notes recorded.', ML + 4, p2Y + 8, { lineBreak: false });
-        doc.fillColor('#000');
+        equipmentRows.forEach((row, idx) => {
+          doc.rect(ML, curY, CW, eqRowH).fill(getRowBg(idx)).stroke('#cccccc');
+          const ty = curY + (eqRowH - 8) / 2;
+          doc.fontSize(8).font('Helvetica').fillColor(NAVY);
+          doc.text(row.equipment || '--', eqX[0] + 4, ty, { width: eqW[0] - 8, lineBreak: false, ellipsis: true });
+          doc.text(row.hours || '--',     eqX[1] + 4, ty, { width: eqW[1] - 8, lineBreak: false });
+          drawStatusBadge(eqX[2], curY, eqW[2], eqRowH, row.status || '');
+          doc.fontSize(8).font('Helvetica').fillColor(NAVY);
+          doc.text(row.usage || '--',     eqX[3] + 4, ty, { width: eqW[3] - 8, lineBreak: false, ellipsis: true });
+          curY += eqRowH;
+        });
       }
-      p2Y += notesH + 10;
+      curY += 4;
 
-      // --- LAST PAGE CERTIFICATION / SIGNATURE BLOCK ---
-      // Two-column: Inspector (left) | Approver (right)
-      const p2SigBlockH = 68;
-      const certMinY = PH - MB - FOOTER_H - p2SigBlockH - 4;
-      // If content has overflowed past the cert zone, add a fresh page for cert
-      if (p2Y > certMinY - 4) {
-        doc.addPage();
+      // ─── MATERIAL DELIVERIES & ISSUES ─────────────────────────────────
+      drawSectionHdr(curY, 'MATERIAL DELIVERIES & ISSUES');
+      curY += 13;
+      const mtRowH = 15, mtHdrH = 12;
+      const mtW = [CW * 0.32, CW * 0.12, CW * 0.16, 0];
+      mtW[3] = CW - mtW[0] - mtW[1] - mtW[2];
+      const mtX = [ML, ML + mtW[0], ML + mtW[0] + mtW[1], ML + mtW[0] + mtW[1] + mtW[2]];
+      drawColHeaders(curY, mtHdrH, [
+        { x: mtX[0], w: mtW[0], label: 'MATERIAL' },
+        { x: mtX[1], w: mtW[1], label: 'QTY' },
+        { x: mtX[2], w: mtW[2], label: 'STATUS' },
+        { x: mtX[3], w: mtW[3], label: 'SUPPLIER / NOTES' },
+      ]);
+      curY += mtHdrH;
+      if (materialRows.length === 0) {
+        doc.rect(ML, curY, CW, mtRowH).fill('#fff').stroke('#cccccc');
+        doc.fontSize(7.5).font('Helvetica').fillColor('#888')
+          .text('No material deliveries recorded.', ML + 6, curY + (mtRowH - 7.5) / 2, { lineBreak: false });
+        curY += mtRowH;
+      } else {
+        materialRows.forEach((row, idx) => {
+          doc.rect(ML, curY, CW, mtRowH).fill(getRowBg(idx)).stroke('#cccccc');
+          const ty = curY + (mtRowH - 8) / 2;
+          doc.fontSize(8).font('Helvetica').fillColor(NAVY);
+          doc.text(row.material     || '--', mtX[0] + 4, ty, { width: mtW[0] - 8, lineBreak: false, ellipsis: true });
+          doc.text(row.quantity     || '--', mtX[1] + 4, ty, { width: mtW[1] - 8, lineBreak: false });
+          drawStatusBadge(mtX[2], curY, mtW[2], mtRowH, row.status || '');
+          doc.fontSize(8).font('Helvetica').fillColor(NAVY);
+          doc.text(row.supplierNotes || '--', mtX[3] + 4, ty, { width: mtW[3] - 8, lineBreak: false, ellipsis: true });
+          curY += mtRowH;
+        });
       }
-      const p2SigY = certMinY;
-      const p2SigColW = CW / 2 - 4;
+      curY += 4;
 
-      drawSectionHeader(ML, p2SigY, CW, 'CERTIFICATION & APPROVAL');
-      const p2CertY = p2SigY + 14;
-      const p2CertTextH = 16;
-      doc.fontSize(6.5).font('Helvetica').fillColor('#333').text(
-        'I hereby certify that I have inspected the above described work and that to the best of my knowledge the materials used and the methods of construction are in accordance with the approved plans, specifications, and applicable sections of the building laws.',
-        ML + 4, p2CertY + 2, { width: CW - 8, height: p2CertTextH }
-      );
+      // ─── VISITORS ─────────────────────────────────────────────────────
+      drawSectionHdr(curY, 'VISITORS');
+      curY += 13;
+      const visLines: string[] = visitors.length > 0
+        ? visitors.map(v => {
+            let l = v.name;
+            if (v.company) l += ` (${v.company})`;
+            if (v.notes)   l += ` — ${v.notes}`;
+            return l;
+          })
+        : ['No visitors recorded.'];
+      const visH2 = Math.min(50, visLines.length * 13 + 10);
+      doc.rect(ML, curY, CW, visH2).fill('#fff').stroke('#cccccc');
+      doc.fontSize(8).font('Helvetica').fillColor(NAVY)
+        .text(visLines.join('\n'), ML + 6, curY + 5, { width: CW - 12, height: visH2 - 8 });
+      curY += visH2 + 4;
+
+      // ─── SUPERINTENDENT NOTES & REMARKS ───────────────────────────────
+      drawSectionHdr(curY, 'SUPERINTENDENT NOTES & REMARKS');
+      curY += 13;
+      const notesText2 = (report.notes as string) || '--';
+      const notesEstH  = Math.min(90, Math.max(32, notesText2.split('\n').length * 13 + 12));
+      doc.rect(ML, curY, CW, notesEstH).fill('#fff').stroke('#cccccc');
+      doc.fontSize(8).font('Helvetica').fillColor(NAVY)
+        .text(notesText2, ML + 6, curY + 5, { width: CW - 12, height: notesEstH - 8 });
+      curY += notesEstH + 4;
+
+      // ─── PHOTOS TABLE ─────────────────────────────────────────────────
+      drawSectionHdr(curY, `PHOTOS (${photos.length} ATTACHED)`);
+      curY += 13;
+      const phRowH = 15, phHdrH = 12;
+      const phW = [CW * 0.20, CW * 0.65, 0];
+      phW[2] = CW - phW[0] - phW[1];
+      const phX = [ML, ML + phW[0], ML + phW[0] + phW[1]];
+      drawColHeaders(curY, phHdrH, [
+        { x: phX[0], w: phW[0], label: 'PHOTO ID' },
+        { x: phX[1], w: phW[1], label: 'CAPTION' },
+        { x: phX[2], w: phW[2], label: 'BY' },
+      ]);
+      curY += phHdrH;
+      if (photos.length === 0) {
+        doc.rect(ML, curY, CW, phRowH).fill('#fff').stroke('#cccccc');
+        doc.fontSize(7.5).font('Helvetica').fillColor('#888')
+          .text('No photos attached.', ML + 6, curY + (phRowH - 7.5) / 2, { lineBreak: false });
+        curY += phRowH;
+      } else {
+        (photos as any[]).forEach((photo: any, idx: number) => {
+          doc.rect(ML, curY, CW, phRowH).fill(getRowBg(idx)).stroke('#cccccc');
+          const ty = curY + (phRowH - 8) / 2;
+          const photoId = `PH-${report.reportNumber || '000'}-${String(idx + 1).padStart(2, '0')}`;
+          const initials = inspectorName.split(' ').map((p: string) => p[0]).join('.') + '.';
+          doc.fontSize(7.5).font('Helvetica').fillColor(NAVY);
+          doc.text(photoId, phX[0] + 4, ty, { width: phW[0] - 8, lineBreak: false });
+          doc.text(photo.caption || photo.path?.split('/').pop() || `Photo ${idx + 1}`,
+                   phX[1] + 4, ty, { width: phW[1] - 8, lineBreak: false, ellipsis: true });
+          doc.text(initials, phX[2] + 4, ty, { width: phW[2] - 8, lineBreak: false });
+          curY += phRowH;
+        });
+      }
+      curY += 4;
+
+      // ─── CERTIFICATION & SIGNATURE ────────────────────────────────────
+      const certBlockH = 68;
+      if (curY + certBlockH > PH - MB - FOOTER_H) {
+        curY = PH - MB - FOOTER_H - certBlockH - 4;
+      }
+      drawSectionHdr(curY, 'CERTIFICATION & SIGNATURE');
+      curY += 13;
+      const certBodyH = certBlockH - 13;
+      const certColW  = CW / 2;
+      const certText2 = 'I certify that this report accurately reflects the work performed, workforce, materials, equipment, and conditions observed on-site for the date indicated above.';
+      const certTxtH2 = 20;
+      doc.rect(ML, curY, CW, certTxtH2).fill('#f8fafc').stroke('#cccccc');
+      doc.fontSize(6.5).font('Helvetica').fillColor('#444')
+        .text(certText2, ML + 6, curY + 5, { width: CW - 12, lineBreak: false, ellipsis: true });
+      curY += certTxtH2;
+      const certSigH = certBodyH - certTxtH2;
+      // Prepared By box
+      doc.rect(ML, curY, certColW, certSigH).stroke('#cccccc');
+      doc.fontSize(6).font('Helvetica').fillColor('#666').text('PREPARED BY', ML + 4, curY + 4, { lineBreak: false });
+      doc.fontSize(9).font('Helvetica-Bold').fillColor(NAVY).text(inspectorName, ML + 4, curY + 15, { lineBreak: false });
+      if ((inspectorProfile as any)?.title) {
+        doc.fontSize(7.5).font('Helvetica').fillColor('#555').text((inspectorProfile as any).title, ML + 4, curY + 27, { lineBreak: false });
+      }
+      doc.fontSize(7.5).font('Helvetica').fillColor('#555').text(`Date: ${dateStr}`, ML + 4, curY + 38, { lineBreak: false });
+      if (report.signaturePath) {
+        try {
+          const sigBuf2 = await loadImageBuffer(report.signaturePath as string);
+          if (sigBuf2) {
+            doc.image(sigBuf2, ML + 4, curY + 12, { fit: [certColW - 16, certSigH - 14], align: 'left', valign: 'center' });
+          }
+        } catch (_se) {}
+      }
+      // Reviewed By box
+      const rvX3 = ML + certColW;
+      doc.rect(rvX3, curY, certColW, certSigH).stroke('#cccccc');
+      doc.fontSize(6).font('Helvetica').fillColor('#666').text('REVIEWED BY', rvX3 + 4, curY + 4, { lineBreak: false });
+      doc.moveTo(rvX3 + 8, curY + certSigH - 14).lineTo(rvX3 + certColW - 8, curY + certSigH - 14).stroke('#aaa');
+      doc.fontSize(7).font('Helvetica').fillColor('#aaa').text('Signature / Date', rvX3 + 8, curY + certSigH - 9, { lineBreak: false });
       doc.fillColor('#000');
 
-      const p2SigLineY = p2CertY + p2CertTextH + 6;
+      // ══════════════════════════════════════════════════════════════════
+      // FOOTER — applied to every page via bufferPages
+      // ══════════════════════════════════════════════════════════════════
+      const range2 = doc.bufferedPageRange();
+      const totalPages2 = range2.count;
+      const footerLeft2 = [
+        report.reportNumber ? `DR-${report.reportNumber}` : '--',
+        projectName,
+        company?.name || 'KNOWLAND CONSTRUCTION SERVICES',
+        'DAILY REPORT',
+      ].join('  |  ');
+      const generatedBy2 = 'Generated by Knowland Construction Services Field Reporting System';
 
-      // Left column - Inspector signature
-      if (report.signaturePath) {
-        const sigBuffer2 = await loadImageBuffer(report.signaturePath);
-        if (sigBuffer2) {
-          try {
-            doc.image(sigBuffer2, ML, p2SigLineY, { width: 110, height: 26, fit: [110, 26] });
-          } catch (_) {}
-        }
-      }
-      doc.moveTo(ML, p2SigLineY + 28).lineTo(ML + p2SigColW, p2SigLineY + 28).strokeColor('#000').lineWidth(0.5).stroke();
-      doc.fontSize(6.5).font('Helvetica').fillColor('#555').text('INSPECTOR SIGNATURE', ML, p2SigLineY + 30, { lineBreak: false });
-      doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#000').text(inspectorName, ML, p2SigLineY + 40, { width: p2SigColW, lineBreak: false });
-      doc.fontSize(6.5).font('Helvetica').fillColor('#555').text(`License: ${licenseNo || '--'}   Date: ${dateStr}`, ML, p2SigLineY + 50, { lineBreak: false });
-
-      // Right column - Approver signature
-      const p2ColRX = ML + p2SigColW + 8;
-      doc.moveTo(p2ColRX, p2SigLineY + 28).lineTo(PW - MR, p2SigLineY + 28).strokeColor('#000').lineWidth(0.5).stroke();
-      doc.fontSize(6.5).font('Helvetica').fillColor('#555').text('APPROVING AUTHORITY SIGNATURE', p2ColRX, p2SigLineY + 30, { lineBreak: false });
-      doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#000').text('_____________________________', p2ColRX, p2SigLineY + 40, { width: p2SigColW, lineBreak: false });
-      doc.fontSize(6.5).font('Helvetica').fillColor('#555').text('Name / Title / Date', p2ColRX, p2SigLineY + 50, { lineBreak: false });
-      doc.fillColor('#000').strokeColor('#000');
-
-      // ===== PHOTO PAGES (2×2 grid, matching KCS reference layout) =====
-      const prePhotoPageCount = doc.bufferedPageRange().count;
-
-      const renderPhotoPlaceholder = (px: number, py: number, pw: number, ph: number, pn: number) => {
-        doc.rect(px, py, pw, ph).fill('#f8f9fa');
-        doc.rect(px, py, pw, ph).stroke();
-        const midY = py + ph / 2 - 14;
-        doc.fontSize(18).font('Helvetica-Bold').fillColor('#d0d0d0')
-          .text(`PHOTO ${pn}`, px, midY, { width: pw, align: 'center', lineBreak: false });
-        doc.fontSize(7.5).font('Helvetica').fillColor('#b0b0b0')
-          .text('Attach or insert photograph here', px, midY + 22, { width: pw, align: 'center', lineBreak: false });
-        doc.fillColor('#000');
-      };
-
-      const PHOTOS_PER_PAGE = 4;
-      const totalPhotos = photos.length;
-      const photoPageCount = Math.max(1, Math.ceil(totalPhotos / PHOTOS_PER_PAGE));
-
-      for (let pp = 0; pp < photoPageCount; pp++) {
-        doc.addPage();
-        let phY = MT;
-
-        // Thin header line with company / project / section
-        doc.fontSize(7.5).font('Helvetica').fillColor('#555')
-          .text(`${companyName}  —  ${projectName}  —  Photo Documentation`, ML, phY, { width: CW, lineBreak: false });
-        phY += 11;
-        doc.rect(ML, phY, CW, 0.5).fill('#1a2e4a');
-        phY += 5;
-
-        // Section title
-        doc.fontSize(10).font('Helvetica-Bold').fillColor('#1a2e4a')
-          .text('PHOTO DOCUMENTATION — ATTACH SITE PHOTOGRAPHS', ML, phY, { width: CW, align: 'center', lineBreak: false });
-        phY += 18;
-
-        // 2×2 grid layout
-        const colGap = 12;
-        const colW = (CW - colGap) / 2;
-        const rowGap = 10;
-        const availGridH = PH - MB - FOOTER_H - phY - rowGap;
-        const rowH = Math.floor(availGridH / 2);
-        const bannerH = 22;
-        const locH = 34;
-        const descH = 56;
-        const photoFrameH = rowH - bannerH - locH - descH;
-
-        for (let row = 0; row < 2; row++) {
-          for (let col = 0; col < 2; col++) {
-            const photoIdx = pp * PHOTOS_PER_PAGE + row * 2 + col;
-            const photoNum = photoIdx + 1;
-            const photo = photos[photoIdx];
-            const cx = ML + col * (colW + colGap);
-            const cy = phY + row * (rowH + rowGap);
-
-            // "PHOTO N OF M" banner (navy)
-            const displayTotal = Math.max(totalPhotos, pp * PHOTOS_PER_PAGE + 4);
-            doc.rect(cx, cy, colW, bannerH).fillAndStroke('#1a2e4a', '#1a2e4a');
-            doc.fontSize(8.5).font('Helvetica-Bold').fillColor('#fff')
-              .text(`PHOTO ${photoNum} OF ${displayTotal}`, cx + 6, cy + 7, { width: colW - 12, lineBreak: false });
-
-            // Photo frame
-            const frameY = cy + bannerH;
-            let photoEmbedded = false;
-            if (photo) {
-              try {
-                const photoBuffer = await loadImageBuffer(photo.filePath);
-                if (photoBuffer) {
-                  doc.rect(cx, frameY, colW, photoFrameH).stroke();
-                  doc.image(photoBuffer, cx + 2, frameY + 2, { fit: [colW - 4, photoFrameH - 4], align: 'center', valign: 'center' });
-                  photoEmbedded = true;
-                }
-              } catch (_) { /* fall through to placeholder */ }
-            }
-            if (!photoEmbedded) {
-              renderPhotoPlaceholder(cx, frameY, colW, photoFrameH, photoNum);
-            }
-
-            // LOCATION field
-            const locY = frameY + photoFrameH + 4;
-            doc.fontSize(7).font('Helvetica-Bold').fillColor('#000').text('LOCATION:', cx + 2, locY, { lineBreak: false });
-            doc.moveTo(cx + 2, locY + 14).lineTo(cx + colW - 2, locY + 14).lineWidth(0.5).strokeColor('#000').stroke();
-            doc.moveTo(cx + 2, locY + 24).lineTo(cx + colW - 2, locY + 24).lineWidth(0.5).stroke();
-
-            // DESCRIPTION field
-            const dY = locY + locH;
-            doc.fontSize(7).font('Helvetica-Bold').fillColor('#000').text('DESCRIPTION:', cx + 2, dY, { lineBreak: false });
-            if (photo?.caption) {
-              doc.fontSize(7).font('Helvetica').fillColor('#333')
-                .text(photo.caption, cx + 2, dY + 10, { width: colW - 4, height: descH - 22, ellipsis: true });
-            }
-            doc.moveTo(cx + 2, dY + descH - 24).lineTo(cx + colW - 2, dY + descH - 24).lineWidth(0.5).stroke();
-            doc.moveTo(cx + 2, dY + descH - 14).lineTo(cx + colW - 2, dY + descH - 14).lineWidth(0.5).stroke();
-            doc.fillColor('#000').strokeColor('#000');
-          }
-        }
-      }
-
-      // ===== FOOTER ON ALL PAGES =====
-      const range = doc.bufferedPageRange();
-      const totalPages = range.count;
-
-      for (let pageIdx = 0; pageIdx < totalPages; pageIdx++) {
-        doc.switchToPage(range.start + pageIdx);
-        const footerY = PH - MB - 14;
-        const isPhotoPage = pageIdx >= prePhotoPageCount;
-
-        doc.rect(ML, footerY, CW, 0.5).fill('#1a2e4a');
-        doc.fill('#000');
-        doc.fontSize(7).font('Helvetica').fillColor('#555');
-
-        if (isPhotoPage) {
-          doc.text(
-            'KNOWLAND CONSTRUCTION SERVICES  ·  IOR DAILY REPORT  ·  DSA REGULATED PROJECT  ·  FORM KCS-DR-01',
-            ML, footerY + 4, { width: CW * 0.78, lineBreak: false }
-          );
-        } else {
-          doc.text(`${companyName}  |  Report #${reportNumber}`, ML, footerY + 4, { width: CW / 2, lineBreak: false });
-          doc.text(`Project: ${projectName}`, ML, footerY + 4, { width: CW, align: 'center', lineBreak: false });
-        }
-        doc.text(`Page ${pageIdx + 1} of ${totalPages}`, ML, footerY + 4, { width: CW, align: 'right', lineBreak: false });
+      for (let pi = 0; pi < totalPages2; pi++) {
+        doc.switchToPage(range2.start + pi);
+        const footerY3 = PH - MB - FOOTER_H + 2;
+        doc.moveTo(ML, footerY3 - 2).lineTo(ML + CW, footerY3 - 2).lineWidth(0.5).stroke('#cccccc');
+        doc.fontSize(6.5).font('Helvetica').fillColor('#555')
+          .text(footerLeft2, ML, footerY3 + 2, { width: CW - 60, lineBreak: false, ellipsis: true });
+        doc.text(`Page ${pi + 1} of ${totalPages2}`, ML, footerY3 + 2, { width: CW, align: 'right', lineBreak: false });
+        doc.fontSize(6).font('Helvetica').fillColor('#999')
+          .text(generatedBy2, ML, footerY3 + 11, { width: CW, lineBreak: false });
         doc.fillColor('#000');
       }
+
 
       doc.end();
 
