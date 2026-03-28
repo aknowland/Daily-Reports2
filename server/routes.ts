@@ -3,7 +3,7 @@ import { createServer, type Server } from "http";
 import { storage, db, projectComments, projectMembers, users, companyNotes, clientPortalUsers } from "./storage";
 import { sql, eq, and, desc } from "drizzle-orm";
 import { setupAuth, isAuthenticated, registerAuthRoutes } from "./replit_integrations/auth";
-import { insertProjectSchema, insertDailyReportSchema, updateUserProfileSchema, WorkActivityRow, VisitorRow, insertContractSchema, insertClientSchema, InsertInspectorCandidate } from "@shared/schema";
+import { insertProjectSchema, insertDailyReportSchema, updateUserProfileSchema, WorkActivityRow, VisitorRow, EquipmentRow, MaterialRow, insertContractSchema, insertClientSchema, InsertInspectorCandidate } from "@shared/schema";
 import { ObjectStorageService, registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 import multer from "multer";
 import path from "path";
@@ -10192,14 +10192,14 @@ export async function registerRoutes(
       const projectAddress = report.project?.address || '';
       const inspectorName = report.inspectorName || 'Unknown';
       const clientName = report.project?.client || '';
-      const dsaFileNo = (report.project as any)?.dsaFileNo || '';
+      const dsaFileNo = report.project?.dsaFileNo || '';
       const projectNumber = report.project?.projectNumber || '';
       const reportNumber = report.reportNumber ? `${report.reportNumber}` : '--';
 
       const photos = report.photos || [];
       const workActivities = (report.workActivities as WorkActivityRow[]) || [];
-      const equipmentRows = ((report as any).equipmentRows as any[]) || [];
-      const materialRows = ((report as any).materialRows as any[]) || [];
+      const equipmentRows = (report.equipmentRows as EquipmentRow[] | null) || [];
+      const materialRows = (report.materialRows as MaterialRow[] | null) || [];
       const visitors = (report.visitors as VisitorRow[]) || [];
 
       // ===== PAGE 1 =====
@@ -10326,10 +10326,10 @@ export async function registerRoutes(
       curY += 14;
       const wRow = 22;
       const wCol = Math.floor(CW / 4);
-      const weatherAM = (report as any).weatherAM || report.weatherNotes || '';
-      const weatherPM = (report as any).weatherPM || '';
-      const precipitation = (report as any).precipitation || '';
-      const siteConditions = (report as any).siteConditions || '';
+      const weatherAM = report.weatherAM || report.weatherNotes || '';
+      const weatherPM = report.weatherPM || '';
+      const precipitation = report.precipitation || '';
+      const siteConditions = report.siteConditions || '';
       drawCell(ML, curY, wCol, wRow, 'Morning (AM)', weatherAM);
       drawCell(ML + wCol, curY, wCol, wRow, 'Afternoon (PM)', weatherPM);
       drawCell(ML + wCol * 2, curY, wCol, wRow, 'Precipitation', precipitation);
@@ -10398,11 +10398,11 @@ export async function registerRoutes(
       drawSectionHeader(ML, curY, CW, 'SAFETY');
       curY += 14;
 
-      const safetyIncidents = (report as any).safetyIncidents ?? 0;
-      const safetyNearMisses = (report as any).safetyNearMisses ?? 0;
-      const safetyAttendees = (report as any).safetyAttendees;
-      const toolboxTalkTopic = (report as any).toolboxTalkTopic || '';
-      const safetySiteConditions = (report as any).safetySiteConditions || '';
+      const safetyIncidents = report.safetyIncidents ?? 0;
+      const safetyNearMisses = report.safetyNearMisses ?? 0;
+      const safetyAttendees = report.safetyAttendees;
+      const toolboxTalkTopic = report.toolboxTalkTopic || '';
+      const safetySiteConditions = report.safetySiteConditions || '';
 
       const sfCol = Math.floor(CW / 4);
       const sfH = 22;
@@ -10657,6 +10657,46 @@ export async function registerRoutes(
         }
       }
 
+      // --- LAST PAGE CERTIFICATION / SIGNATURE BLOCK ---
+      // Two-column: Inspector (left) | Approver (right)
+      // Write to whatever the current last page is (page 2, or last photo page)
+      const p2SigBlockH = 68;
+      const p2SigY = PH - MB - FOOTER_H - p2SigBlockH - 4;
+      const p2SigColW = CW / 2 - 4;
+
+      drawSectionHeader(ML, p2SigY, CW, 'CERTIFICATION & APPROVAL');
+      const p2CertY = p2SigY + 14;
+      const p2CertTextH = 16;
+      doc.fontSize(6.5).font('Helvetica').fillColor('#333').text(
+        'I hereby certify that I have inspected the above described work and that to the best of my knowledge the materials used and the methods of construction are in accordance with the approved plans, specifications, and applicable sections of the building laws.',
+        ML + 4, p2CertY + 2, { width: CW - 8, height: p2CertTextH }
+      );
+      doc.fillColor('#000');
+
+      const p2SigLineY = p2CertY + p2CertTextH + 6;
+
+      // Left column - Inspector signature
+      if (report.signaturePath) {
+        const sigBuffer2 = await loadImageBuffer(report.signaturePath);
+        if (sigBuffer2) {
+          try {
+            doc.image(sigBuffer2, ML, p2SigLineY, { width: 110, height: 26, fit: [110, 26] });
+          } catch (_) {}
+        }
+      }
+      doc.moveTo(ML, p2SigLineY + 28).lineTo(ML + p2SigColW, p2SigLineY + 28).strokeColor('#000').lineWidth(0.5).stroke();
+      doc.fontSize(6.5).font('Helvetica').fillColor('#555').text('INSPECTOR SIGNATURE', ML, p2SigLineY + 30, { lineBreak: false });
+      doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#000').text(inspectorName, ML, p2SigLineY + 40, { width: p2SigColW, lineBreak: false });
+      doc.fontSize(6.5).font('Helvetica').fillColor('#555').text(`License: ${licenseNo || '--'}   Date: ${dateStr}`, ML, p2SigLineY + 50, { lineBreak: false });
+
+      // Right column - Approver signature
+      const p2ColRX = ML + p2SigColW + 8;
+      doc.moveTo(p2ColRX, p2SigLineY + 28).lineTo(PW - MR, p2SigLineY + 28).strokeColor('#000').lineWidth(0.5).stroke();
+      doc.fontSize(6.5).font('Helvetica').fillColor('#555').text('APPROVING AUTHORITY SIGNATURE', p2ColRX, p2SigLineY + 30, { lineBreak: false });
+      doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#000').text('_____________________________', p2ColRX, p2SigLineY + 40, { width: p2SigColW, lineBreak: false });
+      doc.fontSize(6.5).font('Helvetica').fillColor('#555').text('Name / Title / Date', p2ColRX, p2SigLineY + 50, { lineBreak: false });
+      doc.fillColor('#000').strokeColor('#000');
+
       // ===== FOOTER ON ALL PAGES =====
       const range = doc.bufferedPageRange();
       const totalPages = range.count;
@@ -10667,8 +10707,8 @@ export async function registerRoutes(
         doc.rect(ML, footerY, CW, 0.5).fill('#1a2e4a');
         doc.fill('#000');
         doc.fontSize(7).font('Helvetica').fillColor('#555');
-        doc.text(companyName, ML, footerY + 4, { width: CW / 3, lineBreak: false });
-        doc.text(`Project: ${projectName}`, ML + CW / 3, footerY + 4, { width: CW / 3, align: 'center', lineBreak: false });
+        doc.text(`${companyName}  |  Report #${reportNumber}`, ML, footerY + 4, { width: CW / 2, lineBreak: false });
+        doc.text(`Project: ${projectName}`, ML, footerY + 4, { width: CW, align: 'center', lineBreak: false });
         doc.text(`Page ${pageIdx + 1} of ${totalPages}`, ML, footerY + 4, { width: CW, align: 'right', lineBreak: false });
         doc.fillColor('#000');
       }

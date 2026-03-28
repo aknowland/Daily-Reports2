@@ -96,6 +96,7 @@ export default function ReportFormPage() {
     inspections: "",
     materialsDelivered: "",
     materialRows: [] as MaterialRow[],
+    notes: "",
     issuesFlag: false,
     issuesDetails: "",
     safetyFlag: false,
@@ -221,10 +222,11 @@ export default function ReportFormPage() {
           workActivities: (previousReport.workActivities as WorkActivityRow[]) || [],
           visitors: (previousReport.visitors as VisitorRow[]) || [],
           equipment: previousReport.equipment || "",
-          equipmentRows: (previousReport.equipmentRows as EquipmentRow[]) || [],
+          equipmentRows: (previousReport.equipmentRows as EquipmentRow[] | null) || [],
           inspections: previousReport.inspections || "",
           materialsDelivered: previousReport.materialsDelivered || "",
-          materialRows: (previousReport.materialRows as MaterialRow[]) || [],
+          materialRows: (previousReport.materialRows as MaterialRow[] | null) || [],
+          notes: previousReport.notes || "",
           issuesFlag: previousReport.issuesFlag || false,
           issuesDetails: previousReport.issuesDetails || "",
           safetyFlag: previousReport.safetyFlag || false,
@@ -261,28 +263,29 @@ export default function ReportFormPage() {
         date: formatPacificDate(existingReport.date, "yyyy-MM-dd"),
         weatherType: (existingReport.weatherType || "clear") as typeof formData.weatherType,
         weatherNotes: existingReport.weatherNotes || "",
-        weatherAM: (existingReport as any).weatherAM || "",
-        weatherPM: (existingReport as any).weatherPM || "",
-        precipitation: (existingReport as any).precipitation || "",
-        siteConditions: (existingReport as any).siteConditions || "",
+        weatherAM: existingReport.weatherAM || "",
+        weatherPM: existingReport.weatherPM || "",
+        precipitation: existingReport.precipitation || "",
+        siteConditions: existingReport.siteConditions || "",
         typeOfWork: (existingReport.typeOfWork as string[]) || [],
         workPerformed: existingReport.workPerformed || "",
         workActivities: (existingReport.workActivities as WorkActivityRow[]) || [],
         visitors: (existingReport.visitors as VisitorRow[]) || [],
         equipment: existingReport.equipment || "",
-        equipmentRows: ((existingReport as any).equipmentRows as EquipmentRow[]) || [],
+        equipmentRows: (existingReport.equipmentRows as EquipmentRow[] | null) || [],
         inspections: existingReport.inspections || "",
         materialsDelivered: existingReport.materialsDelivered || "",
-        materialRows: ((existingReport as any).materialRows as MaterialRow[]) || [],
+        materialRows: (existingReport.materialRows as MaterialRow[] | null) || [],
+        notes: existingReport.notes || "",
         issuesFlag: existingReport.issuesFlag || false,
         issuesDetails: existingReport.issuesDetails || "",
         safetyFlag: existingReport.safetyFlag || false,
         safetyDetails: existingReport.safetyDetails || "",
-        safetyIncidents: (existingReport as any).safetyIncidents || 0,
-        safetyNearMisses: (existingReport as any).safetyNearMisses || 0,
-        safetyAttendees: (existingReport as any).safetyAttendees || "",
-        safetySiteConditions: (existingReport as any).safetySiteConditions || "",
-        toolboxTalkTopic: (existingReport as any).toolboxTalkTopic || "",
+        safetyIncidents: existingReport.safetyIncidents || 0,
+        safetyNearMisses: existingReport.safetyNearMisses || 0,
+        safetyAttendees: existingReport.safetyAttendees || "",
+        safetySiteConditions: existingReport.safetySiteConditions || "",
+        toolboxTalkTopic: existingReport.toolboxTalkTopic || "",
         timeIn: existingReport.timeIn || "",
         timeOut: existingReport.timeOut || "",
         regularHours: existingReport.regularHours || "",
@@ -922,6 +925,22 @@ export default function ReportFormPage() {
               }))}
               label="Add Visitor"
               testId="button-add-visitor"
+            />
+          </CardContent>
+        </Card>
+
+        <Card className="border-l-4 border-l-primary">
+          <CardHeader>
+            <CardTitle className="text-lg">Superintendent Notes</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Textarea
+              value={formData.notes}
+              onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
+              placeholder="Additional notes from the superintendent or general field observations..."
+              rows={3}
+              className="resize-y"
+              data-testid="textarea-superintendent-notes"
             />
           </CardContent>
         </Card>
