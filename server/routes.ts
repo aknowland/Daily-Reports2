@@ -10623,71 +10623,6 @@ export async function registerRoutes(
       }
       p2Y += notesH + 10;
 
-      // --- PHOTO REFERENCE TABLE ---
-      const phRefHdrH = 14;
-      const phRefRowH = 16;
-      const phColId = 60;
-      const phColCap = CW - phColId - 120;
-      const phColBy = 120;
-      const phCertReserve = 76; // space for cert block + footer
-
-      drawSectionHeader(ML, p2Y, CW, `PHOTO DOCUMENTATION  (${photos.length} photo${photos.length !== 1 ? 's' : ''})`);
-      p2Y += 14;
-
-      // Table header
-      const availBeforeCert = (PH - MB - FOOTER_H - phCertReserve) - p2Y;
-      if (availBeforeCert >= phRefHdrH + phRefRowH) {
-        doc.rect(ML, p2Y, phColId, phRefHdrH).fillAndStroke('#e8ecf0', '#000');
-        doc.rect(ML + phColId, p2Y, phColCap, phRefHdrH).fillAndStroke('#e8ecf0', '#000');
-        doc.rect(ML + phColId + phColCap, p2Y, phColBy, phRefHdrH).fillAndStroke('#e8ecf0', '#000');
-        doc.fontSize(7).font('Helvetica-Bold').fillColor('#000');
-        doc.text('PHOTO ID', ML + 3, p2Y + 4);
-        doc.text('CAPTION / DESCRIPTION', ML + phColId + 3, p2Y + 4);
-        doc.text('SUBMITTED BY', ML + phColId + phColCap + 3, p2Y + 4);
-        p2Y += phRefHdrH;
-
-        for (let i = 0; i < photos.length; i++) {
-          // Page break if needed
-          if (p2Y + phRefRowH > PH - MB - FOOTER_H - phCertReserve) {
-            doc.addPage();
-            p2Y = MT;
-            // Repeat table header on new page
-            drawSectionHeader(ML, p2Y, CW, `PHOTO DOCUMENTATION (continued)`);
-            p2Y += 14;
-            doc.rect(ML, p2Y, phColId, phRefHdrH).fillAndStroke('#e8ecf0', '#000');
-            doc.rect(ML + phColId, p2Y, phColCap, phRefHdrH).fillAndStroke('#e8ecf0', '#000');
-            doc.rect(ML + phColId + phColCap, p2Y, phColBy, phRefHdrH).fillAndStroke('#e8ecf0', '#000');
-            doc.fontSize(7).font('Helvetica-Bold').fillColor('#000');
-            doc.text('PHOTO ID', ML + 3, p2Y + 4);
-            doc.text('CAPTION / DESCRIPTION', ML + phColId + 3, p2Y + 4);
-            doc.text('SUBMITTED BY', ML + phColId + phColCap + 3, p2Y + 4);
-            p2Y += phRefHdrH;
-          }
-
-          const photo = photos[i];
-          const photoId = `P${String(i + 1).padStart(3, '0')}`;
-          const altRow = i % 2 === 1;
-          if (altRow) {
-            doc.rect(ML, p2Y, CW, phRefRowH).fillAndStroke('#f9fafb', '#000');
-          } else {
-            doc.rect(ML, p2Y, phColId, phRefRowH).stroke();
-            doc.rect(ML + phColId, p2Y, phColCap, phRefRowH).stroke();
-            doc.rect(ML + phColId + phColCap, p2Y, phColBy, phRefRowH).stroke();
-          }
-          doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#1a2e4a').text(photoId, ML + 3, p2Y + 4, { lineBreak: false });
-          doc.fontSize(7.5).font('Helvetica').fillColor('#000').text(photo.caption || '—', ML + phColId + 3, p2Y + 4, { width: phColCap - 6, ellipsis: true, lineBreak: false });
-          doc.text(inspectorName, ML + phColId + phColCap + 3, p2Y + 4, { width: phColBy - 6, ellipsis: true, lineBreak: false });
-          p2Y += phRefRowH;
-        }
-
-        if (photos.length === 0) {
-          doc.rect(ML, p2Y, CW, phRefRowH).stroke();
-          doc.fontSize(7.5).font('Helvetica').fillColor('#888').text('No photos attached to this report.', ML + 4, p2Y + 4, { lineBreak: false });
-          doc.fillColor('#000');
-          p2Y += phRefRowH;
-        }
-      }
-
       // --- LAST PAGE CERTIFICATION / SIGNATURE BLOCK ---
       // Two-column: Inspector (left) | Approver (right)
       const p2SigBlockH = 68;
@@ -10732,6 +10667,102 @@ export async function registerRoutes(
       doc.fontSize(6.5).font('Helvetica').fillColor('#555').text('Name / Title / Date', p2ColRX, p2SigLineY + 50, { lineBreak: false });
       doc.fillColor('#000').strokeColor('#000');
 
+      // ===== PHOTO PAGES (2×2 grid, matching KCS reference layout) =====
+      const prePhotoPageCount = doc.bufferedPageRange().count;
+
+      const renderPhotoPlaceholder = (px: number, py: number, pw: number, ph: number, pn: number) => {
+        doc.rect(px, py, pw, ph).fill('#f8f9fa');
+        doc.rect(px, py, pw, ph).stroke();
+        const midY = py + ph / 2 - 14;
+        doc.fontSize(18).font('Helvetica-Bold').fillColor('#d0d0d0')
+          .text(`PHOTO ${pn}`, px, midY, { width: pw, align: 'center', lineBreak: false });
+        doc.fontSize(7.5).font('Helvetica').fillColor('#b0b0b0')
+          .text('Attach or insert photograph here', px, midY + 22, { width: pw, align: 'center', lineBreak: false });
+        doc.fillColor('#000');
+      };
+
+      const PHOTOS_PER_PAGE = 4;
+      const totalPhotos = photos.length;
+      const photoPageCount = Math.max(1, Math.ceil(totalPhotos / PHOTOS_PER_PAGE));
+
+      for (let pp = 0; pp < photoPageCount; pp++) {
+        doc.addPage();
+        let phY = MT;
+
+        // Thin header line with company / project / section
+        doc.fontSize(7.5).font('Helvetica').fillColor('#555')
+          .text(`${companyName}  —  ${projectName}  —  Photo Documentation`, ML, phY, { width: CW, lineBreak: false });
+        phY += 11;
+        doc.rect(ML, phY, CW, 0.5).fill('#1a2e4a');
+        phY += 5;
+
+        // Section title
+        doc.fontSize(10).font('Helvetica-Bold').fillColor('#1a2e4a')
+          .text('PHOTO DOCUMENTATION — ATTACH SITE PHOTOGRAPHS', ML, phY, { width: CW, align: 'center', lineBreak: false });
+        phY += 18;
+
+        // 2×2 grid layout
+        const colGap = 12;
+        const colW = (CW - colGap) / 2;
+        const rowGap = 10;
+        const availGridH = PH - MB - FOOTER_H - phY - rowGap;
+        const rowH = Math.floor(availGridH / 2);
+        const bannerH = 22;
+        const locH = 34;
+        const descH = 56;
+        const photoFrameH = rowH - bannerH - locH - descH;
+
+        for (let row = 0; row < 2; row++) {
+          for (let col = 0; col < 2; col++) {
+            const photoIdx = pp * PHOTOS_PER_PAGE + row * 2 + col;
+            const photoNum = photoIdx + 1;
+            const photo = photos[photoIdx];
+            const cx = ML + col * (colW + colGap);
+            const cy = phY + row * (rowH + rowGap);
+
+            // "PHOTO N OF M" banner (navy)
+            const displayTotal = Math.max(totalPhotos, pp * PHOTOS_PER_PAGE + 4);
+            doc.rect(cx, cy, colW, bannerH).fillAndStroke('#1a2e4a', '#1a2e4a');
+            doc.fontSize(8.5).font('Helvetica-Bold').fillColor('#fff')
+              .text(`PHOTO ${photoNum} OF ${displayTotal}`, cx + 6, cy + 7, { width: colW - 12, lineBreak: false });
+
+            // Photo frame
+            const frameY = cy + bannerH;
+            let photoEmbedded = false;
+            if (photo) {
+              try {
+                const photoBuffer = await loadImageBuffer(photo.filePath);
+                if (photoBuffer) {
+                  doc.rect(cx, frameY, colW, photoFrameH).stroke();
+                  doc.image(photoBuffer, cx + 2, frameY + 2, { fit: [colW - 4, photoFrameH - 4], align: 'center', valign: 'center' });
+                  photoEmbedded = true;
+                }
+              } catch (_) { /* fall through to placeholder */ }
+            }
+            if (!photoEmbedded) {
+              renderPhotoPlaceholder(cx, frameY, colW, photoFrameH, photoNum);
+            }
+
+            // LOCATION field
+            const locY = frameY + photoFrameH + 4;
+            doc.fontSize(7).font('Helvetica-Bold').fillColor('#000').text('LOCATION:', cx + 2, locY, { lineBreak: false });
+            doc.moveTo(cx + 2, locY + 14).lineTo(cx + colW - 2, locY + 14).lineWidth(0.5).strokeColor('#000').stroke();
+            doc.moveTo(cx + 2, locY + 24).lineTo(cx + colW - 2, locY + 24).lineWidth(0.5).stroke();
+
+            // DESCRIPTION field
+            const dY = locY + locH;
+            doc.fontSize(7).font('Helvetica-Bold').fillColor('#000').text('DESCRIPTION:', cx + 2, dY, { lineBreak: false });
+            if (photo?.caption) {
+              doc.fontSize(7).font('Helvetica').fillColor('#333')
+                .text(photo.caption, cx + 2, dY + 10, { width: colW - 4, height: descH - 22, ellipsis: true });
+            }
+            doc.moveTo(cx + 2, dY + descH - 24).lineTo(cx + colW - 2, dY + descH - 24).lineWidth(0.5).stroke();
+            doc.moveTo(cx + 2, dY + descH - 14).lineTo(cx + colW - 2, dY + descH - 14).lineWidth(0.5).stroke();
+            doc.fillColor('#000').strokeColor('#000');
+          }
+        }
+      }
+
       // ===== FOOTER ON ALL PAGES =====
       const range = doc.bufferedPageRange();
       const totalPages = range.count;
@@ -10739,11 +10770,21 @@ export async function registerRoutes(
       for (let pageIdx = 0; pageIdx < totalPages; pageIdx++) {
         doc.switchToPage(range.start + pageIdx);
         const footerY = PH - MB - 14;
+        const isPhotoPage = pageIdx >= prePhotoPageCount;
+
         doc.rect(ML, footerY, CW, 0.5).fill('#1a2e4a');
         doc.fill('#000');
         doc.fontSize(7).font('Helvetica').fillColor('#555');
-        doc.text(`${companyName}  |  Report #${reportNumber}`, ML, footerY + 4, { width: CW / 2, lineBreak: false });
-        doc.text(`Project: ${projectName}`, ML, footerY + 4, { width: CW, align: 'center', lineBreak: false });
+
+        if (isPhotoPage) {
+          doc.text(
+            'KNOWLAND CONSTRUCTION SERVICES  ·  IOR DAILY REPORT  ·  DSA REGULATED PROJECT  ·  FORM KCS-DR-01',
+            ML, footerY + 4, { width: CW * 0.78, lineBreak: false }
+          );
+        } else {
+          doc.text(`${companyName}  |  Report #${reportNumber}`, ML, footerY + 4, { width: CW / 2, lineBreak: false });
+          doc.text(`Project: ${projectName}`, ML, footerY + 4, { width: CW, align: 'center', lineBreak: false });
+        }
         doc.text(`Page ${pageIdx + 1} of ${totalPages}`, ML, footerY + 4, { width: CW, align: 'right', lineBreak: false });
         doc.fillColor('#000');
       }
