@@ -451,7 +451,7 @@ export function DailyReportDialog({ open, onOpenChange, project, onSuccess }: Da
 
                 <div className="space-y-2">
                   <Label>Type of Work</Label>
-                  <div className="flex flex-wrap gap-3" data-testid="dialog-section-type-of-work">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-2" data-testid="dialog-section-type-of-work">
                     {TYPE_OF_WORK_OPTIONS.map((option) => (
                       <div key={option.value} className="flex items-center space-x-2">
                         <Checkbox
