@@ -10437,7 +10437,7 @@ export async function registerRoutes(
       drawSectionHdr(curY, `WORKFORCE${totalWorkers > 0 ? ` (${totalWorkers} WORKERS ON-SITE)` : ''}`);
       curY += 13;
 
-      const waRowH = 16, waHdrH = 12;
+      const waMinRowH = 16, waHdrH = 12;
       const waW = [CW * 0.24, CW * 0.08, CW * 0.22, 0];
       waW[3] = CW - waW[0] - waW[1] - waW[2];
       const waX = [ML, ML + waW[0], ML + waW[0] + waW[1], ML + waW[0] + waW[1] + waW[2]];
@@ -10452,29 +10452,44 @@ export async function registerRoutes(
       // Guard: how many rows fit before safety+work-performed must start
       const safetyBlockH = 13 + 26 + 26 + 4;
       const workPerfMinH  = 60;
-      const maxWaRows = Math.max(1, Math.floor((PH - MB - FOOTER_H - curY - safetyBlockH - workPerfMinH) / waRowH));
+      const waAvailH = PH - MB - FOOTER_H - curY - safetyBlockH - workPerfMinH;
 
-      workActivities.slice(0, maxWaRows).forEach((row, idx) => {
-        doc.rect(ML, curY, CW, waRowH).fill(getRowBg(idx));
-        doc.rect(ML, curY, CW, waRowH).stroke('#cccccc');
-        const ty = curY + (waRowH - 8) / 2;
+      // Pre-calculate dynamic row heights (description column wraps; others truncate)
+      const waDescW = waW[3] - 8;
+      const waRowHeights: number[] = [];
+      let waTotalH = 0;
+      for (const row of workActivities) {
+        const desc = row.workDescription || '';
+        const measuredH = desc ? doc.fontSize(8).heightOfString(desc, { width: waDescW }) : 8;
+        const rowH = Math.max(waMinRowH, measuredH + 8);
+        if (waTotalH + rowH > waAvailH && waRowHeights.length > 0) break;
+        waRowHeights.push(rowH);
+        waTotalH += rowH;
+      }
+
+      workActivities.slice(0, waRowHeights.length).forEach((row, idx) => {
+        const rowH = waRowHeights[idx];
+        doc.rect(ML, curY, CW, rowH).fill(getRowBg(idx));
+        doc.rect(ML, curY, CW, rowH).stroke('#cccccc');
+        const ty = curY + (rowH - 8) / 2;
         doc.fontSize(8).font('Helvetica').fillColor(NAVY);
         doc.text(row.trade       || '--', waX[0] + 4, ty, { width: waW[0] - 8, lineBreak: false, ellipsis: true });
         doc.text(String(row.headcount || ''), waX[1] + 4, ty, { width: waW[1] - 8, lineBreak: false });
         doc.text(row.contractor  || '--', waX[2] + 4, ty, { width: waW[2] - 8, lineBreak: false, ellipsis: true });
-        doc.text(row.workDescription || '--', waX[3] + 4, ty, { width: waW[3] - 8, lineBreak: false, ellipsis: true });
-        curY += waRowH;
+        // Description wraps to as many lines as needed
+        doc.text(row.workDescription || '--', waX[3] + 4, curY + 4, { width: waDescW, lineBreak: true });
+        curY += rowH;
       });
 
       // TOTAL ON-SITE row (navy)
       if (workActivities.length > 0) {
-        doc.rect(ML, curY, CW, waRowH).fill(NAVY);
-        const ty = curY + (waRowH - 8) / 2;
+        doc.rect(ML, curY, CW, waMinRowH).fill(NAVY);
+        const ty = curY + (waMinRowH - 8) / 2;
         doc.fontSize(8).font('Helvetica-Bold').fillColor('#fff');
         doc.text('TOTAL ON-SITE', waX[0] + 4, ty, { width: waW[0] - 8, lineBreak: false });
         doc.text(String(totalWorkers), waX[1] + 4, ty, { width: waW[1] - 8, lineBreak: false });
         doc.fillColor('#000');
-        curY += waRowH;
+        curY += waMinRowH;
       }
       curY += 8;
 
