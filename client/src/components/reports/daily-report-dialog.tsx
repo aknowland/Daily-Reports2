@@ -126,8 +126,8 @@ export function DailyReportDialog({ open, onOpenChange, project, onSuccess }: Da
 
   const [sectionsOpen, setSectionsOpen] = useState({
     workActivities: false,
-    workPerformed: false,
-    inspections: false,
+    workPerformed: true,
+    inspections: true,
     additionalNotes: false,
     visitors: false,
     issues: false,
