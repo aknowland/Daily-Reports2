@@ -822,32 +822,6 @@ export default function ReportFormPage() {
         <Card className="border-l-4 border-l-primary">
           <CardHeader>
             <CardTitle className="text-lg flex items-center justify-between gap-2 flex-wrap">
-              <span>Inspections</span>
-              <VoiceInput
-                onTranscript={(text) => {
-                  setFormData(prev => ({
-                    ...prev,
-                    inspections: prev.inspections ? `${prev.inspections} ${text}` : text
-                  }));
-                }}
-              />
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Textarea
-              value={formData.inspections}
-              onChange={(e) => setFormData(prev => ({ ...prev, inspections: e.target.value }))}
-              placeholder="Describe inspections performed today... (or use voice input)"
-              rows={3}
-              className="resize-y"
-              data-testid="textarea-inspections"
-            />
-          </CardContent>
-        </Card>
-
-        <Card className="border-l-4 border-l-primary">
-          <CardHeader>
-            <CardTitle className="text-lg flex items-center justify-between gap-2 flex-wrap">
               <span>Work Performed</span>
               <VoiceInput
                 onTranscript={(text) => {
@@ -863,10 +837,36 @@ export default function ReportFormPage() {
             <Textarea
               value={formData.workPerformed}
               onChange={(e) => setFormData(prev => ({ ...prev, workPerformed: e.target.value }))}
-              placeholder="Additional work observations, general field notes... (or use voice input) — appears in Work Performed section of the PDF"
+              placeholder="Describe all work performed today across all trades and activities... (or use voice input)"
               rows={4}
               className="resize-y"
               data-testid="textarea-work-performed"
+            />
+          </CardContent>
+        </Card>
+
+        <Card className="border-l-4 border-l-primary">
+          <CardHeader>
+            <CardTitle className="text-lg flex items-center justify-between gap-2 flex-wrap">
+              <span>Inspections</span>
+              <VoiceInput
+                onTranscript={(text) => {
+                  setFormData(prev => ({
+                    ...prev,
+                    inspections: prev.inspections ? `${prev.inspections} ${text}` : text
+                  }));
+                }}
+              />
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Textarea
+              value={formData.inspections}
+              onChange={(e) => setFormData(prev => ({ ...prev, inspections: e.target.value }))}
+              placeholder="Describe inspection activities, results, and observations... (or use voice input)"
+              rows={3}
+              className="resize-y"
+              data-testid="textarea-inspections"
             />
           </CardContent>
         </Card>
