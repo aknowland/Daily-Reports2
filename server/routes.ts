@@ -10207,16 +10207,22 @@ export async function registerRoutes(
       // --- COMPANY HEADER ---
       let curY = MT;
 
-      // Logo top-left (fits in a 180×52 box so it's prominent without crowding)
-      if (company?.logoPath) {
-        try {
-          const logoBuffer = await loadImageBuffer(company.logoPath);
-          if (logoBuffer) {
-            doc.image(logoBuffer, ML, curY, { fit: [180, 52], valign: 'top', align: 'left' });
-          }
-        } catch (err) {
-          console.error('Error adding company logo:', err);
+      // Knowland logo top-left — use static asset, fall back to company logo
+      const knowlandLogoPath = 'attached_assets/trans_logo_1774663108517.png';
+      let headerLogoBuffer: Buffer | null = null;
+      try {
+        const localLogoPath = path.join(process.cwd(), knowlandLogoPath);
+        if (fs.existsSync(localLogoPath)) {
+          headerLogoBuffer = fs.readFileSync(localLogoPath);
         }
+      } catch (err) {
+        console.error('Error loading Knowland logo:', err);
+      }
+      if (!headerLogoBuffer && company?.logoPath) {
+        headerLogoBuffer = await loadImageBuffer(company.logoPath);
+      }
+      if (headerLogoBuffer) {
+        doc.image(headerLogoBuffer, ML, curY, { fit: [180, 52], valign: 'top', align: 'left' });
       }
 
       // Company name & contact - right side
