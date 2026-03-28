@@ -10351,12 +10351,12 @@ export async function registerRoutes(
       doc.fontSize(6.5).font('Helvetica-Bold').fillColor('#fff')
         .text(stText, stX, stY + 2.5, { width: stW, align: 'center', lineBreak: false });
       doc.fillColor('#000');
-      curY += rlH + 3;
+      curY += rlH + 8;
 
       // ─── REPORT DETAILS ───────────────────────────────────────────────
       drawSectionHdr(curY, 'REPORT DETAILS');
       curY += 13;
-      const rdH = 26;
+      const rdH = 28;
       const rdW = [CW * 0.34, CW * 0.24, CW * 0.21, 0];
       rdW[3] = CW - rdW[0] - rdW[1] - rdW[2];
       const rdX = [ML, ML + rdW[0], ML + rdW[0] + rdW[1], ML + rdW[0] + rdW[1] + rdW[2]];
@@ -10365,12 +10365,12 @@ export async function registerRoutes(
       drawInfoCell(rdX[1], curY, rdW[1], rdH, 'ORGANIZATION', company?.name || '--');
       drawInfoCell(rdX[2], curY, rdW[2], rdH, 'WORK START', formatTimeDisplay(report.timeIn  as string));
       drawInfoCell(rdX[3], curY, rdW[3], rdH, 'WORK END',   formatTimeDisplay(report.timeOut as string));
-      curY += rdH + 3;
+      curY += rdH + 8;
 
       // ─── WEATHER CONDITIONS ───────────────────────────────────────────
       drawSectionHdr(curY, 'WEATHER CONDITIONS');
       curY += 13;
-      const wH = 26;
+      const wH = 28;
       const wW = [CW * 0.28, CW * 0.28, CW * 0.16, 0];
       wW[3] = CW - wW[0] - wW[1] - wW[2];
       const wX = [ML, ML + wW[0], ML + wW[0] + wW[1], ML + wW[0] + wW[1] + wW[2]];
@@ -10378,7 +10378,7 @@ export async function registerRoutes(
       drawInfoCell(wX[1], curY, wW[1], wH, 'AFTERNOON (PM)',  (report.weatherPM       as string) || '--');
       drawInfoCell(wX[2], curY, wW[2], wH, 'PRECIPITATION',   (report.precipitation   as string) || '--');
       drawInfoCell(wX[3], curY, wW[3], wH, 'SITE CONDITIONS', (report.siteConditions  as string) || '--');
-      curY += wH + 3;
+      curY += wH + 8;
 
       // ─── TYPE OF WORK ─────────────────────────────────────────────────
       const TOW_LABELS: Record<string, string> = {
@@ -10425,7 +10425,7 @@ export async function registerRoutes(
           .text(TOW_LABELS[key] || key, ix + 16, curY + (towRowH - 7) / 2, { width: towItemW - 18, lineBreak: false });
       });
       doc.fillColor('#000000');
-      curY += towRowH + 3;
+      curY += towRowH + 8;
 
       // ─── WORKFORCE ────────────────────────────────────────────────────
       const totalWorkers = workActivities.reduce((s, r) => s + (Number(r.headcount) || 0), 0);
@@ -10471,7 +10471,7 @@ export async function registerRoutes(
         doc.fillColor('#000');
         curY += waRowH;
       }
-      curY += 3;
+      curY += 8;
 
       // ─── WORK PERFORMED ───────────────────────────────────────────────
       const wpBottomLimit = PH - MB - FOOTER_H - safetyBlockH - 4;
@@ -10480,7 +10480,7 @@ export async function registerRoutes(
       // Each block = section header (13) + content box (h)
       const wpTotalAvail  = wpBottomLimit - curY;
       const perSecHdrH    = 13;
-      const perContentH   = Math.max(20, Math.min(55, Math.floor((wpTotalAvail - 2 * perSecHdrH - 6) / 2)));
+      const perContentH   = Math.max(20, Math.min(55, Math.floor((wpTotalAvail - 2 * perSecHdrH - 16) / 2)));
 
       const drawTextSection = (label: string, text: string) => {
         if (curY + perSecHdrH + perContentH > wpBottomLimit + 5) return;
@@ -10491,7 +10491,7 @@ export async function registerRoutes(
         doc.rect(ML, curY, CW, perContentH).stroke('#cccccc');
         doc.fontSize(8).font('Helvetica').fillColor(hasText ? NAVY : '#aaaaaa')
           .text(hasText ? text : '--', ML + 6, curY + 4, { width: CW - 12, height: perContentH - 6 });
-        curY += perContentH + 3;
+        curY += perContentH + 8;
       };
 
       drawTextSection('WORK PERFORMED', workPerformedText);
