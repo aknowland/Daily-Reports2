@@ -10502,8 +10502,31 @@ export async function registerRoutes(
       const wpNaturalH   = measureSection(workPerformedText);
       const inspNaturalH = measureSection(inspectionsText);
 
-      // Render a text section at its natural height, no height clipping
+      const PAGE_BOTTOM = PH - MB - FOOTER_H;
+
+      // Compact continuation header for overflow pages
+      const drawContHeader = (suffix: string) => {
+        const chH = 20;
+        doc.rect(ML, curY, CW, chH).fill('#f1f5f9');
+        doc.rect(ML, curY, CW, chH).stroke('#cccccc');
+        doc.fontSize(7.5).font('Helvetica-Bold').fillColor(NAVY)
+          .text(
+            [company?.name || 'KNOWLAND CONSTRUCTION SERVICES', '—', projectName, rptIdLabel, suffix].join('   '),
+            ML + 6, curY + (chH - 7.5) / 2, { width: CW - 12, lineBreak: false, ellipsis: true }
+          );
+        doc.fillColor('#000');
+        curY += chH + 4;
+      };
+
+      // Render a text section at its natural height with no clipping.
+      // If the full block won't fit on the current page, start a new page first.
       const drawTextSection = (label: string, text: string, contentH: number) => {
+        const blockH = 13 + contentH + 8; // header + box + gap
+        if (curY + blockH > PAGE_BOTTOM) {
+          doc.addPage();
+          curY = MT;
+          drawContHeader(`— ${label}`);
+        }
         drawSectionHdr(curY, label);
         curY += 13;
         const hasText = text && text.trim().length > 0;
@@ -10519,20 +10542,10 @@ export async function registerRoutes(
 
       // ─── SAFETY ───────────────────────────────────────────────────────
       // If Safety no longer fits on this page, start a fresh page for it
-      if (curY + safetyBlockH > PH - MB - FOOTER_H) {
+      if (curY + safetyBlockH > PAGE_BOTTOM) {
         doc.addPage();
         curY = MT;
-        // Compact continuation header
-        const chH = 20;
-        doc.rect(ML, curY, CW, chH).fill('#f1f5f9');
-        doc.rect(ML, curY, CW, chH).stroke('#cccccc');
-        doc.fontSize(7.5).font('Helvetica-Bold').fillColor(NAVY)
-          .text(
-            [company?.name || 'KNOWLAND CONSTRUCTION SERVICES', '—', projectName, rptIdLabel, '— Safety'].join('   '),
-            ML + 6, curY + (chH - 7.5) / 2, { width: CW - 12, lineBreak: false, ellipsis: true }
-          );
-        doc.fillColor('#000');
-        curY += chH + 4;
+        drawContHeader('— Safety');
       }
       drawSectionHdr(curY, 'SAFETY');
       curY += 13;
