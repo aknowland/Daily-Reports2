@@ -196,6 +196,15 @@ export function WorkActivityRowInput({ trade, contractor, headcount, workDescrip
           <Trash2 className="w-4 h-4 text-muted-foreground" />
         </Button>
       </div>
+      <Textarea
+        value={workDescription || ""}
+        onChange={(e) => onChange(trade || "", contractor, headcount, e.target.value)}
+        placeholder="Work description (auto-fills Work Performed if left blank above)"
+        disabled={disabled}
+        className="text-sm resize-none"
+        rows={2}
+        data-testid={`input-activity-description-${index}`}
+      />
     </div>
   );
 }
