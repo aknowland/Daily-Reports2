@@ -848,7 +848,7 @@ export default function ReportFormPage() {
         <Card className="border-l-4 border-l-primary">
           <CardHeader>
             <CardTitle className="text-lg flex items-center justify-between gap-2 flex-wrap">
-              <span>Additional Notes</span>
+              <span>Work Performed</span>
               <VoiceInput
                 onTranscript={(text) => {
                   setFormData(prev => ({
