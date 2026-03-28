@@ -309,9 +309,21 @@ export default function ReportFormPage() {
   const saveMutation = useMutation({
     mutationFn: async (status: "draft" | "submitted") => {
       setIsSaving(true);
-      
+
+      // Auto-fill Work Performed from workforce descriptions when left blank
+      const activitiesWithDesc = (formData.workActivities as WorkActivityRow[])
+        .filter(a => a.workDescription?.trim());
+      const autoWorkPerformed = !formData.workPerformed?.trim() && activitiesWithDesc.length > 0
+        ? activitiesWithDesc.map(a => {
+            const header = [a.contractor, a.headcount ? `(${a.headcount})` : null]
+              .filter(Boolean).join(' ');
+            return header ? `${header}:\n${a.workDescription}` : a.workDescription;
+          }).join('\n\n')
+        : formData.workPerformed;
+
       const reportData = {
         ...formData,
+        workPerformed: autoWorkPerformed,
         projectId: formData.projectId || null, // Send null for personal reports
         customProjectName: formData.projectId ? null : (formData.customProjectName || null), // Only save custom name if no project selected
         date: formData.date, // Keep as YYYY-MM-DD string to avoid timezone shifts
