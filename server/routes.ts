@@ -10360,7 +10360,11 @@ export async function registerRoutes(
 
       const minWaRowH = 16;
       const maxWaRowH = 28;
-      const displayRows = Math.max(workActivities.length, 3);
+      // Cap rows to prevent overflowing into the page 1 cert zone
+      // Reserve space for: work-performed (50), safety (80), cert (80), footer (20)
+      const p1CertReserve = 230;
+      const maxWaRows = Math.floor((PH - MB - p1CertReserve - curY) / minWaRowH);
+      const displayRows = Math.min(Math.max(workActivities.length, 3), Math.max(3, maxWaRows));
       for (let i = 0; i < displayRows; i++) {
         const act = workActivities[i];
         let rowH = minWaRowH;
@@ -10599,15 +10603,19 @@ export async function registerRoutes(
       }
       p2Y += 10;
 
-      // --- SUPERINTENDENT NOTES ---
-      if (report.notes) {
-        drawSectionHeader(ML, p2Y, CW, 'SUPERINTENDENT NOTES');
-        p2Y += 14;
-        const notesH = Math.min(60, Math.max(28, doc.heightOfString(report.notes, { width: CW - 8 }) + 10));
-        doc.rect(ML, p2Y, CW, notesH).stroke();
-        doc.fontSize(8).font('Helvetica').fillColor('#000').text(report.notes, ML + 4, p2Y + 4, { width: CW - 8, height: notesH - 8, ellipsis: true });
-        p2Y += notesH + 10;
+      // --- SUPERINTENDENT NOTES (always rendered) ---
+      drawSectionHeader(ML, p2Y, CW, 'SUPERINTENDENT NOTES');
+      p2Y += 14;
+      const notesText = report.notes || '';
+      const notesH = notesText ? Math.min(60, Math.max(28, doc.heightOfString(notesText, { width: CW - 8 }) + 10)) : 28;
+      doc.rect(ML, p2Y, CW, notesH).stroke();
+      if (notesText) {
+        doc.fontSize(8).font('Helvetica').fillColor('#000').text(notesText, ML + 4, p2Y + 4, { width: CW - 8, height: notesH - 8, ellipsis: true });
+      } else {
+        doc.fontSize(7.5).font('Helvetica').fillColor('#aaa').text('No superintendent notes recorded.', ML + 4, p2Y + 8, { lineBreak: false });
+        doc.fillColor('#000');
       }
+      p2Y += notesH + 10;
 
       // --- PHOTO REFERENCE TABLE ---
       const phRefHdrH = 14;
