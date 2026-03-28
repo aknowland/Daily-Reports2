@@ -10291,7 +10291,7 @@ export async function registerRoutes(
       // ─── HEADER ──────────────────────────────────────────────────────
       // Logo (left, 60 px tall)
       if (headerLogoBuffer) {
-        doc.image(headerLogoBuffer, ML, MT, { fit: [180, 60], valign: 'center', align: 'left' });
+        doc.image(headerLogoBuffer, ML, MT, { fit: [110, 40], valign: 'center', align: 'left' });
       }
 
       // Centre block: org name + subtitle + address
@@ -10609,25 +10609,20 @@ export async function registerRoutes(
         .text(notesText2, ML + 6, curY + 5, { width: CW - 12, height: notesEstH - 8 });
       curY += notesEstH + 4;
 
-      // ─── PHOTOS TABLE ─────────────────────────────────────────────────
-      drawSectionHdr(curY, `PHOTOS (${photos.length} ATTACHED)`);
-      curY += 13;
-      const phRowH = 15, phHdrH = 12;
-      const phW = [CW * 0.20, CW * 0.65, 0];
-      phW[2] = CW - phW[0] - phW[1];
-      const phX = [ML, ML + phW[0], ML + phW[0] + phW[1]];
-      drawColHeaders(curY, phHdrH, [
-        { x: phX[0], w: phW[0], label: 'PHOTO ID' },
-        { x: phX[1], w: phW[1], label: 'CAPTION' },
-        { x: phX[2], w: phW[2], label: 'BY' },
-      ]);
-      curY += phHdrH;
-      if (photos.length === 0) {
-        doc.rect(ML, curY, CW, phRowH).fill('#fff').stroke('#cccccc');
-        doc.fontSize(7.5).font('Helvetica').fillColor('#888')
-          .text('No photos attached.', ML + 6, curY + (phRowH - 7.5) / 2, { lineBreak: false });
-        curY += phRowH;
-      } else {
+      // ─── PHOTOS TABLE (only when photos exist) ────────────────────────
+      if (photos.length > 0) {
+        drawSectionHdr(curY, `PHOTOS (${photos.length} ATTACHED)`);
+        curY += 13;
+        const phRowH = 15, phHdrH = 12;
+        const phW = [CW * 0.20, CW * 0.65, 0];
+        phW[2] = CW - phW[0] - phW[1];
+        const phX = [ML, ML + phW[0], ML + phW[0] + phW[1]];
+        drawColHeaders(curY, phHdrH, [
+          { x: phX[0], w: phW[0], label: 'PHOTO ID' },
+          { x: phX[1], w: phW[1], label: 'CAPTION' },
+          { x: phX[2], w: phW[2], label: 'BY' },
+        ]);
+        curY += phHdrH;
         (photos as any[]).forEach((photo: any, idx: number) => {
           doc.rect(ML, curY, CW, phRowH).fill(getRowBg(idx)).stroke('#cccccc');
           const ty = curY + (phRowH - 8) / 2;
@@ -10640,8 +10635,8 @@ export async function registerRoutes(
           doc.text(initials, phX[2] + 4, ty, { width: phW[2] - 8, lineBreak: false });
           curY += phRowH;
         });
+        curY += 4;
       }
-      curY += 4;
 
       // ─── CERTIFICATION & SIGNATURE ────────────────────────────────────
       const certBlockH = 68;
