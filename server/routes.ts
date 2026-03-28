@@ -10380,6 +10380,42 @@ export async function registerRoutes(
       drawInfoCell(wX[3], curY, wW[3], wH, 'SITE CONDITIONS', (report.siteConditions  as string) || '--');
       curY += wH + 3;
 
+      // ─── TYPE OF WORK ─────────────────────────────────────────────────
+      const TOW_LABELS: Record<string, string> = {
+        reinf_concrete:  'Reinf. Concrete',
+        structural_steel: 'Structural Steel',
+        reinf_masonry:   'Reinf. Masonry',
+        fire_proofing:   'Fire Proofing',
+        shotcrete:       'Shotcrete',
+        anchors:         'Anchors',
+        other:           'Other',
+      };
+      const TOW_ORDER = ['reinf_concrete', 'structural_steel', 'reinf_masonry', 'fire_proofing', 'shotcrete', 'anchors', 'other'];
+      drawSectionHdr(curY, 'TYPE OF WORK');
+      curY += 13;
+      const towRowH = 18;
+      const towItemW = CW / TOW_ORDER.length;
+      // Background row
+      doc.rect(ML, curY, CW, towRowH).fill('#f8fafc');
+      doc.rect(ML, curY, CW, towRowH).stroke('#cccccc');
+      TOW_ORDER.forEach((key, i) => {
+        const checked = typeOfWork.includes(key);
+        const ix = ML + i * towItemW;
+        const boxSize = 7;
+        const boxY = curY + (towRowH - boxSize) / 2;
+        // Checkbox border
+        doc.rect(ix + 6, boxY, boxSize, boxSize).stroke(NAVY);
+        // Checkmark fill
+        if (checked) {
+          doc.rect(ix + 6, boxY, boxSize, boxSize).fill(NAVY);
+          doc.fontSize(6).font('Helvetica-Bold').fillColor('#ffffff')
+            .text('✓', ix + 6.5, boxY + 0.5, { width: boxSize, align: 'center', lineBreak: false });
+        }
+        doc.fontSize(6.5).font(checked ? 'Helvetica-Bold' : 'Helvetica').fillColor(checked ? NAVY : '#666666')
+          .text(TOW_LABELS[key] || key, ix + 16, curY + (towRowH - 8) / 2, { width: towItemW - 18, lineBreak: false });
+      });
+      curY += towRowH + 3;
+
       // ─── WORKFORCE ────────────────────────────────────────────────────
       const totalWorkers = workActivities.reduce((s, r) => s + (Number(r.headcount) || 0), 0);
       drawSectionHdr(curY, `WORKFORCE${totalWorkers > 0 ? ` (${totalWorkers} WORKERS ON-SITE)` : ''}`);
@@ -10431,24 +10467,24 @@ export async function registerRoutes(
       curY += 13;
 
       const wpBottomLimit = PH - MB - FOOTER_H - safetyBlockH - 4;
+      const subLabelH = 11;
 
-      // Helper to draw a labeled text block
+      // Split available vertical space evenly between WORK PERFORMED and INSPECTIONS
+      const wpTotalAvail = wpBottomLimit - curY;
+      const perBlockContentH = Math.max(20, Math.min(55, Math.floor((wpTotalAvail - 2 * subLabelH - 6) / 2)));
+
       const drawWpBlock = (label: string, text: string, rowIdx: number) => {
-        if (curY >= wpBottomLimit - 20) return;
-        const subLabelH = 11;
+        if (curY + subLabelH + perBlockContentH > wpBottomLimit + 5) return;
         doc.rect(ML, curY, CW, subLabelH).fill(getRowBg(rowIdx));
         doc.fontSize(7).font('Helvetica-Bold').fillColor(NAVY)
           .text(label, ML + 6, curY + 2, { lineBreak: false });
         curY += subLabelH;
-        const availH = Math.min(55, wpBottomLimit - curY - 8);
-        if (availH > 10) {
-          const hasText = text && text.trim().length > 0;
-          doc.rect(ML, curY, CW, availH).fill('#fff');
-          doc.rect(ML, curY, CW, availH).stroke('#cccccc');
-          doc.fontSize(8).font('Helvetica').fillColor(hasText ? NAVY : '#aaaaaa')
-            .text(hasText ? text : '--', ML + 6, curY + 4, { width: CW - 12, height: availH - 6 });
-          curY += availH;
-        }
+        const hasText = text && text.trim().length > 0;
+        doc.rect(ML, curY, CW, perBlockContentH).fill('#fff');
+        doc.rect(ML, curY, CW, perBlockContentH).stroke('#cccccc');
+        doc.fontSize(8).font('Helvetica').fillColor(hasText ? NAVY : '#aaaaaa')
+          .text(hasText ? text : '--', ML + 6, curY + 4, { width: CW - 12, height: perBlockContentH - 6 });
+        curY += perBlockContentH;
       };
 
       drawWpBlock('WORK PERFORMED', workPerformedText, 0);
