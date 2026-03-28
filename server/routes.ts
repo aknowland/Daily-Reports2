@@ -10332,7 +10332,11 @@ export async function registerRoutes(
       doc.rect(ML, curY, CW, 1).fill(NAVY);
       curY += 4;
 
-      // ─── PROJECT INFO ROW (4 labeled cells, full-width) ──────────────
+      // ─── REPORT DETAILS (wraps project info + report line + inspector row) ─
+      drawSectionHdr(curY, 'REPORT DETAILS');
+      curY += 13;
+
+      // Project info row
       const piH = 30;
       const piW = [CW * 0.40, CW * 0.18, CW * 0.18, 0];
       piW[3] = CW - piW[0] - piW[1] - piW[2];
@@ -10343,12 +10347,11 @@ export async function registerRoutes(
       drawInfoCell(piX[3], curY, piW[3], piH, 'REPORT DATE', reportLongDate);
       curY += piH;
 
-      // ─── REPORT LINE + STATUS BADGE ───────────────────────────────────
+      // Report line + status badge
       const rlH = 18;
       doc.rect(ML, curY, CW, rlH).fill('#f1f5f9');
       doc.fontSize(8.5).font('Helvetica-Bold').fillColor(NAVY)
         .text(`Daily Construction Report — Report #${report.reportNumber || '--'}`, ML + 6, curY + (rlH - 8.5) / 2, { lineBreak: false });
-      // Status pill
       const stText = (report.status || 'DRAFT').toUpperCase();
       const stColors: Record<string, string> = { SUBMITTED: NAVY, APPROVED: '#16a34a', FINAL: '#16a34a', DRAFT: '#6b7280' };
       const stBg = stColors[stText] || '#6b7280';
@@ -10357,11 +10360,7 @@ export async function registerRoutes(
       doc.fontSize(6.5).font('Helvetica-Bold').fillColor('#fff')
         .text(stText, stX, stY + 2.5, { width: stW, align: 'center', lineBreak: false });
       doc.fillColor('#000');
-      curY += rlH + 8;
-
-      // ─── REPORT DETAILS ───────────────────────────────────────────────
-      drawSectionHdr(curY, 'REPORT DETAILS');
-      curY += 13;
+      curY += rlH + 4;
       const rdH = 28;
       const rdW = [CW * 0.34, CW * 0.24, CW * 0.21, 0];
       rdW[3] = CW - rdW[0] - rdW[1] - rdW[2];
@@ -10644,35 +10643,6 @@ export async function registerRoutes(
         .text(notesText2, ML + 6, curY + 5, { width: CW - 12, height: notesEstH - 8 });
       curY += notesEstH + 4;
 
-      // ─── PHOTOS TABLE (only when photos exist) ────────────────────────
-      if (photos.length > 0) {
-        drawSectionHdr(curY, `PHOTOS (${photos.length} ATTACHED)`);
-        curY += 13;
-        const phRowH = 15, phHdrH = 12;
-        const phW = [CW * 0.20, CW * 0.65, 0];
-        phW[2] = CW - phW[0] - phW[1];
-        const phX = [ML, ML + phW[0], ML + phW[0] + phW[1]];
-        drawColHeaders(curY, phHdrH, [
-          { x: phX[0], w: phW[0], label: 'PHOTO ID' },
-          { x: phX[1], w: phW[1], label: 'CAPTION' },
-          { x: phX[2], w: phW[2], label: 'BY' },
-        ]);
-        curY += phHdrH;
-        (photos as any[]).forEach((photo: any, idx: number) => {
-          doc.rect(ML, curY, CW, phRowH).fill(getRowBg(idx)).stroke('#cccccc');
-          const ty = curY + (phRowH - 8) / 2;
-          const photoId = `PH-${report.reportNumber || '000'}-${String(idx + 1).padStart(2, '0')}`;
-          const initials = inspectorName.split(' ').map((p: string) => p[0]).join('.') + '.';
-          doc.fontSize(7.5).font('Helvetica').fillColor(NAVY);
-          doc.text(photoId, phX[0] + 4, ty, { width: phW[0] - 8, lineBreak: false });
-          doc.text(photo.caption || photo.path?.split('/').pop() || `Photo ${idx + 1}`,
-                   phX[1] + 4, ty, { width: phW[1] - 8, lineBreak: false, ellipsis: true });
-          doc.text(initials, phX[2] + 4, ty, { width: phW[2] - 8, lineBreak: false });
-          curY += phRowH;
-        });
-        curY += 4;
-      }
-
       // ─── CERTIFICATION & SIGNATURE ────────────────────────────────────
       const certBlockH = 68;
       if (curY + certBlockH > PH - MB - FOOTER_H) {
@@ -10712,6 +10682,80 @@ export async function registerRoutes(
       doc.moveTo(rvX3 + 8, curY + certSigH - 14).lineTo(rvX3 + certColW - 8, curY + certSigH - 14).stroke('#aaa');
       doc.fontSize(7).font('Helvetica').fillColor('#aaa').text('Signature / Date', rvX3 + 8, curY + certSigH - 9, { lineBreak: false });
       doc.fillColor('#000');
+
+      // ══════════════════════════════════════════════════════════════════
+      // PHOTOS PAGE(S) — rendered as actual images after main page
+      // ══════════════════════════════════════════════════════════════════
+      if (photos.length > 0) {
+        const phColCount = 2;
+        const phColGap = 10;
+        const phImgW = (CW - phColGap * (phColCount - 1)) / phColCount; // ~265
+        const phImgH = 185;
+        const phCaptionH = 20;
+        const phCellH = phImgH + phCaptionH;
+        const phRowGap = 10;
+        const phHdrH = 16;
+        const phContentTop = MT + phHdrH; // Y where photo grid starts on each page
+        const phContentBottom = PH - MB - FOOTER_H;
+        const phRowsPerPage = Math.floor((phContentBottom - phContentTop) / (phCellH + phRowGap));
+
+        let phPageRow = 0; // row index within the current page
+        let isFirstPhotoPage = true;
+
+        const startNewPhotoPage = (label: string) => {
+          doc.addPage();
+          drawSectionHdr(MT, label);
+          phPageRow = 0;
+          isFirstPhotoPage = false;
+        };
+
+        startNewPhotoPage(`PHOTOS — Report #${report.reportNumber || '--'} (${photos.length} attached)`);
+
+        for (let idx = 0; idx < photos.length; idx++) {
+          const col = idx % phColCount;
+
+          // When we start a new row-pair (col 0), check if it fits on the current page
+          if (col === 0 && phPageRow >= phRowsPerPage) {
+            startNewPhotoPage(`PHOTOS — Report #${report.reportNumber || '--'} (continued)`);
+          }
+
+          const cellX = ML + col * (phImgW + phColGap);
+          const cellY = phContentTop + phPageRow * (phCellH + phRowGap);
+
+          // Image border box
+          doc.rect(cellX, cellY, phImgW, phImgH).lineWidth(0.5).stroke('#cccccc');
+
+          // Load and render image
+          const photo = (photos as any[])[idx];
+          const imgBuf2 = await loadImageBuffer(photo.filePath || '');
+          if (imgBuf2) {
+            try {
+              doc.image(imgBuf2, cellX, cellY, { fit: [phImgW, phImgH], align: 'center', valign: 'center' });
+            } catch (_ie) {
+              doc.rect(cellX, cellY, phImgW, phImgH).fill('#f0f0f0');
+              doc.fontSize(7).font('Helvetica').fillColor('#999')
+                .text('Image unavailable', cellX + 4, cellY + phImgH / 2 - 4, { width: phImgW - 8, align: 'center', lineBreak: false });
+            }
+          } else {
+            doc.rect(cellX, cellY, phImgW, phImgH).fill('#f0f0f0').stroke('#cccccc');
+            doc.fontSize(7).font('Helvetica').fillColor('#999')
+              .text('Image unavailable', cellX + 4, cellY + phImgH / 2 - 4, { width: phImgW - 8, align: 'center', lineBreak: false });
+          }
+
+          // Caption bar
+          const photoId2 = `PH-${report.reportNumber || '000'}-${String(idx + 1).padStart(2, '0')}`;
+          const captionText2 = photo.caption ? `${photoId2}  •  ${photo.caption}` : photoId2;
+          doc.rect(cellX, cellY + phImgH, phImgW, phCaptionH).fill('#f8fafc').stroke('#cccccc');
+          doc.fontSize(7).font('Helvetica-Bold').fillColor(NAVY)
+            .text(captionText2, cellX + 4, cellY + phImgH + 5, { width: phImgW - 8, lineBreak: false, ellipsis: true });
+          doc.fillColor('#000');
+
+          // Advance row counter when we've filled both columns
+          if (col === phColCount - 1 || idx === photos.length - 1) {
+            phPageRow++;
+          }
+        }
+      }
 
       // ══════════════════════════════════════════════════════════════════
       // FOOTER — applied to every page via bufferPages
