@@ -192,6 +192,7 @@ export const projects = pgTable("projects", {
   inheritBillingRates: boolean("inherit_billing_rates").default(true), // true = inherit from contract option, false = use project-specific rates
   scopeOfWork: text("scope_of_work"),
   projectValue: text("project_value"),
+  dsaFileNo: varchar("dsa_file_no"), // DSA File Number for school/state projects
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -249,9 +250,26 @@ export const manpowerRowSchema = z.object({
 
 // Work Activity row type - combines trade/contractor, manpower, and work description
 export const workActivityRowSchema = z.object({
+  trade: z.string().optional(), // Trade name (e.g., "Iron Workers", "Electricians")
   contractor: z.string(), // Subcontractor name or "GC" for general contractor
   headcount: z.number().min(0),
   workDescription: z.string(),
+});
+
+// Equipment row type for structured equipment tracking
+export const equipmentRowSchema = z.object({
+  equipment: z.string(),
+  hours: z.string().optional(),
+  status: z.string().optional(), // ACTIVE, STANDBY, IDLE
+  usage: z.string().optional(),
+});
+
+// Material row type for structured material delivery tracking
+export const materialRowSchema = z.object({
+  material: z.string(),
+  quantity: z.string().optional(),
+  status: z.string().optional(), // DELIVERED, DELAYED, ORDERED
+  supplierNotes: z.string().optional(),
 });
 
 // Visitor row type
@@ -277,12 +295,25 @@ export const dailyReports = pgTable("daily_reports", {
   workActivities: json("work_activities").$type<z.infer<typeof workActivityRowSchema>[]>().default([]),
   visitors: json("visitors").$type<z.infer<typeof visitorRowSchema>[]>().default([]),
   equipment: text("equipment"),
+  equipmentRows: json("equipment_rows").$type<z.infer<typeof equipmentRowSchema>[]>().default([]),
   inspections: text("inspections"),
   materialsDelivered: text("materials_delivered"),
+  materialRows: json("material_rows").$type<z.infer<typeof materialRowSchema>[]>().default([]),
   issuesFlag: boolean("issues_flag").default(false),
   issuesDetails: text("issues_details"),
   safetyFlag: boolean("safety_flag").default(false),
   safetyDetails: text("safety_details"),
+  // Structured safety fields
+  safetyIncidents: integer("safety_incidents").default(0),
+  safetyNearMisses: integer("safety_near_misses").default(0),
+  safetyAttendees: integer("safety_attendees"),
+  safetySiteConditions: text("safety_site_conditions"),
+  toolboxTalkTopic: text("toolbox_talk_topic"),
+  // Split weather conditions
+  weatherAM: text("weather_am"),
+  weatherPM: text("weather_pm"),
+  precipitation: text("precipitation"),
+  siteConditions: text("site_conditions"),
   notes: text("notes"),
   // Time tracking fields
   timeIn: varchar("time_in"), // Format: "HH:MM" (24-hour)
@@ -982,6 +1013,8 @@ export type InvoiceWithDetails = Invoice & {
 export type TradeRow = z.infer<typeof tradeRowSchema>;
 export type ManpowerRow = z.infer<typeof manpowerRowSchema>;
 export type WorkActivityRow = z.infer<typeof workActivityRowSchema>;
+export type EquipmentRow = z.infer<typeof equipmentRowSchema>;
+export type MaterialRow = z.infer<typeof materialRowSchema>;
 export type VisitorRow = z.infer<typeof visitorRowSchema>;
 
 export type DailyReportWithDetails = DailyReport & {

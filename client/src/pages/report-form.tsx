@@ -22,6 +22,8 @@ import { PhotoUpload } from "@/components/ui/photo-upload";
 import {
   VisitorRowInput,
   WorkActivityRowInput,
+  EquipmentRowInput,
+  MaterialRowInput,
   AddRowButton,
 } from "@/components/reports/repeatable-row";
 import { EmailDistributionDialog } from "@/components/reports/email-distribution-dialog";
@@ -39,7 +41,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Loader2, Save, Send, ArrowLeft, FolderPlus, FileText, ClipboardEdit } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { format } from "date-fns";
-import type { Project, DailyReport, VisitorRow, WorkActivityRow } from "@shared/schema";
+import type { Project, DailyReport, VisitorRow, WorkActivityRow, EquipmentRow, MaterialRow } from "@shared/schema";
 import { VoiceInput } from "@/components/ui/voice-input";
 
 interface PhotoItem {
@@ -81,17 +83,28 @@ export default function ReportFormPage() {
     date: getTodayPacific(),
     weatherType: "clear" as const,
     weatherNotes: "",
+    weatherAM: "",
+    weatherPM: "",
+    precipitation: "",
+    siteConditions: "",
     typeOfWork: [] as string[],
     workPerformed: "",
     workActivities: [] as WorkActivityRow[],
     visitors: [] as VisitorRow[],
     equipment: "",
+    equipmentRows: [] as EquipmentRow[],
     inspections: "",
     materialsDelivered: "",
+    materialRows: [] as MaterialRow[],
     issuesFlag: false,
     issuesDetails: "",
     safetyFlag: false,
     safetyDetails: "",
+    safetyIncidents: 0,
+    safetyNearMisses: 0,
+    safetyAttendees: "" as string | number,
+    safetySiteConditions: "",
+    toolboxTalkTopic: "",
     // Time tracking - defaults for new reports
     timeIn: "07:00",
     timeOut: "15:00",
@@ -199,17 +212,28 @@ export default function ReportFormPage() {
           // Pull from previous report
           weatherType: (previousReport.weatherType || "clear") as typeof formData.weatherType,
           weatherNotes: previousReport.weatherNotes || "",
+          weatherAM: previousReport.weatherAM || "",
+          weatherPM: previousReport.weatherPM || "",
+          precipitation: previousReport.precipitation || "",
+          siteConditions: previousReport.siteConditions || "",
           typeOfWork: (previousReport.typeOfWork as string[]) || [],
           workPerformed: previousReport.workPerformed || "",
           workActivities: (previousReport.workActivities as WorkActivityRow[]) || [],
           visitors: (previousReport.visitors as VisitorRow[]) || [],
           equipment: previousReport.equipment || "",
+          equipmentRows: (previousReport.equipmentRows as EquipmentRow[]) || [],
           inspections: previousReport.inspections || "",
           materialsDelivered: previousReport.materialsDelivered || "",
+          materialRows: (previousReport.materialRows as MaterialRow[]) || [],
           issuesFlag: previousReport.issuesFlag || false,
           issuesDetails: previousReport.issuesDetails || "",
           safetyFlag: previousReport.safetyFlag || false,
           safetyDetails: previousReport.safetyDetails || "",
+          safetyIncidents: previousReport.safetyIncidents || 0,
+          safetyNearMisses: previousReport.safetyNearMisses || 0,
+          safetyAttendees: previousReport.safetyAttendees || "",
+          safetySiteConditions: previousReport.safetySiteConditions || "",
+          toolboxTalkTopic: previousReport.toolboxTalkTopic || "",
           timeIn: previousReport.timeIn || "07:00",
           timeOut: previousReport.timeOut || "15:00",
           regularHours: previousReport.regularHours || "",
@@ -237,17 +261,28 @@ export default function ReportFormPage() {
         date: formatPacificDate(existingReport.date, "yyyy-MM-dd"),
         weatherType: (existingReport.weatherType || "clear") as typeof formData.weatherType,
         weatherNotes: existingReport.weatherNotes || "",
+        weatherAM: (existingReport as any).weatherAM || "",
+        weatherPM: (existingReport as any).weatherPM || "",
+        precipitation: (existingReport as any).precipitation || "",
+        siteConditions: (existingReport as any).siteConditions || "",
         typeOfWork: (existingReport.typeOfWork as string[]) || [],
         workPerformed: existingReport.workPerformed || "",
         workActivities: (existingReport.workActivities as WorkActivityRow[]) || [],
         visitors: (existingReport.visitors as VisitorRow[]) || [],
         equipment: existingReport.equipment || "",
+        equipmentRows: ((existingReport as any).equipmentRows as EquipmentRow[]) || [],
         inspections: existingReport.inspections || "",
         materialsDelivered: existingReport.materialsDelivered || "",
+        materialRows: ((existingReport as any).materialRows as MaterialRow[]) || [],
         issuesFlag: existingReport.issuesFlag || false,
         issuesDetails: existingReport.issuesDetails || "",
         safetyFlag: existingReport.safetyFlag || false,
         safetyDetails: existingReport.safetyDetails || "",
+        safetyIncidents: (existingReport as any).safetyIncidents || 0,
+        safetyNearMisses: (existingReport as any).safetyNearMisses || 0,
+        safetyAttendees: (existingReport as any).safetyAttendees || "",
+        safetySiteConditions: (existingReport as any).safetySiteConditions || "",
+        toolboxTalkTopic: (existingReport as any).toolboxTalkTopic || "",
         timeIn: existingReport.timeIn || "",
         timeOut: existingReport.timeOut || "",
         regularHours: existingReport.regularHours || "",
@@ -279,6 +314,7 @@ export default function ReportFormPage() {
         date: formData.date, // Keep as YYYY-MM-DD string to avoid timezone shifts
         status,
         inspectorId: user?.id,
+        safetyAttendees: formData.safetyAttendees !== "" ? Number(formData.safetyAttendees) : null,
       };
 
       let reportId = id;
@@ -526,7 +562,7 @@ export default function ReportFormPage() {
 
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
-                <Label htmlFor="weather">Weather</Label>
+                <Label htmlFor="weather">Weather Type</Label>
                 <Select 
                   value={formData.weatherType} 
                   onValueChange={(value: any) => setFormData(prev => ({ ...prev, weatherType: value }))}
@@ -545,7 +581,7 @@ export default function ReportFormPage() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="weatherNotes">Weather Notes</Label>
+                <Label htmlFor="weatherNotes">General Weather Notes</Label>
                 <Input
                   id="weatherNotes"
                   value={formData.weatherNotes}
@@ -553,6 +589,56 @@ export default function ReportFormPage() {
                   placeholder="Temperature, conditions..."
                   className="h-12"
                   data-testid="input-weather-notes"
+                />
+              </div>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="weatherAM">Morning (AM) Conditions</Label>
+                <Input
+                  id="weatherAM"
+                  value={formData.weatherAM}
+                  onChange={(e) => setFormData(prev => ({ ...prev, weatherAM: e.target.value }))}
+                  placeholder="e.g., Clear, 58°F, Wind: calm"
+                  className="h-12"
+                  data-testid="input-weather-am"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="weatherPM">Afternoon (PM) Conditions</Label>
+                <Input
+                  id="weatherPM"
+                  value={formData.weatherPM}
+                  onChange={(e) => setFormData(prev => ({ ...prev, weatherPM: e.target.value }))}
+                  placeholder="e.g., Sunny, 72°F, Wind: SW 5mph"
+                  className="h-12"
+                  data-testid="input-weather-pm"
+                />
+              </div>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="precipitation">Precipitation</Label>
+                <Input
+                  id="precipitation"
+                  value={formData.precipitation}
+                  onChange={(e) => setFormData(prev => ({ ...prev, precipitation: e.target.value }))}
+                  placeholder="e.g., None, 0.2 inches"
+                  className="h-12"
+                  data-testid="input-precipitation"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="siteConditions">Site Conditions</Label>
+                <Input
+                  id="siteConditions"
+                  value={formData.siteConditions}
+                  onChange={(e) => setFormData(prev => ({ ...prev, siteConditions: e.target.value }))}
+                  placeholder="e.g., Dry, firm ground"
+                  className="h-12"
+                  data-testid="input-site-conditions"
                 />
               </div>
             </div>
@@ -679,6 +765,7 @@ export default function ReportFormPage() {
                     const newActivities = data
                       .filter((item: any) => item && typeof item === "object")
                       .map((item: any) => ({
+                        trade: String(item.trade || "").trim(),
                         contractor: String(item.contractor || "").trim(),
                         headcount: Math.max(0, parseInt(String(item.headcount)) || 0),
                         workDescription: String(item.workDescription || item.description || "").trim(),
@@ -703,12 +790,13 @@ export default function ReportFormPage() {
               <WorkActivityRowInput
                 key={index}
                 index={index}
+                trade={activity.trade}
                 contractor={activity.contractor}
                 headcount={activity.headcount}
                 workDescription={activity.workDescription}
-                onChange={(c, h, w) => {
+                onChange={(trade, c, h, w) => {
                   const newActivities = [...formData.workActivities];
-                  newActivities[index] = { contractor: c, headcount: h, workDescription: w };
+                  newActivities[index] = { trade, contractor: c, headcount: h, workDescription: w };
                   setFormData(prev => ({ ...prev, workActivities: newActivities }));
                 }}
                 onRemove={() => {
@@ -720,7 +808,7 @@ export default function ReportFormPage() {
             <AddRowButton
               onClick={() => setFormData(prev => ({ 
                 ...prev, 
-                workActivities: [...prev.workActivities, { contractor: "", headcount: 0, workDescription: "" }] 
+                workActivities: [...prev.workActivities, { trade: "", contractor: "", headcount: 0, workDescription: "" }] 
               }))}
               label="Add Work Activity"
               testId="button-add-work-activity"
@@ -840,9 +928,70 @@ export default function ReportFormPage() {
 
         <Card className="border-l-4 border-l-primary">
           <CardHeader>
-            <CardTitle className="text-lg">Issues & Safety</CardTitle>
+            <CardTitle className="text-lg">Safety</CardTitle>
           </CardHeader>
           <CardContent className="space-y-6">
+            <div className="grid gap-4 sm:grid-cols-3">
+              <div className="space-y-2">
+                <Label htmlFor="safetyIncidents">Incidents</Label>
+                <Input
+                  id="safetyIncidents"
+                  type="number"
+                  min="0"
+                  value={formData.safetyIncidents}
+                  onChange={(e) => setFormData(prev => ({ ...prev, safetyIncidents: parseInt(e.target.value) || 0 }))}
+                  className="h-12"
+                  data-testid="input-safety-incidents"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="safetyNearMisses">Near Misses</Label>
+                <Input
+                  id="safetyNearMisses"
+                  type="number"
+                  min="0"
+                  value={formData.safetyNearMisses}
+                  onChange={(e) => setFormData(prev => ({ ...prev, safetyNearMisses: parseInt(e.target.value) || 0 }))}
+                  className="h-12"
+                  data-testid="input-safety-near-misses"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="safetyAttendees">Safety Meeting Attendees</Label>
+                <Input
+                  id="safetyAttendees"
+                  type="number"
+                  min="0"
+                  value={formData.safetyAttendees}
+                  onChange={(e) => setFormData(prev => ({ ...prev, safetyAttendees: e.target.value }))}
+                  className="h-12"
+                  placeholder="0"
+                  data-testid="input-safety-attendees"
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="toolboxTalkTopic">Toolbox Talk Topic</Label>
+              <Input
+                id="toolboxTalkTopic"
+                value={formData.toolboxTalkTopic}
+                onChange={(e) => setFormData(prev => ({ ...prev, toolboxTalkTopic: e.target.value }))}
+                placeholder="e.g., Fall Protection — Ladder Safety & Scaffold Tie-Off"
+                className="h-12"
+                data-testid="input-toolbox-talk"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="safetySiteConditions">Site Safety Conditions</Label>
+              <Textarea
+                id="safetySiteConditions"
+                value={formData.safetySiteConditions}
+                onChange={(e) => setFormData(prev => ({ ...prev, safetySiteConditions: e.target.value }))}
+                placeholder="e.g., All barricades in place. Excavation properly shored. SWPPP BMPs inspected — compliant."
+                rows={2}
+                data-testid="textarea-safety-site-conditions"
+              />
+            </div>
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <Label htmlFor="issuesFlag" className="flex-1">
@@ -879,7 +1028,7 @@ export default function ReportFormPage() {
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <Label htmlFor="safetyFlag" className="flex-1">
-                  Any safety incidents?
+                  Any recordable safety incidents?
                 </Label>
                 <Switch
                   id="safetyFlag"
@@ -913,52 +1062,68 @@ export default function ReportFormPage() {
 
         <Card className="border-l-4 border-l-primary">
           <CardHeader>
-            <CardTitle className="text-lg flex items-center justify-between gap-2 flex-wrap">
-              <span>Equipment</span>
-              <VoiceInput
-                onTranscript={(text) => {
-                  setFormData(prev => ({
-                    ...prev,
-                    equipment: prev.equipment ? `${prev.equipment} ${text}` : text
-                  }));
+            <CardTitle className="text-lg">Equipment on Site</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {formData.equipmentRows.map((row, index) => (
+              <EquipmentRowInput
+                key={index}
+                index={index}
+                equipment={row.equipment}
+                hours={row.hours}
+                status={row.status}
+                usage={row.usage}
+                onChange={(equipment, hours, status, usage) => {
+                  const newRows = [...formData.equipmentRows];
+                  newRows[index] = { equipment, hours, status, usage };
+                  setFormData(prev => ({ ...prev, equipmentRows: newRows }));
+                }}
+                onRemove={() => {
+                  setFormData(prev => ({ ...prev, equipmentRows: prev.equipmentRows.filter((_, i) => i !== index) }));
                 }}
               />
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Textarea
-              value={formData.equipment}
-              onChange={(e) => setFormData(prev => ({ ...prev, equipment: e.target.value }))}
-              placeholder="List equipment used on site today... (or use voice input)"
-              rows={3}
-              className="resize-y"
-              data-testid="textarea-equipment"
+            ))}
+            <AddRowButton
+              onClick={() => setFormData(prev => ({
+                ...prev,
+                equipmentRows: [...prev.equipmentRows, { equipment: "", hours: "", status: "", usage: "" }]
+              }))}
+              label="Add Equipment"
+              testId="button-add-equipment"
             />
           </CardContent>
         </Card>
 
         <Card className="border-l-4 border-l-primary">
           <CardHeader>
-            <CardTitle className="text-lg flex items-center justify-between gap-2 flex-wrap">
-              <span>Materials Delivered</span>
-              <VoiceInput
-                onTranscript={(text) => {
-                  setFormData(prev => ({
-                    ...prev,
-                    materialsDelivered: prev.materialsDelivered ? `${prev.materialsDelivered} ${text}` : text
-                  }));
+            <CardTitle className="text-lg">Material Deliveries</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {formData.materialRows.map((row, index) => (
+              <MaterialRowInput
+                key={index}
+                index={index}
+                material={row.material}
+                quantity={row.quantity}
+                status={row.status}
+                supplierNotes={row.supplierNotes}
+                onChange={(material, quantity, status, supplierNotes) => {
+                  const newRows = [...formData.materialRows];
+                  newRows[index] = { material, quantity, status, supplierNotes };
+                  setFormData(prev => ({ ...prev, materialRows: newRows }));
+                }}
+                onRemove={() => {
+                  setFormData(prev => ({ ...prev, materialRows: prev.materialRows.filter((_, i) => i !== index) }));
                 }}
               />
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Textarea
-              value={formData.materialsDelivered}
-              onChange={(e) => setFormData(prev => ({ ...prev, materialsDelivered: e.target.value }))}
-              placeholder="List materials delivered to site today... (or use voice input)"
-              rows={3}
-              className="resize-y"
-              data-testid="textarea-materials"
+            ))}
+            <AddRowButton
+              onClick={() => setFormData(prev => ({
+                ...prev,
+                materialRows: [...prev.materialRows, { material: "", quantity: "", status: "", supplierNotes: "" }]
+              }))}
+              label="Add Material Delivery"
+              testId="button-add-material"
             />
           </CardContent>
         </Card>

@@ -108,6 +108,7 @@ export default function CompanyProjectsPage() {
   const [formData, setFormData] = useState({
     name: "",
     projectNumber: "",
+    dsaFileNo: "",
     client: "",
     clientId: "",
     address: "",
@@ -340,7 +341,7 @@ export default function CompanyProjectsPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
       queryClient.invalidateQueries({ queryKey: ["/api/contracts"] });
       setShowCreateDialog(false);
-      setFormData({ name: "", projectNumber: "", client: "", clientId: "", address: "", distributionEmails: "", contractId: "", contractOptionId: "", startDate: "", substantialCompletionDate: "", finalCloseoutDate: "", budgetAmount: "", budgetedHours: "", baseBudget: "", budgetTrackingMode: "", inheritBillingRates: true, scopeOfWork: "", projectValue: "" });
+      setFormData({ name: "", projectNumber: "", dsaFileNo: "", client: "", clientId: "", address: "", distributionEmails: "", contractId: "", contractOptionId: "", startDate: "", substantialCompletionDate: "", finalCloseoutDate: "", budgetAmount: "", budgetedHours: "", baseBudget: "", budgetTrackingMode: "", inheritBillingRates: true, scopeOfWork: "", projectValue: "" });
       setBillingRates([{ ...emptyBillingRate }]);
       setBaseHours([]);
       toast({
@@ -392,7 +393,7 @@ export default function CompanyProjectsPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/contracts"] });
       setEditingProject(null);
       setLinkedProposal(null);
-      setFormData({ name: "", projectNumber: "", client: "", clientId: "", address: "", distributionEmails: "", contractId: "", contractOptionId: "", startDate: "", substantialCompletionDate: "", finalCloseoutDate: "", budgetAmount: "", budgetedHours: "", baseBudget: "", budgetTrackingMode: "", inheritBillingRates: true, scopeOfWork: "", projectValue: "" });
+      setFormData({ name: "", projectNumber: "", dsaFileNo: "", client: "", clientId: "", address: "", distributionEmails: "", contractId: "", contractOptionId: "", startDate: "", substantialCompletionDate: "", finalCloseoutDate: "", budgetAmount: "", budgetedHours: "", baseBudget: "", budgetTrackingMode: "", inheritBillingRates: true, scopeOfWork: "", projectValue: "" });
       setBillingRates([{ ...emptyBillingRate }]);
       setBaseHours([]);
       toast({
@@ -473,6 +474,7 @@ export default function CompanyProjectsPage() {
     setFormData({
       name: project.name,
       projectNumber: project.projectNumber,
+      dsaFileNo: (project as any).dsaFileNo || "",
       client: project.client || "",
       clientId: (project as any).clientId || "",
       address: project.address || "",
@@ -797,7 +799,7 @@ export default function CompanyProjectsPage() {
           setShowCreateDialog(false);
           setEditingProject(null);
           setLinkedProposal(null);
-          setFormData({ name: "", projectNumber: "", client: "", clientId: "", address: "", distributionEmails: "", contractId: "", contractOptionId: "", startDate: "", substantialCompletionDate: "", finalCloseoutDate: "", budgetAmount: "", budgetedHours: "", baseBudget: "", budgetTrackingMode: "", inheritBillingRates: true, scopeOfWork: "", projectValue: "" });
+          setFormData({ name: "", projectNumber: "", dsaFileNo: "", client: "", clientId: "", address: "", distributionEmails: "", contractId: "", contractOptionId: "", startDate: "", substantialCompletionDate: "", finalCloseoutDate: "", budgetAmount: "", budgetedHours: "", baseBudget: "", budgetTrackingMode: "", inheritBillingRates: true, scopeOfWork: "", projectValue: "" });
           setBillingRates([{ ...emptyBillingRate }]);
           setBaseHours([]);
         }
@@ -830,6 +832,16 @@ export default function CompanyProjectsPage() {
                 onChange={(e) => setFormData({ ...formData, projectNumber: e.target.value })}
                 placeholder="e.g., PRJ-001"
                 data-testid="input-project-number"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="dsaFileNo">DSA File No.</Label>
+              <Input
+                id="dsaFileNo"
+                value={formData.dsaFileNo}
+                onChange={(e) => setFormData({ ...formData, dsaFileNo: e.target.value })}
+                placeholder="e.g., 01-118234"
+                data-testid="input-dsa-file-no"
               />
             </div>
             <div className="space-y-2">
@@ -1465,7 +1477,7 @@ export default function CompanyProjectsPage() {
                 setShowCreateDialog(false);
                 setEditingProject(null);
                 setLinkedProposal(null);
-                setFormData({ name: "", projectNumber: "", client: "", clientId: "", address: "", distributionEmails: "", contractId: "", contractOptionId: "", startDate: "", substantialCompletionDate: "", finalCloseoutDate: "", budgetAmount: "", budgetedHours: "", baseBudget: "", budgetTrackingMode: "", inheritBillingRates: true, scopeOfWork: "", projectValue: "" });
+                setFormData({ name: "", projectNumber: "", dsaFileNo: "", client: "", clientId: "", address: "", distributionEmails: "", contractId: "", contractOptionId: "", startDate: "", substantialCompletionDate: "", finalCloseoutDate: "", budgetAmount: "", budgetedHours: "", baseBudget: "", budgetTrackingMode: "", inheritBillingRates: true, scopeOfWork: "", projectValue: "" });
                 setBillingRates([{ ...emptyBillingRate }]);
                 setBaseHours([]);
               }}
