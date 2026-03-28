@@ -10406,8 +10406,15 @@ export async function registerRoutes(
         if (checked) {
           // Solid navy filled square
           doc.rect(boxX, boxY, boxSize, boxSize).fill(NAVY);
-          // Small white inner square to look like a checked box
-          doc.rect(boxX + 2, boxY + 2, boxSize - 4, boxSize - 4).fill('#ffffff');
+          // Draw white checkmark as vector path
+          doc.save()
+            .moveTo(boxX + 1.5, boxY + boxSize * 0.55)
+            .lineTo(boxX + boxSize * 0.38, boxY + boxSize - 2)
+            .lineTo(boxX + boxSize - 1.5, boxY + 1.5)
+            .lineWidth(1.5)
+            .strokeColor('#ffffff')
+            .stroke()
+            .restore();
         } else {
           // Empty outlined square
           doc.rect(boxX, boxY, boxSize, boxSize).fillAndStroke('#ffffff', '#999999');
