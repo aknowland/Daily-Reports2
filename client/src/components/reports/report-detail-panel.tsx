@@ -163,9 +163,11 @@ export function ReportDetailPanel({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/reports"] });
       queryClient.invalidateQueries({ queryKey: ["/api/reports", report?.id] });
+      // Open the freshly-generated PDF immediately (cache-busted with timestamp)
+      window.open(`/api/reports/${report?.id}/pdf?t=${Date.now()}`, '_blank');
       toast({
         title: "PDF Generated",
-        description: "The PDF has been generated. You can now view it in the preview below or use the View/Download buttons.",
+        description: "Your PDF has opened in a new tab.",
       });
     },
     onError: (error) => {
@@ -289,7 +291,7 @@ export function ReportDetailPanel({
                 <DropdownMenuContent align="start">
                   <DropdownMenuItem asChild>
                     <a 
-                      href={`/api/reports/${report.id}/pdf`} 
+                      href={`/api/reports/${report.id}/pdf?t=${Date.now()}`} 
                       target="_blank" 
                       rel="noopener noreferrer"
                       className="flex items-center cursor-pointer"
@@ -301,7 +303,7 @@ export function ReportDetailPanel({
                   </DropdownMenuItem>
                   <DropdownMenuItem asChild>
                     <a 
-                      href={`/api/reports/${report.id}/pdf?download=true`} 
+                      href={`/api/reports/${report.id}/pdf?download=true&t=${Date.now()}`} 
                       download
                       className="flex items-center cursor-pointer"
                       data-testid="menu-download-pdf"
