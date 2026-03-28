@@ -10083,6 +10083,12 @@ export async function registerRoutes(
         return res.status(403).json({ message: "Access denied" });
       }
 
+      // Fetch photos separately — getReport() does not join photos
+      const reportPhotos = await storage.getPhotosByReport(req.params.id);
+      if (reportPhotos.length > 0) {
+        (report as any).photos = reportPhotos;
+      }
+
       // Generate PDF using pdfkit - DSA/Government format
       const filename = `${req.params.id}.pdf`;
 
