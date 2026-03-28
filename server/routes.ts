@@ -10496,26 +10496,46 @@ export async function registerRoutes(
       // ─── WORK PERFORMED ───────────────────────────────────────────────
       const wpBottomLimit = PH - MB - FOOTER_H - safetyBlockH - 4;
 
-      // Split remaining space evenly between Work Performed and Inspections
-      // Each block = section header (13) + content box (h)
-      const wpTotalAvail  = wpBottomLimit - curY;
-      const perSecHdrH    = 13;
-      const perContentH   = Math.max(20, Math.min(55, Math.floor((wpTotalAvail - 2 * perSecHdrH - 16) / 2)));
+      // Size Work Performed and Inspections boxes based on actual text height
+      const perSecHdrH = 13;
+      const wpTotalAvail = Math.max(40, wpBottomLimit - curY);
 
-      const drawTextSection = (label: string, text: string) => {
-        if (curY + perSecHdrH + perContentH > wpBottomLimit + 5) return;
+      const measureTextH = (text: string) =>
+        text?.trim()
+          ? doc.fontSize(8).heightOfString(text, { width: CW - 12 }) + 10
+          : 20;
+
+      const wpNaturalH   = measureTextH(workPerformedText);
+      const inspNaturalH = measureTextH(inspectionsText);
+      const totalNeeded  = 2 * perSecHdrH + wpNaturalH + inspNaturalH + 16;
+
+      let wpContentH: number, inspContentH: number;
+      if (totalNeeded <= wpTotalAvail) {
+        // Both fit at natural height
+        wpContentH   = Math.max(20, wpNaturalH);
+        inspContentH = Math.max(20, inspNaturalH);
+      } else {
+        // Scale each proportionally within available space
+        const availContent = Math.max(40, wpTotalAvail - 2 * perSecHdrH - 16);
+        const totalNatural  = wpNaturalH + inspNaturalH || 1;
+        wpContentH   = Math.max(20, Math.floor(availContent * wpNaturalH   / totalNatural));
+        inspContentH = Math.max(20, availContent - wpContentH);
+      }
+
+      const drawTextSection = (label: string, text: string, contentH: number) => {
+        if (curY + perSecHdrH + contentH > wpBottomLimit + 10) return;
         drawSectionHdr(curY, label);
         curY += perSecHdrH;
         const hasText = text && text.trim().length > 0;
-        doc.rect(ML, curY, CW, perContentH).fill('#fff');
-        doc.rect(ML, curY, CW, perContentH).stroke('#cccccc');
+        doc.rect(ML, curY, CW, contentH).fill('#fff');
+        doc.rect(ML, curY, CW, contentH).stroke('#cccccc');
         doc.fontSize(8).font('Helvetica').fillColor(hasText ? NAVY : '#aaaaaa')
-          .text(hasText ? text : '--', ML + 6, curY + 4, { width: CW - 12, height: perContentH - 6 });
-        curY += perContentH + 8;
+          .text(hasText ? text : '--', ML + 6, curY + 4, { width: CW - 12, height: contentH - 6 });
+        curY += contentH + 8;
       };
 
-      drawTextSection('WORK PERFORMED', workPerformedText);
-      drawTextSection('INSPECTIONS',    inspectionsText);
+      drawTextSection('WORK PERFORMED', workPerformedText, wpContentH);
+      drawTextSection('INSPECTIONS',    inspectionsText,   inspContentH);
 
       // ─── SAFETY ───────────────────────────────────────────────────────
       if (curY + safetyBlockH > PH - MB - FOOTER_H) {
