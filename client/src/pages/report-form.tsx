@@ -863,7 +863,7 @@ export default function ReportFormPage() {
             <Textarea
               value={formData.workPerformed}
               onChange={(e) => setFormData(prev => ({ ...prev, workPerformed: e.target.value }))}
-              placeholder="Additional work notes or general observations... (or use voice input)"
+              placeholder="Additional work observations, general field notes... (or use voice input) — appears in Work Performed section of the PDF"
               rows={4}
               className="resize-y"
               data-testid="textarea-work-performed"
