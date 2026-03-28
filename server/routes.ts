@@ -10463,33 +10463,28 @@ export async function registerRoutes(
       curY += 3;
 
       // ─── WORK PERFORMED ───────────────────────────────────────────────
-      drawSectionHdr(curY, 'WORK PERFORMED');
-      curY += 13;
-
       const wpBottomLimit = PH - MB - FOOTER_H - safetyBlockH - 4;
-      const subLabelH = 11;
 
-      // Split available vertical space evenly between WORK PERFORMED and INSPECTIONS
-      const wpTotalAvail = wpBottomLimit - curY;
-      const perBlockContentH = Math.max(20, Math.min(55, Math.floor((wpTotalAvail - 2 * subLabelH - 6) / 2)));
+      // Split remaining space evenly between Work Performed and Inspections
+      // Each block = section header (13) + content box (h)
+      const wpTotalAvail  = wpBottomLimit - curY;
+      const perSecHdrH    = 13;
+      const perContentH   = Math.max(20, Math.min(55, Math.floor((wpTotalAvail - 2 * perSecHdrH - 6) / 2)));
 
-      const drawWpBlock = (label: string, text: string, rowIdx: number) => {
-        if (curY + subLabelH + perBlockContentH > wpBottomLimit + 5) return;
-        doc.rect(ML, curY, CW, subLabelH).fill(getRowBg(rowIdx));
-        doc.fontSize(7).font('Helvetica-Bold').fillColor(NAVY)
-          .text(label, ML + 6, curY + 2, { lineBreak: false });
-        curY += subLabelH;
+      const drawTextSection = (label: string, text: string) => {
+        if (curY + perSecHdrH + perContentH > wpBottomLimit + 5) return;
+        drawSectionHdr(curY, label);
+        curY += perSecHdrH;
         const hasText = text && text.trim().length > 0;
-        doc.rect(ML, curY, CW, perBlockContentH).fill('#fff');
-        doc.rect(ML, curY, CW, perBlockContentH).stroke('#cccccc');
+        doc.rect(ML, curY, CW, perContentH).fill('#fff');
+        doc.rect(ML, curY, CW, perContentH).stroke('#cccccc');
         doc.fontSize(8).font('Helvetica').fillColor(hasText ? NAVY : '#aaaaaa')
-          .text(hasText ? text : '--', ML + 6, curY + 4, { width: CW - 12, height: perBlockContentH - 6 });
-        curY += perBlockContentH;
+          .text(hasText ? text : '--', ML + 6, curY + 4, { width: CW - 12, height: perContentH - 6 });
+        curY += perContentH + 3;
       };
 
-      drawWpBlock('WORK PERFORMED', workPerformedText, 0);
-      drawWpBlock('INSPECTIONS',    inspectionsText,    1);
-      curY += 3;
+      drawTextSection('WORK PERFORMED', workPerformedText);
+      drawTextSection('INSPECTIONS',    inspectionsText);
 
       // ─── SAFETY ───────────────────────────────────────────────────────
       if (curY + safetyBlockH > PH - MB - FOOTER_H) {
