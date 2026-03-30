@@ -1817,7 +1817,7 @@ export default function CompanyDashboard() {
               <Receipt className="h-5 w-5 text-primary" />
               <CardTitle>Invoice Tracking</CardTitle>
             </div>
-            <Link href="/company/billing">
+            <Link href="/company/billing-management">
               <Button variant="ghost" size="sm" className="h-8 gap-1" data-testid="link-view-all-invoices">
                 View All <ChevronRight className="h-4 w-4" />
               </Button>

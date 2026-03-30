@@ -1719,7 +1719,7 @@ export default function ContractDashboard() {
                 <Pencil className="h-4 w-4 mr-1" />
                 Edit Contract
               </Button>
-              <Link href={`/company/billing?contractId=${dashboard.contract.id}`}>
+              <Link href={`/company/billing-management?contractId=${dashboard.contract.id}`}>
                 <Button variant="outline" size="sm" data-testid="button-create-invoice">
                   <FileDown className="h-4 w-4 mr-1" />
                   Create Invoice
