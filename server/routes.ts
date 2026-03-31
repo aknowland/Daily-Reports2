@@ -10663,28 +10663,34 @@ export async function registerRoutes(
       curY += notesEstH + 4;
 
       // ─── CERTIFICATION & SIGNATURE ────────────────────────────────────
-      const certBlockH = 68;
+      // certSigH must be tall enough to contain label (y+4), name (y+15),
+      // title (y+27), and date (y+42) comfortably — so certBlockH ≥ 90.
+      const certBlockH = 90;
       if (curY + certBlockH > PH - MB - FOOTER_H) {
-        curY = PH - MB - FOOTER_H - certBlockH - 4;
+        // Not enough room — start a fresh page rather than clamping into
+        // the content above.
+        doc.addPage();
+        drawContHeader('(continued)');
+        curY = MT + 18;
       }
       drawSectionHdr(curY, 'CERTIFICATION & SIGNATURE');
       curY += 13;
       const certBodyH = certBlockH - 13;
       const certColW  = CW / 2;
       const certText2 = 'I certify that this report accurately reflects the work performed, workforce, materials, equipment, and conditions observed on-site for the date indicated above.';
-      const certTxtH2 = 20;
+      const certTxtH2 = 22;
       doc.rect(ML, curY, CW, certTxtH2).fill('#f8fafc').stroke('#cccccc');
       doc.fontSize(6.5).font('Helvetica').fillColor('#444')
-        .text(certText2, ML + 6, curY + 5, { width: CW - 12, lineBreak: false, ellipsis: true });
+        .text(certText2, ML + 6, curY + 6, { width: CW - 12, lineBreak: false, ellipsis: true });
       curY += certTxtH2;
-      const certSigH = certBodyH - certTxtH2;
+      const certSigH = certBodyH - certTxtH2; // 90-13-22 = 55 px
       // Prepared By box — name/title/date on left, signature image on right
       doc.rect(ML, curY, certColW, certSigH).stroke('#cccccc');
       doc.fontSize(6).font('Helvetica').fillColor('#666').text('PREPARED BY', ML + 4, curY + 4, { lineBreak: false });
       const pbTextW = Math.floor(certColW * 0.44);  // left column for text
       const pbSigX  = ML + pbTextW + 4;             // right column for signature
       const pbSigW  = certColW - pbTextW - 8;
-      // Text: name, title, date — left column
+      // Text: name (y+15), title (y+27), date (y+42) — all inside 55 px box
       doc.fontSize(9).font('Helvetica-Bold').fillColor(NAVY)
         .text(inspectorName, ML + 4, curY + 15, { width: pbTextW - 6, lineBreak: false, ellipsis: true });
       if ((inspectorProfile as any)?.title) {
@@ -10692,7 +10698,7 @@ export async function registerRoutes(
           .text((inspectorProfile as any).title, ML + 4, curY + 27, { width: pbTextW - 6, lineBreak: false, ellipsis: true });
       }
       doc.fontSize(7.5).font('Helvetica').fillColor('#555')
-        .text(`Date: ${dateStr}`, ML + 4, curY + 38, { width: pbTextW - 6, lineBreak: false });
+        .text(`Date: ${dateStr}`, ML + 4, curY + 42, { width: pbTextW - 6, lineBreak: false });
       // Signature image — right column, vertically centred
       if (report.signaturePath) {
         try {
