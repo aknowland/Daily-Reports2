@@ -422,7 +422,6 @@ export default function BillingManagementPage() {
     }
     
     // Find contract for selected project
-    const selectedProjectData = filteredProjects?.find(p => p.id === selectedProject);
     const linkedContract = contracts?.find(c => 
       c.projects?.some((p: any) => p.id === selectedProject)
     );
@@ -441,6 +440,18 @@ export default function BillingManagementPage() {
       notes: "",
     });
     
+    setShowInvoiceDialog(true);
+  };
+
+  const openNewInvoiceDialog = () => {
+    setInvoiceFormData({
+      projectId: "",
+      contractId: "",
+      purchaseOrderId: "",
+      month: selectedMonth,
+      year: selectedYear,
+      notes: "",
+    });
     setShowInvoiceDialog(true);
   };
 
@@ -676,7 +687,17 @@ export default function BillingManagementPage() {
   return (
     <PageLayout title="Billing">
       <div className="p-4 space-y-6">
-        <PageHeader icon={Receipt} title="Billing Management" subtitle={activeCompany?.name} />
+        <PageHeader icon={Receipt} title="Billing Management" subtitle={activeCompany?.name}>
+          <Button
+            onClick={openNewInvoiceDialog}
+            size="sm"
+            className="bg-[hsl(36,90%,50%)] text-[hsl(216,32%,10%)] hover:bg-[hsl(36,90%,45%)] font-semibold"
+            data-testid="button-new-invoice"
+          >
+            <Plus className="h-4 w-4 mr-2" />
+            New Invoice
+          </Button>
+        </PageHeader>
         <Tabs defaultValue="invoices" className="space-y-4">
           <TabsList>
             <TabsTrigger value="invoices" className="gap-2" data-testid="tab-invoices">
@@ -1537,9 +1558,42 @@ export default function BillingManagementPage() {
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label className="text-muted-foreground">Project</Label>
-                      <div className="font-medium">{selectedProjectData?.name || 'Unknown Project'}</div>
-                      {selectedProjectData?.projectNumber && (
-                        <div className="text-sm text-muted-foreground">#{selectedProjectData.projectNumber}</div>
+                      {invoiceFormData.projectId ? (
+                        <>
+                          <div className="font-medium">{selectedProjectData?.name || 'Unknown Project'}</div>
+                          {selectedProjectData?.projectNumber && (
+                            <div className="text-sm text-muted-foreground">#{selectedProjectData.projectNumber}</div>
+                          )}
+                        </>
+                      ) : (
+                        <Select
+                          value={invoiceFormData.projectId}
+                          onValueChange={(pid) => {
+                            const linked = contracts?.find(c =>
+                              c.projects?.some((p: any) => p.id === pid)
+                            );
+                            const po = linked?.purchaseOrderId
+                              ? purchaseOrders.find(po => po.id === linked.purchaseOrderId)
+                              : null;
+                            setInvoiceFormData({
+                              ...invoiceFormData,
+                              projectId: pid,
+                              contractId: linked?.id || "",
+                              purchaseOrderId: po?.id || "",
+                            });
+                          }}
+                        >
+                          <SelectTrigger data-testid="select-invoice-project">
+                            <SelectValue placeholder="Select a project…" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {filteredProjects?.map((p: any) => (
+                              <SelectItem key={p.id} value={p.id}>
+                                {p.name}{p.projectNumber ? ` — #${p.projectNumber}` : ""}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                       )}
                     </div>
                     
