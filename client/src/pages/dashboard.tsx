@@ -3,7 +3,8 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
 import { PageLayout } from "@/components/layout/page-layout";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { ReportCard } from "@/components/reports/report-card";
 import { ReportDetailPanel } from "@/components/reports/report-detail-panel";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -16,10 +17,15 @@ import {
   CheckCircle, 
   ChevronRight,
   AlertCircle,
-  LayoutDashboard
+  LayoutDashboard,
+  FolderOpen,
+  Building2,
+  MapPin,
+  Hash,
+  Check,
 } from "lucide-react";
 import { PageHeader, SectionHeader } from "@/components/layout/page-header";
-import type { DailyReportWithDetails, UserProfile, CompanyMember, Company } from "@shared/schema";
+import type { DailyReportWithDetails, UserProfile, CompanyMember, Company, Project } from "@shared/schema";
 
 export default function DashboardPage() {
   const { user, isAdmin, isCompanyAdmin, isEffectiveCompanyAdmin } = useAuth();
@@ -43,9 +49,6 @@ export default function DashboardPage() {
     }
   }, [isEffectiveCompanyAdmin, myCompanies, setLocation]);
 
-  // Note: Users manually go to My Companies page to join/create companies
-  // No automatic prompt on first login
-
   // Show onboarding if user hasn't seen it
   useEffect(() => {
     if (profile && profile.hasSeenOnboarding === false) {
@@ -62,6 +65,10 @@ export default function DashboardPage() {
     };
   }>({
     queryKey: ["/api/reports"],
+  });
+
+  const { data: projects, isLoading: projectsLoading } = useQuery<Project[]>({
+    queryKey: ["/api/projects"],
   });
 
   const reports = reportsData?.reports || [];
@@ -106,6 +113,7 @@ export default function DashboardPage() {
       </PageHeader>
 
       <div className="space-y-6">
+        {/* Stats row */}
         <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
           <Card className="border-l-4 border-l-primary" data-testid="card-stat-total">
             <CardContent className="p-4">
@@ -163,6 +171,100 @@ export default function DashboardPage() {
           </Link>
         </div>
 
+        {/* Assigned Projects */}
+        <div className="space-y-4">
+          <SectionHeader title="My Projects">
+            <Button variant="ghost" size="sm" asChild data-testid="link-view-all-projects">
+              <Link href="/my-projects">
+                View All
+                <ChevronRight className="w-4 h-4 ml-1" />
+              </Link>
+            </Button>
+          </SectionHeader>
+
+          {projectsLoading ? (
+            <div className="grid gap-4 md:grid-cols-2">
+              {[1, 2].map((i) => (
+                <Card key={i}>
+                  <CardContent className="p-4 space-y-3">
+                    <Skeleton className="h-5 w-3/4" />
+                    <Skeleton className="h-4 w-1/3" />
+                    <Skeleton className="h-4 w-1/2" />
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          ) : !projects || projects.length === 0 ? (
+            <Card className="border-dashed border-2">
+              <CardContent className="p-8 text-center">
+                <div className="w-14 h-14 rounded bg-primary/10 flex items-center justify-center mx-auto mb-3">
+                  <FolderOpen className="w-7 h-7 text-primary" />
+                </div>
+                <p className="text-base font-semibold">No projects assigned</p>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Contact your company admin to be added to a project.
+                </p>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="grid gap-4 md:grid-cols-2">
+              {projects.map((project) => {
+                const isActive = project.id === profile?.activeProjectId;
+                return (
+                  <Link
+                    key={project.id}
+                    href={`/project/${project.id}/dashboard`}
+                    data-testid={`link-project-dashboard-${project.id}`}
+                  >
+                    <Card
+                      className={`hover-elevate cursor-pointer border-l-4 ${isActive ? "border-l-[hsl(36,90%,50%)] ring-2 ring-[hsl(36,90%,50%)]/30" : "border-l-primary"}`}
+                      data-testid={`card-project-${project.id}`}
+                    >
+                      <CardHeader className="pb-2">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex items-center gap-2 flex-1 min-w-0">
+                            <FolderOpen className="w-5 h-5 text-muted-foreground shrink-0" />
+                            <CardTitle className="text-base leading-snug hover:text-primary transition-colors" data-testid={`text-project-name-${project.id}`}>
+                              {project.name}
+                            </CardTitle>
+                          </div>
+                          {isActive && (
+                            <Badge variant="default" className="shrink-0" data-testid={`badge-active-${project.id}`}>
+                              <Check className="w-3 h-3 mr-1" />
+                              Active
+                            </Badge>
+                          )}
+                        </div>
+                        {project.projectNumber && (
+                          <CardDescription className="flex items-center gap-1.5 mt-1">
+                            <Hash className="w-3 h-3" />
+                            {project.projectNumber}
+                          </CardDescription>
+                        )}
+                      </CardHeader>
+                      <CardContent className="pt-0 space-y-1.5">
+                        {project.client && (
+                          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                            <Building2 className="w-4 h-4 shrink-0" />
+                            <span className="truncate">{project.client}</span>
+                          </div>
+                        )}
+                        {project.address && (
+                          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                            <MapPin className="w-4 h-4 shrink-0" />
+                            <span className="truncate">{project.address}</span>
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  </Link>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Recent Reports */}
         <div className="space-y-4">
           <SectionHeader title="Recent Reports">
             <Button variant="ghost" size="sm" asChild data-testid="link-view-all-reports">
