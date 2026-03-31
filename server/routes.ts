@@ -9912,6 +9912,9 @@ export async function registerRoutes(
         createdPhotos.push(photo);
       }
 
+      // Invalidate cached PDF — photos have changed so any stored PDF is stale
+      await storage.updateReport(req.params.id, { pdfPath: null } as any);
+
       res.status(201).json(createdPhotos);
     } catch (error) {
       console.error("Error uploading photos:", error);
@@ -9951,6 +9954,8 @@ export async function registerRoutes(
       }
       
       await storage.deletePhoto(req.params.id);
+      // Invalidate cached PDF — photo removed so any stored PDF is stale
+      await storage.updateReport(photo.reportId, { pdfPath: null } as any);
       res.status(204).send();
     } catch (error) {
       console.error("Error deleting photo:", error);
@@ -9995,6 +10000,8 @@ export async function registerRoutes(
       }
       
       const updatedPhoto = await storage.updatePhotoCaption(req.params.id, caption);
+      // Invalidate cached PDF — caption appears in photo page of the PDF
+      await storage.updateReport(photo.reportId, { pdfPath: null } as any);
       res.json(updatedPhoto);
     } catch (error) {
       console.error("Error updating photo caption:", error);
