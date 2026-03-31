@@ -1147,7 +1147,7 @@ export default function ProjectDashboardPage() {
           </div>
         )}
 
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 items-start">
           <Card data-testid="card-schedule-progress">
             <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Schedule Progress</CardTitle>
@@ -1427,9 +1427,7 @@ export default function ProjectDashboardPage() {
               </div>
             </CardContent>
           </Card>
-        </div>
 
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {upcomingMilestones.length > 0 && (
             <Card data-testid="card-milestones">
               <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
@@ -1510,9 +1508,7 @@ export default function ProjectDashboardPage() {
               </div>
             </CardContent>
           </Card>
-        </div>
 
-        <div className="grid gap-4 md:grid-cols-2">
           <Card data-testid="card-issues">
             <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Issues Reported</CardTitle>
@@ -1578,9 +1574,7 @@ export default function ProjectDashboardPage() {
               )}
             </CardContent>
           </Card>
-        </div>
 
-        <div className="grid gap-4 md:grid-cols-2">
           <Card data-testid="card-activity">
             <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Recent Activity</CardTitle>
@@ -1672,10 +1666,9 @@ export default function ProjectDashboardPage() {
             open={lightboxOpen}
             onOpenChange={setLightboxOpen}
           />
-        </div>
 
-        {project.distributionEmails && project.distributionEmails.length > 0 && (
-          <Card data-testid="card-distribution">
+          {project.distributionEmails && project.distributionEmails.length > 0 && (
+          <Card data-testid="card-distribution" className="col-span-full">
             <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Distribution List</CardTitle>
               <Mail className="w-4 h-4 text-muted-foreground" />
@@ -1690,10 +1683,10 @@ export default function ProjectDashboardPage() {
               </div>
             </CardContent>
           </Card>
-        )}
+          )}
 
-        {/* Project Comments Section */}
-        <Card data-testid="card-project-comments" className="col-span-full">
+          {/* Project Comments Section */}
+          <Card data-testid="card-project-comments" className="col-span-full">
           <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Team Comments</CardTitle>
             <MessageSquare className="w-4 h-4 text-muted-foreground" />
@@ -1831,7 +1824,8 @@ export default function ProjectDashboardPage() {
               </p>
             )}
           </CardContent>
-        </Card>
+          </Card>
+        </div>
       </div>
 
       <Dialog open={timesheetDialogOpen} onOpenChange={setTimesheetDialogOpen}>
