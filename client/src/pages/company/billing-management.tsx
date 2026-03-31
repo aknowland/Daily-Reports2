@@ -1651,12 +1651,13 @@ export default function BillingManagementPage() {
                     <div className="space-y-2">
                       <Label className="text-muted-foreground">Contract</Label>
                       <Select 
-                        value={invoiceFormData.contractId}
+                        value={invoiceFormData.contractId || "none"}
                         onValueChange={(v) => {
-                          const newContract = contracts?.find(c => c.id === v);
+                          const contractId = v === "none" ? "" : v;
+                          const newContract = contracts?.find(c => c.id === contractId);
                           setInvoiceFormData({
                             ...invoiceFormData, 
-                            contractId: v,
+                            contractId,
                             purchaseOrderId: newContract?.purchaseOrderId || invoiceFormData.purchaseOrderId
                           });
                         }}
@@ -1665,7 +1666,7 @@ export default function BillingManagementPage() {
                           <SelectValue placeholder="Select a contract (optional)" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="">No contract</SelectItem>
+                          <SelectItem value="none">No contract</SelectItem>
                           {contracts?.map((c) => (
                             <SelectItem key={c.id} value={c.id}>
                               {c.contractNumber || c.name} {c.regularRate && `($${c.regularRate}/hr)`}
@@ -1686,14 +1687,14 @@ export default function BillingManagementPage() {
                     <div className="space-y-2">
                       <Label className="text-muted-foreground">Purchase Order</Label>
                       <Select 
-                        value={invoiceFormData.purchaseOrderId}
-                        onValueChange={(v) => setInvoiceFormData({...invoiceFormData, purchaseOrderId: v})}
+                        value={invoiceFormData.purchaseOrderId || "none"}
+                        onValueChange={(v) => setInvoiceFormData({...invoiceFormData, purchaseOrderId: v === "none" ? "" : v})}
                       >
                         <SelectTrigger>
                           <SelectValue placeholder="Select a PO (optional)" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="">No PO</SelectItem>
+                          <SelectItem value="none">No PO</SelectItem>
                           {purchaseOrders.map((po) => (
                             <SelectItem key={po.id} value={po.id}>
                               PO #{po.poNumber} {po.totalAmount && `($${parseFloat(po.totalAmount).toLocaleString()})`}
