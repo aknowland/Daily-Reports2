@@ -1147,528 +1147,537 @@ export default function ProjectDashboardPage() {
           </div>
         )}
 
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 items-start">
-          <Card data-testid="card-schedule-progress">
-            <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Schedule Progress</CardTitle>
-              <Calendar className="w-4 h-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                {hours.budgeted > 0 ? (
-                  <>
-                    <div className="flex items-center justify-between">
-                      <span className="text-2xl font-bold">{Math.round(hours.progress)}%</span>
-                      <Badge variant={hours.status === 'on_track' ? 'default' : hours.status === 'warning' ? 'secondary' : hours.status === 'over' ? 'destructive' : 'outline'}>
-                        {hours.status === 'under' ? 'under budget' : hours.status === 'over' ? 'over budget' : hours.status.replace('_', ' ')}
-                      </Badge>
-                    </div>
-                    <Progress value={Math.min(hours.progress, 100)} className={hours.status === 'over' ? '[&>div]:bg-red-500' : hours.status === 'warning' ? '[&>div]:bg-yellow-500' : ''} />
-                    <div className="flex items-center justify-between text-sm text-muted-foreground">
-                      <span>{hours.used.toFixed(1)} hrs used</span>
-                      <span>{hours.budgeted.toFixed(1)} hrs budgeted</span>
-                    </div>
-                    <div className="text-sm">
-                      <span className={`font-medium ${hours.remaining > 0 ? 'text-green-600' : 'text-red-600'}`}>
-                        {hours.remaining.toFixed(1)}
-                      </span>{' '}
-                      hours remaining
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <div className="flex items-center justify-between">
-                      <span className="text-2xl font-bold">{Math.round(schedule.progress)}%</span>
-                      <Badge variant={schedule.status === 'on_track' ? 'default' : schedule.status === 'warning' ? 'secondary' : schedule.status === 'overdue' ? 'destructive' : 'outline'}>
-                        {schedule.status.replace('_', ' ')}
-                      </Badge>
-                    </div>
-                    <Progress value={schedule.progress} className={getScheduleStatusColor(schedule.status)} />
-                  </>
-                )}
-                <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
-                  {schedule.startDate && (
-                    <div>
-                      <span className="font-medium">Start:</span>{' '}
-                      {format(parseDateSafe(schedule.startDate), 'MMM d, yyyy')}
-                    </div>
-                  )}
-                  {schedule.endDate && (
-                    <div>
-                      <span className="font-medium">End:</span>{' '}
-                      {format(parseDateSafe(schedule.endDate), 'MMM d, yyyy')}
-                    </div>
-                  )}
-                </div>
-                {schedule.daysRemaining !== null && schedule.daysRemaining > 0 && (
-                  <div className="text-sm">
-                    <span className="font-medium text-green-600">{schedule.daysRemaining}</span> days remaining
-                  </div>
-                )}
-                {schedule.daysOverdue !== null && schedule.daysOverdue > 0 && (
-                  <div className="text-sm text-red-600">
-                    <span className="font-medium">{schedule.daysOverdue}</span> days overdue
-                  </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-
-
-          {hasAdminAccess && hours.budgeted > 0 && (
-            <Card data-testid="card-hours-breakdown">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 items-start">
+          {/* Column 1: Schedule, Hours, Daily Reports, Weather */}
+          <div className="space-y-4">
+            <Card data-testid="card-schedule-progress">
               <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Hours Breakdown</CardTitle>
-                <Clock className="w-4 h-4 text-muted-foreground" />
+                <CardTitle className="text-sm font-medium">Schedule Progress</CardTitle>
+                <Calendar className="w-4 h-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
-                  {hours.sources?.dailyReports && hours.sources.dailyReports.total > 0 && (
-                    <div className="space-y-1">
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="font-medium">Daily Reports</span>
-                        <span className="font-bold">{hours.sources.dailyReports.total.toFixed(1)} hrs</span>
-                      </div>
-                      <div className="flex items-center gap-3 text-xs text-muted-foreground pl-3">
-                        <span>Reg: {hours.sources.dailyReports.regular.toFixed(1)}</span>
-                        <span>OT: {hours.sources.dailyReports.overtime.toFixed(1)}</span>
-                        {hours.sources.dailyReports.premium > 0 && (
-                          <span>Premium: {hours.sources.dailyReports.premium.toFixed(1)}</span>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                  {hours.sources?.manualEntries && hours.sources.manualEntries.total > 0 && (
-                    <div className="space-y-1">
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="font-medium">Manual Entries</span>
-                        <span className="font-bold">{hours.sources.manualEntries.total.toFixed(1)} hrs</span>
-                      </div>
-                      <div className="flex items-center gap-3 text-xs text-muted-foreground pl-3">
-                        <span>Reg: {hours.sources.manualEntries.regular.toFixed(1)}</span>
-                        <span>OT: {hours.sources.manualEntries.overtime.toFixed(1)}</span>
-                      </div>
-                    </div>
-                  )}
-                  {hours.sources?.baseHours && hours.sources.baseHours.total > 0 && (
-                    <div className="space-y-1">
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="font-medium">Base Hours</span>
-                        <span className="font-bold">{hours.sources.baseHours.total.toFixed(1)} hrs</span>
-                      </div>
-                      <div className="flex items-center gap-3 text-xs text-muted-foreground pl-3">
-                        <span>Reg: {hours.sources.baseHours.regular.toFixed(1)}</span>
-                        <span>OT: {hours.sources.baseHours.overtime.toFixed(1)}</span>
-                      </div>
-                    </div>
-                  )}
-                  <div className="border-t pt-2">
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="font-medium">Total</span>
-                      <span className="font-bold">{hours.used.toFixed(1)} hrs</span>
-                    </div>
-                    <div className="flex items-center gap-3 text-xs text-muted-foreground pl-3">
-                      <span>Reg: {hours.breakdown.regular.toFixed(1)}</span>
-                      <span>OT: {hours.breakdown.overtime.toFixed(1)}</span>
-                      {hours.breakdown.premium > 0 && (
-                        <span>Premium: {hours.breakdown.premium.toFixed(1)}</span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          <Card data-testid="card-daily-reports">
-            <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Daily Reports</CardTitle>
-              <FileText className="w-4 h-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold mb-2">{dailyReports.length}</div>
-              <div className="text-sm text-muted-foreground mb-3">Total reports submitted</div>
-              <div className="space-y-2 max-h-60 overflow-y-auto">
-                {dailyReports.slice(0, 5).map((report) => (
-                  <Link
-                    key={report.id}
-                    href={`/reports/${report.id}`}
-                    className="flex items-center justify-between text-xs p-2 bg-muted rounded hover-elevate cursor-pointer"
-                  >
-                    <span>{format(parseDateSafe(report.date), 'MMM d, yyyy')}</span>
-                    <div className="flex items-center gap-2">
-                      {getWeatherIcon(report.weatherType)}
-                      <Badge variant="outline" className="text-xs">
-                        {parseFloat(report.regularHours || '0').toFixed(1)} hrs
-                      </Badge>
-                    </div>
-                  </Link>
-                ))}
-              </div>
-              {dailyReports.length > 0 && (
-                <Link href={`/project/${project.id}/daily-reports`}>
-                  <Button variant="outline" size="sm" className="w-full mt-3 gap-2" data-testid="button-view-all-daily-reports">
-                    <FileText className="w-4 h-4" />
-                    View All Daily Reports
-                  </Button>
-                </Link>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card data-testid="card-project-reports">
-            <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Project Reports</CardTitle>
-              <BarChart3 className="w-4 h-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-sm text-muted-foreground mb-4">
-                Generate summary reports for this project
-              </div>
-              <div className="space-y-3">
-                <div className="flex items-center justify-between p-3 bg-muted rounded">
-                  <div className="flex items-center gap-2">
-                    <Calendar className="w-4 h-4 text-primary" />
-                    <div>
-                      <div className="text-sm font-medium">Weekly Summary</div>
-                      <div className="text-xs text-muted-foreground">Reports by week with daily details</div>
-                    </div>
-                  </div>
-                  <SummaryReportDropdown
-                    scope="project"
-                    entityId={id || ''}
-                    distributionEmails={project.distributionEmails || []}
-                    onDownload={handleDownloadReport}
-                    onEmail={handleEmailReport}
-                    isEmailPending={isEmailPending}
-                    defaultReportType="weekly"
-                    triggerVariant="icon"
-                  />
-                </div>
-                <div className="flex items-center justify-between p-3 bg-muted rounded">
-                  <div className="flex items-center gap-2">
-                    <Calendar className="w-4 h-4 text-primary" />
-                    <div>
-                      <div className="text-sm font-medium">Monthly Summary</div>
-                      <div className="text-xs text-muted-foreground">Full month overview with metrics</div>
-                    </div>
-                  </div>
-                  <SummaryReportDropdown
-                    scope="project"
-                    entityId={id || ''}
-                    distributionEmails={project.distributionEmails || []}
-                    onDownload={handleDownloadReport}
-                    onEmail={handleEmailReport}
-                    isEmailPending={isEmailPending}
-                    defaultReportType="monthly"
-                    triggerVariant="icon"
-                  />
-                </div>
-                <div className="flex items-center justify-between p-3 bg-muted rounded">
-                  <div className="flex items-center gap-2">
-                    <Activity className="w-4 h-4 text-primary" />
-                    <div>
-                      <div className="text-sm font-medium">Current Status</div>
-                      <div className="text-xs text-muted-foreground">Today's snapshot of project</div>
-                    </div>
-                  </div>
-                  <SummaryReportDropdown
-                    scope="project"
-                    entityId={id || ''}
-                    distributionEmails={project.distributionEmails || []}
-                    onDownload={handleDownloadReport}
-                    onEmail={handleEmailReport}
-                    isEmailPending={isEmailPending}
-                    defaultReportType="current"
-                    triggerVariant="icon"
-                  />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card data-testid="card-inspector-actions">
-            <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Inspector Actions</CardTitle>
-              <ClipboardList className="w-4 h-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-sm text-muted-foreground mb-4">
-                Create reports and generate billing documents
-              </div>
-              <div className="space-y-3">
-                <Button 
-                  variant="outline" 
-                  className="w-full justify-start"
-                  onClick={() => setDailyReportDialogOpen(true)}
-                  data-testid="button-new-daily-report"
-                >
-                  <Plus className="w-4 h-4 mr-2" />
-                  New Daily Report
-                </Button>
-                <Button 
-                  variant="outline" 
-                  className="w-full justify-start"
-                  onClick={() => setTimesheetDialogOpen(true)}
-                  data-testid="button-generate-timesheet"
-                >
-                  <ClipboardList className="w-4 h-4 mr-2" />
-                  Generate Timesheet
-                </Button>
-                <Button 
-                  variant="outline" 
-                  className="w-full justify-start"
-                  onClick={() => setInvoiceDialogOpen(true)}
-                  data-testid="button-generate-invoice"
-                >
-                  <Receipt className="w-4 h-4 mr-2" />
-                  Generate Invoice
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-
-          {upcomingMilestones.length > 0 && (
-            <Card data-testid="card-milestones">
-              <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Upcoming Milestones</CardTitle>
-                <Flag className="w-4 h-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  {upcomingMilestones.slice(0, 5).map((milestone, idx) => (
-                    <div key={idx} className="flex items-center justify-between text-sm">
-                      <div className="flex items-center gap-2">
-                        {milestone.isPast ? (
-                          <CheckCircle2 className="w-4 h-4 text-green-500" />
-                        ) : milestone.daysUntil <= 7 ? (
-                          <AlertTriangle className="w-4 h-4 text-yellow-500" />
-                        ) : (
-                          <Calendar className="w-4 h-4 text-muted-foreground" />
-                        )}
-                        <span className={milestone.isPast ? 'text-muted-foreground' : ''}>{milestone.label}</span>
-                      </div>
-                      <div className="text-xs text-muted-foreground">
-                        {milestone.isPast ? (
-                          <span className="text-green-600">Completed</span>
-                        ) : (
-                          `${milestone.daysUntil} days`
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {teamOverview.length > 0 && (
-            <Card data-testid="card-team-overview">
-              <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Team Hours</CardTitle>
-                <Users className="w-4 h-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  {teamOverview.slice(0, 5).map((inspector) => (
-                    <div key={inspector.inspectorId} className="flex items-center justify-between text-sm">
-                      <span className="truncate max-w-[120px]">{inspector.name}</span>
-                      <div className="flex items-center gap-2">
-                        <Badge variant="outline" className="text-xs">
-                          {inspector.reportCount} reports
+                  {hours.budgeted > 0 ? (
+                    <>
+                      <div className="flex items-center justify-between">
+                        <span className="text-2xl font-bold">{Math.round(hours.progress)}%</span>
+                        <Badge variant={hours.status === 'on_track' ? 'default' : hours.status === 'warning' ? 'secondary' : hours.status === 'over' ? 'destructive' : 'outline'}>
+                          {hours.status === 'under' ? 'under budget' : hours.status === 'over' ? 'over budget' : hours.status.replace('_', ' ')}
                         </Badge>
-                        <span className="font-medium">{inspector.totalHours.toFixed(1)} hrs</span>
                       </div>
+                      <Progress value={Math.min(hours.progress, 100)} className={hours.status === 'over' ? '[&>div]:bg-red-500' : hours.status === 'warning' ? '[&>div]:bg-yellow-500' : ''} />
+                      <div className="flex items-center justify-between text-sm text-muted-foreground">
+                        <span>{hours.used.toFixed(1)} hrs used</span>
+                        <span>{hours.budgeted.toFixed(1)} hrs budgeted</span>
+                      </div>
+                      <div className="text-sm">
+                        <span className={`font-medium ${hours.remaining > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                          {hours.remaining.toFixed(1)}
+                        </span>{' '}
+                        hours remaining
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="flex items-center justify-between">
+                        <span className="text-2xl font-bold">{Math.round(schedule.progress)}%</span>
+                        <Badge variant={schedule.status === 'on_track' ? 'default' : schedule.status === 'warning' ? 'secondary' : schedule.status === 'overdue' ? 'destructive' : 'outline'}>
+                          {schedule.status.replace('_', ' ')}
+                        </Badge>
+                      </div>
+                      <Progress value={schedule.progress} className={getScheduleStatusColor(schedule.status)} />
+                    </>
+                  )}
+                  <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
+                    {schedule.startDate && (
+                      <div>
+                        <span className="font-medium">Start:</span>{' '}
+                        {format(parseDateSafe(schedule.startDate), 'MMM d, yyyy')}
+                      </div>
+                    )}
+                    {schedule.endDate && (
+                      <div>
+                        <span className="font-medium">End:</span>{' '}
+                        {format(parseDateSafe(schedule.endDate), 'MMM d, yyyy')}
+                      </div>
+                    )}
+                  </div>
+                  {schedule.daysRemaining !== null && schedule.daysRemaining > 0 && (
+                    <div className="text-sm">
+                      <span className="font-medium text-green-600">{schedule.daysRemaining}</span> days remaining
                     </div>
-                  ))}
+                  )}
+                  {schedule.daysOverdue !== null && schedule.daysOverdue > 0 && (
+                    <div className="text-sm text-red-600">
+                      <span className="font-medium">{schedule.daysOverdue}</span> days overdue
+                    </div>
+                  )}
                 </div>
               </CardContent>
             </Card>
-          )}
 
-          <Card data-testid="card-weather-summary">
-            <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Weather Summary</CardTitle>
-              <Cloud className="w-4 h-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-2">
-                {weatherSummary.breakdown.slice(0, 5).map((weather) => (
-                  <div key={weather.type} className="flex items-center justify-between text-sm">
-                    <div className="flex items-center gap-2">
-                      {getWeatherIcon(weather.type)}
-                      <span className="capitalize">{weather.type.replace('_', ' ')}</span>
+            {hasAdminAccess && hours.budgeted > 0 && (
+              <Card data-testid="card-hours-breakdown">
+                <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">Hours Breakdown</CardTitle>
+                  <Clock className="w-4 h-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3">
+                    {hours.sources?.dailyReports && hours.sources.dailyReports.total > 0 && (
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="font-medium">Daily Reports</span>
+                          <span className="font-bold">{hours.sources.dailyReports.total.toFixed(1)} hrs</span>
+                        </div>
+                        <div className="flex items-center gap-3 text-xs text-muted-foreground pl-3">
+                          <span>Reg: {hours.sources.dailyReports.regular.toFixed(1)}</span>
+                          <span>OT: {hours.sources.dailyReports.overtime.toFixed(1)}</span>
+                          {hours.sources.dailyReports.premium > 0 && (
+                            <span>Premium: {hours.sources.dailyReports.premium.toFixed(1)}</span>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                    {hours.sources?.manualEntries && hours.sources.manualEntries.total > 0 && (
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="font-medium">Manual Entries</span>
+                          <span className="font-bold">{hours.sources.manualEntries.total.toFixed(1)} hrs</span>
+                        </div>
+                        <div className="flex items-center gap-3 text-xs text-muted-foreground pl-3">
+                          <span>Reg: {hours.sources.manualEntries.regular.toFixed(1)}</span>
+                          <span>OT: {hours.sources.manualEntries.overtime.toFixed(1)}</span>
+                        </div>
+                      </div>
+                    )}
+                    {hours.sources?.baseHours && hours.sources.baseHours.total > 0 && (
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="font-medium">Base Hours</span>
+                          <span className="font-bold">{hours.sources.baseHours.total.toFixed(1)} hrs</span>
+                        </div>
+                        <div className="flex items-center gap-3 text-xs text-muted-foreground pl-3">
+                          <span>Reg: {hours.sources.baseHours.regular.toFixed(1)}</span>
+                          <span>OT: {hours.sources.baseHours.overtime.toFixed(1)}</span>
+                        </div>
+                      </div>
+                    )}
+                    <div className="border-t pt-2">
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="font-medium">Total</span>
+                        <span className="font-bold">{hours.used.toFixed(1)} hrs</span>
+                      </div>
+                      <div className="flex items-center gap-3 text-xs text-muted-foreground pl-3">
+                        <span>Reg: {hours.breakdown.regular.toFixed(1)}</span>
+                        <span>OT: {hours.breakdown.overtime.toFixed(1)}</span>
+                        {hours.breakdown.premium > 0 && (
+                          <span>Premium: {hours.breakdown.premium.toFixed(1)}</span>
+                        )}
+                      </div>
                     </div>
-                    <span className="text-muted-foreground">{weather.percentage}%</span>
                   </div>
-                ))}
-                {weatherSummary.breakdown.length === 0 && (
-                  <p className="text-sm text-muted-foreground">No weather data available</p>
-                )}
-              </div>
-            </CardContent>
-          </Card>
+                </CardContent>
+              </Card>
+            )}
 
-          <Card data-testid="card-issues">
-            <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Issues Reported</CardTitle>
-              <div className="flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 text-muted-foreground" />
-                {issuesSummary.totalCount > 0 && (
-                  <Badge variant="secondary">{issuesSummary.totalCount}</Badge>
-                )}
-              </div>
-            </CardHeader>
-            <CardContent>
-              {issuesSummary.recentIssues.length > 0 ? (
-                <div className="space-y-3 max-h-40 overflow-y-auto">
-                  {issuesSummary.recentIssues.map((issue) => (
-                    <div key={issue.id} className="text-sm p-2 bg-muted rounded">
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-xs text-muted-foreground">
-                          {format(parseDateSafe(issue.date), 'MMM d, yyyy')}
-                        </span>
-                      </div>
-                      <p className="text-xs line-clamp-2">{issue.details || 'No details provided'}</p>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-sm text-muted-foreground flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-green-500" />
-                  No issues reported
-                </p>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card data-testid="card-safety">
-            <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Safety Incidents</CardTitle>
-              <div className="flex items-center gap-2">
-                <ShieldAlert className="w-4 h-4 text-muted-foreground" />
-                {safetySummary.totalCount > 0 && (
-                  <Badge variant="destructive">{safetySummary.totalCount}</Badge>
-                )}
-              </div>
-            </CardHeader>
-            <CardContent>
-              {safetySummary.recentIncidents.length > 0 ? (
-                <div className="space-y-3 max-h-40 overflow-y-auto">
-                  {safetySummary.recentIncidents.map((incident) => (
-                    <div key={incident.id} className="text-sm p-2 bg-red-50 dark:bg-red-950 rounded border border-red-200 dark:border-red-800">
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-xs text-muted-foreground">
-                          {format(parseDateSafe(incident.date), 'MMM d, yyyy')}
-                        </span>
-                      </div>
-                      <p className="text-xs line-clamp-2">{incident.details || 'No details provided'}</p>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-sm text-muted-foreground flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-green-500" />
-                  No safety incidents reported
-                </p>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card data-testid="card-activity">
-            <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Recent Activity</CardTitle>
-              <Activity className="w-4 h-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              {activityTimeline.length > 0 ? (
-                <div className="space-y-3 max-h-60 overflow-y-auto">
-                  {activityTimeline.map((activity) => (
+            <Card data-testid="card-daily-reports">
+              <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Daily Reports</CardTitle>
+                <FileText className="w-4 h-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold mb-2">{dailyReports.length}</div>
+                <div className="text-sm text-muted-foreground mb-3">Total reports submitted</div>
+                <div className="space-y-2 max-h-60 overflow-y-auto">
+                  {dailyReports.slice(0, 5).map((report) => (
                     <Link
-                      key={activity.id}
-                      href={`/reports/${activity.id}`}
-                      className="flex items-start gap-3 text-sm p-2 bg-muted rounded hover-elevate cursor-pointer"
+                      key={report.id}
+                      href={`/reports/${report.id}`}
+                      className="flex items-center justify-between text-xs p-2 bg-muted rounded hover-elevate cursor-pointer"
                     >
-                      <FileText className="w-4 h-4 text-muted-foreground mt-0.5" />
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium truncate">{activity.title}</p>
-                        <p className="text-xs text-muted-foreground">{activity.description}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {format(parseDateSafe(activity.date), 'MMM d, yyyy h:mm a')}
-                        </p>
+                      <span>{format(parseDateSafe(report.date), 'MMM d, yyyy')}</span>
+                      <div className="flex items-center gap-2">
+                        {getWeatherIcon(report.weatherType)}
+                        <Badge variant="outline" className="text-xs">
+                          {parseFloat(report.regularHours || '0').toFixed(1)} hrs
+                        </Badge>
                       </div>
-                      <Badge variant="outline" className="text-xs">
-                        {activity.status}
-                      </Badge>
                     </Link>
                   ))}
                 </div>
-              ) : (
-                <p className="text-sm text-muted-foreground">No recent activity</p>
-              )}
-            </CardContent>
-          </Card>
-
-          {photoGallery.length > 0 && (
-            <Card data-testid="card-photos">
-              <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Recent Photos ({photoGallery.length})</CardTitle>
-                <Image className="w-4 h-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-3 gap-2">
-                  {(showAllPhotos ? photoGallery : photoGallery.slice(0, 12)).map((photo) => (
-                    <div
-                      key={photo.id}
-                      className="aspect-square bg-muted rounded-md overflow-hidden cursor-pointer"
-                      onClick={() => {
-                        const fullIndex = photoGallery.findIndex(p => p.id === photo.id);
-                        setLightboxIndex(fullIndex >= 0 ? fullIndex : 0);
-                        setLightboxOpen(true);
-                      }}
-                      data-testid={`photo-thumb-${photo.id}`}
-                    >
-                      <img
-                        src={photo.path}
-                        alt={photo.caption || 'Project photo'}
-                        className="w-full h-full object-cover transition-transform hover:scale-105"
-                        loading="lazy"
-                      />
-                    </div>
-                  ))}
-                </div>
-                {photoGallery.length > 12 && !showAllPhotos && (
-                  <Button
-                    variant="outline"
-                    className="w-full mt-3"
-                    onClick={() => setShowAllPhotos(true)}
-                    data-testid="button-view-all-photos"
-                  >
-                    View All {photoGallery.length} Photos
-                  </Button>
-                )}
-                {showAllPhotos && photoGallery.length > 12 && (
-                  <Button
-                    variant="ghost"
-                    className="w-full mt-3"
-                    onClick={() => setShowAllPhotos(false)}
-                    data-testid="button-show-fewer-photos"
-                  >
-                    Show Fewer
-                  </Button>
+                {dailyReports.length > 0 && (
+                  <Link href={`/project/${project.id}/daily-reports`}>
+                    <Button variant="outline" size="sm" className="w-full mt-3 gap-2" data-testid="button-view-all-daily-reports">
+                      <FileText className="w-4 h-4" />
+                      View All Daily Reports
+                    </Button>
+                  </Link>
                 )}
               </CardContent>
             </Card>
-          )}
-          <PhotoLightbox
-            photos={photoGallery}
-            initialIndex={lightboxIndex}
-            open={lightboxOpen}
-            onOpenChange={setLightboxOpen}
-          />
 
-          {project.distributionEmails && project.distributionEmails.length > 0 && (
-          <Card data-testid="card-distribution" className="col-span-full">
+            <Card data-testid="card-weather-summary">
+              <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Weather Summary</CardTitle>
+                <Cloud className="w-4 h-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2">
+                  {weatherSummary.breakdown.slice(0, 5).map((weather) => (
+                    <div key={weather.type} className="flex items-center justify-between text-sm">
+                      <div className="flex items-center gap-2">
+                        {getWeatherIcon(weather.type)}
+                        <span className="capitalize">{weather.type.replace('_', ' ')}</span>
+                      </div>
+                      <span className="text-muted-foreground">{weather.percentage}%</span>
+                    </div>
+                  ))}
+                  {weatherSummary.breakdown.length === 0 && (
+                    <p className="text-sm text-muted-foreground">No weather data available</p>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Column 2: Project Reports, Inspector Actions, Milestones, Team */}
+          <div className="space-y-4">
+            <Card data-testid="card-project-reports">
+              <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Project Reports</CardTitle>
+                <BarChart3 className="w-4 h-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-sm text-muted-foreground mb-4">
+                  Generate summary reports for this project
+                </div>
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between p-3 bg-muted rounded">
+                    <div className="flex items-center gap-2">
+                      <Calendar className="w-4 h-4 text-primary" />
+                      <div>
+                        <div className="text-sm font-medium">Weekly Summary</div>
+                        <div className="text-xs text-muted-foreground">Reports by week with daily details</div>
+                      </div>
+                    </div>
+                    <SummaryReportDropdown
+                      scope="project"
+                      entityId={id || ''}
+                      distributionEmails={project.distributionEmails || []}
+                      onDownload={handleDownloadReport}
+                      onEmail={handleEmailReport}
+                      isEmailPending={isEmailPending}
+                      defaultReportType="weekly"
+                      triggerVariant="icon"
+                    />
+                  </div>
+                  <div className="flex items-center justify-between p-3 bg-muted rounded">
+                    <div className="flex items-center gap-2">
+                      <Calendar className="w-4 h-4 text-primary" />
+                      <div>
+                        <div className="text-sm font-medium">Monthly Summary</div>
+                        <div className="text-xs text-muted-foreground">Full month overview with metrics</div>
+                      </div>
+                    </div>
+                    <SummaryReportDropdown
+                      scope="project"
+                      entityId={id || ''}
+                      distributionEmails={project.distributionEmails || []}
+                      onDownload={handleDownloadReport}
+                      onEmail={handleEmailReport}
+                      isEmailPending={isEmailPending}
+                      defaultReportType="monthly"
+                      triggerVariant="icon"
+                    />
+                  </div>
+                  <div className="flex items-center justify-between p-3 bg-muted rounded">
+                    <div className="flex items-center gap-2">
+                      <Activity className="w-4 h-4 text-primary" />
+                      <div>
+                        <div className="text-sm font-medium">Current Status</div>
+                        <div className="text-xs text-muted-foreground">Today's snapshot of project</div>
+                      </div>
+                    </div>
+                    <SummaryReportDropdown
+                      scope="project"
+                      entityId={id || ''}
+                      distributionEmails={project.distributionEmails || []}
+                      onDownload={handleDownloadReport}
+                      onEmail={handleEmailReport}
+                      isEmailPending={isEmailPending}
+                      defaultReportType="current"
+                      triggerVariant="icon"
+                    />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card data-testid="card-inspector-actions">
+              <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Inspector Actions</CardTitle>
+                <ClipboardList className="w-4 h-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-sm text-muted-foreground mb-4">
+                  Create reports and generate billing documents
+                </div>
+                <div className="space-y-3">
+                  <Button
+                    variant="outline"
+                    className="w-full justify-start"
+                    onClick={() => setDailyReportDialogOpen(true)}
+                    data-testid="button-new-daily-report"
+                  >
+                    <Plus className="w-4 h-4 mr-2" />
+                    New Daily Report
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="w-full justify-start"
+                    onClick={() => setTimesheetDialogOpen(true)}
+                    data-testid="button-generate-timesheet"
+                  >
+                    <ClipboardList className="w-4 h-4 mr-2" />
+                    Generate Timesheet
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="w-full justify-start"
+                    onClick={() => setInvoiceDialogOpen(true)}
+                    data-testid="button-generate-invoice"
+                  >
+                    <Receipt className="w-4 h-4 mr-2" />
+                    Generate Invoice
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+
+            {upcomingMilestones.length > 0 && (
+              <Card data-testid="card-milestones">
+                <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">Upcoming Milestones</CardTitle>
+                  <Flag className="w-4 h-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3">
+                    {upcomingMilestones.slice(0, 5).map((milestone, idx) => (
+                      <div key={idx} className="flex items-center justify-between text-sm">
+                        <div className="flex items-center gap-2">
+                          {milestone.isPast ? (
+                            <CheckCircle2 className="w-4 h-4 text-green-500" />
+                          ) : milestone.daysUntil <= 7 ? (
+                            <AlertTriangle className="w-4 h-4 text-yellow-500" />
+                          ) : (
+                            <Calendar className="w-4 h-4 text-muted-foreground" />
+                          )}
+                          <span className={milestone.isPast ? 'text-muted-foreground' : ''}>{milestone.label}</span>
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          {milestone.isPast ? (
+                            <span className="text-green-600">Completed</span>
+                          ) : (
+                            `${milestone.daysUntil} days`
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {teamOverview.length > 0 && (
+              <Card data-testid="card-team-overview">
+                <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">Team Hours</CardTitle>
+                  <Users className="w-4 h-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3">
+                    {teamOverview.slice(0, 5).map((inspector) => (
+                      <div key={inspector.inspectorId} className="flex items-center justify-between text-sm">
+                        <span className="truncate max-w-[120px]">{inspector.name}</span>
+                        <div className="flex items-center gap-2">
+                          <Badge variant="outline" className="text-xs">
+                            {inspector.reportCount} reports
+                          </Badge>
+                          <span className="font-medium">{inspector.totalHours.toFixed(1)} hrs</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+
+          {/* Column 3: Recent Activity, Issues, Safety, Photos */}
+          <div className="space-y-4">
+            <Card data-testid="card-activity">
+              <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Recent Activity</CardTitle>
+                <Activity className="w-4 h-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                {activityTimeline.length > 0 ? (
+                  <div className="space-y-3 max-h-60 overflow-y-auto">
+                    {activityTimeline.map((activity) => (
+                      <Link
+                        key={activity.id}
+                        href={`/reports/${activity.id}`}
+                        className="flex items-start gap-3 text-sm p-2 bg-muted rounded hover-elevate cursor-pointer"
+                      >
+                        <FileText className="w-4 h-4 text-muted-foreground mt-0.5" />
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium truncate">{activity.title}</p>
+                          <p className="text-xs text-muted-foreground">{activity.description}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {format(parseDateSafe(activity.date), 'MMM d, yyyy h:mm a')}
+                          </p>
+                        </div>
+                        <Badge variant="outline" className="text-xs">
+                          {activity.status}
+                        </Badge>
+                      </Link>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">No recent activity</p>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card data-testid="card-issues">
+              <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Issues Reported</CardTitle>
+                <div className="flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 text-muted-foreground" />
+                  {issuesSummary.totalCount > 0 && (
+                    <Badge variant="secondary">{issuesSummary.totalCount}</Badge>
+                  )}
+                </div>
+              </CardHeader>
+              <CardContent>
+                {issuesSummary.recentIssues.length > 0 ? (
+                  <div className="space-y-3 max-h-40 overflow-y-auto">
+                    {issuesSummary.recentIssues.map((issue) => (
+                      <div key={issue.id} className="text-sm p-2 bg-muted rounded">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-xs text-muted-foreground">
+                            {format(parseDateSafe(issue.date), 'MMM d, yyyy')}
+                          </span>
+                        </div>
+                        <p className="text-xs line-clamp-2">{issue.details || 'No details provided'}</p>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-green-500" />
+                    No issues reported
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card data-testid="card-safety">
+              <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Safety Incidents</CardTitle>
+                <div className="flex items-center gap-2">
+                  <ShieldAlert className="w-4 h-4 text-muted-foreground" />
+                  {safetySummary.totalCount > 0 && (
+                    <Badge variant="destructive">{safetySummary.totalCount}</Badge>
+                  )}
+                </div>
+              </CardHeader>
+              <CardContent>
+                {safetySummary.recentIncidents.length > 0 ? (
+                  <div className="space-y-3 max-h-40 overflow-y-auto">
+                    {safetySummary.recentIncidents.map((incident) => (
+                      <div key={incident.id} className="text-sm p-2 bg-red-50 dark:bg-red-950 rounded border border-red-200 dark:border-red-800">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-xs text-muted-foreground">
+                            {format(parseDateSafe(incident.date), 'MMM d, yyyy')}
+                          </span>
+                        </div>
+                        <p className="text-xs line-clamp-2">{incident.details || 'No details provided'}</p>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-green-500" />
+                    No safety incidents reported
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+
+            {photoGallery.length > 0 && (
+              <Card data-testid="card-photos">
+                <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">Recent Photos ({photoGallery.length})</CardTitle>
+                  <Image className="w-4 h-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-3 gap-2">
+                    {(showAllPhotos ? photoGallery : photoGallery.slice(0, 12)).map((photo) => (
+                      <div
+                        key={photo.id}
+                        className="aspect-square bg-muted rounded-md overflow-hidden cursor-pointer"
+                        onClick={() => {
+                          const fullIndex = photoGallery.findIndex(p => p.id === photo.id);
+                          setLightboxIndex(fullIndex >= 0 ? fullIndex : 0);
+                          setLightboxOpen(true);
+                        }}
+                        data-testid={`photo-thumb-${photo.id}`}
+                      >
+                        <img
+                          src={photo.path}
+                          alt={photo.caption || 'Project photo'}
+                          className="w-full h-full object-cover transition-transform hover:scale-105"
+                          loading="lazy"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                  {photoGallery.length > 12 && !showAllPhotos && (
+                    <Button
+                      variant="outline"
+                      className="w-full mt-3"
+                      onClick={() => setShowAllPhotos(true)}
+                      data-testid="button-view-all-photos"
+                    >
+                      View All {photoGallery.length} Photos
+                    </Button>
+                  )}
+                  {showAllPhotos && photoGallery.length > 12 && (
+                    <Button
+                      variant="ghost"
+                      className="w-full mt-3"
+                      onClick={() => setShowAllPhotos(false)}
+                      data-testid="button-show-fewer-photos"
+                    >
+                      Show Fewer
+                    </Button>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+            <PhotoLightbox
+              photos={photoGallery}
+              initialIndex={lightboxIndex}
+              open={lightboxOpen}
+              onOpenChange={setLightboxOpen}
+            />
+          </div>
+        </div>
+
+        {project.distributionEmails && project.distributionEmails.length > 0 && (
+          <Card data-testid="card-distribution">
             <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Distribution List</CardTitle>
               <Mail className="w-4 h-4 text-muted-foreground" />
@@ -1683,16 +1692,15 @@ export default function ProjectDashboardPage() {
               </div>
             </CardContent>
           </Card>
-          )}
+        )}
 
-          {/* Project Comments Section */}
-          <Card data-testid="card-project-comments" className="col-span-full">
+        {/* Project Comments Section */}
+        <Card data-testid="card-project-comments">
           <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Team Comments</CardTitle>
             <MessageSquare className="w-4 h-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            {/* Comment Input */}
             <div className="mb-4 relative">
               <div className="flex gap-2">
                 <div className="flex-1 relative">
@@ -1703,8 +1711,6 @@ export default function ProjectDashboardPage() {
                     className="min-h-[80px] resize-none"
                     data-testid="input-comment"
                   />
-                  
-                  {/* Mentions dropdown */}
                   {showMentions && filteredMembers.length > 0 && (
                     <div className="absolute bottom-full left-0 mb-1 w-full max-w-xs bg-popover border border-border rounded-md shadow-lg z-50 max-h-48 overflow-y-auto">
                       {filteredMembers.map((member) => (
@@ -1738,8 +1744,6 @@ export default function ProjectDashboardPage() {
                 </Button>
               </div>
             </div>
-
-            {/* Comments List */}
             {isCommentsLoading ? (
               <div className="space-y-3">
                 {[1, 2, 3].map((i) => (
@@ -1824,8 +1828,7 @@ export default function ProjectDashboardPage() {
               </p>
             )}
           </CardContent>
-          </Card>
-        </div>
+        </Card>
       </div>
 
       <Dialog open={timesheetDialogOpen} onOpenChange={setTimesheetDialogOpen}>
