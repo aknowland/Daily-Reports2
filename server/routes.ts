@@ -8183,6 +8183,50 @@ export async function registerRoutes(
     }
   });
 
+  // Get outstanding invoices (sent + overdue) for active company, grouped by project/contract
+  app.get("/api/invoices/outstanding", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+
+      if (!profile?.activeCompanyId) {
+        return res.json([]);
+      }
+
+      const isMember = await storage.isUserMemberOfCompany(profile.activeCompanyId, userId);
+      if (!isMember) {
+        return res.json([]);
+      }
+
+      const invoiceList = await storage.getInvoices(profile.activeCompanyId);
+      const outstanding = invoiceList
+        .filter(i => i.status === 'sent' || i.status === 'overdue')
+        .sort((a, b) => {
+          const aDate = a.dueDate ? new Date(a.dueDate).getTime() : Infinity;
+          const bDate = b.dueDate ? new Date(b.dueDate).getTime() : Infinity;
+          return aDate - bDate;
+        })
+        .map(i => ({
+          id: i.id,
+          invoiceNumber: i.invoiceNumber,
+          status: i.status,
+          totalAmount: i.totalAmount,
+          dueDate: i.dueDate,
+          month: i.month,
+          year: i.year,
+          projectId: i.projectId,
+          projectName: i.project?.name || null,
+          contractId: i.contractId || null,
+          contractName: i.contract?.name || null,
+        }));
+
+      res.json(outstanding);
+    } catch (error) {
+      console.error("Error fetching outstanding invoices:", error);
+      res.status(500).json({ message: "Failed to fetch outstanding invoices" });
+    }
+  });
+
   // Get invoices for active company
   app.get("/api/invoices", isAuthenticated, async (req: any, res) => {
     try {
