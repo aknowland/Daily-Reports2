@@ -61,10 +61,14 @@ export function IorAgreementDialog({
     enabled: open && !!companyId,
   });
 
-  // Filter projects by selected contract (if any)
-  const filteredProjects = formData.contractId
-    ? projects.filter(p => p.contractId === formData.contractId)
-    : projects;
+  // Sort projects: linked-to-current-contract first, then alphabetically
+  const filteredProjects = [...projects].sort((a, b) => {
+    const aLinked = formData.contractId && a.contractId === formData.contractId;
+    const bLinked = formData.contractId && b.contractId === formData.contractId;
+    if (aLinked && !bLinked) return -1;
+    if (!aLinked && bLinked) return 1;
+    return a.name.localeCompare(b.name);
+  });
 
   const { data: members = [] } = useQuery<MemberWithUser[]>({
     queryKey: ["/api/companies", companyId, "members"],
@@ -242,11 +246,20 @@ export function IorAgreementDialog({
                   <SelectValue placeholder="Select project" />
                 </SelectTrigger>
                 <SelectContent>
-                  {filteredProjects.map((project) => (
-                    <SelectItem key={project.id} value={project.id}>
-                      {project.name}
-                    </SelectItem>
-                  ))}
+                  {filteredProjects.length === 0 && (
+                    <div className="py-2 px-3 text-sm text-muted-foreground">No projects found</div>
+                  )}
+                  {filteredProjects.map((project) => {
+                    const isLinked = formData.contractId && project.contractId === formData.contractId;
+                    return (
+                      <SelectItem key={project.id} value={project.id}>
+                        <span className="flex items-center gap-2">
+                          {project.name}
+                          {isLinked && <span className="text-xs text-muted-foreground">(linked)</span>}
+                        </span>
+                      </SelectItem>
+                    );
+                  })}
                 </SelectContent>
               </Select>
             </div>
