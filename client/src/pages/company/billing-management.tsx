@@ -47,7 +47,7 @@ import {
   ArrowLeft,
 } from "lucide-react";
 import { Link } from "wouter";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import type { Project, ContractWithProjects, InvoiceWithDetails, PurchaseOrder, Client } from "@shared/schema";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -135,6 +135,8 @@ export default function BillingManagementPage() {
     year: new Date().getFullYear().toString(),
     notes: "",
   });
+  const [isEditingContractAmount, setIsEditingContractAmount] = useState(false);
+  const [contractAmountInput, setContractAmountInput] = useState("");
 
   const { data: projects, isLoading: projectsLoading } = useQuery<Project[]>({
     queryKey: ["/api/projects"],
@@ -295,6 +297,27 @@ export default function BillingManagementPage() {
     },
   });
 
+  const updateProjectBudgetMutation = useMutation({
+    mutationFn: async ({ id, budgetAmount }: { id: string; budgetAmount: string }) => {
+      const response = await fetch(`/api/projects/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ budgetAmount }),
+      });
+      if (!response.ok) throw new Error("Failed to update project budget");
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+      setIsEditingContractAmount(false);
+      toast({ title: "Contract amount saved" });
+    },
+    onError: () => {
+      toast({ title: "Failed to save contract amount", variant: "destructive" });
+    },
+  });
+
   const resetPOForm = () => {
     setPOFormData({
       poNumber: "",
@@ -343,9 +366,55 @@ export default function BillingManagementPage() {
     ? contracts?.find(c => c.id === selectedProjectData.contractId)
     : undefined;
 
-  const filteredInvoices = invoices?.filter(inv => 
-    statusFilter === "all" || inv.status === statusFilter
+  const originalContractValue = projectContract?.originalValue 
+    ? parseFloat(projectContract.originalValue) 
+    : null;
+  const currentContractValue = projectContract?.currentValue 
+    ? parseFloat(projectContract.currentValue) 
+    : null;
+  const contractAmount = currentContractValue ?? (
+    selectedProjectData?.budgetAmount ? parseFloat(String(selectedProjectData.budgetAmount)) : null
   );
+
+  const projectInvoicesForCalc = useMemo(() => {
+    if (!invoices || !selectedProject) return [];
+    return invoices
+      .filter(inv => inv.projectId === selectedProject)
+      .sort((a, b) => {
+        if (a.year !== b.year) return a.year - b.year;
+        return a.month - b.month;
+      });
+  }, [invoices, selectedProject]);
+
+  const totalBilledToDate = projectInvoicesForCalc.reduce(
+    (sum, inv) => (inv.status === "sent" || inv.status === "paid")
+      ? sum + parseFloat(inv.totalAmount || "0")
+      : sum,
+    0
+  );
+
+  const cumulativeByInvoiceId = useMemo(() => {
+    const map: Record<string, { billedToDate: number; pctOfContract: number | null }> = {};
+    let running = 0;
+    for (const inv of projectInvoicesForCalc) {
+      if (inv.status !== "cancelled") {
+        if (inv.status === "sent" || inv.status === "paid") {
+          running += parseFloat(inv.totalAmount || "0");
+        }
+      }
+      map[inv.id] = {
+        billedToDate: running,
+        pctOfContract: contractAmount && contractAmount > 0 ? (running / contractAmount) * 100 : null,
+      };
+    }
+    return map;
+  }, [projectInvoicesForCalc, contractAmount]);
+
+  const filteredInvoices = invoices?.filter(inv => {
+    const matchesProject = !selectedProject || inv.projectId === selectedProject;
+    const matchesStatus = statusFilter === "all" || inv.status === statusFilter;
+    return matchesProject && matchesStatus;
+  });
 
   const invoiceSummary = {
     draft: invoices?.filter(inv => inv.status === "draft") || [],
@@ -778,6 +847,126 @@ export default function BillingManagementPage() {
               </Card>
             </div>
 
+            {selectedProject && (
+              <Card data-testid="contract-billing-summary">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Building2 className="h-5 w-5" />
+                    Contract Billing Summary
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {contractAmount !== null ? (
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                      <div className="rounded-lg border bg-muted/30 p-4 space-y-1">
+                        <p className="text-xs text-muted-foreground uppercase tracking-wide">Original Contract Value</p>
+                        <p className="text-xl font-bold" data-testid="text-original-contract-value">
+                          {originalContractValue !== null
+                            ? `$${originalContractValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                            : "--"}
+                        </p>
+                      </div>
+                      <div className="rounded-lg border bg-muted/30 p-4 space-y-1">
+                        <p className="text-xs text-muted-foreground uppercase tracking-wide">Current Contract Value</p>
+                        <p className="text-xl font-bold" data-testid="text-current-contract-value">
+                          {contractAmount !== null
+                            ? `$${contractAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                            : "--"}
+                        </p>
+                        {originalContractValue !== null && currentContractValue !== null && originalContractValue !== currentContractValue && (
+                          <p className="text-xs text-muted-foreground">Amended from original</p>
+                        )}
+                      </div>
+                      <div className="rounded-lg border bg-muted/30 p-4 space-y-1">
+                        <p className="text-xs text-muted-foreground uppercase tracking-wide">Total Billed to Date</p>
+                        <p className="text-xl font-bold text-blue-600" data-testid="text-total-billed">
+                          ${totalBilledToDate.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </p>
+                        <p className="text-xs text-muted-foreground">Sent + paid invoices</p>
+                      </div>
+                      <div className="rounded-lg border bg-muted/30 p-4 space-y-1">
+                        <p className="text-xs text-muted-foreground uppercase tracking-wide">Remaining Balance</p>
+                        <p className="text-xl font-bold text-green-600" data-testid="text-remaining-balance">
+                          {contractAmount !== null
+                            ? `$${Math.max(0, contractAmount - totalBilledToDate).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                            : "--"}
+                        </p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="rounded-lg border border-dashed p-4 space-y-3">
+                      <p className="text-sm text-muted-foreground">No contract amount found for this project. Enter a contract amount to enable billing tracking.</p>
+                      {isEditingContractAmount ? (
+                        <div className="flex items-center gap-2">
+                          <div className="relative w-48">
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
+                            <Input
+                              className="pl-7"
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              placeholder="0.00"
+                              value={contractAmountInput}
+                              onChange={(e) => setContractAmountInput(e.target.value)}
+                              data-testid="input-contract-amount"
+                            />
+                          </div>
+                          <Button
+                            size="sm"
+                            onClick={() => {
+                              if (contractAmountInput && selectedProjectData) {
+                                updateProjectBudgetMutation.mutate({
+                                  id: selectedProjectData.id,
+                                  budgetAmount: contractAmountInput,
+                                });
+                              }
+                            }}
+                            disabled={!contractAmountInput || updateProjectBudgetMutation.isPending}
+                            data-testid="button-save-contract-amount"
+                          >
+                            {updateProjectBudgetMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save"}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => { setIsEditingContractAmount(false); setContractAmountInput(""); }}
+                          >
+                            Cancel
+                          </Button>
+                        </div>
+                      ) : (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setIsEditingContractAmount(true)}
+                          data-testid="button-set-contract-amount"
+                        >
+                          <Edit className="h-4 w-4 mr-2" />
+                          Set Contract Amount
+                        </Button>
+                      )}
+                    </div>
+                  )}
+                  {contractAmount !== null && contractAmount > 0 && (
+                    <div className="space-y-2">
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">% Billed</span>
+                        <span className="font-medium" data-testid="text-pct-billed">
+                          {Math.min(100, (totalBilledToDate / contractAmount) * 100).toFixed(1)}%
+                        </span>
+                      </div>
+                      <div className="h-2 w-full bg-muted rounded-full overflow-hidden" data-testid="progress-billed">
+                        <div
+                          className="h-full bg-blue-500 rounded-full transition-all"
+                          style={{ width: `${Math.min(100, (totalBilledToDate / contractAmount) * 100)}%` }}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+
             <Card>
               <CardHeader className="flex flex-row items-center justify-between gap-4">
                 <CardTitle className="flex items-center gap-2">
@@ -817,6 +1006,8 @@ export default function BillingManagementPage() {
                         <TableHead>Client</TableHead>
                         <TableHead>Period</TableHead>
                         <TableHead>Amount</TableHead>
+                        {selectedProject && <TableHead>Billed to Date</TableHead>}
+                        {selectedProject && <TableHead>% of Contract</TableHead>}
                         <TableHead>Due Date</TableHead>
                         <TableHead>Status</TableHead>
                         <TableHead className="text-right">Actions</TableHead>
@@ -826,6 +1017,7 @@ export default function BillingManagementPage() {
                       {filteredInvoices.map((invoice) => {
                         const statusConfig = STATUS_CONFIG[invoice.status as keyof typeof STATUS_CONFIG] || STATUS_CONFIG.draft;
                         const StatusIcon = statusConfig.icon;
+                        const cumData = selectedProject ? cumulativeByInvoiceId[invoice.id] : undefined;
                         return (
                           <TableRow key={invoice.id} data-testid={`invoice-row-${invoice.id}`}>
                             <TableCell className="font-medium">{invoice.invoiceNumber}</TableCell>
@@ -842,6 +1034,20 @@ export default function BillingManagementPage() {
                             <TableCell className="font-medium">
                               ${parseFloat(invoice.totalAmount || "0").toLocaleString()}
                             </TableCell>
+                            {selectedProject && (
+                              <TableCell className="font-medium" data-testid={`text-billed-to-date-${invoice.id}`}>
+                                {cumData && contractAmount !== null
+                                  ? `$${cumData.billedToDate.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                                  : "--"}
+                              </TableCell>
+                            )}
+                            {selectedProject && (
+                              <TableCell data-testid={`text-pct-contract-${invoice.id}`}>
+                                {cumData && cumData.pctOfContract !== null
+                                  ? `${cumData.pctOfContract.toFixed(1)}%`
+                                  : "--"}
+                              </TableCell>
+                            )}
                             <TableCell>
                               {invoice.dueDate ? format(parseDateSafe(invoice.dueDate), "MMM d, yyyy") : "-"}
                             </TableCell>
