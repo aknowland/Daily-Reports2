@@ -10575,12 +10575,16 @@ export async function registerRoutes(
       curY += 12;
 
       // ─── EQUIPMENT ON SITE ────────────────────────────────────────────
-      drawSectionHdr(curY, 'EQUIPMENT ON SITE');
-      curY += 13;
       const eqRowH = 15, eqHdrH = 12;
       const eqW = [CW * 0.37, CW * 0.12, CW * 0.16, 0];
       eqW[3] = CW - eqW[0] - eqW[1] - eqW[2];
       const eqX = [ML, ML + eqW[0], ML + eqW[0] + eqW[1], ML + eqW[0] + eqW[1] + eqW[2]];
+      // Page break: need room for section header + column header + at least one row
+      if (curY + 13 + eqHdrH + eqRowH > PAGE_BOTTOM) {
+        doc.addPage(); curY = MT; drawContHeader('— Equipment');
+      }
+      drawSectionHdr(curY, 'EQUIPMENT ON SITE');
+      curY += 13;
       drawColHeaders(curY, eqHdrH, [
         { x: eqX[0], w: eqW[0], label: 'EQUIPMENT' },
         { x: eqX[1], w: eqW[1], label: 'HOURS' },
@@ -10589,13 +10593,26 @@ export async function registerRoutes(
       ]);
       curY += eqHdrH;
       if (equipmentRows.length === 0) {
+        if (curY + eqRowH > PAGE_BOTTOM) { doc.addPage(); curY = MT; drawContHeader('— Equipment'); }
         doc.rect(ML, curY, CW, eqRowH).fill('#fff').stroke('#cccccc');
         doc.fontSize(7.5).font('Helvetica').fillColor('#888')
           .text('No equipment recorded.', ML + 6, curY + (eqRowH - 7.5) / 2, { lineBreak: false });
         curY += eqRowH;
       } else {
-        equipmentRows.forEach((row, idx) => {
-          doc.rect(ML, curY, CW, eqRowH).fill(getRowBg(idx)).stroke('#cccccc');
+        let eqColorIdx = 0;
+        equipmentRows.forEach((row) => {
+          if (curY + eqRowH > PAGE_BOTTOM) {
+            doc.addPage(); curY = MT; drawContHeader('— Equipment (cont.)');
+            drawColHeaders(curY, eqHdrH, [
+              { x: eqX[0], w: eqW[0], label: 'EQUIPMENT' },
+              { x: eqX[1], w: eqW[1], label: 'HOURS' },
+              { x: eqX[2], w: eqW[2], label: 'STATUS' },
+              { x: eqX[3], w: eqW[3], label: 'USAGE' },
+            ]);
+            curY += eqHdrH;
+            eqColorIdx = 0;
+          }
+          doc.rect(ML, curY, CW, eqRowH).fill(getRowBg(eqColorIdx)).stroke('#cccccc');
           const ty = curY + (eqRowH - 8) / 2;
           doc.fontSize(8).font('Helvetica').fillColor(NAVY);
           doc.text(row.equipment || '--', eqX[0] + 4, ty, { width: eqW[0] - 8, lineBreak: false, ellipsis: true });
@@ -10604,17 +10621,22 @@ export async function registerRoutes(
           doc.fontSize(8).font('Helvetica').fillColor(NAVY);
           doc.text(row.usage || '--',     eqX[3] + 4, ty, { width: eqW[3] - 8, lineBreak: false, ellipsis: true });
           curY += eqRowH;
+          eqColorIdx++;
         });
       }
       curY += 4;
 
       // ─── MATERIAL DELIVERIES & ISSUES ─────────────────────────────────
-      drawSectionHdr(curY, 'MATERIAL DELIVERIES & ISSUES');
-      curY += 13;
       const mtRowH = 15, mtHdrH = 12;
       const mtW = [CW * 0.32, CW * 0.12, CW * 0.16, 0];
       mtW[3] = CW - mtW[0] - mtW[1] - mtW[2];
       const mtX = [ML, ML + mtW[0], ML + mtW[0] + mtW[1], ML + mtW[0] + mtW[1] + mtW[2]];
+      // Page break: need room for section header + column header + at least one row
+      if (curY + 13 + mtHdrH + mtRowH > PAGE_BOTTOM) {
+        doc.addPage(); curY = MT; drawContHeader('— Materials');
+      }
+      drawSectionHdr(curY, 'MATERIAL DELIVERIES & ISSUES');
+      curY += 13;
       drawColHeaders(curY, mtHdrH, [
         { x: mtX[0], w: mtW[0], label: 'MATERIAL' },
         { x: mtX[1], w: mtW[1], label: 'QTY' },
@@ -10623,13 +10645,26 @@ export async function registerRoutes(
       ]);
       curY += mtHdrH;
       if (materialRows.length === 0) {
+        if (curY + mtRowH > PAGE_BOTTOM) { doc.addPage(); curY = MT; drawContHeader('— Materials'); }
         doc.rect(ML, curY, CW, mtRowH).fill('#fff').stroke('#cccccc');
         doc.fontSize(7.5).font('Helvetica').fillColor('#888')
           .text('No material deliveries recorded.', ML + 6, curY + (mtRowH - 7.5) / 2, { lineBreak: false });
         curY += mtRowH;
       } else {
-        materialRows.forEach((row, idx) => {
-          doc.rect(ML, curY, CW, mtRowH).fill(getRowBg(idx)).stroke('#cccccc');
+        let mtColorIdx = 0;
+        materialRows.forEach((row) => {
+          if (curY + mtRowH > PAGE_BOTTOM) {
+            doc.addPage(); curY = MT; drawContHeader('— Materials (cont.)');
+            drawColHeaders(curY, mtHdrH, [
+              { x: mtX[0], w: mtW[0], label: 'MATERIAL' },
+              { x: mtX[1], w: mtW[1], label: 'QTY' },
+              { x: mtX[2], w: mtW[2], label: 'STATUS' },
+              { x: mtX[3], w: mtW[3], label: 'SUPPLIER / NOTES' },
+            ]);
+            curY += mtHdrH;
+            mtColorIdx = 0;
+          }
+          doc.rect(ML, curY, CW, mtRowH).fill(getRowBg(mtColorIdx)).stroke('#cccccc');
           const ty = curY + (mtRowH - 8) / 2;
           doc.fontSize(8).font('Helvetica').fillColor(NAVY);
           doc.text(row.material     || '--', mtX[0] + 4, ty, { width: mtW[0] - 8, lineBreak: false, ellipsis: true });
@@ -10638,13 +10673,12 @@ export async function registerRoutes(
           doc.fontSize(8).font('Helvetica').fillColor(NAVY);
           doc.text(row.supplierNotes || '--', mtX[3] + 4, ty, { width: mtW[3] - 8, lineBreak: false, ellipsis: true });
           curY += mtRowH;
+          mtColorIdx++;
         });
       }
       curY += 4;
 
       // ─── VISITORS ─────────────────────────────────────────────────────
-      drawSectionHdr(curY, 'VISITORS');
-      curY += 13;
       const visLines: string[] = visitors.length > 0
         ? visitors.map(v => {
             let l = v.name;
@@ -10654,16 +10688,24 @@ export async function registerRoutes(
           })
         : ['No visitors recorded.'];
       const visH2 = Math.min(50, visLines.length * 13 + 10);
+      if (curY + 13 + visH2 + 4 > PAGE_BOTTOM) {
+        doc.addPage(); curY = MT; drawContHeader('— Visitors');
+      }
+      drawSectionHdr(curY, 'VISITORS');
+      curY += 13;
       doc.rect(ML, curY, CW, visH2).fill('#fff').stroke('#cccccc');
       doc.fontSize(8).font('Helvetica').fillColor(NAVY)
         .text(visLines.join('\n'), ML + 6, curY + 5, { width: CW - 12, height: visH2 - 8 });
       curY += visH2 + 4;
 
       // ─── SUPERINTENDENT NOTES & REMARKS ───────────────────────────────
-      drawSectionHdr(curY, 'SUPERINTENDENT NOTES & REMARKS');
-      curY += 13;
       const notesText2 = (report.notes as string) || '--';
       const notesEstH  = Math.min(90, Math.max(32, notesText2.split('\n').length * 13 + 12));
+      if (curY + 13 + notesEstH + 4 > PAGE_BOTTOM) {
+        doc.addPage(); curY = MT; drawContHeader('— Notes');
+      }
+      drawSectionHdr(curY, 'SUPERINTENDENT NOTES & REMARKS');
+      curY += 13;
       doc.rect(ML, curY, CW, notesEstH).fill('#fff').stroke('#cccccc');
       doc.fontSize(8).font('Helvetica').fillColor(NAVY)
         .text(notesText2, ML + 6, curY + 5, { width: CW - 12, height: notesEstH - 8 });
