@@ -234,6 +234,7 @@ export default function CompanyDashboard() {
   const [mentionFilter, setMentionFilter] = useState("");
   const [workloadPeriod, setWorkloadPeriod] = useState("month");
   const [expandedInspectors, setExpandedInspectors] = useState<Set<string>>(new Set());
+  const [expandedBillingGroups, setExpandedBillingGroups] = useState<Set<string>>(new Set());
   
   const dismissAlertMutation = useMutation({
     mutationFn: async (alertId: string) => {
@@ -331,6 +332,24 @@ export default function CompanyDashboard() {
     outstandingAmount: number;
   }>({
     queryKey: ["/api/invoices/stats"],
+  });
+
+  type OutstandingInvoice = {
+    id: string;
+    invoiceNumber: string;
+    status: string;
+    totalAmount: string | null;
+    dueDate: string | null;
+    month: number;
+    year: number;
+    projectId: string;
+    projectName: string | null;
+    contractId: string | null;
+    contractName: string | null;
+  };
+
+  const { data: outstandingInvoices = [], isLoading: outstandingLoading } = useQuery<OutstandingInvoice[]>({
+    queryKey: ["/api/invoices/outstanding"],
   });
 
   const { data: companyNotes = [], isLoading: notesLoading } = useQuery<any[]>({
@@ -1895,6 +1914,165 @@ export default function CompanyDashboard() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Billings Card - Outstanding Breakdown */}
+        {(() => {
+          const groups = outstandingInvoices.reduce<Record<string, { groupKey: string; groupName: string; invoices: typeof outstandingInvoices }>>((acc, inv) => {
+            const key = inv.contractId || inv.projectId;
+            const name = inv.contractName || inv.projectName || `Invoice ${inv.invoiceNumber}`;
+            if (!acc[key]) {
+              acc[key] = { groupKey: key, groupName: name, invoices: [] };
+            }
+            acc[key].invoices.push(inv);
+            return acc;
+          }, {});
+          const groupList = Object.values(groups);
+          const totalOutstanding = invoiceStats?.outstandingAmount ?? outstandingInvoices.reduce((sum, i) => sum + parseFloat(i.totalAmount || '0'), 0);
+
+          return (
+            <Card data-testid="card-billings-outstanding">
+              <CardHeader className="flex flex-row items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <DollarSign className="h-5 w-5 text-primary" />
+                  <CardTitle>Billings</CardTitle>
+                </div>
+                <Link href="/company/billing-management">
+                  <Button variant="ghost" size="sm" className="h-8 gap-1" data-testid="link-billings-view-all">
+                    View All <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </Link>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {/* Total outstanding */}
+                <div className="flex items-end justify-between">
+                  <div>
+                    <p className="text-sm text-muted-foreground mb-1">Total Outstanding</p>
+                    {outstandingLoading ? (
+                      <Skeleton className="h-10 w-32" />
+                    ) : (
+                      <div className="text-3xl font-bold text-amber-600 dark:text-amber-500" data-testid="text-billings-outstanding-total">
+                        {formatCurrency(totalOutstanding)}
+                      </div>
+                    )}
+                  </div>
+                  {!outstandingLoading && outstandingInvoices.length > 0 && (
+                    <div className="text-right">
+                      <p className="text-sm text-muted-foreground">
+                        {invoiceStats?.sent || 0} sent
+                        {(invoiceStats?.overdue || 0) > 0 && (
+                          <span className="ml-2 text-red-600 dark:text-red-400 font-medium">
+                            · {invoiceStats?.overdue || 0} overdue
+                          </span>
+                        )}
+                      </p>
+                      <p className="text-xs text-muted-foreground">{outstandingInvoices.length} invoice{outstandingInvoices.length !== 1 ? 's' : ''} pending payment</p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Accordion grouped by project/contract */}
+                {outstandingLoading ? (
+                  <div className="space-y-2">
+                    <Skeleton className="h-12 w-full" />
+                    <Skeleton className="h-12 w-full" />
+                  </div>
+                ) : groupList.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-6 text-center">
+                    <CheckCircle2 className="h-8 w-8 text-green-500 mb-2" />
+                    <p className="text-sm font-medium text-green-600 dark:text-green-400">No outstanding invoices</p>
+                    <p className="text-xs text-muted-foreground mt-1">All invoices are paid or in draft</p>
+                  </div>
+                ) : (
+                  <div className="space-y-1" data-testid="accordion-billing-groups">
+                    {groupList.map(group => {
+                      const isExpanded = expandedBillingGroups.has(group.groupKey);
+                      const groupTotal = group.invoices.reduce((sum, i) => sum + parseFloat(i.totalAmount || '0'), 0);
+                      const hasOverdue = group.invoices.some(i => i.status === 'overdue');
+
+                      return (
+                        <div key={group.groupKey} className="border rounded-lg overflow-hidden" data-testid={`billing-group-${group.groupKey}`}>
+                          <button
+                            className="w-full flex items-center justify-between px-4 py-3 hover:bg-muted/50 transition-colors text-left"
+                            onClick={() => {
+                              setExpandedBillingGroups(prev => {
+                                const next = new Set(prev);
+                                if (next.has(group.groupKey)) next.delete(group.groupKey);
+                                else next.add(group.groupKey);
+                                return next;
+                              });
+                            }}
+                            data-testid={`button-billing-group-toggle-${group.groupKey}`}
+                          >
+                            <div className="flex items-center gap-2 min-w-0">
+                              {hasOverdue && <AlertTriangle className="h-4 w-4 text-red-500 flex-shrink-0" />}
+                              <span className="font-medium text-sm truncate">{group.groupName}</span>
+                              <span className="text-xs text-muted-foreground flex-shrink-0">
+                                {group.invoices.length} invoice{group.invoices.length !== 1 ? 's' : ''}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-3 ml-2 flex-shrink-0">
+                              <span className={`font-semibold text-sm ${hasOverdue ? 'text-red-600 dark:text-red-400' : 'text-amber-600 dark:text-amber-500'}`}>
+                                {formatCurrency(groupTotal)}
+                              </span>
+                              {isExpanded ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+                            </div>
+                          </button>
+
+                          {isExpanded && (
+                            <div className="border-t divide-y">
+                              {group.invoices.map(inv => {
+                                const isOverdue = inv.status === 'overdue';
+                                const dueDate = inv.dueDate ? new Date(inv.dueDate) : null;
+                                const today = new Date();
+                                const daysOverdue = dueDate && isOverdue ? Math.floor((today.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24)) : null;
+
+                                return (
+                                  <div
+                                    key={inv.id}
+                                    className={`flex items-center justify-between px-4 py-3 text-sm ${isOverdue ? 'bg-red-50/50 dark:bg-red-950/20' : ''}`}
+                                    data-testid={`billing-invoice-row-${inv.id}`}
+                                  >
+                                    <div className="min-w-0 flex-1">
+                                      <div className="flex items-center gap-2">
+                                        <span className="font-medium">{inv.invoiceNumber}</span>
+                                        <Badge
+                                          variant="outline"
+                                          className={`text-xs ${isOverdue
+                                            ? 'border-red-400 text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/30'
+                                            : 'border-amber-400 text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30'
+                                          }`}
+                                          data-testid={`badge-invoice-status-${inv.id}`}
+                                        >
+                                          {isOverdue ? 'Overdue' : 'Sent'}
+                                        </Badge>
+                                      </div>
+                                      <div className="text-xs text-muted-foreground mt-0.5">
+                                        {inv.month && inv.year ? `${new Date(inv.year, inv.month - 1).toLocaleString('default', { month: 'long' })} ${inv.year}` : ''}
+                                        {dueDate && (
+                                          <span className={`ml-2 ${isOverdue ? 'text-red-500' : ''}`}>
+                                            Due {format(dueDate, 'MMM d, yyyy')}
+                                            {daysOverdue !== null && daysOverdue > 0 && ` · ${daysOverdue}d overdue`}
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
+                                    <span className={`font-semibold ml-4 flex-shrink-0 ${isOverdue ? 'text-red-600 dark:text-red-400' : ''}`}>
+                                      {formatCurrency(parseFloat(inv.totalAmount || '0'))}
+                                    </span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          );
+        })()}
 
         {/* Quick Links */}
         <div className="grid gap-4 md:grid-cols-3">
