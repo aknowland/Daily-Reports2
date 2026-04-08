@@ -17422,67 +17422,75 @@ Transcript: "${transcript}"`;
         const inspectorId = member.userId;
         const name = [member.firstName, member.lastName].filter(Boolean).join(" ") || member.email || inspectorId;
 
-        // Collect per-project hours from all sources (daily_reports + manual_time_entries)
-        // Use a map keyed by projectId so we don't double-count
-        const projectHoursMap = new Map<string, number>();
-
+        // Step 1: Get assigned projects from project_members (the canonical "active project" list)
+        const assignedProjectIds = new Set<string>();
         if (companyProjectIds.length > 0) {
-          // Fetch all DRs for this inspector this month on company projects
-          const drMonthRows = await db
-            .select({
+          const pmRows = await db
+            .select({ projectId: projectMembers.projectId })
+            .from(projectMembers)
+            .where(
+              and(
+                eq(projectMembers.userId, inspectorId),
+                inArray(projectMembers.projectId, companyProjectIds)
+              )
+            );
+          for (const pm of pmRows) assignedProjectIds.add(pm.projectId);
+        }
+
+        // Step 2: Build hours map from DR + MTE (both sources; cover projects with/without PM record)
+        const projectHoursMap = new Map<string, number>();
+        if (companyProjectIds.length > 0) {
+          const [drRows, mteRows] = await Promise.all([
+            db.select({
               projectId: dailyReportsTable.projectId,
               regularHours: dailyReportsTable.regularHours,
               otHours: dailyReportsTable.otHours,
-            })
-            .from(dailyReportsTable)
-            .where(
+            }).from(dailyReportsTable).where(
               and(
                 eq(dailyReportsTable.inspectorId, inspectorId),
                 sql`${dailyReportsTable.date} >= ${monthStart}`,
                 sql`${dailyReportsTable.date} < ${monthEnd}`,
                 inArray(dailyReportsTable.projectId, companyProjectIds)
               )
-            );
-
-          for (const dr of drMonthRows) {
-            if (!dr.projectId || !projectMap.has(dr.projectId)) continue;
-            const prev = projectHoursMap.get(dr.projectId) ?? 0;
-            projectHoursMap.set(dr.projectId, prev + parseFloat(dr.regularHours || "0") + parseFloat(dr.otHours || "0"));
-          }
-
-          // Fetch all MTEs for this inspector this month on company projects
-          const mteMonthRows = await db
-            .select({
+            ),
+            db.select({
               projectId: manualTimeEntries.projectId,
               regularHours: manualTimeEntries.regularHours,
               otHours: manualTimeEntries.otHours,
-            })
-            .from(manualTimeEntries)
-            .where(
+            }).from(manualTimeEntries).where(
               and(
                 eq(manualTimeEntries.inspectorId, inspectorId),
                 sql`${manualTimeEntries.date} >= ${monthStart}`,
                 sql`${manualTimeEntries.date} < ${monthEnd}`,
                 inArray(manualTimeEntries.projectId, companyProjectIds)
               )
-            );
+            ),
+          ]);
 
-          for (const mte of mteMonthRows) {
+          for (const dr of drRows) {
+            if (!dr.projectId || !projectMap.has(dr.projectId)) continue;
+            projectHoursMap.set(dr.projectId, (projectHoursMap.get(dr.projectId) ?? 0) + parseFloat(dr.regularHours || "0") + parseFloat(dr.otHours || "0"));
+          }
+          for (const mte of mteRows) {
             if (!mte.projectId || !projectMap.has(mte.projectId)) continue;
-            const prev = projectHoursMap.get(mte.projectId) ?? 0;
-            projectHoursMap.set(mte.projectId, prev + parseFloat(mte.regularHours || "0") + parseFloat(mte.otHours || "0"));
+            projectHoursMap.set(mte.projectId, (projectHoursMap.get(mte.projectId) ?? 0) + parseFloat(mte.regularHours || "0") + parseFloat(mte.otHours || "0"));
           }
         }
 
-        const activeProjects = Array.from(projectHoursMap.entries())
-          .map(([projectId, hours]) => {
-            const p = projectMap.get(projectId)!;
+        // Step 3: Merge assigned projects (with 0 hours if no activity) + unassigned but active projects
+        const allRelevantProjectIds = new Set([...assignedProjectIds, ...projectHoursMap.keys()]);
+        const activeProjects = Array.from(allRelevantProjectIds)
+          .map(projectId => {
+            const p = projectMap.get(projectId);
+            if (!p) return null;
             return {
               projectId,
               projectName: p.name || p.projectNumber || projectId,
-              hoursThisMonth: Math.round(hours * 100) / 100,
+              hoursThisMonth: Math.round((projectHoursMap.get(projectId) ?? 0) * 100) / 100,
+              isAssigned: assignedProjectIds.has(projectId),
             };
           })
+          .filter((p): p is NonNullable<typeof p> => p !== null)
           .sort((a, b) => b.hoursThisMonth - a.hoursThisMonth);
 
         const totalHoursThisMonth = Math.round(activeProjects.reduce((sum, ap) => sum + ap.hoursThisMonth, 0) * 100) / 100;
@@ -17494,7 +17502,7 @@ Transcript: "${transcript}"`;
           email: member.email || null,
           role: member.role,
           availabilityDate: member.availabilityDate || null,
-          activeProjectCount: activeProjects.length,
+          activeProjectCount: assignedProjectIds.size,
           totalHoursThisMonth,
           utilizationPct: Math.min(Math.round((totalHoursThisMonth / 160) * 100), 100),
           projects: activeProjects,
