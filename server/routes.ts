@@ -14341,7 +14341,7 @@ export async function registerRoutes(
       const allProjects = await storage.getAllProjectsForUser(userId);
       const projectNames = allProjects.map(p => p.name).filter(Boolean);
 
-      const certifications = (profile.certifications as string[]) || [];
+      const certEntries = normalizeCerts(profile.certifications);
       const education = (profile.education as any[]) || [];
       const references = (profile.references as any[]) || [];
 
@@ -14350,7 +14350,7 @@ export async function registerRoutes(
       if (fullName) contextParts.push(`Name: ${fullName}`);
       if (profile.title) contextParts.push(`Title: ${profile.title}`);
       if (profile.licenseNumber) contextParts.push(`License: ${profile.licenseNumber}${profile.licenseState ? ` (${profile.licenseState})` : ""}`);
-      if (certifications.length > 0) contextParts.push(`Certifications: ${certifications.join(", ")}`);
+      if (certEntries.length > 0) contextParts.push(`Certifications: ${certEntries.map(c => c.name).join(", ")}`);
       if (education.length > 0) {
         const eduStr = education.map((e: any) => `${e.degree} from ${e.school}${e.status ? ` (${e.status})` : ""}`).join("; ");
         contextParts.push(`Education: ${eduStr}`);
@@ -14620,7 +14620,7 @@ Return ONLY valid JSON, no markdown, no explanation. Use null for missing top-le
       if (data.email) updateData.email = data.email;
       if (data.licenseNumber) updateData.licenseNumber = data.licenseNumber;
       if (data.licenseState) updateData.licenseState = data.licenseState;
-      if (data.certifications) updateData.certifications = data.certifications;
+      if (data.certifications !== undefined) updateData.certifications = data.certifications;
       if (data.notes) updateData.notes = data.notes;
       if (data.bio) updateData.bio = data.bio;
       if (data.education) updateData.education = data.education;
