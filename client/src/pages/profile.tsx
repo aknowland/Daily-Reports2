@@ -788,8 +788,12 @@ export default function ProfilePage() {
                               {cert.certNumber && <span className="text-muted-foreground text-xs">#{cert.certNumber}</span>}
                               {cert.expiresAt && (
                                 <Badge
-                                  variant={isExpired ? "destructive" : isExpiringSoon ? "outline" : "secondary"}
-                                  className={isExpiringSoon ? "border-amber-500 text-amber-700 dark:text-amber-400" : ""}
+                                  variant={isExpired ? "destructive" : "outline"}
+                                  className={
+                                    isExpiringSoon
+                                      ? "border-amber-500 text-amber-700 dark:text-amber-400"
+                                      : "border-green-500 text-green-700 dark:text-green-400"
+                                  }
                                   data-testid={`certification-expiry-badge-${index}`}
                                 >
                                   {isExpired ? "EXPIRED" : isExpiringSoon ? `Exp. soon` : "Exp."} {cert.expiresAt}
