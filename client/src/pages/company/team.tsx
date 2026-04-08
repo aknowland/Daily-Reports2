@@ -184,6 +184,15 @@ export default function CompanyTeamPage() {
     enabled: !!activeCompany?.id && isEffectiveCompanyAdmin,
   });
 
+  // Cert expiry data covers BOTH user inspectors and team inspectors
+  const { data: certExpiryData = [] } = useQuery<Array<{
+    id: string; name: string; type: "user" | "team";
+    certifications: Array<{ name: string; expiresAt: string | null; certNumber?: string; daysUntilExpiry: number | null }>;
+  }>>({
+    queryKey: ["/api/cert-expiry"],
+    enabled: !!activeCompany?.id && isEffectiveCompanyAdmin,
+  });
+
   const pendingJoinRequests = joinRequests.filter(r => r.status === "pending");
   
   // Filter team inspectors based on search query
@@ -1347,15 +1356,13 @@ export default function CompanyTeamPage() {
           </TabsContent>
 
           <TabsContent value="team-inspectors" className="space-y-4">
-            {/* Certifications expiring soon — inline summary */}
+            {/* Certifications expiring soon — inline summary (both user inspectors and team inspectors) */}
             {(() => {
-              const now = Date.now();
               const expiring: Array<{ inspectorName: string; certName: string; daysUntil: number; expiresAt: string }> = [];
-              for (const insp of teamInspectors) {
-                for (const cert of normalizeCerts(insp.certifications)) {
-                  if (!cert.expiresAt) continue;
-                  const days = Math.ceil((new Date(cert.expiresAt).getTime() - now) / 86400000);
-                  if (days <= 60) expiring.push({ inspectorName: insp.name, certName: cert.name, daysUntil: days, expiresAt: cert.expiresAt });
+              for (const insp of certExpiryData) {
+                for (const cert of insp.certifications) {
+                  if (!cert.expiresAt || cert.daysUntilExpiry === null) continue;
+                  if (cert.daysUntilExpiry <= 60) expiring.push({ inspectorName: insp.name, certName: cert.name, daysUntil: cert.daysUntilExpiry, expiresAt: cert.expiresAt });
                 }
               }
               if (expiring.length === 0) return null;
@@ -1480,11 +1487,15 @@ export default function CompanyTeamPage() {
                                   : null;
                                 const isExpired = daysUntil !== null && daysUntil <= 0;
                                 const isExpiringSoon = daysUntil !== null && daysUntil > 0 && daysUntil <= 60;
+                                const isValid = daysUntil !== null && daysUntil > 60;
                                 return (
                                   <Badge
                                     key={idx}
                                     variant={isExpired ? "destructive" : "outline"}
-                                    className={`text-xs no-default-hover-elevate no-default-active-elevate ${isExpiringSoon ? "border-amber-500 text-amber-700 dark:text-amber-400" : ""}`}
+                                    className={`text-xs no-default-hover-elevate no-default-active-elevate ${
+                                      isExpiringSoon ? "border-amber-500 text-amber-700 dark:text-amber-400" :
+                                      isValid ? "border-green-500 text-green-700 dark:text-green-400" : ""
+                                    }`}
                                   >
                                     {cert.name}
                                     {cert.expiresAt && ` · ${isExpired ? "EXP" : isExpiringSoon ? "⚠" : ""} ${cert.expiresAt}`}

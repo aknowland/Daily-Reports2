@@ -2076,15 +2076,17 @@ export class DatabaseStorage implements IStorage {
     users: Array<{ id: string; companyId: string; name: string; email: string | null; certifications: CertEntry[] }>;
     teamInspectors: Array<{ id: string; companyId: string; name: string; email: string | null; certifications: CertEntry[] }>;
   }> {
+    // User inspectors: join company_members to get companyId since userProfiles doesn't have it
     const [userRows, teamRows] = await Promise.all([
       db.select({
         id: userProfiles.userId,
-        companyId: userProfiles.companyId,
+        companyId: companyMembers.companyId,
         firstName: userProfiles.firstName,
         lastName: userProfiles.lastName,
         certifications: userProfiles.certifications,
         email: users.email,
       }).from(userProfiles)
+        .innerJoin(companyMembers, eq(companyMembers.userId, userProfiles.userId))
         .leftJoin(users, eq(users.id, userProfiles.userId))
         .where(sql`${userProfiles.certifications} IS NOT NULL`),
       db.select({
@@ -2096,14 +2098,27 @@ export class DatabaseStorage implements IStorage {
       }).from(teamInspectors).where(sql`${teamInspectors.certifications} IS NOT NULL`),
     ]);
 
-    return {
-      users: userRows.map((r) => ({
-        id: r.id!,
-        companyId: r.companyId!,
-        name: [r.firstName, r.lastName].filter(Boolean).join(" ") || r.id!,
+    // Deduplicate user rows (a user may belong to multiple companies; keep one row per user per company)
+    const userResults: Array<{ id: string; companyId: string; name: string; email: string | null; certifications: CertEntry[] }> = [];
+    const seen = new Set<string>();
+    for (const r of userRows) {
+      if (!r.id || !r.companyId) continue;
+      const key = `${r.id}:${r.companyId}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const certs = normalizeCerts(r.certifications);
+      if (certs.length === 0) continue;
+      userResults.push({
+        id: r.id,
+        companyId: r.companyId,
+        name: [r.firstName, r.lastName].filter(Boolean).join(" ") || r.id,
         email: r.email || null,
-        certifications: normalizeCerts(r.certifications),
-      })).filter((r) => r.certifications.length > 0),
+        certifications: certs,
+      });
+    }
+
+    return {
+      users: userResults,
       teamInspectors: teamRows.map((r) => ({
         id: r.id!,
         companyId: r.companyId!,

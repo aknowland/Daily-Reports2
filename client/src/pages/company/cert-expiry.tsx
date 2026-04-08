@@ -81,7 +81,7 @@ export default function CertExpiryPage() {
     if (status === "critical") return <Badge variant="outline" className="border-red-500 text-red-600 dark:text-red-400" data-testid="badge-critical">Expires in {daysUntil}d</Badge>;
     if (status === "warning") return <Badge variant="outline" className="border-amber-500 text-amber-700 dark:text-amber-400" data-testid="badge-warning">Expires in {daysUntil}d</Badge>;
     if (status === "upcoming") return <Badge variant="outline" className="border-amber-400 text-amber-700 dark:text-amber-400" data-testid="badge-upcoming">Expires in {daysUntil}d</Badge>;
-    if (status === "ok") return <Badge variant="secondary" data-testid="badge-ok">Expires in {daysUntil}d</Badge>;
+    if (status === "ok") return <Badge variant="outline" className="border-green-500 text-green-700 dark:text-green-400" data-testid="badge-ok">Expires in {daysUntil}d</Badge>;
     return <Badge variant="outline" className="text-muted-foreground" data-testid="badge-no-expiry">No expiry set</Badge>;
   }
 
