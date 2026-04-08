@@ -3,7 +3,7 @@ import { createServer, type Server } from "http";
 import { storage, db, projectComments, projectMembers, users, companyNotes, clientPortalUsers } from "./storage";
 import { sql, eq, and, desc } from "drizzle-orm";
 import { setupAuth, isAuthenticated, registerAuthRoutes } from "./replit_integrations/auth";
-import { insertProjectSchema, insertDailyReportSchema, updateUserProfileSchema, WorkActivityRow, VisitorRow, EquipmentRow, MaterialRow, insertContractSchema, insertClientSchema, InsertInspectorCandidate, companyMembers, userProfiles, dailyReports as dailyReportsTable, normalizeCerts } from "@shared/schema";
+import { insertProjectSchema, insertDailyReportSchema, updateUserProfileSchema, WorkActivityRow, VisitorRow, EquipmentRow, MaterialRow, insertContractSchema, insertClientSchema, InsertInspectorCandidate, companyMembers, userProfiles, dailyReports as dailyReportsTable, normalizeCerts, manualTimeEntries } from "@shared/schema";
 import { ObjectStorageService, registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 import multer from "multer";
 import path from "path";
@@ -17375,6 +17375,170 @@ Transcript: "${transcript}"`;
   });
 
   // ── Cert Expiry Tracker ─────────────────────────────────────────────────────
+  // GET /api/company/inspector-workload — returns workload data for all company inspectors
+  app.get("/api/company/inspector-workload", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      const companyId = profile?.activeCompanyId;
+      if (!companyId) return res.status(403).json({ message: "No active company" });
+      if (!(await isEffectiveCompanyAdmin(userId, companyId, profile))) {
+        return res.status(403).json({ message: "Company admin access required" });
+      }
+
+      // Current month boundaries (UTC)
+      const now = new Date();
+      const monthStart = new Date(Date.UTC(now.getFullYear(), now.getMonth(), 1));
+      const monthEnd = new Date(Date.UTC(now.getFullYear(), now.getMonth() + 1, 1));
+
+      // Get all company members (user inspectors)
+      const memberRows = await db
+        .select({
+          userId: companyMembers.userId,
+          role: companyMembers.role,
+          firstName: userProfiles.firstName,
+          lastName: userProfiles.lastName,
+          title: userProfiles.title,
+          email: users.email,
+          activeProjectId: userProfiles.activeProjectId,
+        })
+        .from(companyMembers)
+        .innerJoin(userProfiles, eq(userProfiles.userId, companyMembers.userId))
+        .innerJoin(users, eq(users.id, companyMembers.userId))
+        .where(eq(companyMembers.companyId, companyId));
+
+      // Get all company projects
+      const companyProjects = await storage.getProjects(companyId);
+      const projectMap = new Map(companyProjects.map(p => [p.id, p]));
+
+      // Get project members for this company's projects
+      const companyProjectIds = companyProjects.map(p => p.id);
+
+      // Build workload per inspector
+      const workload = await Promise.all(memberRows.map(async (member) => {
+        const inspectorId = member.userId;
+        const name = [member.firstName, member.lastName].filter(Boolean).join(" ") || member.email || inspectorId;
+
+        // Get active projects for this inspector (project_members join)
+        let activeProjects: Array<{ projectId: string; projectName: string; hoursThisMonth: number }> = [];
+
+        if (companyProjectIds.length > 0) {
+          // Fetch assigned projects
+          const assignedProjects = await db
+            .select({ projectId: projectMembers.projectId })
+            .from(projectMembers)
+            .where(
+              and(
+                eq(projectMembers.userId, inspectorId),
+                sql`${projectMembers.projectId} = ANY(ARRAY[${sql.join(companyProjectIds.map(id => sql`${id}`), sql`, `)}]::text[])`
+              )
+            );
+
+          for (const ap of assignedProjects) {
+            const project = projectMap.get(ap.projectId);
+            if (!project || project.status === 'inactive') continue;
+
+            // Hours from daily reports this month
+            const drRows = await db
+              .select({ regularHours: dailyReportsTable.regularHours, otHours: dailyReportsTable.otHours })
+              .from(dailyReportsTable)
+              .where(
+                and(
+                  eq(dailyReportsTable.inspectorId, inspectorId),
+                  eq(dailyReportsTable.projectId, ap.projectId),
+                  sql`${dailyReportsTable.date} >= ${monthStart}`,
+                  sql`${dailyReportsTable.date} < ${monthEnd}`
+                )
+              );
+
+            // Hours from manual time entries this month
+            const mteRows = await db
+              .select({ regularHours: manualTimeEntries.regularHours, otHours: manualTimeEntries.otHours })
+              .from(manualTimeEntries)
+              .where(
+                and(
+                  eq(manualTimeEntries.inspectorId, inspectorId),
+                  eq(manualTimeEntries.projectId, ap.projectId),
+                  sql`${manualTimeEntries.date} >= ${monthStart}`,
+                  sql`${manualTimeEntries.date} < ${monthEnd}`
+                )
+              );
+
+            const projectHours = [
+              ...drRows.map(r => parseFloat(r.regularHours || "0") + parseFloat(r.otHours || "0")),
+              ...mteRows.map(r => parseFloat(r.regularHours || "0") + parseFloat(r.otHours || "0")),
+            ].reduce((a, b) => a + b, 0);
+
+            activeProjects.push({
+              projectId: ap.projectId,
+              projectName: project.name || project.projectNumber || ap.projectId,
+              hoursThisMonth: Math.round(projectHours * 100) / 100,
+            });
+          }
+        }
+
+        // Also count hours from daily reports on projects not in project_members (direct)
+        // (some inspectors log reports without formal project_members records)
+        const drMonthRows = await db
+          .select({
+            projectId: dailyReportsTable.projectId,
+            regularHours: dailyReportsTable.regularHours,
+            otHours: dailyReportsTable.otHours,
+          })
+          .from(dailyReportsTable)
+          .where(
+            and(
+              eq(dailyReportsTable.inspectorId, inspectorId),
+              sql`${dailyReportsTable.date} >= ${monthStart}`,
+              sql`${dailyReportsTable.date} < ${monthEnd}`
+            )
+          );
+
+        // Merge in DR hours for projects not already counted
+        for (const dr of drMonthRows) {
+          if (!dr.projectId) continue;
+          const project = projectMap.get(dr.projectId);
+          if (!project) continue;
+          const existing = activeProjects.find(ap => ap.projectId === dr.projectId);
+          if (!existing) {
+            activeProjects.push({
+              projectId: dr.projectId,
+              projectName: project.name || project.projectNumber || dr.projectId,
+              hoursThisMonth: 0,
+            });
+          }
+        }
+
+        // Recalculate hours for any projects added from DR scan
+        for (const ap of activeProjects) {
+          if (ap.hoursThisMonth === 0) {
+            const drRows = drMonthRows.filter(r => r.projectId === ap.projectId);
+            ap.hoursThisMonth = Math.round(drRows.reduce((sum, r) => sum + parseFloat(r.regularHours || "0") + parseFloat(r.otHours || "0"), 0) * 100) / 100;
+          }
+        }
+
+        const totalHoursThisMonth = Math.round(activeProjects.reduce((sum, ap) => sum + ap.hoursThisMonth, 0) * 100) / 100;
+
+        return {
+          inspectorId,
+          name,
+          title: member.title || null,
+          email: member.email || null,
+          role: member.role,
+          activeProjectCount: activeProjects.length,
+          totalHoursThisMonth,
+          utilizationPct: Math.min(Math.round((totalHoursThisMonth / 160) * 100), 100),
+          projects: activeProjects.sort((a, b) => b.hoursThisMonth - a.hoursThisMonth),
+        };
+      }));
+
+      res.json(workload.sort((a, b) => b.totalHoursThisMonth - a.totalHoursThisMonth));
+    } catch (error: any) {
+      console.error("Error fetching inspector workload:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   // GET /api/cert-expiry  — returns all inspectors with cert expiry info for this company
   app.get("/api/cert-expiry", isAuthenticated, async (req: any, res) => {
     try {
