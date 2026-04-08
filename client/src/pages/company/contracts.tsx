@@ -64,6 +64,7 @@ import {
   ChevronDown,
   ChevronUp,
   BarChart3,
+  Mail,
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import {
@@ -77,6 +78,7 @@ import { useState, useRef } from "react";
 import type { ContractWithProjects, Project, Client, ContractAttachment, ProposalWithDetails } from "@shared/schema";
 import { ProposalDialog } from "@/components/proposal-dialog";
 import { ContractGanttChart } from "@/components/contract-gantt-chart";
+import { ImportFromEmailDialog } from "@/components/import-from-email-dialog";
 import { ClientSelect } from "@/components/client-select";
 import { PurchaseOrderSelect } from "@/components/purchase-order-select";
 import { format, differenceInDays, startOfMonth, endOfMonth, eachDayOfInterval, startOfWeek, endOfWeek, isSameMonth, isSameDay, addMonths, subMonths } from "date-fns";
@@ -213,6 +215,7 @@ export default function ContractsPage() {
   const { activeCompany, isCompanyAdmin, isEffectiveCompanyAdmin } = useAuth();
   const [, setLocation] = useLocation();
   const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [showImportFromEmailDialog, setShowImportFromEmailDialog] = useState(false);
   const [contractToDelete, setContractToDelete] = useState<ContractWithProjects | null>(null);
   const [editingContract, setEditingContract] = useState<ContractWithProjects | null>(null);
   const [formData, setFormData] = useState<ContractFormData>(emptyFormData);
@@ -911,6 +914,39 @@ export default function ContractsPage() {
     setEditingContract(contract);
   };
 
+  const handleImportFromEmail = (data: any) => {
+    const newFormData: ContractFormData = {
+      ...emptyFormData,
+      contractNumber: data.contractNumber || "",
+      name: data.name || (data.sourceEmailSubject ? `Contract from: ${data.sourceEmailSubject}` : ""),
+      description: data.description || "",
+      contractType: (data.contractType || "lump_sum") as ContractFormData["contractType"],
+      status: (data.status || "bid_release") as ContractFormData["status"],
+      originalValue: data.originalValue || "",
+      bidDueDate: data.bidDueDate || "",
+      bidReleaseDate: data.bidReleaseDate || "",
+      awardDate: data.awardDate || "",
+      startDate: data.startDate || "",
+      substantialCompletionDate: data.substantialCompletionDate || "",
+      finalCloseoutDate: data.finalCloseoutDate || "",
+      notes: [
+        data.notes,
+        data.sourceEmailSubject ? `Imported from email: "${data.sourceEmailSubject}"` : null,
+        data.sourceEmailSender ? `From: ${data.sourceEmailSender}` : null,
+      ].filter(Boolean).join("\n\n"),
+      agency: data.agency || "",
+      serviceType: data.serviceType || "",
+      questionDeadline: data.questionDeadline || "",
+    };
+    setFormData(newFormData);
+    setContractOptions([{ ...emptyContractOption, inspectors: [{ ...emptyContractInspector }] }]);
+    setShowCreateDialog(true);
+    toast({
+      title: "Email Data Imported",
+      description: "The form has been pre-filled with data extracted from the email. Review and confirm before saving.",
+    });
+  };
+
   const getStatusBadge = (status: string) => {
     const option = CONTRACT_STATUS_OPTIONS.find(s => s.value === status);
     return option ? (
@@ -1394,6 +1430,15 @@ export default function ContractsPage() {
             >
               <FileText className="w-4 h-4 mr-2" />
               Create Quick Proposal
+            </Button>
+            <Button 
+              variant="outline"
+              className="border-white/30 text-white hover:bg-white/10"
+              onClick={() => setShowImportFromEmailDialog(true)}
+              data-testid="button-import-from-email"
+            >
+              <Mail className="w-4 h-4 mr-2" />
+              Import from Email
             </Button>
             <Button 
               className="bg-[hsl(36,90%,50%)] text-[hsl(216,32%,10%)] hover:bg-[hsl(36,90%,45%)] font-semibold"
@@ -3465,6 +3510,11 @@ export default function ContractsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <ImportFromEmailDialog
+        open={showImportFromEmailDialog}
+        onOpenChange={setShowImportFromEmailDialog}
+        onImport={handleImportFromEmail}
+      />
     </PageLayout>
   );
 }

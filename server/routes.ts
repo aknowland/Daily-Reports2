@@ -17245,6 +17245,7 @@ Transcript: "${transcript}"`;
   });
 
   // ── Cert Expiry Tracker ─────────────────────────────────────────────────────
+<<<<<<< HEAD
   // GET /api/company/inspector-workload — returns workload data for all company inspectors
   app.get("/api/company/inspector-workload", isAuthenticated, async (req: any, res) => {
     try {
@@ -17387,6 +17388,8 @@ Transcript: "${transcript}"`;
     }
   });
 
+=======
+>>>>>>> 5965786 (Saved your changes before starting work)
   // GET /api/cert-expiry  — returns all inspectors with cert expiry info for this company
   app.get("/api/cert-expiry", isAuthenticated, async (req: any, res) => {
     try {
@@ -17422,6 +17425,116 @@ Transcript: "${transcript}"`;
       res.json(entries);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ─── Outlook Email Import Routes ───────────────────────────────────────────
+
+  // Check if Outlook is connected
+  app.get("/api/outlook/status", isAuthenticated, async (req: any, res) => {
+    try {
+      const { checkOutlookConnection } = await import("./outlook-client");
+      const connected = await checkOutlookConnection();
+      res.json({ connected });
+    } catch (error: any) {
+      res.json({ connected: false });
+    }
+  });
+
+  // List recent emails from Outlook inbox
+  app.get("/api/outlook/emails", isAuthenticated, async (req: any, res) => {
+    try {
+      const { getRecentEmails } = await import("./outlook-client");
+      const count = Math.min(parseInt(String(req.query.count || "20")), 50);
+      const emails = await getRecentEmails(count);
+      res.json(emails);
+    } catch (error: any) {
+      if (error.message === "OUTLOOK_NOT_CONNECTED") {
+        return res.status(401).json({ message: "Outlook not connected", code: "OUTLOOK_NOT_CONNECTED" });
+      }
+      console.error("Error fetching Outlook emails:", error);
+      res.status(500).json({ message: "Failed to fetch emails" });
+    }
+  });
+
+  // Get full email detail by ID
+  app.get("/api/outlook/emails/:emailId", isAuthenticated, async (req: any, res) => {
+    try {
+      const { getEmailDetail } = await import("./outlook-client");
+      const email = await getEmailDetail(req.params.emailId);
+      res.json(email);
+    } catch (error: any) {
+      if (error.message === "OUTLOOK_NOT_CONNECTED") {
+        return res.status(401).json({ message: "Outlook not connected", code: "OUTLOOK_NOT_CONNECTED" });
+      }
+      console.error("Error fetching email detail:", error);
+      res.status(500).json({ message: "Failed to fetch email" });
+    }
+  });
+
+  // Extract contract data from email text using AI
+  app.post("/api/outlook/extract-contract", isAuthenticated, async (req: any, res) => {
+    try {
+      const { emailText, subject, sender } = req.body;
+      if (!emailText) {
+        return res.status(400).json({ message: "emailText is required" });
+      }
+
+      const systemPrompt = `You are an expert at extracting contract information from emails. 
+Extract all relevant contract fields from the provided email text and return structured JSON.
+If a field is not clearly mentioned, return null for that field.
+Do not guess or invent data — only extract what is explicitly mentioned.`;
+
+      const userPrompt = `Extract contract information from this email and return a JSON object with these fields:
+- contractNumber: string | null (contract or bid number, RFP number, etc.)
+- name: string | null (project or contract name/title)
+- description: string | null (brief description of the scope)
+- clientName: string | null (client, agency, or organization name — this is not necessarily who sent the email)
+- contractType: "lump_sum" | "time_and_materials" | "unit_price" | "cost_plus" | "design_build" | "hourly_rate" | "other" | null
+- status: "bid_release" | "bid_received" | "under_review" | "awarded" | "not_awarded" | "cancelled" | "in_execution" | "substantial_completion" | "final_closeout" | null
+- originalValue: string | null (budget or contract value as a number string, no currency symbols)
+- bidDueDate: string | null (ISO date YYYY-MM-DD format)
+- bidReleaseDate: string | null (ISO date YYYY-MM-DD format)
+- awardDate: string | null (ISO date YYYY-MM-DD format)
+- startDate: string | null (ISO date YYYY-MM-DD format)
+- substantialCompletionDate: string | null (ISO date YYYY-MM-DD format)
+- finalCloseoutDate: string | null (ISO date YYYY-MM-DD format)
+- notes: string | null (any other relevant notes or details)
+- agency: string | null (government agency or issuing organization if applicable)
+- serviceType: string | null (type of service e.g. "DSA Inspection", "Special Inspection", etc.)
+- questionDeadline: string | null (ISO date YYYY-MM-DD format, deadline for questions/RFIs)
+
+Email Subject: ${subject || ""}
+From: ${sender || ""}
+
+Email Body:
+${emailText.substring(0, 8000)}
+
+Return ONLY a valid JSON object with the fields above. No explanation, no markdown, just JSON.`;
+
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt },
+        ],
+        temperature: 0.1,
+        max_tokens: 1000,
+        response_format: { type: "json_object" },
+      });
+
+      const content = completion.choices[0]?.message?.content || "{}";
+      let extracted: Record<string, any> = {};
+      try {
+        extracted = JSON.parse(content);
+      } catch {
+        extracted = {};
+      }
+
+      res.json({ extracted });
+    } catch (error: any) {
+      console.error("Error extracting contract from email:", error);
+      res.status(500).json({ message: "Failed to extract contract data" });
     }
   });
 
