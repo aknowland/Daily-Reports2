@@ -502,7 +502,7 @@ export default function CompanyTeamPage() {
       title?: string;
       licenseNumber?: string;
       licenseState?: string;
-      certifications?: string[];
+      certifications?: CertEntry[];
       notes?: string;
     }) => {
       return apiRequest("POST", `/api/companies/${activeCompany?.id}/team-inspectors`, data);
@@ -2147,7 +2147,7 @@ function TeamInspectorDialog({
       county: formData.county || undefined,
       licenseNumber: formData.licenseNumber || undefined,
       licenseState: formData.licenseState || undefined,
-      certifications: certsList.length > 0 ? certsList : undefined,
+      certifications: certsList,
       notes: formData.notes || undefined,
     });
   };
