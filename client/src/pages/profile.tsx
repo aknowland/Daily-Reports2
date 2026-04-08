@@ -126,6 +126,7 @@ export default function ProfilePage() {
         contractorAddress: profile.contractorAddress || "",
         contractorPhone: profile.contractorPhone || "",
         contractorEmail: profile.contractorEmail || "",
+        availabilityDate: profile.availabilityDate || "",
       });
       setCertifications(normalizeCerts(profile.certifications));
       setEducation(profile.education || []);
@@ -732,6 +733,26 @@ export default function ProfilePage() {
                     )}
                   />
                 </div>
+
+                <FormField
+                  control={form.control}
+                  name="availabilityDate"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel data-testid="label-availability-date">Availability Date</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="date"
+                          {...field}
+                          value={field.value || ""}
+                          data-testid="input-availability-date"
+                        />
+                      </FormControl>
+                      <p className="text-xs text-muted-foreground">Used in the workload dashboard to show when you are next available.</p>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
 
                 <Separator />
 

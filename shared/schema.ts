@@ -183,6 +183,8 @@ export const userProfiles = pgTable("user_profiles", {
   preferAdminMode: boolean("prefer_admin_mode").default(true),
   // Theme preference (light/dark)
   themePreference: varchar("theme_preference").default("light"),
+  // Inspector availability date (used in workload dashboard)
+  availabilityDate: varchar("availability_date"), // ISO date string "YYYY-MM-DD"
 });
 
 // Projects table
@@ -911,6 +913,7 @@ export const updateUserProfileSchema = createInsertSchema(userProfiles)
     contractorAddress: true,
     contractorPhone: true,
     contractorEmail: true,
+    availabilityDate: true,
   })
   .partial();
 
