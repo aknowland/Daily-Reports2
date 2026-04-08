@@ -1,7 +1,7 @@
 import type { Express, RequestHandler } from "express";
 import { createServer, type Server } from "http";
 import { storage, db, projectComments, projectMembers, users, companyNotes, clientPortalUsers } from "./storage";
-import { sql, eq, and, desc } from "drizzle-orm";
+import { sql, eq, and, desc, inArray } from "drizzle-orm";
 import { setupAuth, isAuthenticated, registerAuthRoutes } from "./replit_integrations/auth";
 import { insertProjectSchema, insertDailyReportSchema, updateUserProfileSchema, WorkActivityRow, VisitorRow, EquipmentRow, MaterialRow, insertContractSchema, insertClientSchema, InsertInspectorCandidate, companyMembers, userProfiles, dailyReports as dailyReportsTable, normalizeCerts, manualTimeEntries } from "@shared/schema";
 import { ObjectStorageService, registerObjectStorageRoutes } from "./replit_integrations/object_storage";
@@ -17391,7 +17391,7 @@ Transcript: "${transcript}"`;
       const monthStart = new Date(Date.UTC(now.getFullYear(), now.getMonth(), 1));
       const monthEnd = new Date(Date.UTC(now.getFullYear(), now.getMonth() + 1, 1));
 
-      // Get all company members (user inspectors)
+      // Get all company inspectors (role='inspector'); include admins since they also log hours
       const memberRows = await db
         .select({
           userId: companyMembers.userId,
@@ -17400,18 +17400,21 @@ Transcript: "${transcript}"`;
           lastName: userProfiles.lastName,
           title: userProfiles.title,
           email: users.email,
-          activeProjectId: userProfiles.activeProjectId,
+          availabilityDate: userProfiles.availabilityDate,
         })
         .from(companyMembers)
         .innerJoin(userProfiles, eq(userProfiles.userId, companyMembers.userId))
         .innerJoin(users, eq(users.id, companyMembers.userId))
-        .where(eq(companyMembers.companyId, companyId));
+        .where(
+          and(
+            eq(companyMembers.companyId, companyId),
+            eq(companyMembers.role, "inspector")
+          )
+        );
 
       // Get all company projects
       const companyProjects = await storage.getProjects(companyId);
       const projectMap = new Map(companyProjects.map(p => [p.id, p]));
-
-      // Get project members for this company's projects
       const companyProjectIds = companyProjects.map(p => p.id);
 
       // Build workload per inspector
@@ -17419,103 +17422,68 @@ Transcript: "${transcript}"`;
         const inspectorId = member.userId;
         const name = [member.firstName, member.lastName].filter(Boolean).join(" ") || member.email || inspectorId;
 
-        // Get active projects for this inspector (project_members join)
-        let activeProjects: Array<{ projectId: string; projectName: string; hoursThisMonth: number }> = [];
+        // Collect per-project hours from all sources (daily_reports + manual_time_entries)
+        // Use a map keyed by projectId so we don't double-count
+        const projectHoursMap = new Map<string, number>();
 
         if (companyProjectIds.length > 0) {
-          // Fetch assigned projects
-          const assignedProjects = await db
-            .select({ projectId: projectMembers.projectId })
-            .from(projectMembers)
+          // Fetch all DRs for this inspector this month on company projects
+          const drMonthRows = await db
+            .select({
+              projectId: dailyReportsTable.projectId,
+              regularHours: dailyReportsTable.regularHours,
+              otHours: dailyReportsTable.otHours,
+            })
+            .from(dailyReportsTable)
             .where(
               and(
-                eq(projectMembers.userId, inspectorId),
-                sql`${projectMembers.projectId} = ANY(ARRAY[${sql.join(companyProjectIds.map(id => sql`${id}`), sql`, `)}]::text[])`
+                eq(dailyReportsTable.inspectorId, inspectorId),
+                sql`${dailyReportsTable.date} >= ${monthStart}`,
+                sql`${dailyReportsTable.date} < ${monthEnd}`,
+                inArray(dailyReportsTable.projectId, companyProjectIds)
               )
             );
 
-          for (const ap of assignedProjects) {
-            const project = projectMap.get(ap.projectId);
-            if (!project || project.status === 'inactive') continue;
+          for (const dr of drMonthRows) {
+            if (!dr.projectId || !projectMap.has(dr.projectId)) continue;
+            const prev = projectHoursMap.get(dr.projectId) ?? 0;
+            projectHoursMap.set(dr.projectId, prev + parseFloat(dr.regularHours || "0") + parseFloat(dr.otHours || "0"));
+          }
 
-            // Hours from daily reports this month
-            const drRows = await db
-              .select({ regularHours: dailyReportsTable.regularHours, otHours: dailyReportsTable.otHours })
-              .from(dailyReportsTable)
-              .where(
-                and(
-                  eq(dailyReportsTable.inspectorId, inspectorId),
-                  eq(dailyReportsTable.projectId, ap.projectId),
-                  sql`${dailyReportsTable.date} >= ${monthStart}`,
-                  sql`${dailyReportsTable.date} < ${monthEnd}`
-                )
-              );
+          // Fetch all MTEs for this inspector this month on company projects
+          const mteMonthRows = await db
+            .select({
+              projectId: manualTimeEntries.projectId,
+              regularHours: manualTimeEntries.regularHours,
+              otHours: manualTimeEntries.otHours,
+            })
+            .from(manualTimeEntries)
+            .where(
+              and(
+                eq(manualTimeEntries.inspectorId, inspectorId),
+                sql`${manualTimeEntries.date} >= ${monthStart}`,
+                sql`${manualTimeEntries.date} < ${monthEnd}`,
+                inArray(manualTimeEntries.projectId, companyProjectIds)
+              )
+            );
 
-            // Hours from manual time entries this month
-            const mteRows = await db
-              .select({ regularHours: manualTimeEntries.regularHours, otHours: manualTimeEntries.otHours })
-              .from(manualTimeEntries)
-              .where(
-                and(
-                  eq(manualTimeEntries.inspectorId, inspectorId),
-                  eq(manualTimeEntries.projectId, ap.projectId),
-                  sql`${manualTimeEntries.date} >= ${monthStart}`,
-                  sql`${manualTimeEntries.date} < ${monthEnd}`
-                )
-              );
-
-            const projectHours = [
-              ...drRows.map(r => parseFloat(r.regularHours || "0") + parseFloat(r.otHours || "0")),
-              ...mteRows.map(r => parseFloat(r.regularHours || "0") + parseFloat(r.otHours || "0")),
-            ].reduce((a, b) => a + b, 0);
-
-            activeProjects.push({
-              projectId: ap.projectId,
-              projectName: project.name || project.projectNumber || ap.projectId,
-              hoursThisMonth: Math.round(projectHours * 100) / 100,
-            });
+          for (const mte of mteMonthRows) {
+            if (!mte.projectId || !projectMap.has(mte.projectId)) continue;
+            const prev = projectHoursMap.get(mte.projectId) ?? 0;
+            projectHoursMap.set(mte.projectId, prev + parseFloat(mte.regularHours || "0") + parseFloat(mte.otHours || "0"));
           }
         }
 
-        // Also count hours from daily reports on projects not in project_members (direct)
-        // (some inspectors log reports without formal project_members records)
-        const drMonthRows = await db
-          .select({
-            projectId: dailyReportsTable.projectId,
-            regularHours: dailyReportsTable.regularHours,
-            otHours: dailyReportsTable.otHours,
+        const activeProjects = Array.from(projectHoursMap.entries())
+          .map(([projectId, hours]) => {
+            const p = projectMap.get(projectId)!;
+            return {
+              projectId,
+              projectName: p.name || p.projectNumber || projectId,
+              hoursThisMonth: Math.round(hours * 100) / 100,
+            };
           })
-          .from(dailyReportsTable)
-          .where(
-            and(
-              eq(dailyReportsTable.inspectorId, inspectorId),
-              sql`${dailyReportsTable.date} >= ${monthStart}`,
-              sql`${dailyReportsTable.date} < ${monthEnd}`
-            )
-          );
-
-        // Merge in DR hours for projects not already counted
-        for (const dr of drMonthRows) {
-          if (!dr.projectId) continue;
-          const project = projectMap.get(dr.projectId);
-          if (!project) continue;
-          const existing = activeProjects.find(ap => ap.projectId === dr.projectId);
-          if (!existing) {
-            activeProjects.push({
-              projectId: dr.projectId,
-              projectName: project.name || project.projectNumber || dr.projectId,
-              hoursThisMonth: 0,
-            });
-          }
-        }
-
-        // Recalculate hours for any projects added from DR scan
-        for (const ap of activeProjects) {
-          if (ap.hoursThisMonth === 0) {
-            const drRows = drMonthRows.filter(r => r.projectId === ap.projectId);
-            ap.hoursThisMonth = Math.round(drRows.reduce((sum, r) => sum + parseFloat(r.regularHours || "0") + parseFloat(r.otHours || "0"), 0) * 100) / 100;
-          }
-        }
+          .sort((a, b) => b.hoursThisMonth - a.hoursThisMonth);
 
         const totalHoursThisMonth = Math.round(activeProjects.reduce((sum, ap) => sum + ap.hoursThisMonth, 0) * 100) / 100;
 
@@ -17525,10 +17493,11 @@ Transcript: "${transcript}"`;
           title: member.title || null,
           email: member.email || null,
           role: member.role,
+          availabilityDate: member.availabilityDate || null,
           activeProjectCount: activeProjects.length,
           totalHoursThisMonth,
           utilizationPct: Math.min(Math.round((totalHoursThisMonth / 160) * 100), 100),
-          projects: activeProjects.sort((a, b) => b.hoursThisMonth - a.hoursThisMonth),
+          projects: activeProjects,
         };
       }));
 

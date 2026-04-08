@@ -191,6 +191,7 @@ export default function CompanyTeamPage() {
     title: string | null;
     email: string | null;
     role: string;
+    availabilityDate: string | null;
     activeProjectCount: number;
     totalHoursThisMonth: number;
     utilizationPct: number;
@@ -1621,11 +1622,12 @@ export default function CompanyTeamPage() {
             ) : (
               <div className="border rounded overflow-hidden">
                 {/* Header row */}
-                <div className="grid grid-cols-[2fr_1fr_1fr_2fr] gap-2 px-4 py-2 bg-muted/50 border-b text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                <div className="grid grid-cols-[2fr_1fr_1fr_2fr_1fr] gap-2 px-4 py-2 bg-muted/50 border-b text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                   <span>Inspector</span>
-                  <span className="text-center">Active Projects</span>
-                  <span className="text-center">Hours This Month</span>
+                  <span className="text-center">Projects</span>
+                  <span className="text-center">Hrs / Mo</span>
                   <span>Utilization</span>
+                  <span className="text-center">Available</span>
                 </div>
                 {filteredWorkload.map(inspector => {
                   const isExpanded = expandedInspectorIds.has(inspector.inspectorId);
@@ -1635,7 +1637,7 @@ export default function CompanyTeamPage() {
                     <div key={inspector.inspectorId} data-testid={`workload-row-${inspector.inspectorId}`}>
                       <button
                         type="button"
-                        className="w-full grid grid-cols-[2fr_1fr_1fr_2fr] gap-2 px-4 py-3 text-left hover:bg-muted/30 transition-colors border-b last:border-b-0 items-center"
+                        className="w-full grid grid-cols-[2fr_1fr_1fr_2fr_1fr] gap-2 px-4 py-3 text-left hover:bg-muted/30 transition-colors border-b last:border-b-0 items-center"
                         onClick={() => {
                           const next = new Set(expandedInspectorIds);
                           if (next.has(inspector.inspectorId)) next.delete(inspector.inspectorId);
@@ -1666,6 +1668,11 @@ export default function CompanyTeamPage() {
                             />
                           </div>
                           <span className="text-xs text-muted-foreground w-8 text-right">{pct}%</span>
+                        </div>
+                        <div className="text-center">
+                          <span className="text-xs text-muted-foreground" data-testid={`workload-availability-${inspector.inspectorId}`}>
+                            {inspector.availabilityDate || "—"}
+                          </span>
                         </div>
                       </button>
 
