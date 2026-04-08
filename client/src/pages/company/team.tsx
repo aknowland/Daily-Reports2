@@ -184,6 +184,35 @@ export default function CompanyTeamPage() {
     enabled: !!activeCompany?.id && isEffectiveCompanyAdmin,
   });
 
+  // Inspector workload data (current month hours + project breakdown)
+  const { data: workloadData = [], isLoading: isWorkloadLoading } = useQuery<Array<{
+    inspectorId: string;
+    name: string;
+    title: string | null;
+    email: string | null;
+    role: string;
+    activeProjectCount: number;
+    totalHoursThisMonth: number;
+    utilizationPct: number;
+    projects: Array<{ projectId: string; projectName: string; hoursThisMonth: number }>;
+  }>>({
+    queryKey: ["/api/company/inspector-workload"],
+    enabled: !!activeCompany?.id && isEffectiveCompanyAdmin,
+  });
+
+  const [expandedInspectorIds, setExpandedInspectorIds] = useState<Set<string>>(new Set());
+  const [workloadSearchQuery, setWorkloadSearchQuery] = useState("");
+
+  const filteredWorkload = useMemo(() => {
+    if (!workloadSearchQuery.trim()) return workloadData;
+    const q = workloadSearchQuery.toLowerCase();
+    return workloadData.filter(i =>
+      i.name.toLowerCase().includes(q) ||
+      (i.title || "").toLowerCase().includes(q) ||
+      (i.email || "").toLowerCase().includes(q)
+    );
+  }, [workloadData, workloadSearchQuery]);
+
   // Cert expiry data covers BOTH user inspectors and team inspectors
   const { data: certExpiryData = [] } = useQuery<Array<{
     id: string; name: string; type: "user" | "team";
@@ -907,6 +936,10 @@ export default function CompanyTeamPage() {
                 {teamInspectors.length}
               </Badge>
             </TabsTrigger>
+            <TabsTrigger value="workload" className="flex items-center gap-2" data-testid="tab-workload">
+              <ClipboardList className="w-4 h-4" />
+              Workload
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="members" className="space-y-4">
@@ -1555,6 +1588,107 @@ export default function CompanyTeamPage() {
                     </CardContent>
                   </Card>
                 ))}
+              </div>
+            )}
+          </TabsContent>
+
+          {/* ─── Workload Tab ─────────────────────────────────────────────────────── */}
+          <TabsContent value="workload" className="space-y-4">
+            <div className="flex items-center justify-between gap-4 mb-2">
+              <p className="text-sm text-muted-foreground">
+                Current month hours for all team members. Standard month = 160 hrs.
+              </p>
+              <div className="relative w-64">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search inspectors..."
+                  value={workloadSearchQuery}
+                  onChange={e => setWorkloadSearchQuery(e.target.value)}
+                  className="pl-9"
+                  data-testid="input-workload-search"
+                />
+              </div>
+            </div>
+
+            {isWorkloadLoading ? (
+              <div className="space-y-2">
+                {[1,2,3].map(i => <Skeleton key={i} className="h-14 w-full" />)}
+              </div>
+            ) : filteredWorkload.length === 0 ? (
+              <div className="text-center py-12 text-muted-foreground text-sm" data-testid="workload-empty">
+                No inspectors found.
+              </div>
+            ) : (
+              <div className="border rounded overflow-hidden">
+                {/* Header row */}
+                <div className="grid grid-cols-[2fr_1fr_1fr_2fr] gap-2 px-4 py-2 bg-muted/50 border-b text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  <span>Inspector</span>
+                  <span className="text-center">Active Projects</span>
+                  <span className="text-center">Hours This Month</span>
+                  <span>Utilization</span>
+                </div>
+                {filteredWorkload.map(inspector => {
+                  const isExpanded = expandedInspectorIds.has(inspector.inspectorId);
+                  const pct = inspector.utilizationPct;
+                  const barColor = pct >= 90 ? "bg-red-500" : pct >= 70 ? "bg-amber-500" : "bg-green-500";
+                  return (
+                    <div key={inspector.inspectorId} data-testid={`workload-row-${inspector.inspectorId}`}>
+                      <button
+                        type="button"
+                        className="w-full grid grid-cols-[2fr_1fr_1fr_2fr] gap-2 px-4 py-3 text-left hover:bg-muted/30 transition-colors border-b last:border-b-0 items-center"
+                        onClick={() => {
+                          const next = new Set(expandedInspectorIds);
+                          if (next.has(inspector.inspectorId)) next.delete(inspector.inspectorId);
+                          else next.add(inspector.inspectorId);
+                          setExpandedInspectorIds(next);
+                        }}
+                        data-testid={`button-expand-workload-${inspector.inspectorId}`}
+                      >
+                        <div className="flex items-center gap-2">
+                          {isExpanded ? <ChevronDown className="w-4 h-4 text-muted-foreground flex-shrink-0" /> : <ChevronRight className="w-4 h-4 text-muted-foreground flex-shrink-0" />}
+                          <div>
+                            <p className="font-medium text-sm" data-testid={`workload-name-${inspector.inspectorId}`}>{inspector.name}</p>
+                            {inspector.title && <p className="text-xs text-muted-foreground">{inspector.title}</p>}
+                          </div>
+                        </div>
+                        <div className="text-center">
+                          <span className="text-sm font-medium" data-testid={`workload-projects-${inspector.inspectorId}`}>{inspector.activeProjectCount}</span>
+                        </div>
+                        <div className="text-center">
+                          <span className="text-sm font-semibold" data-testid={`workload-hours-${inspector.inspectorId}`}>{inspector.totalHoursThisMonth.toFixed(1)}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
+                            <div
+                              className={`h-full rounded-full ${barColor}`}
+                              style={{ width: `${pct}%` }}
+                              data-testid={`workload-bar-${inspector.inspectorId}`}
+                            />
+                          </div>
+                          <span className="text-xs text-muted-foreground w-8 text-right">{pct}%</span>
+                        </div>
+                      </button>
+
+                      {isExpanded && (
+                        <div className="px-6 py-3 bg-muted/20 border-b space-y-2" data-testid={`workload-detail-${inspector.inspectorId}`}>
+                          {inspector.projects.length === 0 ? (
+                            <p className="text-xs text-muted-foreground">No project activity this month.</p>
+                          ) : (
+                            <div className="space-y-1">
+                              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Project Breakdown — This Month</p>
+                              {inspector.projects.map(proj => (
+                                <div key={proj.projectId} className="flex items-center justify-between text-sm" data-testid={`workload-project-${inspector.inspectorId}-${proj.projectId}`}>
+                                  <span className="text-muted-foreground">{proj.projectName}</span>
+                                  <span className="font-medium">{proj.hoursThisMonth.toFixed(1)} hrs</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
           </TabsContent>
