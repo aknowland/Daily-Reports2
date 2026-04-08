@@ -556,7 +556,13 @@ export async function processCertExpiryNotifications(
           if (alreadySent) continue;
 
           const adminEmails = await storage.getCompanyAdminEmails(inspector.companyId);
-          if (adminEmails.length === 0) continue;
+          // Also include the inspector's own email so they are notified
+          const inspectorEmail = (inspector as any).email as string | null | undefined;
+          const allRecipients = [
+            ...adminEmails,
+            ...(inspectorEmail && !adminEmails.includes(inspectorEmail) ? [inspectorEmail] : []),
+          ];
+          if (allRecipients.length === 0) continue;
 
           const company = await storage.getCompany(inspector.companyId);
 
@@ -574,7 +580,7 @@ export async function processCertExpiryNotifications(
             try {
               await resendInstance.emails.send({
                 from: 'Field Daily Reports <noreply@mail.replit.app>',
-                to: adminEmails,
+                to: allRecipients,
                 subject: `Cert Alert: ${inspector.name} — ${cert.name} ${statusLabel}`,
                 html: `
                   <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
@@ -618,7 +624,7 @@ export async function processCertExpiryNotifications(
             certName: cert.name,
             daysUntilExpiry,
             windowDays,
-            emails: adminEmails,
+            emails: allRecipients,
           });
         }
       }

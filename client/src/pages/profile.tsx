@@ -780,7 +780,7 @@ export default function ProfilePage() {
                           ? Math.ceil((new Date(cert.expiresAt).getTime() - Date.now()) / 86400000)
                           : null;
                         const isExpired = daysUntil !== null && daysUntil <= 0;
-                        const isExpiringSoon = daysUntil !== null && daysUntil > 0 && daysUntil <= 30;
+                        const isExpiringSoon = daysUntil !== null && daysUntil > 0 && daysUntil <= 60;
                         return (
                           <div key={index} className="flex items-center justify-between rounded border px-3 py-2 text-sm" data-testid={`certification-item-${index}`}>
                             <div className="flex items-center gap-2 flex-wrap">

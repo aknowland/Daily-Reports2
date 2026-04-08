@@ -74,21 +74,20 @@ export default function CertExpiryPage() {
     return c;
   }, [flatRows]);
 
-  const urgentCount = counts.expired + counts.critical + counts.warning;
+  const urgentCount = counts.expired + counts.critical + counts.warning + counts.upcoming;
 
   function StatusBadge({ status, daysUntil }: { status: string; daysUntil: number | null }) {
     if (status === "expired") return <Badge variant="destructive" data-testid="badge-expired">EXPIRED</Badge>;
     if (status === "critical") return <Badge variant="outline" className="border-red-500 text-red-600 dark:text-red-400" data-testid="badge-critical">Expires in {daysUntil}d</Badge>;
     if (status === "warning") return <Badge variant="outline" className="border-amber-500 text-amber-700 dark:text-amber-400" data-testid="badge-warning">Expires in {daysUntil}d</Badge>;
-    if (status === "upcoming") return <Badge variant="outline" className="border-blue-500 text-blue-700 dark:text-blue-400" data-testid="badge-upcoming">Expires in {daysUntil}d</Badge>;
+    if (status === "upcoming") return <Badge variant="outline" className="border-amber-400 text-amber-700 dark:text-amber-400" data-testid="badge-upcoming">Expires in {daysUntil}d</Badge>;
     if (status === "ok") return <Badge variant="secondary" data-testid="badge-ok">Expires in {daysUntil}d</Badge>;
     return <Badge variant="outline" className="text-muted-foreground" data-testid="badge-no-expiry">No expiry set</Badge>;
   }
 
   function StatusIcon({ status }: { status: string }) {
     if (status === "expired" || status === "critical") return <AlertTriangle className="w-4 h-4 text-red-500 flex-shrink-0" />;
-    if (status === "warning") return <AlertTriangle className="w-4 h-4 text-amber-500 flex-shrink-0" />;
-    if (status === "upcoming") return <Clock className="w-4 h-4 text-blue-500 flex-shrink-0" />;
+    if (status === "warning" || status === "upcoming") return <AlertTriangle className="w-4 h-4 text-amber-500 flex-shrink-0" />;
     if (status === "ok") return <CheckCircle2 className="w-4 h-4 text-green-500 flex-shrink-0" />;
     return <ShieldCheck className="w-4 h-4 text-muted-foreground flex-shrink-0" />;
   }
@@ -115,7 +114,7 @@ export default function CertExpiryPage() {
         {!isLoading && urgentCount > 0 && (
           <div className="flex items-center gap-2 rounded border border-amber-300 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-700 px-4 py-3 text-sm text-amber-800 dark:text-amber-300" data-testid="alert-urgent-certs">
             <AlertTriangle className="w-4 h-4 flex-shrink-0" />
-            <span><strong>{urgentCount}</strong> certification{urgentCount !== 1 ? "s" : ""} require attention (expired or expiring within 30 days).</span>
+            <span><strong>{urgentCount}</strong> certification{urgentCount !== 1 ? "s" : ""} require attention (expired or expiring within 60 days).</span>
           </div>
         )}
 
