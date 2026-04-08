@@ -602,12 +602,11 @@ export const certExpiryNotifications = pgTable("cert_expiry_notifications", {
   inspectorId: varchar("inspector_id").notNull(),       // user ID or team inspector ID
   inspectorType: varchar("inspector_type").notNull(),   // "user" or "team"
   certName: varchar("cert_name").notNull(),
-  expiryYear: integer("expiry_year").notNull(),
-  expiryMonth: integer("expiry_month").notNull(),
+  expiresAt: varchar("expires_at").notNull(),           // ISO date string "YYYY-MM-DD" — full precision
   windowDays: integer("window_days").notNull(),          // 60, 30, 7, 0
   sentAt: timestamp("sent_at").defaultNow().notNull(),
 }, (table) => [
-  unique().on(table.inspectorId, table.inspectorType, table.certName, table.expiryYear, table.expiryMonth, table.windowDays),
+  unique().on(table.inspectorId, table.inspectorType, table.certName, table.expiresAt, table.windowDays),
 ]);
 
 // Timesheet status enum

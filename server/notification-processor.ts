@@ -534,30 +534,30 @@ export async function processCertExpiryNotifications(
         expiryDate.setHours(0, 0, 0, 0);
 
         const msUntilExpiry = expiryDate.getTime() - now.getTime();
-        const daysUntilExpiry = Math.ceil(msUntilExpiry / (1000 * 60 * 60 * 24));
+        const daysUntilExpiry = Math.round(msUntilExpiry / (1000 * 60 * 60 * 24));
 
-        // Only notify if expiry is within 61 days and not more than 1 day past
-        if (daysUntilExpiry < -1 || daysUntilExpiry > 61) continue;
-
-        const expiryYear = expiryDate.getFullYear();
-        const expiryMonth = expiryDate.getMonth() + 1;
-
+        // Fire on exact milestone days, plus catch-up: if we are AT or PAST the milestone
+        // but haven't yet recorded it (e.g. scheduler was offline for a day), we fire it.
+        // Windows: 60, 30, 7, 0 (0 means expiry day or any time after expiry)
         for (const windowDays of CERT_EXPIRY_WINDOWS) {
-          // Fire when daysUntilExpiry falls within window (handle "expired" window 0)
-          const inWindow = windowDays === 0
+          // For the "0" window: fire when expiry has arrived (daysUntilExpiry <= 0)
+          // For other windows: fire when daysUntilExpiry is within [windowDays - nextLower, windowDays]
+          const nextLower = CERT_EXPIRY_WINDOWS[CERT_EXPIRY_WINDOWS.indexOf(windowDays) + 1] ?? -1;
+          const shouldFire = windowDays === 0
             ? daysUntilExpiry <= 0
-            : daysUntilExpiry <= windowDays && daysUntilExpiry > (CERT_EXPIRY_WINDOWS[CERT_EXPIRY_WINDOWS.indexOf(windowDays) + 1] ?? -1);
+            : daysUntilExpiry <= windowDays && daysUntilExpiry > nextLower;
 
-          if (!inWindow) continue;
+          if (!shouldFire) continue;
 
+          // Dedup with full expiresAt date string for precise identity
           const alreadySent = await storage.hasCertExpiryNotificationBeenSent(
-            inspector.id, inspector.inspectorType, cert.name, expiryYear, expiryMonth, windowDays
+            inspector.id, inspector.inspectorType, cert.name, cert.expiresAt, windowDays
           );
           if (alreadySent) continue;
 
           const adminEmails = await storage.getCompanyAdminEmails(inspector.companyId);
-          // Also include the inspector's own email so they are notified
-          const inspectorEmail = (inspector as any).email as string | null | undefined;
+          // Also notify the inspector directly
+          const inspectorEmail: string | null = inspector.email;
           const allRecipients = [
             ...adminEmails,
             ...(inspectorEmail && !adminEmails.includes(inspectorEmail) ? [inspectorEmail] : []),
@@ -612,8 +612,7 @@ export async function processCertExpiryNotifications(
             inspectorId: inspector.id,
             inspectorType: inspector.inspectorType,
             certName: cert.name,
-            expiryYear,
-            expiryMonth,
+            expiresAt: cert.expiresAt,
             windowDays,
           });
 
