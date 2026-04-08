@@ -3,7 +3,7 @@ import { createServer, type Server } from "http";
 import { storage, db, projectComments, projectMembers, users, companyNotes, clientPortalUsers } from "./storage";
 import { sql, eq, and, desc } from "drizzle-orm";
 import { setupAuth, isAuthenticated, registerAuthRoutes } from "./replit_integrations/auth";
-import { insertProjectSchema, insertDailyReportSchema, updateUserProfileSchema, WorkActivityRow, VisitorRow, EquipmentRow, MaterialRow, insertContractSchema, insertClientSchema, InsertInspectorCandidate, companyMembers, userProfiles, dailyReports as dailyReportsTable } from "@shared/schema";
+import { insertProjectSchema, insertDailyReportSchema, updateUserProfileSchema, WorkActivityRow, VisitorRow, EquipmentRow, MaterialRow, insertContractSchema, insertClientSchema, InsertInspectorCandidate, companyMembers, userProfiles, dailyReports as dailyReportsTable, normalizeCerts } from "@shared/schema";
 import { ObjectStorageService, registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 import multer from "multer";
 import path from "path";
@@ -17370,6 +17370,45 @@ Transcript: "${transcript}"`;
       });
     } catch (error: any) {
       console.error("Consolidation error:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ── Cert Expiry Tracker ─────────────────────────────────────────────────────
+  // GET /api/cert-expiry  — returns all inspectors with cert expiry info for this company
+  app.get("/api/cert-expiry", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      const companyId = profile?.activeCompanyId;
+      if (!companyId) return res.status(403).json({ message: "No active company" });
+      if (!(await isEffectiveCompanyAdmin(userId, companyId, profile))) {
+        return res.status(403).json({ message: "Company admin access required" });
+      }
+
+      const { users: userRows, teamInspectors: teamRows } = await storage.getAllInspectorsWithCerts();
+
+      const now = new Date();
+      now.setHours(0, 0, 0, 0);
+
+      const toEntry = (inspector: { id: string; companyId: string; name: string; certifications: any[] }, type: "user" | "team") => {
+        if (inspector.companyId !== companyId) return null;
+        const certs = normalizeCerts(inspector.certifications).map((cert) => {
+          const daysUntilExpiry = cert.expiresAt
+            ? Math.ceil((new Date(cert.expiresAt).setHours(0,0,0,0) - now.getTime()) / 86400000)
+            : null;
+          return { ...cert, daysUntilExpiry };
+        });
+        return { id: inspector.id, name: inspector.name, type, certifications: certs };
+      };
+
+      const entries = [
+        ...userRows.map(i => toEntry(i, "user")),
+        ...teamRows.map(i => toEntry(i, "team")),
+      ].filter(Boolean);
+
+      res.json(entries);
+    } catch (error: any) {
       res.status(500).json({ message: error.message });
     }
   });

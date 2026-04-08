@@ -16,7 +16,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
-import { LogOut, User, Settings, HardHat, Menu, LayoutDashboard, FolderOpen, Users, UserPlus, Building2, FilePlus, Shield, FileText, Receipt, Briefcase, MessageSquare, CalendarCheck, Key, Search } from "lucide-react";
+import { LogOut, User, Settings, HardHat, Menu, LayoutDashboard, FolderOpen, Users, UserPlus, Building2, FilePlus, Shield, FileText, Receipt, Briefcase, MessageSquare, CalendarCheck, Key, Search, ShieldCheck } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
@@ -72,6 +72,7 @@ export function Header({ title = "Field Daily Reports" }: HeaderProps) {
     { href: "/company/billing-management", label: "Billing", icon: Receipt },
     { href: "/company/meetings", label: "Meetings", icon: CalendarCheck },
     { href: "/company/recruiting", label: "Recruiting", icon: Search },
+    { href: "/company/cert-expiry", label: "Cert Tracker", icon: ShieldCheck },
     { href: "/company/chat", label: "AI Assistant", icon: MessageSquare },
     { href: "/company/api-keys", label: "API Keys", icon: Key },
     { href: "/company/settings", label: "Company Settings", icon: Settings },

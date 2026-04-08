@@ -267,7 +267,7 @@ function startNotificationScheduler() {
       
       // Import required modules
       const { Resend } = await import('resend');
-      const { processContractNotifications } = await import('./notification-processor');
+      const { processContractNotifications, processCertExpiryNotifications } = await import('./notification-processor');
       
       const resend = new Resend(process.env.RESEND_API_KEY);
       
@@ -277,7 +277,13 @@ function startNotificationScheduler() {
         sendEmails: true,
       });
       
-      log(`Notification check complete: ${results.statusUpdates.length} status updates, ${results.notificationsSent.length + results.budgetAlerts.length} emails sent, ${results.errors.length} errors`, "scheduler");
+      // Process cert expiry notifications
+      const certResults = await processCertExpiryNotifications(resend, {
+        companyIdFilter: null,
+        sendEmails: true,
+      });
+      
+      log(`Notification check complete: ${results.statusUpdates.length} status updates, ${results.notificationsSent.length + results.budgetAlerts.length} emails sent, ${certResults.alertsSent.length} cert expiry alerts, ${results.errors.length + certResults.errors.length} errors`, "scheduler");
     } catch (error: any) {
       log(`Notification scheduler error: ${error.message}`, "scheduler");
     }
