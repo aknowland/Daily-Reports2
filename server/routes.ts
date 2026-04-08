@@ -14147,6 +14147,7 @@ export async function registerRoutes(
         contractorPhone: normalize(data.contractorPhone),
         contractorEmail: normalize(data.contractorEmail),
         jobHistory: data.jobHistory || [],
+        availabilityDate: normalize(data.availabilityDate),
       };
       const profile = await storage.createOrUpdateUserProfile(profileData);
       
@@ -17260,7 +17261,8 @@ Transcript: "${transcript}"`;
       const monthStart = new Date(Date.UTC(now.getFullYear(), now.getMonth(), 1));
       const monthEnd = new Date(Date.UTC(now.getFullYear(), now.getMonth() + 1, 1));
 
-      // Get all company inspectors (role='inspector'); include admins since they also log hours
+      // Get all company inspectors (role='inspector')
+      // leftJoin ensures inspectors without a profile row are still included
       const memberRows = await db
         .select({
           userId: companyMembers.userId,
@@ -17272,7 +17274,7 @@ Transcript: "${transcript}"`;
           availabilityDate: userProfiles.availabilityDate,
         })
         .from(companyMembers)
-        .innerJoin(userProfiles, eq(userProfiles.userId, companyMembers.userId))
+        .leftJoin(userProfiles, eq(userProfiles.userId, companyMembers.userId))
         .innerJoin(users, eq(users.id, companyMembers.userId))
         .where(
           and(
