@@ -1,6 +1,6 @@
 import type { Express, RequestHandler } from "express";
 import { createServer, type Server } from "http";
-import { storage, db, projectComments, projectMembers, users, companyNotes, clientPortalUsers } from "./storage";
+import { storage, db, projectComments, projectMembers, users, companyNotes, clientPortalUsers, projects } from "./storage";
 import { sql, eq, and, desc, inArray } from "drizzle-orm";
 import { setupAuth, isAuthenticated, registerAuthRoutes } from "./replit_integrations/auth";
 import { insertProjectSchema, insertDailyReportSchema, updateUserProfileSchema, WorkActivityRow, VisitorRow, EquipmentRow, MaterialRow, insertContractSchema, insertClientSchema, InsertInspectorCandidate, companyMembers, userProfiles, dailyReports as dailyReportsTable, normalizeCerts, manualTimeEntries } from "@shared/schema";
@@ -5177,137 +5177,6 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error deleting company note:", error);
       res.status(500).json({ message: "Failed to delete note" });
-    }
-  });
-
-  // ===== Inspector Workload with Time Filter =====
-  app.get("/api/company/inspector-workload", isAuthenticated, async (req: any, res) => {
-    try {
-      const userId = req.user?.claims?.sub;
-      const profile = await storage.getUserProfile(userId);
-      if (!profile?.activeCompanyId) {
-        return res.status(400).json({ message: "No active company" });
-      }
-      const companyId = profile.activeCompanyId;
-      const isAdmin = await isEffectiveCompanyAdmin(userId, companyId, profile);
-      if (!isAdmin) {
-        return res.status(403).json({ message: "Admin access required" });
-      }
-
-      const period = (req.query.period as string) || 'month';
-      const now = new Date();
-      let startDate: Date;
-
-      switch (period) {
-        case 'day':
-          startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-          break;
-        case 'week':
-          startDate = new Date(now);
-          startDate.setDate(now.getDate() - now.getDay());
-          startDate.setHours(0, 0, 0, 0);
-          break;
-        case 'year':
-          startDate = new Date(now.getFullYear(), 0, 1);
-          break;
-        case 'month':
-        default:
-          startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-          break;
-      }
-
-      const allReports = await storage.getReports({ companyId });
-      const projects = await storage.getProjectsByCompany(companyId);
-      const projectMap: Record<string, string> = {};
-      for (const p of projects) {
-        projectMap[p.id] = p.name;
-      }
-
-      const filteredReports = allReports.filter(report => {
-        if (!report.date) return false;
-        const reportDate = new Date(report.date);
-        return reportDate >= startDate;
-      });
-
-      const inspectorData: Record<string, {
-        userId: string;
-        name: string;
-        regularHours: number;
-        overtimeHours: number;
-        reportCount: number;
-        projectIds: Set<string>;
-        projectBreakdown: Record<string, { projectId: string; projectName: string; regularHours: number; overtimeHours: number; reportCount: number }>;
-      }> = {};
-
-      for (const report of filteredReports) {
-        const inspectorId = report.inspectorId;
-        if (!inspectorData[inspectorId]) {
-          inspectorData[inspectorId] = {
-            userId: inspectorId,
-            name: '',
-            regularHours: 0,
-            overtimeHours: 0,
-            reportCount: 0,
-            projectIds: new Set(),
-            projectBreakdown: {},
-          };
-        }
-        const regHours = parseFloat(report.regularHours || '0');
-        const otHours = parseFloat(report.otHours || '0');
-        inspectorData[inspectorId].regularHours += regHours;
-        inspectorData[inspectorId].overtimeHours += otHours;
-        inspectorData[inspectorId].reportCount += 1;
-        if (report.projectId) {
-          inspectorData[inspectorId].projectIds.add(report.projectId);
-          if (!inspectorData[inspectorId].projectBreakdown[report.projectId]) {
-            inspectorData[inspectorId].projectBreakdown[report.projectId] = {
-              projectId: report.projectId,
-              projectName: projectMap[report.projectId] || 'Unknown Project',
-              regularHours: 0,
-              overtimeHours: 0,
-              reportCount: 0,
-            };
-          }
-          inspectorData[inspectorId].projectBreakdown[report.projectId].regularHours += regHours;
-          inspectorData[inspectorId].projectBreakdown[report.projectId].overtimeHours += otHours;
-          inspectorData[inspectorId].projectBreakdown[report.projectId].reportCount += 1;
-        }
-      }
-
-      const inspectorIds = Object.keys(inspectorData);
-      const inspectorProfiles = await Promise.all(inspectorIds.map(id => storage.getUserProfile(id)));
-      for (const p of inspectorProfiles) {
-        if (p && inspectorData[p.userId]) {
-          inspectorData[p.userId].name = `${p.firstName || ''} ${p.lastName || ''}`.trim() || 'Inspector';
-        }
-      }
-
-      const result = Object.values(inspectorData)
-        .map(i => ({
-          userId: i.userId,
-          name: i.name || 'Unknown',
-          regularHours: Math.round(i.regularHours * 10) / 10,
-          overtimeHours: Math.round(i.overtimeHours * 10) / 10,
-          totalHours: Math.round((i.regularHours + i.overtimeHours) * 10) / 10,
-          reportCount: i.reportCount,
-          projectCount: i.projectIds.size,
-          projectBreakdown: Object.values(i.projectBreakdown)
-            .map(pb => ({
-              projectId: pb.projectId,
-              projectName: pb.projectName,
-              regularHours: Math.round(pb.regularHours * 10) / 10,
-              overtimeHours: Math.round(pb.overtimeHours * 10) / 10,
-              totalHours: Math.round((pb.regularHours + pb.overtimeHours) * 10) / 10,
-              reportCount: pb.reportCount,
-            }))
-            .sort((a, b) => b.totalHours - a.totalHours),
-        }))
-        .sort((a, b) => b.totalHours - a.totalHours);
-
-      res.json(result);
-    } catch (error) {
-      console.error("Error fetching inspector workload:", error);
-      res.status(500).json({ message: "Failed to fetch inspector workload" });
     }
   });
 
@@ -17412,8 +17281,8 @@ Transcript: "${transcript}"`;
           )
         );
 
-      // Get all company projects
-      const companyProjects = await storage.getProjects(companyId);
+      // Get only this company's projects (strict tenant isolation)
+      const companyProjects = await storage.getProjectsByCompany(companyId);
       const projectMap = new Map(companyProjects.map(p => [p.id, p]));
       const companyProjectIds = companyProjects.map(p => p.id);
 
