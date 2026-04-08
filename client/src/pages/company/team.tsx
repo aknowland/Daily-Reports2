@@ -49,6 +49,7 @@ import {
   Users,
   ArrowLeft,
   AlertCircle,
+  AlertTriangle,
   Mail,
   Shield,
   Trash2,
@@ -1346,6 +1347,49 @@ export default function CompanyTeamPage() {
           </TabsContent>
 
           <TabsContent value="team-inspectors" className="space-y-4">
+            {/* Certifications expiring soon — inline summary */}
+            {(() => {
+              const now = Date.now();
+              const expiring: Array<{ inspectorName: string; certName: string; daysUntil: number; expiresAt: string }> = [];
+              for (const insp of teamInspectors) {
+                for (const cert of normalizeCerts(insp.certifications)) {
+                  if (!cert.expiresAt) continue;
+                  const days = Math.ceil((new Date(cert.expiresAt).getTime() - now) / 86400000);
+                  if (days <= 60) expiring.push({ inspectorName: insp.name, certName: cert.name, daysUntil: days, expiresAt: cert.expiresAt });
+                }
+              }
+              if (expiring.length === 0) return null;
+              expiring.sort((a, b) => a.daysUntil - b.daysUntil);
+              return (
+                <div className="rounded border border-amber-300 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-700 p-3" data-testid="cert-expiry-summary">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-amber-800 dark:text-amber-300">
+                      <AlertTriangle className="w-4 h-4" />
+                      {expiring.length} certification{expiring.length !== 1 ? "s" : ""} expiring within 60 days
+                    </div>
+                    <Link href="/company/cert-expiry" className="text-xs text-amber-700 dark:text-amber-400 underline underline-offset-2" data-testid="link-cert-tracker">
+                      View all →
+                    </Link>
+                  </div>
+                  <div className="space-y-1">
+                    {expiring.slice(0, 5).map((e, i) => (
+                      <div key={i} className="flex items-center justify-between text-xs text-amber-800 dark:text-amber-300" data-testid={`cert-expiry-item-${i}`}>
+                        <span><strong>{e.inspectorName}</strong> — {e.certName}</span>
+                        <Badge
+                          variant="outline"
+                          className={`text-[10px] ${e.daysUntil <= 0 ? "border-red-500 text-red-600" : e.daysUntil <= 7 ? "border-red-400 text-red-600" : "border-amber-500 text-amber-700 dark:text-amber-400"}`}
+                        >
+                          {e.daysUntil <= 0 ? "EXPIRED" : `${e.daysUntil}d`}
+                        </Badge>
+                      </div>
+                    ))}
+                    {expiring.length > 5 && (
+                      <p className="text-xs text-amber-700 dark:text-amber-400">+ {expiring.length - 5} more</p>
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
             <div className="flex justify-between items-center gap-4 mb-4">
               {teamInspectors.length > 0 && (
                 <div className="relative flex-1">
@@ -1435,7 +1479,7 @@ export default function CompanyTeamPage() {
                                   ? Math.ceil((new Date(cert.expiresAt).getTime() - Date.now()) / 86400000)
                                   : null;
                                 const isExpired = daysUntil !== null && daysUntil <= 0;
-                                const isExpiringSoon = daysUntil !== null && daysUntil > 0 && daysUntil <= 30;
+                                const isExpiringSoon = daysUntil !== null && daysUntil > 0 && daysUntil <= 60;
                                 return (
                                   <Badge
                                     key={idx}

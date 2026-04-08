@@ -2075,8 +2075,8 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getAllInspectorsWithCerts(): Promise<{
-    users: Array<{ id: string; companyId: string; name: string; certifications: CertEntry[] }>;
-    teamInspectors: Array<{ id: string; companyId: string; name: string; certifications: CertEntry[] }>;
+    users: Array<{ id: string; companyId: string; name: string; email: string | null; certifications: CertEntry[] }>;
+    teamInspectors: Array<{ id: string; companyId: string; name: string; email: string | null; certifications: CertEntry[] }>;
   }> {
     const [userRows, teamRows] = await Promise.all([
       db.select({
@@ -2085,11 +2085,15 @@ export class DatabaseStorage implements IStorage {
         firstName: userProfiles.firstName,
         lastName: userProfiles.lastName,
         certifications: userProfiles.certifications,
-      }).from(userProfiles).where(sql`${userProfiles.certifications} IS NOT NULL`),
+        email: users.email,
+      }).from(userProfiles)
+        .leftJoin(users, eq(users.id, userProfiles.userId))
+        .where(sql`${userProfiles.certifications} IS NOT NULL`),
       db.select({
         id: teamInspectors.id,
         companyId: teamInspectors.companyId,
         name: teamInspectors.name,
+        email: teamInspectors.email,
         certifications: teamInspectors.certifications,
       }).from(teamInspectors).where(sql`${teamInspectors.certifications} IS NOT NULL`),
     ]);
@@ -2099,12 +2103,14 @@ export class DatabaseStorage implements IStorage {
         id: r.id!,
         companyId: r.companyId!,
         name: [r.firstName, r.lastName].filter(Boolean).join(" ") || r.id!,
+        email: r.email || null,
         certifications: normalizeCerts(r.certifications),
       })).filter((r) => r.certifications.length > 0),
       teamInspectors: teamRows.map((r) => ({
         id: r.id!,
         companyId: r.companyId!,
         name: r.name || r.id!,
+        email: r.email || null,
         certifications: normalizeCerts(r.certifications),
       })).filter((r) => r.certifications.length > 0),
     };
