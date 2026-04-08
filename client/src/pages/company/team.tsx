@@ -198,6 +198,11 @@ export default function CompanyTeamPage() {
     projects: Array<{ projectId: string; projectName: string; hoursThisMonth: number }>;
   }>>({
     queryKey: ["/api/company/inspector-workload", activeCompany?.id],
+    queryFn: async () => {
+      const res = await fetch("/api/company/inspector-workload", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load workload data");
+      return res.json();
+    },
     enabled: !!activeCompany?.id && isEffectiveCompanyAdmin,
   });
 
