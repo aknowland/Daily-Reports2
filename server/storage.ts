@@ -1,7 +1,7 @@
 import { 
   projects, dailyReports, photos, distributionLogs, appSettings, userProfiles, projectMembers, invites,
   companies, companyMembers, joinRequests, invoices, contracts, clients, contractAttachments, contractOptions, contractOptionInspectors, timesheets, monthlyReportBundles,
-  proposals, proposalOptions, proposalOptionInspectors, iorAgreements, purchaseOrders, contractNotifications, budgetNotifications, projectBudgetNotifications, pendingMemberAssignments, teamInspectors, manualTimeEntries, projectBillingRates, projectBaseHours, projectComments, meetings, dismissedAlerts, companyNotes,
+  proposals, proposalOptions, proposalOptionInspectors, iorAgreements, purchaseOrders, contractNotifications, budgetNotifications, projectBudgetNotifications, certExpiryNotifications, pendingMemberAssignments, teamInspectors, manualTimeEntries, projectBillingRates, projectBaseHours, projectComments, meetings, dismissedAlerts, companyNotes,
   clientPortalUsers, clientPortalProjectAccess,
   type Project, type InsertProject,
   type ProjectBillingRate, type InsertProjectBillingRate,
@@ -28,6 +28,7 @@ import {
   type ContractNotification, type InsertContractNotification,
   type BudgetNotification, type InsertBudgetNotification,
   type ProjectBudgetNotification, type InsertProjectBudgetNotification,
+  type CertExpiryNotification, type InsertCertExpiryNotification, normalizeCerts, type CertEntry,
   type Timesheet, type InsertTimesheet,
   type MonthlyReportBundle, type InsertMonthlyReportBundle,
   type Proposal, type InsertProposal, type ProposalWithDetails,
@@ -2040,6 +2041,73 @@ export class DatabaseStorage implements IStorage {
       .select()
       .from(projects)
       .where(sql`${projects.budgetAmount} IS NOT NULL AND CAST(${projects.budgetAmount} AS NUMERIC) > 0`);
+  }
+
+  // Cert Expiry Notifications
+  async hasCertExpiryNotificationBeenSent(
+    inspectorId: string,
+    inspectorType: string,
+    certName: string,
+    expiryYear: number,
+    expiryMonth: number,
+    windowDays: number
+  ): Promise<boolean> {
+    const existing = await db
+      .select()
+      .from(certExpiryNotifications)
+      .where(
+        and(
+          eq(certExpiryNotifications.inspectorId, inspectorId),
+          eq(certExpiryNotifications.inspectorType, inspectorType),
+          eq(certExpiryNotifications.certName, certName),
+          eq(certExpiryNotifications.expiryYear, expiryYear),
+          eq(certExpiryNotifications.expiryMonth, expiryMonth),
+          eq(certExpiryNotifications.windowDays, windowDays)
+        )
+      )
+      .limit(1);
+    return existing.length > 0;
+  }
+
+  async createCertExpiryNotification(data: InsertCertExpiryNotification): Promise<CertExpiryNotification> {
+    const [notification] = await db.insert(certExpiryNotifications).values(data).returning();
+    return notification;
+  }
+
+  async getAllInspectorsWithCerts(): Promise<{
+    users: Array<{ id: string; companyId: string; name: string; certifications: CertEntry[] }>;
+    teamInspectors: Array<{ id: string; companyId: string; name: string; certifications: CertEntry[] }>;
+  }> {
+    const [userRows, teamRows] = await Promise.all([
+      db.select({
+        id: userProfiles.userId,
+        companyId: userProfiles.companyId,
+        firstName: userProfiles.firstName,
+        lastName: userProfiles.lastName,
+        certifications: userProfiles.certifications,
+      }).from(userProfiles).where(sql`${userProfiles.certifications} IS NOT NULL`),
+      db.select({
+        id: teamInspectors.id,
+        companyId: teamInspectors.companyId,
+        name: teamInspectors.name,
+        certifications: teamInspectors.certifications,
+      }).from(teamInspectors).where(sql`${teamInspectors.certifications} IS NOT NULL`),
+    ]);
+
+    return {
+      users: userRows.map((r) => ({
+        id: r.id!,
+        companyId: r.companyId!,
+        name: [r.firstName, r.lastName].filter(Boolean).join(" ") || r.id!,
+        certifications: normalizeCerts(r.certifications),
+      })).filter((r) => r.certifications.length > 0),
+      teamInspectors: teamRows.map((r) => ({
+        id: r.id!,
+        companyId: r.companyId!,
+        name: r.name || r.id!,
+        certifications: normalizeCerts(r.certifications),
+      })).filter((r) => r.certifications.length > 0),
+    };
   }
 
   // Proposals

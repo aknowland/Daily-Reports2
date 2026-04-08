@@ -63,14 +63,16 @@ import {
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Link } from "wouter";
-import { updateUserProfileSchema, type UserProfile, type UpdateUserProfile } from "@shared/schema";
+import { updateUserProfileSchema, type UserProfile, type UpdateUserProfile, type CertEntry, normalizeCerts } from "@shared/schema";
 
 export default function ProfilePage() {
   const { user } = useAuth();
   const { toast } = useToast();
   const { theme, setTheme } = useTheme();
-  const [certifications, setCertifications] = useState<string[]>([]);
+  const [certifications, setCertifications] = useState<CertEntry[]>([]);
   const [newCertification, setNewCertification] = useState("");
+  const [newCertExpiresAt, setNewCertExpiresAt] = useState("");
+  const [newCertNumber, setNewCertNumber] = useState("");
   const [education, setEducation] = useState<{degree: string; school: string; status?: string}[]>([]);
   const [newEducation, setNewEducation] = useState<{degree: string; school: string; status: string}>({degree: "", school: "", status: ""});
   const [references, setReferences] = useState<{name: string; title: string; organization: string; email?: string; phone?: string}[]>([]);
@@ -118,14 +120,14 @@ export default function ProfilePage() {
         title: profile.title || "",
         licenseNumber: profile.licenseNumber || "",
         licenseState: profile.licenseState || "",
-        certifications: profile.certifications || [],
+        certifications: normalizeCerts(profile.certifications),
         bio: profile.bio || "",
         contractorCompanyName: profile.contractorCompanyName || "",
         contractorAddress: profile.contractorAddress || "",
         contractorPhone: profile.contractorPhone || "",
         contractorEmail: profile.contractorEmail || "",
       });
-      setCertifications(profile.certifications || []);
+      setCertifications(normalizeCerts(profile.certifications));
       setEducation(profile.education || []);
       setReferences(profile.references || []);
       setJobHistory(profile.jobHistory || []);
@@ -221,7 +223,7 @@ export default function ProfilePage() {
     if (resumeData.contractorCompanyName) form.setValue("contractorCompanyName", resumeData.contractorCompanyName);
 
     if (resumeData.certifications?.length > 0) {
-      setCertifications(resumeData.certifications);
+      setCertifications(normalizeCerts(resumeData.certifications));
     }
     if (resumeData.education?.length > 0) {
       setEducation(resumeData.education.map((e: any) => ({
@@ -279,14 +281,21 @@ export default function ProfilePage() {
   };
 
   const addCertification = () => {
-    if (newCertification.trim() && !certifications.includes(newCertification.trim())) {
-      setCertifications([...certifications, newCertification.trim()]);
+    const name = newCertification.trim();
+    if (name && !certifications.some(c => c.name === name)) {
+      setCertifications([...certifications, {
+        name,
+        expiresAt: newCertExpiresAt || null,
+        certNumber: newCertNumber.trim() || undefined,
+      }]);
       setNewCertification("");
+      setNewCertExpiresAt("");
+      setNewCertNumber("");
     }
   };
 
-  const removeCertification = (cert: string) => {
-    setCertifications(certifications.filter(c => c !== cert));
+  const removeCertification = (certName: string) => {
+    setCertifications(certifications.filter(c => c.name !== certName));
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -727,44 +736,78 @@ export default function ProfilePage() {
                 <Separator />
 
                 <div className="space-y-2">
-                  <div className="text-sm font-medium" data-testid="label-certifications">Certifications</div>
-                  <div className="flex gap-2">
+                  <div className="text-sm font-medium" data-testid="label-certifications">Certifications &amp; Licenses</div>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                     <Input
-                      placeholder="Add a certification (e.g., OSHA 30, ICC, ACI)"
+                      placeholder="Certification name (e.g., OSHA 30)"
                       value={newCertification}
                       onChange={(e) => setNewCertification(e.target.value)}
                       onKeyPress={handleKeyPress}
                       data-testid="input-new-certification"
                     />
-                    <Button 
-                      type="button" 
-                      variant="secondary" 
-                      size="icon"
-                      onClick={addCertification}
-                      disabled={!newCertification.trim()}
-                      data-testid="button-add-certification"
-                    >
-                      <Plus className="w-4 h-4" />
-                    </Button>
+                    <Input
+                      placeholder="Cert # (optional)"
+                      value={newCertNumber}
+                      onChange={(e) => setNewCertNumber(e.target.value)}
+                      data-testid="input-new-cert-number"
+                    />
+                    <div className="flex gap-2">
+                      <div className="flex-1">
+                        <Input
+                          type="date"
+                          title="Expiration date (optional)"
+                          value={newCertExpiresAt}
+                          onChange={(e) => setNewCertExpiresAt(e.target.value)}
+                          data-testid="input-new-cert-expiry"
+                        />
+                      </div>
+                      <Button 
+                        type="button" 
+                        variant="secondary" 
+                        size="icon"
+                        onClick={addCertification}
+                        disabled={!newCertification.trim()}
+                        data-testid="button-add-certification"
+                      >
+                        <Plus className="w-4 h-4" />
+                      </Button>
+                    </div>
                   </div>
                   {certifications.length > 0 && (
-                    <div className="flex flex-wrap gap-2 mt-3" data-testid="list-certifications">
-                      {certifications.map((cert, index) => (
-                        <div key={index} className="inline-flex items-center gap-1" data-testid={`certification-item-${index}`}>
-                          <Badge variant="secondary" data-testid={`certification-badge-${index}`}>
-                            {cert}
-                          </Badge>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => removeCertification(cert)}
-                            data-testid={`button-remove-certification-${index}`}
-                          >
-                            <X className="w-4 h-4" />
-                          </Button>
-                        </div>
-                      ))}
+                    <div className="space-y-1 mt-3" data-testid="list-certifications">
+                      {certifications.map((cert, index) => {
+                        const daysUntil = cert.expiresAt
+                          ? Math.ceil((new Date(cert.expiresAt).getTime() - Date.now()) / 86400000)
+                          : null;
+                        const isExpired = daysUntil !== null && daysUntil <= 0;
+                        const isExpiringSoon = daysUntil !== null && daysUntil > 0 && daysUntil <= 30;
+                        return (
+                          <div key={index} className="flex items-center justify-between rounded border px-3 py-2 text-sm" data-testid={`certification-item-${index}`}>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-medium" data-testid={`certification-name-${index}`}>{cert.name}</span>
+                              {cert.certNumber && <span className="text-muted-foreground text-xs">#{cert.certNumber}</span>}
+                              {cert.expiresAt && (
+                                <Badge
+                                  variant={isExpired ? "destructive" : isExpiringSoon ? "outline" : "secondary"}
+                                  className={isExpiringSoon ? "border-amber-500 text-amber-700 dark:text-amber-400" : ""}
+                                  data-testid={`certification-expiry-badge-${index}`}
+                                >
+                                  {isExpired ? "EXPIRED" : isExpiringSoon ? `Exp. soon` : "Exp."} {cert.expiresAt}
+                                </Badge>
+                              )}
+                            </div>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => removeCertification(cert.name)}
+                              data-testid={`button-remove-certification-${index}`}
+                            >
+                              <X className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
                   {certifications.length === 0 && (
@@ -1448,8 +1491,8 @@ export default function ProfilePage() {
                   <div>
                     <p className="font-medium text-muted-foreground mb-1">Certifications ({resumeData.certifications.length})</p>
                     <div className="flex flex-wrap gap-1">
-                      {resumeData.certifications.map((cert: string, i: number) => (
-                        <Badge key={i} variant="secondary">{cert}</Badge>
+                      {normalizeCerts(resumeData.certifications).map((cert, i) => (
+                        <Badge key={i} variant="secondary">{cert.name}</Badge>
                       ))}
                     </div>
                   </div>

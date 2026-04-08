@@ -8,6 +8,23 @@ export * from "./models/auth";
 export * from "./models/chat";
 import { users, type User } from "./models/auth";
 
+// Certification entry type — used by both user_profiles and team_inspectors
+export type CertEntry = {
+  name: string;
+  expiresAt: string | null;  // ISO date string "YYYY-MM-DD" or null
+  certNumber?: string;
+};
+
+// Helper: normalize raw certifications JSON (handles legacy plain-string entries)
+export function normalizeCerts(raw: unknown): CertEntry[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.map((item) => {
+    if (typeof item === "string") return { name: item, expiresAt: null };
+    if (item && typeof item === "object" && "name" in item) return item as CertEntry;
+    return { name: String(item), expiresAt: null };
+  });
+}
+
 // Enums
 export const userRoleEnum = pgEnum("user_role", ["inspector", "admin", "owner", "system_owner"]);
 export const weatherTypeEnum = pgEnum("weather_type", ["clear", "cloudy", "rain", "wind", "heat", "cold"]);
@@ -107,7 +124,7 @@ export const teamInspectors = pgTable("team_inspectors", {
   county: varchar("county"),
   licenseNumber: varchar("license_number"),
   licenseState: varchar("license_state"),
-  certifications: json("certifications").$type<string[]>().default([]),
+  certifications: json("certifications").$type<CertEntry[]>().default([]),
   // Work history - links to projects they've worked on
   projectHistory: json("project_history").$type<{projectId: string; projectName: string; role?: string; startDate?: string; endDate?: string}[]>().default([]),
   // Additional profile info
@@ -143,7 +160,7 @@ export const userProfiles = pgTable("user_profiles", {
   title: varchar("title"),
   licenseNumber: varchar("license_number"),
   licenseState: varchar("license_state"),
-  certifications: json("certifications").$type<string[]>().default([]),
+  certifications: json("certifications").$type<CertEntry[]>().default([]),
   profilePhotoPath: varchar("profile_photo_path"),
   bio: text("bio"),
   education: json("education").$type<{degree: string; school: string; status?: string}[]>().default([]),
@@ -578,6 +595,21 @@ export const projectBudgetNotifications = pgTable("project_budget_notifications"
   unique().on(table.projectId, table.milestonePercent),
 ]);
 
+// Cert expiry notifications — deduplication table to avoid re-sending the same alert
+export const certExpiryNotifications = pgTable("cert_expiry_notifications", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").references(() => companies.id, { onDelete: "cascade" }).notNull(),
+  inspectorId: varchar("inspector_id").notNull(),       // user ID or team inspector ID
+  inspectorType: varchar("inspector_type").notNull(),   // "user" or "team"
+  certName: varchar("cert_name").notNull(),
+  expiryYear: integer("expiry_year").notNull(),
+  expiryMonth: integer("expiry_month").notNull(),
+  windowDays: integer("window_days").notNull(),          // 60, 30, 7, 0
+  sentAt: timestamp("sent_at").defaultNow().notNull(),
+}, (table) => [
+  unique().on(table.inspectorId, table.inspectorType, table.certName, table.expiryYear, table.expiryMonth, table.windowDays),
+]);
+
 // Timesheet status enum
 export const timesheetStatusEnum = pgEnum("timesheet_status", ["draft", "submitted", "approved"]);
 
@@ -904,6 +936,7 @@ export const insertContractOptionInspectorSchema = createInsertSchema(contractOp
 export const insertContractNotificationSchema = createInsertSchema(contractNotifications).omit({ id: true, sentAt: true });
 export const insertBudgetNotificationSchema = createInsertSchema(budgetNotifications).omit({ id: true, sentAt: true });
 export const insertProjectBudgetNotificationSchema = createInsertSchema(projectBudgetNotifications).omit({ id: true, sentAt: true });
+export const insertCertExpiryNotificationSchema = createInsertSchema(certExpiryNotifications).omit({ id: true, sentAt: true });
 export const insertTimesheetSchema = createInsertSchema(timesheets).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertInvoiceSchema = createInsertSchema(invoices).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertMonthlyReportBundleSchema = createInsertSchema(monthlyReportBundles).omit({ id: true, createdAt: true });
@@ -961,6 +994,8 @@ export type BudgetNotification = typeof budgetNotifications.$inferSelect;
 export type InsertBudgetNotification = z.infer<typeof insertBudgetNotificationSchema>;
 export type ProjectBudgetNotification = typeof projectBudgetNotifications.$inferSelect;
 export type InsertProjectBudgetNotification = z.infer<typeof insertProjectBudgetNotificationSchema>;
+export type CertExpiryNotification = typeof certExpiryNotifications.$inferSelect;
+export type InsertCertExpiryNotification = z.infer<typeof insertCertExpiryNotificationSchema>;
 export type Timesheet = typeof timesheets.$inferSelect;
 export type InsertTimesheet = z.infer<typeof insertTimesheetSchema>;
 export type Invoice = typeof invoices.$inferSelect;

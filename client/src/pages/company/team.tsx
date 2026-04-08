@@ -73,7 +73,8 @@ import {
 import { Link } from "wouter";
 import { useState, useMemo, useEffect, useRef } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import type { CompanyMember, User, Project, Invite, JoinRequest, IorAgreement, IorAgreementWithDetails, TeamInspector } from "@shared/schema";
+import type { CompanyMember, User, Project, Invite, JoinRequest, IorAgreement, IorAgreementWithDetails, TeamInspector, CertEntry } from "@shared/schema";
+import { normalizeCerts } from "@shared/schema";
 
 const KNOWLAND_COMPANY_NAME = "Knowland Construction Services";
 
@@ -128,7 +129,7 @@ export default function CompanyTeamPage() {
         licenseState: "CA",
         email: "",
         title: "DSA Certified Inspector",
-        certifications: ["DSA Certified"] as string[],
+        certifications: [{ name: "DSA Certified", expiresAt: null }] as CertEntry[],
         notes: "Recruited from DSA registry.",
         bio: "",
         profilePhotoUrl: "",
@@ -1429,11 +1430,23 @@ export default function CompanyTeamPage() {
                           </div>
                           {inspector.certifications && inspector.certifications.length > 0 && (
                             <div className="flex flex-wrap gap-1 mt-2">
-                              {inspector.certifications.map((cert, idx) => (
-                                <Badge key={idx} variant="outline" className="text-xs no-default-hover-elevate no-default-active-elevate">
-                                  {cert}
-                                </Badge>
-                              ))}
+                              {normalizeCerts(inspector.certifications).map((cert, idx) => {
+                                const daysUntil = cert.expiresAt
+                                  ? Math.ceil((new Date(cert.expiresAt).getTime() - Date.now()) / 86400000)
+                                  : null;
+                                const isExpired = daysUntil !== null && daysUntil <= 0;
+                                const isExpiringSoon = daysUntil !== null && daysUntil > 0 && daysUntil <= 30;
+                                return (
+                                  <Badge
+                                    key={idx}
+                                    variant={isExpired ? "destructive" : "outline"}
+                                    className={`text-xs no-default-hover-elevate no-default-active-elevate ${isExpiringSoon ? "border-amber-500 text-amber-700 dark:text-amber-400" : ""}`}
+                                  >
+                                    {cert.name}
+                                    {cert.expiresAt && ` · ${isExpired ? "EXP" : isExpiringSoon ? "⚠" : ""} ${cert.expiresAt}`}
+                                  </Badge>
+                                );
+                              })}
                             </div>
                           )}
                           {inspector.notes && (
@@ -1695,8 +1708,8 @@ export default function CompanyTeamPage() {
                   <div>
                     <p className="font-medium text-muted-foreground mb-1">Certifications ({resumeData.certifications.length})</p>
                     <div className="flex flex-wrap gap-1">
-                      {resumeData.certifications.map((cert: string, i: number) => (
-                        <Badge key={i} variant="secondary">{cert}</Badge>
+                      {normalizeCerts(resumeData.certifications).map((cert, i) => (
+                        <Badge key={i} variant="secondary">{cert.name}</Badge>
                       ))}
                     </div>
                   </div>
@@ -1996,7 +2009,7 @@ function TeamInspectorDialog({
     county?: string;
     licenseNumber?: string;
     licenseState?: string;
-    certifications?: string[];
+    certifications?: CertEntry[];
     notes?: string;
   }) => void;
   isLoading: boolean;
@@ -2010,9 +2023,12 @@ function TeamInspectorDialog({
     county: "",
     licenseNumber: "",
     licenseState: "",
-    certifications: "",
     notes: "",
   });
+  const [certsList, setCertsList] = useState<CertEntry[]>([]);
+  const [newCertName, setNewCertName] = useState("");
+  const [newCertNumber, setNewCertNumber] = useState("");
+  const [newCertExpiry, setNewCertExpiry] = useState("");
 
   // Reset form when dialog opens or inspector changes
   useEffect(() => {
@@ -2027,9 +2043,9 @@ function TeamInspectorDialog({
           county: inspector.county || "",
           licenseNumber: inspector.licenseNumber || "",
           licenseState: inspector.licenseState || "",
-          certifications: inspector.certifications?.join(", ") || "",
           notes: inspector.notes || "",
         });
+        setCertsList(normalizeCerts(inspector.certifications));
       } else {
         setFormData({
           firstName: "",
@@ -2040,12 +2056,25 @@ function TeamInspectorDialog({
           county: "",
           licenseNumber: "",
           licenseState: "",
-          certifications: "",
           notes: "",
         });
+        setCertsList([]);
       }
+      setNewCertName("");
+      setNewCertNumber("");
+      setNewCertExpiry("");
     }
   }, [open, inspector]);
+
+  const handleAddCert = () => {
+    const name = newCertName.trim();
+    if (name && !certsList.some(c => c.name === name)) {
+      setCertsList([...certsList, { name, expiresAt: newCertExpiry || null, certNumber: newCertNumber.trim() || undefined }]);
+      setNewCertName("");
+      setNewCertNumber("");
+      setNewCertExpiry("");
+    }
+  };
 
   // Pass through onOpenChange - useEffect handles form data now
   const handleOpenChange = (isOpen: boolean) => {
@@ -2054,11 +2083,6 @@ function TeamInspectorDialog({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const certArray = formData.certifications
-      .split(",")
-      .map((c) => c.trim())
-      .filter(Boolean);
-    
     onSave({
       firstName: formData.firstName,
       lastName: formData.lastName,
@@ -2068,7 +2092,7 @@ function TeamInspectorDialog({
       county: formData.county || undefined,
       licenseNumber: formData.licenseNumber || undefined,
       licenseState: formData.licenseState || undefined,
-      certifications: certArray.length > 0 ? certArray : undefined,
+      certifications: certsList.length > 0 ? certsList : undefined,
       notes: formData.notes || undefined,
     });
   };
@@ -2183,17 +2207,50 @@ function TeamInspectorDialog({
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="certifications">Certifications</Label>
-            <Input
-              id="certifications"
-              value={formData.certifications}
-              onChange={(e) => setFormData({ ...formData, certifications: e.target.value })}
-              placeholder="ICC Structural Steel, AWS CWI (comma-separated)"
-              data-testid="input-inspector-certifications"
-            />
-            <p className="text-xs text-muted-foreground">
-              Enter certifications separated by commas
-            </p>
+            <Label>Certifications &amp; Licenses</Label>
+            <div className="grid grid-cols-3 gap-2">
+              <Input
+                placeholder="Name (e.g., DSA Cert)"
+                value={newCertName}
+                onChange={(e) => setNewCertName(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleAddCert(); } }}
+                data-testid="input-inspector-cert-name"
+              />
+              <Input
+                placeholder="Cert # (opt.)"
+                value={newCertNumber}
+                onChange={(e) => setNewCertNumber(e.target.value)}
+                data-testid="input-inspector-cert-number"
+              />
+              <div className="flex gap-1">
+                <Input
+                  type="date"
+                  title="Expiry date"
+                  value={newCertExpiry}
+                  onChange={(e) => setNewCertExpiry(e.target.value)}
+                  data-testid="input-inspector-cert-expiry"
+                />
+                <Button type="button" size="icon" variant="secondary" onClick={handleAddCert} disabled={!newCertName.trim()} data-testid="button-add-inspector-cert">
+                  <Plus className="w-4 h-4" />
+                </Button>
+              </div>
+            </div>
+            {certsList.length > 0 && (
+              <div className="space-y-1 mt-2">
+                {certsList.map((cert, idx) => (
+                  <div key={idx} className="flex items-center justify-between text-sm border rounded px-2 py-1">
+                    <span className="font-medium">{cert.name}</span>
+                    <div className="flex items-center gap-2">
+                      {cert.certNumber && <span className="text-muted-foreground text-xs">#{cert.certNumber}</span>}
+                      {cert.expiresAt && <span className="text-muted-foreground text-xs">{cert.expiresAt}</span>}
+                      <Button type="button" variant="ghost" size="icon" className="h-5 w-5" onClick={() => setCertsList(certsList.filter((_, i) => i !== idx))}>
+                        <X className="w-3 h-3" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="space-y-2">
