@@ -2048,8 +2048,7 @@ export class DatabaseStorage implements IStorage {
     inspectorId: string,
     inspectorType: string,
     certName: string,
-    expiryYear: number,
-    expiryMonth: number,
+    expiresAt: string,
     windowDays: number
   ): Promise<boolean> {
     const existing = await db
@@ -2060,8 +2059,7 @@ export class DatabaseStorage implements IStorage {
           eq(certExpiryNotifications.inspectorId, inspectorId),
           eq(certExpiryNotifications.inspectorType, inspectorType),
           eq(certExpiryNotifications.certName, certName),
-          eq(certExpiryNotifications.expiryYear, expiryYear),
-          eq(certExpiryNotifications.expiryMonth, expiryMonth),
+          eq(certExpiryNotifications.expiresAt, expiresAt),
           eq(certExpiryNotifications.windowDays, windowDays)
         )
       )
