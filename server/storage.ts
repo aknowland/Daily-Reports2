@@ -50,7 +50,7 @@ import { db } from "./db";
 import { eq, desc, asc, and, or, sql, inArray, isNull, gte, lte } from "drizzle-orm";
 
 // Re-export db and schema tables for use in other modules
-export { db, projectComments, projectMembers, users, meetings, companyNotes, clientPortalUsers, clientPortalProjectAccess };
+export { db, projectComments, projectMembers, projects, users, meetings, companyNotes, clientPortalUsers, clientPortalProjectAccess };
 
 // Initialize database sequences (ensures they exist on fresh deployments)
 export async function initDatabaseSequences() {

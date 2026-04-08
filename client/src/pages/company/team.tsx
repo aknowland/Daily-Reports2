@@ -197,7 +197,7 @@ export default function CompanyTeamPage() {
     utilizationPct: number;
     projects: Array<{ projectId: string; projectName: string; hoursThisMonth: number }>;
   }>>({
-    queryKey: ["/api/company/inspector-workload"],
+    queryKey: ["/api/company/inspector-workload", activeCompany?.id],
     enabled: !!activeCompany?.id && isEffectiveCompanyAdmin,
   });
 
