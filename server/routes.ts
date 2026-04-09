@@ -18168,6 +18168,7 @@ Return ONLY a valid JSON object with the fields above. No explanation, no markdo
         z.object({ type: z.literal("all") }),
         z.object({ type: z.literal("project"), projectId: z.string().min(1) }),
         z.object({ type: z.literal("dsa_class"), dsaClass: z.union([z.literal(1), z.literal(2), z.literal(3)]) }),
+        z.object({ type: z.literal("specific_users"), userIds: z.array(z.string()).min(1) }),
       ]);
       const bodyParse = z.object({
         title: z.string().min(1),
@@ -18210,6 +18211,10 @@ Return ONLY a valid JSON object with the fields above. No explanation, no markdo
         });
         const resolved = await Promise.all(recipientPromises);
         recipientIds = resolved.filter((id): id is string => id !== null);
+      } else if (filter.type === "specific_users") {
+        // Only include the explicitly selected user IDs that are inspector members of this company
+        const inspectorUserIdSet = new Set(inspectorMembers.map(m => m.userId));
+        recipientIds = filter.userIds.filter(id => inspectorUserIdSet.has(id));
       }
 
       // Create announcement record

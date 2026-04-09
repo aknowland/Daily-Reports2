@@ -12,6 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useAuth } from "@/hooks/use-auth";
 import {
   Select,
   SelectContent,
@@ -27,6 +28,8 @@ import {
   FolderOpen,
   GraduationCap,
   Calendar,
+  UserCheck,
+  Search,
 } from "lucide-react";
 import type { InspectorAnnouncement, AnnouncementRecipientFilter } from "@shared/schema";
 
@@ -38,14 +41,29 @@ type Project = {
   projectNumber?: string | null;
 };
 
+type CompanyMemberWithUser = {
+  id: string;
+  userId: string;
+  role: string;
+  user?: {
+    id: string;
+    email?: string | null;
+    firstName?: string | null;
+    lastName?: string | null;
+  } | null;
+};
+
 export default function CompanyAnnouncementsPage() {
   const { toast } = useToast();
+  const { activeCompany } = useAuth();
 
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
-  const [filterType, setFilterType] = useState<"all" | "project" | "dsa_class">("all");
+  const [filterType, setFilterType] = useState<"all" | "project" | "dsa_class" | "specific_users">("all");
   const [filterProjectId, setFilterProjectId] = useState("");
   const [filterDsaClass, setFilterDsaClass] = useState<1 | 2 | 3>(1);
+  const [filterSpecificUserIds, setFilterSpecificUserIds] = useState<string[]>([]);
+  const [inspectorSearch, setInspectorSearch] = useState("");
   const [sendEmailOption, setSendEmailOption] = useState(false);
 
   const { data: announcements = [], isLoading } = useQuery<AnnouncementWithSender[]>({
@@ -58,14 +76,35 @@ export default function CompanyAnnouncementsPage() {
     staleTime: 60000,
   });
 
+  const { data: companyMembers = [] } = useQuery<CompanyMemberWithUser[]>({
+    queryKey: ["/api/companies", activeCompany?.id, "members"],
+    enabled: !!activeCompany?.id,
+    staleTime: 60000,
+  });
+
+  const inspectorMembers = companyMembers.filter(m => m.role === "inspector");
+
+  const filteredInspectors = inspectorSearch.trim()
+    ? inspectorMembers.filter(m => {
+        const name = `${m.user?.firstName || ""} ${m.user?.lastName || ""}`.toLowerCase();
+        const email = (m.user?.email || "").toLowerCase();
+        const q = inspectorSearch.toLowerCase();
+        return name.includes(q) || email.includes(q);
+      })
+    : inspectorMembers;
+
   const sendMutation = useMutation({
     mutationFn: async () => {
-      const recipientFilter =
-        filterType === "all"
-          ? { type: "all" as const }
-          : filterType === "project"
-          ? { type: "project" as const, projectId: filterProjectId }
-          : { type: "dsa_class" as const, dsaClass: filterDsaClass };
+      let recipientFilter: AnnouncementRecipientFilter;
+      if (filterType === "all") {
+        recipientFilter = { type: "all" };
+      } else if (filterType === "project") {
+        recipientFilter = { type: "project", projectId: filterProjectId };
+      } else if (filterType === "dsa_class") {
+        recipientFilter = { type: "dsa_class", dsaClass: filterDsaClass };
+      } else {
+        recipientFilter = { type: "specific_users", userIds: filterSpecificUserIds };
+      }
 
       return apiRequest("POST", "/api/announcements", {
         title,
@@ -80,6 +119,8 @@ export default function CompanyAnnouncementsPage() {
       setBody("");
       setFilterType("all");
       setFilterProjectId("");
+      setFilterSpecificUserIds([]);
+      setInspectorSearch("");
       setSendEmailOption(false);
       queryClient.invalidateQueries({ queryKey: ["/api/announcements"] });
     },
@@ -91,14 +132,30 @@ export default function CompanyAnnouncementsPage() {
   const canSend =
     title.trim().length > 0 &&
     body.trim().length > 0 &&
-    (filterType !== "project" || filterProjectId.length > 0);
+    (filterType !== "project" || filterProjectId.length > 0) &&
+    (filterType !== "specific_users" || filterSpecificUserIds.length > 0);
+
+  const getInspectorDisplayName = (m: CompanyMemberWithUser) => {
+    const name = `${m.user?.firstName || ""} ${m.user?.lastName || ""}`.trim();
+    return name || m.user?.email || m.userId;
+  };
 
   const formatFilter = (a: AnnouncementWithSender) => {
     const f = a.recipientFilter as AnnouncementRecipientFilter | null;
     if (!f || f.type === "all") return "All Inspectors";
-    if (f.type === "project") return `Project: ${f.projectId}`;
+    if (f.type === "project") {
+      const proj = projects.find(p => p.id === f.projectId);
+      return `Project: ${proj ? proj.name : f.projectId}`;
+    }
     if (f.type === "dsa_class") return `DSA Class ${f.dsaClass}`;
+    if (f.type === "specific_users") return `${f.userIds.length} specific inspector${f.userIds.length !== 1 ? "s" : ""}`;
     return "Unknown";
+  };
+
+  const toggleSpecificUser = (userId: string) => {
+    setFilterSpecificUserIds(prev =>
+      prev.includes(userId) ? prev.filter(id => id !== userId) : [...prev, userId]
+    );
   };
 
   return (
@@ -151,7 +208,11 @@ export default function CompanyAnnouncementsPage() {
                 <Select
                   value={filterType}
                   onValueChange={(v) => {
-                    if (v === "all" || v === "project" || v === "dsa_class") setFilterType(v);
+                    if (v === "all" || v === "project" || v === "dsa_class" || v === "specific_users") {
+                      setFilterType(v);
+                      setFilterSpecificUserIds([]);
+                      setInspectorSearch("");
+                    }
                   }}
                 >
                   <SelectTrigger data-testid="select-recipient-filter">
@@ -171,6 +232,11 @@ export default function CompanyAnnouncementsPage() {
                     <SelectItem value="dsa_class">
                       <span className="flex items-center gap-2">
                         <GraduationCap className="w-3 h-3" /> DSA Class
+                      </span>
+                    </SelectItem>
+                    <SelectItem value="specific_users">
+                      <span className="flex items-center gap-2">
+                        <UserCheck className="w-3 h-3" /> Specific Inspectors
                       </span>
                     </SelectItem>
                   </SelectContent>
@@ -214,6 +280,76 @@ export default function CompanyAnnouncementsPage() {
                       <SelectItem value="3">Class 3</SelectItem>
                     </SelectContent>
                   </Select>
+                </div>
+              )}
+
+              {filterType === "specific_users" && (
+                <div className="space-y-1.5">
+                  <Label>
+                    Select Inspectors
+                    {filterSpecificUserIds.length > 0 && (
+                      <span className="ml-2 text-xs text-muted-foreground font-normal">
+                        {filterSpecificUserIds.length} selected
+                      </span>
+                    )}
+                  </Label>
+                  <div className="relative mb-1">
+                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                    <Input
+                      placeholder="Search inspectors..."
+                      value={inspectorSearch}
+                      onChange={(e) => setInspectorSearch(e.target.value)}
+                      className="pl-8 h-8 text-sm"
+                      data-testid="input-inspector-search"
+                    />
+                  </div>
+                  <div className="border rounded-none max-h-52 overflow-y-auto">
+                    {filteredInspectors.length === 0 ? (
+                      <p className="text-sm text-muted-foreground text-center py-4">
+                        {inspectorSearch ? "No matching inspectors" : "No inspectors in company"}
+                      </p>
+                    ) : (
+                      <>
+                        {filterSpecificUserIds.length > 0 && (
+                          <div className="p-1.5 border-b">
+                            <button
+                              type="button"
+                              className="text-xs text-muted-foreground hover:text-foreground"
+                              onClick={() => setFilterSpecificUserIds([])}
+                              data-testid="button-clear-inspector-selection"
+                            >
+                              Clear selection
+                            </button>
+                          </div>
+                        )}
+                        {filteredInspectors.map((m) => {
+                          const displayName = getInspectorDisplayName(m);
+                          const email = m.user?.email;
+                          const isSelected = filterSpecificUserIds.includes(m.userId);
+                          return (
+                            <label
+                              key={m.userId}
+                              className={`flex items-start gap-2.5 p-2.5 cursor-pointer hover:bg-muted/50 transition-colors ${isSelected ? "bg-muted/30" : ""}`}
+                              data-testid={`label-inspector-${m.userId}`}
+                            >
+                              <Checkbox
+                                checked={isSelected}
+                                onCheckedChange={() => toggleSpecificUser(m.userId)}
+                                className="mt-0.5"
+                                data-testid={`checkbox-inspector-${m.userId}`}
+                              />
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium leading-tight truncate">{displayName}</p>
+                                {email && (
+                                  <p className="text-xs text-muted-foreground truncate">{email}</p>
+                                )}
+                              </div>
+                            </label>
+                          );
+                        })}
+                      </>
+                    )}
+                  </div>
                 </div>
               )}
 
