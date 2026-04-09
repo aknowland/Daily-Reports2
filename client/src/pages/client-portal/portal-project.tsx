@@ -205,18 +205,26 @@ export default function PortalProjectPage() {
   const { user, isLoading: isAuthLoading } = useAuth();
   const [, setLocation] = useLocation();
 
-  const { data: status, isLoading: isStatusLoading } = useQuery<PortalStatus>({
+  const { data: status, isLoading: isStatusLoading, isError: isStatusError } = useQuery<PortalStatus>({
     queryKey: ["/api/client-portal/status"],
     enabled: !!user,
+    queryFn: async () => {
+      const res = await fetch("/api/client-portal/status", { credentials: "include" });
+      // 403 = inspector/admin user — treat as non-portal user, don't throw
+      if (res.status === 403) return { isClientPortalUser: false, portals: [] } as PortalStatus;
+      if (!res.ok) throw new Error(`${res.status}: ${res.statusText}`);
+      return res.json() as Promise<PortalStatus>;
+    },
   });
 
   useEffect(() => {
-    if (!isAuthLoading && !isStatusLoading && user && status) {
-      if (!status.isClientPortalUser) {
+    if (!isAuthLoading && !isStatusLoading && user) {
+      // Redirect if: status says not portal user, OR status query errored out
+      if ((status && !status.isClientPortalUser) || isStatusError) {
         setLocation("/");
       }
     }
-  }, [isAuthLoading, isStatusLoading, user, status, setLocation]);
+  }, [isAuthLoading, isStatusLoading, user, status, isStatusError, setLocation]);
 
   const { data, isLoading } = useQuery<ProjectDetail>({
     queryKey: ["/api/client-portal/projects", projectId],
