@@ -70,6 +70,9 @@ import {
   FileDown,
   Upload,
   Pencil,
+  BarChart2,
+  ArrowUpDown,
+  ShieldAlert,
 } from "lucide-react";
 import { Link } from "wouter";
 import { useState, useMemo, useEffect, useRef } from "react";
@@ -208,6 +211,66 @@ export default function CompanyTeamPage() {
 
   const [expandedInspectorIds, setExpandedInspectorIds] = useState<Set<string>>(new Set());
   const [workloadSearchQuery, setWorkloadSearchQuery] = useState("");
+
+  // Performance scorecard state
+  const [performanceDays, setPerformanceDays] = useState(90);
+  const [performanceSortKey, setPerformanceSortKey] = useState<"totalReports" | "submissionRate" | "avgDailyHours" | "safetyIncidents" | "distinctProjects">("totalReports");
+  const [performanceSortDir, setPerformanceSortDir] = useState<"asc" | "desc">("desc");
+  const [expandedPerformanceIds, setExpandedPerformanceIds] = useState<Set<string>>(new Set());
+  const [performanceSearchQuery, setPerformanceSearchQuery] = useState("");
+
+  type PerformanceRow = {
+    inspectorId: string;
+    name: string;
+    title: string | null;
+    email: string | null;
+    totalReports: number;
+    totalHours: number;
+    avgDailyHours: number;
+    safetyIncidents: number;
+    safetyNearMisses: number;
+    safetyFlagCount: number;
+    distinctProjects: number;
+    submissionRate: number;
+    reportsByMonth: Array<{ month: string; reportCount: number }>;
+  };
+
+  const { data: performanceData = [], isLoading: isPerformanceLoading } = useQuery<PerformanceRow[]>({
+    queryKey: ["/api/company/inspector-performance", activeCompany?.id, performanceDays],
+    queryFn: async () => {
+      const res = await fetch(`/api/company/inspector-performance?days=${performanceDays}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load performance data");
+      return res.json();
+    },
+    enabled: !!activeCompany?.id && isEffectiveCompanyAdmin,
+  });
+
+  const filteredPerformance = useMemo(() => {
+    let data = [...performanceData];
+    if (performanceSearchQuery.trim()) {
+      const q = performanceSearchQuery.toLowerCase();
+      data = data.filter(i =>
+        i.name.toLowerCase().includes(q) ||
+        (i.title || "").toLowerCase().includes(q) ||
+        (i.email || "").toLowerCase().includes(q)
+      );
+    }
+    data.sort((a, b) => {
+      const aVal = a[performanceSortKey];
+      const bVal = b[performanceSortKey];
+      return performanceSortDir === "desc" ? (bVal as number) - (aVal as number) : (aVal as number) - (bVal as number);
+    });
+    return data;
+  }, [performanceData, performanceSearchQuery, performanceSortKey, performanceSortDir]);
+
+  function togglePerformanceSort(key: typeof performanceSortKey) {
+    if (performanceSortKey === key) {
+      setPerformanceSortDir(d => d === "desc" ? "asc" : "desc");
+    } else {
+      setPerformanceSortKey(key);
+      setPerformanceSortDir("desc");
+    }
+  }
 
   const filteredWorkload = useMemo(() => {
     if (!workloadSearchQuery.trim()) return workloadData;
@@ -945,6 +1008,10 @@ export default function CompanyTeamPage() {
             <TabsTrigger value="workload" className="flex items-center gap-2" data-testid="tab-workload">
               <ClipboardList className="w-4 h-4" />
               Workload
+            </TabsTrigger>
+            <TabsTrigger value="performance" className="flex items-center gap-2" data-testid="tab-performance">
+              <BarChart2 className="w-4 h-4" />
+              Performance
             </TabsTrigger>
           </TabsList>
 
@@ -1696,6 +1763,153 @@ export default function CompanyTeamPage() {
                               ))}
                             </div>
                           )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </TabsContent>
+
+          {/* ─── Performance Tab ──────────────────────────────────────────────────── */}
+          <TabsContent value="performance" className="space-y-4">
+            <div className="flex items-center justify-between gap-4 mb-2 flex-wrap">
+              <div className="flex items-center gap-3">
+                <p className="text-sm text-muted-foreground">Inspector performance scorecard — read-only.</p>
+                <Select value={String(performanceDays)} onValueChange={v => setPerformanceDays(Number(v))}>
+                  <SelectTrigger className="w-36 h-8 text-xs" data-testid="select-performance-days">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="30">Last 30 days</SelectItem>
+                    <SelectItem value="90">Last 90 days</SelectItem>
+                    <SelectItem value="180">Last 180 days</SelectItem>
+                    <SelectItem value="365">Last 365 days</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="relative w-64">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search inspectors..."
+                  value={performanceSearchQuery}
+                  onChange={e => setPerformanceSearchQuery(e.target.value)}
+                  className="pl-9"
+                  data-testid="input-performance-search"
+                />
+              </div>
+            </div>
+
+            {isPerformanceLoading ? (
+              <div className="space-y-2">
+                {[1,2,3].map(i => <Skeleton key={i} className="h-14 w-full" />)}
+              </div>
+            ) : filteredPerformance.length === 0 ? (
+              <div className="text-center py-12 text-muted-foreground text-sm" data-testid="performance-empty">
+                No inspectors found.
+              </div>
+            ) : (
+              <div className="border rounded overflow-hidden">
+                {/* Header row */}
+                <div className="grid grid-cols-[2fr_1fr_1fr_1fr_1fr_1fr] gap-2 px-4 py-2 bg-muted/50 border-b text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  <span>Inspector</span>
+                  <button type="button" className="flex items-center gap-1 hover:text-foreground transition-colors text-left" onClick={() => togglePerformanceSort("totalReports")} data-testid="sort-total-reports">
+                    Reports <ArrowUpDown className="w-3 h-3" />
+                  </button>
+                  <button type="button" className="flex items-center gap-1 hover:text-foreground transition-colors text-left" onClick={() => togglePerformanceSort("avgDailyHours")} data-testid="sort-avg-hours">
+                    Avg Hrs/Day <ArrowUpDown className="w-3 h-3" />
+                  </button>
+                  <button type="button" className="flex items-center gap-1 hover:text-foreground transition-colors text-left" onClick={() => togglePerformanceSort("safetyIncidents")} data-testid="sort-safety">
+                    Safety <ArrowUpDown className="w-3 h-3" />
+                  </button>
+                  <button type="button" className="flex items-center gap-1 hover:text-foreground transition-colors text-left" onClick={() => togglePerformanceSort("distinctProjects")} data-testid="sort-projects">
+                    Projects <ArrowUpDown className="w-3 h-3" />
+                  </button>
+                  <button type="button" className="flex items-center gap-1 hover:text-foreground transition-colors text-left" onClick={() => togglePerformanceSort("submissionRate")} data-testid="sort-submission-rate">
+                    Submit% <ArrowUpDown className="w-3 h-3" />
+                  </button>
+                </div>
+                {filteredPerformance.map(inspector => {
+                  const isExpanded = expandedPerformanceIds.has(inspector.inspectorId);
+                  const maxMonthly = Math.max(1, ...inspector.reportsByMonth.map(m => m.reportCount));
+                  const safetyTotal = inspector.safetyIncidents + inspector.safetyNearMisses;
+                  const submissionColor = inspector.submissionRate >= 80 ? "text-green-600 dark:text-green-400" : inspector.submissionRate >= 50 ? "text-amber-600 dark:text-amber-400" : "text-red-600 dark:text-red-400";
+                  return (
+                    <div key={inspector.inspectorId} data-testid={`performance-row-${inspector.inspectorId}`}>
+                      <button
+                        type="button"
+                        className="w-full grid grid-cols-[2fr_1fr_1fr_1fr_1fr_1fr] gap-2 px-4 py-3 text-left hover:bg-muted/30 transition-colors border-b last:border-b-0 items-center"
+                        onClick={() => {
+                          const next = new Set(expandedPerformanceIds);
+                          if (next.has(inspector.inspectorId)) next.delete(inspector.inspectorId);
+                          else next.add(inspector.inspectorId);
+                          setExpandedPerformanceIds(next);
+                        }}
+                        data-testid={`btn-performance-expand-${inspector.inspectorId}`}
+                      >
+                        <div className="flex items-center gap-2">
+                          {isExpanded ? <ChevronDown className="w-3 h-3 text-muted-foreground flex-shrink-0" /> : <ChevronRight className="w-3 h-3 text-muted-foreground flex-shrink-0" />}
+                          <div className="min-w-0">
+                            <p className="font-medium text-sm truncate" data-testid={`text-performance-name-${inspector.inspectorId}`}>{inspector.name}</p>
+                            {inspector.title && <p className="text-xs text-muted-foreground truncate">{inspector.title}</p>}
+                          </div>
+                        </div>
+                        <span className="text-sm font-medium" data-testid={`text-performance-reports-${inspector.inspectorId}`}>{inspector.totalReports}</span>
+                        <span className="text-sm" data-testid={`text-performance-avghours-${inspector.inspectorId}`}>{inspector.avgDailyHours.toFixed(1)} hrs</span>
+                        <div className="flex items-center gap-1" data-testid={`text-performance-safety-${inspector.inspectorId}`}>
+                          {safetyTotal > 0 && <ShieldAlert className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />}
+                          <span className={`text-sm ${safetyTotal > 0 ? "text-amber-600 dark:text-amber-400 font-medium" : "text-muted-foreground"}`}>
+                            {safetyTotal > 0 ? `${inspector.safetyIncidents}I / ${inspector.safetyNearMisses}NM` : "—"}
+                          </span>
+                        </div>
+                        <span className="text-sm" data-testid={`text-performance-projects-${inspector.inspectorId}`}>{inspector.distinctProjects}</span>
+                        <span className={`text-sm font-medium ${submissionColor}`} data-testid={`text-performance-submission-${inspector.inspectorId}`}>
+                          {inspector.submissionRate.toFixed(0)}%
+                        </span>
+                      </button>
+                      {isExpanded && (
+                        <div className="px-4 pb-4 pt-2 bg-muted/20 border-b space-y-4">
+                          {/* Monthly trend */}
+                          <div>
+                            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-3">Monthly Report Trend (Last 6 Months)</p>
+                            {inspector.reportsByMonth.length === 0 ? (
+                              <p className="text-xs text-muted-foreground">No reports in this period.</p>
+                            ) : (
+                              <div className="space-y-1.5">
+                                {inspector.reportsByMonth.map(m => (
+                                  <div key={m.month} className="flex items-center gap-3" data-testid={`text-performance-month-${inspector.inspectorId}-${m.month}`}>
+                                    <span className="text-xs text-muted-foreground w-16 flex-shrink-0">{m.month}</span>
+                                    <div className="flex-1 bg-muted rounded-full h-2 overflow-hidden">
+                                      <div
+                                        className="h-2 bg-blue-500 rounded-full transition-all"
+                                        style={{ width: `${Math.round((m.reportCount / maxMonthly) * 100)}%` }}
+                                      />
+                                    </div>
+                                    <span className="text-xs font-medium w-6 text-right">{m.reportCount}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                          {/* Safety breakdown */}
+                          <div>
+                            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Safety Breakdown</p>
+                            <div className="grid grid-cols-3 gap-4">
+                              <div className="text-center" data-testid={`text-performance-safety-incidents-${inspector.inspectorId}`}>
+                                <p className="text-lg font-bold text-red-600 dark:text-red-400">{inspector.safetyIncidents}</p>
+                                <p className="text-xs text-muted-foreground">Incidents</p>
+                              </div>
+                              <div className="text-center" data-testid={`text-performance-safety-nearmisses-${inspector.inspectorId}`}>
+                                <p className="text-lg font-bold text-amber-600 dark:text-amber-400">{inspector.safetyNearMisses}</p>
+                                <p className="text-xs text-muted-foreground">Near Misses</p>
+                              </div>
+                              <div className="text-center" data-testid={`text-performance-safety-flags-${inspector.inspectorId}`}>
+                                <p className="text-lg font-bold text-orange-600 dark:text-orange-400">{inspector.safetyFlagCount}</p>
+                                <p className="text-xs text-muted-foreground">Flagged Reports</p>
+                              </div>
+                            </div>
+                          </div>
                         </div>
                       )}
                     </div>

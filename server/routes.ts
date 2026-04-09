@@ -1,7 +1,7 @@
 import type { Express, RequestHandler } from "express";
 import { createServer, type Server } from "http";
 import { storage, db, projectComments, projectMembers, users, companyNotes, clientPortalUsers, projects } from "./storage";
-import { sql, eq, and, desc, inArray } from "drizzle-orm";
+import { sql, eq, and, desc, inArray, count, sum, countDistinct } from "drizzle-orm";
 import { setupAuth, isAuthenticated, registerAuthRoutes } from "./replit_integrations/auth";
 import { insertProjectSchema, insertDailyReportSchema, updateUserProfileSchema, WorkActivityRow, VisitorRow, EquipmentRow, MaterialRow, insertContractSchema, insertClientSchema, InsertInspectorCandidate, companyMembers, userProfiles, dailyReports as dailyReportsTable, normalizeCerts, manualTimeEntries } from "@shared/schema";
 import { ObjectStorageService, registerObjectStorageRoutes } from "./replit_integrations/object_storage";
@@ -17387,6 +17387,163 @@ Transcript: "${transcript}"`;
     }
   });
 
+  // GET /api/company/inspector-performance — returns performance scorecard for all company inspectors
+  app.get("/api/company/inspector-performance", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      const companyId = profile?.activeCompanyId;
+      if (!companyId) return res.status(403).json({ message: "No active company" });
+      if (!(await isEffectiveCompanyAdmin(userId, companyId, profile))) {
+        return res.status(403).json({ message: "Company admin access required" });
+      }
+
+      const days = Math.min(Math.max(parseInt(req.query.days as string) || 90, 1), 730);
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() - days);
+      cutoff.setHours(0, 0, 0, 0);
+      const cutoffStr = cutoff.toISOString().slice(0, 10);
+
+      // Get all company inspectors (leftJoin so inspectors without profile row are included)
+      const memberRows = await db
+        .select({
+          userId: companyMembers.userId,
+          role: companyMembers.role,
+          firstName: userProfiles.firstName,
+          lastName: userProfiles.lastName,
+          title: userProfiles.title,
+          email: users.email,
+        })
+        .from(companyMembers)
+        .leftJoin(userProfiles, eq(userProfiles.userId, companyMembers.userId))
+        .innerJoin(users, eq(users.id, companyMembers.userId))
+        .where(
+          and(
+            eq(companyMembers.companyId, companyId),
+            eq(companyMembers.role, "inspector")
+          )
+        );
+
+      if (memberRows.length === 0) return res.json([]);
+
+      // Get company project IDs for scoping
+      const companyProjects = await storage.getProjectsByCompany(companyId);
+      const companyProjectIds = companyProjects.map(p => p.id);
+      const inspectorIds = memberRows.map(m => m.userId);
+
+      // Aggregate stats per inspector from daily_reports (single grouped query via drizzle)
+      const statsRows = companyProjectIds.length > 0 ? await db
+        .select({
+          inspectorId: dailyReportsTable.inspectorId,
+          totalReports: count(),
+          totalHours: sql<string>`COALESCE(SUM(CAST(${dailyReportsTable.regularHours} AS NUMERIC) + CAST(COALESCE(${dailyReportsTable.otHours}, '0') AS NUMERIC)), 0)`,
+          safetyIncidents: sql<number>`COALESCE(SUM(${dailyReportsTable.safetyIncidents}), 0)::int`,
+          safetyNearMisses: sql<number>`COALESCE(SUM(${dailyReportsTable.safetyNearMisses}), 0)::int`,
+          safetyFlagCount: sql<number>`COUNT(*) FILTER (WHERE ${dailyReportsTable.safetyFlag} = true)`,
+          distinctProjects: countDistinct(dailyReportsTable.projectId),
+        })
+        .from(dailyReportsTable)
+        .where(
+          and(
+            inArray(dailyReportsTable.inspectorId, inspectorIds),
+            inArray(dailyReportsTable.projectId, companyProjectIds),
+            sql`${dailyReportsTable.date} >= ${cutoffStr}`
+          )
+        )
+        .groupBy(dailyReportsTable.inspectorId) : [];
+
+      // Monthly breakdown: last 6 months, reports per inspector per month
+      const sixMonthsAgo = new Date();
+      sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 5);
+      sixMonthsAgo.setDate(1);
+      sixMonthsAgo.setHours(0, 0, 0, 0);
+      const sixMonthsAgoStr = sixMonthsAgo.toISOString().slice(0, 10);
+
+      const monthlyRows = companyProjectIds.length > 0 ? await db
+        .select({
+          inspectorId: dailyReportsTable.inspectorId,
+          month: sql<string>`TO_CHAR(${dailyReportsTable.date}::date, 'YYYY-MM')`,
+          reportCount: count(),
+        })
+        .from(dailyReportsTable)
+        .where(
+          and(
+            inArray(dailyReportsTable.inspectorId, inspectorIds),
+            inArray(dailyReportsTable.projectId, companyProjectIds),
+            sql`${dailyReportsTable.date} >= ${sixMonthsAgoStr}`
+          )
+        )
+        .groupBy(dailyReportsTable.inspectorId, sql`TO_CHAR(${dailyReportsTable.date}::date, 'YYYY-MM')`)
+        .orderBy(sql`TO_CHAR(${dailyReportsTable.date}::date, 'YYYY-MM')`) : [];
+
+      // Build stats map
+      const statsMap = new Map<string, any>();
+      for (const row of statsRows) {
+        statsMap.set(row.inspectorId, {
+          totalReports: Number(row.totalReports),
+          totalHours: parseFloat(row.totalHours as string),
+          safetyIncidents: Number(row.safetyIncidents),
+          safetyNearMisses: Number(row.safetyNearMisses),
+          safetyFlagCount: Number(row.safetyFlagCount),
+          distinctProjects: Number(row.distinctProjects),
+        });
+      }
+
+      // Build monthly map: inspectorId -> [{month, reportCount}]
+      const monthlyMap = new Map<string, Array<{month: string; reportCount: number}>>();
+      for (const row of monthlyRows) {
+        const arr = monthlyMap.get(row.inspectorId) ?? [];
+        arr.push({ month: row.month, reportCount: Number(row.reportCount) });
+        monthlyMap.set(row.inspectorId, arr);
+      }
+
+      // Compute expected working days (Mon-Fri) in the range
+      let expectedWorkdays = 0;
+      const d = new Date(cutoff);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      while (d <= today) {
+        const dow = d.getDay();
+        if (dow !== 0 && dow !== 6) expectedWorkdays++;
+        d.setDate(d.getDate() + 1);
+      }
+
+      const result = memberRows.map(member => {
+        const name = [member.firstName, member.lastName].filter(Boolean).join(" ") || member.email || member.userId;
+        const stats = statsMap.get(member.userId) ?? {
+          totalReports: 0, totalHours: 0, safetyIncidents: 0,
+          safetyNearMisses: 0, safetyFlagCount: 0, distinctProjects: 0,
+        };
+        const avgDailyHours = stats.totalReports > 0
+          ? Math.round((stats.totalHours / stats.totalReports) * 100) / 100
+          : 0;
+        const submissionRate = expectedWorkdays > 0
+          ? Math.min(Math.round((stats.totalReports / expectedWorkdays) * 1000) / 10, 100)
+          : 0;
+        return {
+          inspectorId: member.userId,
+          name,
+          title: member.title || null,
+          email: member.email || null,
+          totalReports: stats.totalReports,
+          totalHours: Math.round(stats.totalHours * 100) / 100,
+          avgDailyHours,
+          safetyIncidents: stats.safetyIncidents,
+          safetyNearMisses: stats.safetyNearMisses,
+          safetyFlagCount: stats.safetyFlagCount,
+          distinctProjects: stats.distinctProjects,
+          submissionRate,
+          reportsByMonth: monthlyMap.get(member.userId) ?? [],
+        };
+      });
+
+      res.json(result.sort((a, b) => b.totalReports - a.totalReports));
+    } catch (error: any) {
+      console.error("Error fetching inspector performance:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   // GET /api/cert-expiry  — returns all inspectors with cert expiry info for this company
   app.get("/api/cert-expiry", isAuthenticated, async (req: any, res) => {
     try {
@@ -17422,6 +17579,116 @@ Transcript: "${transcript}"`;
       res.json(entries);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ─── Outlook Email Import Routes ───────────────────────────────────────────
+
+  // Check if Outlook is connected
+  app.get("/api/outlook/status", isAuthenticated, async (req: any, res) => {
+    try {
+      const { checkOutlookConnection } = await import("./outlook-client");
+      const connected = await checkOutlookConnection();
+      res.json({ connected });
+    } catch (error: any) {
+      res.json({ connected: false });
+    }
+  });
+
+  // List recent emails from Outlook inbox
+  app.get("/api/outlook/emails", isAuthenticated, async (req: any, res) => {
+    try {
+      const { getRecentEmails } = await import("./outlook-client");
+      const count = Math.min(parseInt(String(req.query.count || "20")), 50);
+      const emails = await getRecentEmails(count);
+      res.json(emails);
+    } catch (error: any) {
+      if (error.message === "OUTLOOK_NOT_CONNECTED") {
+        return res.status(401).json({ message: "Outlook not connected", code: "OUTLOOK_NOT_CONNECTED" });
+      }
+      console.error("Error fetching Outlook emails:", error);
+      res.status(500).json({ message: "Failed to fetch emails" });
+    }
+  });
+
+  // Get full email detail by ID
+  app.get("/api/outlook/emails/:emailId", isAuthenticated, async (req: any, res) => {
+    try {
+      const { getEmailDetail } = await import("./outlook-client");
+      const email = await getEmailDetail(req.params.emailId);
+      res.json(email);
+    } catch (error: any) {
+      if (error.message === "OUTLOOK_NOT_CONNECTED") {
+        return res.status(401).json({ message: "Outlook not connected", code: "OUTLOOK_NOT_CONNECTED" });
+      }
+      console.error("Error fetching email detail:", error);
+      res.status(500).json({ message: "Failed to fetch email" });
+    }
+  });
+
+  // Extract contract data from email text using AI
+  app.post("/api/outlook/extract-contract", isAuthenticated, async (req: any, res) => {
+    try {
+      const { emailText, subject, sender } = req.body;
+      if (!emailText) {
+        return res.status(400).json({ message: "emailText is required" });
+      }
+
+      const systemPrompt = `You are an expert at extracting contract information from emails. 
+Extract all relevant contract fields from the provided email text and return structured JSON.
+If a field is not clearly mentioned, return null for that field.
+Do not guess or invent data — only extract what is explicitly mentioned.`;
+
+      const userPrompt = `Extract contract information from this email and return a JSON object with these fields:
+- contractNumber: string | null (contract or bid number, RFP number, etc.)
+- name: string | null (project or contract name/title)
+- description: string | null (brief description of the scope)
+- clientName: string | null (client, agency, or organization name — this is not necessarily who sent the email)
+- contractType: "lump_sum" | "time_and_materials" | "unit_price" | "cost_plus" | "design_build" | "hourly_rate" | "other" | null
+- status: "bid_release" | "bid_received" | "under_review" | "awarded" | "not_awarded" | "cancelled" | "in_execution" | "substantial_completion" | "final_closeout" | null
+- originalValue: string | null (budget or contract value as a number string, no currency symbols)
+- bidDueDate: string | null (ISO date YYYY-MM-DD format)
+- bidReleaseDate: string | null (ISO date YYYY-MM-DD format)
+- awardDate: string | null (ISO date YYYY-MM-DD format)
+- startDate: string | null (ISO date YYYY-MM-DD format)
+- substantialCompletionDate: string | null (ISO date YYYY-MM-DD format)
+- finalCloseoutDate: string | null (ISO date YYYY-MM-DD format)
+- notes: string | null (any other relevant notes or details)
+- agency: string | null (government agency or issuing organization if applicable)
+- serviceType: string | null (type of service e.g. "DSA Inspection", "Special Inspection", etc.)
+- questionDeadline: string | null (ISO date YYYY-MM-DD format, deadline for questions/RFIs)
+
+Email Subject: ${subject || ""}
+From: ${sender || ""}
+
+Email Body:
+${emailText.substring(0, 8000)}
+
+Return ONLY a valid JSON object with the fields above. No explanation, no markdown, just JSON.`;
+
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt },
+        ],
+        temperature: 0.1,
+        max_tokens: 1000,
+        response_format: { type: "json_object" },
+      });
+
+      const content = completion.choices[0]?.message?.content || "{}";
+      let extracted: Record<string, any> = {};
+      try {
+        extracted = JSON.parse(content);
+      } catch {
+        extracted = {};
+      }
+
+      res.json({ extracted });
+    } catch (error: any) {
+      console.error("Error extracting contract from email:", error);
+      res.status(500).json({ message: "Failed to extract contract data" });
     }
   });
 
