@@ -16,10 +16,11 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
-import { LogOut, User, Settings, HardHat, Menu, LayoutDashboard, FolderOpen, Users, UserPlus, Building2, FilePlus, Shield, FileText, Receipt, Briefcase, MessageSquare, CalendarCheck, Key, Search, ShieldCheck } from "lucide-react";
+import { LogOut, User, Settings, HardHat, Menu, LayoutDashboard, FolderOpen, Users, UserPlus, Building2, FilePlus, Shield, FileText, Receipt, Briefcase, MessageSquare, CalendarCheck, Key, Search, ShieldCheck, Megaphone } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { ProjectSwitcher } from "./project-switcher";
 import { ThemeToggle } from "./theme-toggle";
 import { ModeToggle } from "./mode-toggle";
@@ -39,6 +40,13 @@ export function Header({ title = "Field Daily Reports" }: HeaderProps) {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [sysAdminOpen, setSysAdminOpen] = useState(false);
   const { isAdminMode } = useAdminMode();
+
+  const { data: unreadData } = useQuery<{ count: number }>({
+    queryKey: ["/api/announcements/unread-count"],
+    staleTime: 60000,
+    enabled: !!user,
+    refetchInterval: 5 * 60 * 1000,
+  });
   
   const showSystemAdminFeatures = isEffectiveSystemAdmin;
 
@@ -55,9 +63,12 @@ export function Header({ title = "Field Daily Reports" }: HeaderProps) {
     return user?.email || "User";
   };
 
+  const unreadCount = unreadData?.count ?? 0;
+
   const inspectorNavItems = [
     { href: "/", label: "Dashboard", icon: LayoutDashboard },
     { href: "/reports/new", label: "New Report", icon: FilePlus },
+    { href: "/announcements", label: "Announcements", icon: Megaphone, badge: unreadCount > 0 ? unreadCount : undefined },
     { href: "/profile", label: "My Profile", icon: User },
     { href: "/companies", label: "My Companies", icon: Building2 },
     { href: "/my-projects", label: "My Projects", icon: FolderOpen },
@@ -71,6 +82,7 @@ export function Header({ title = "Field Daily Reports" }: HeaderProps) {
     { href: "/company/contracts", label: "Contracts", icon: FileText },
     { href: "/company/billing-management", label: "Billing", icon: Receipt },
     { href: "/company/meetings", label: "Meetings", icon: CalendarCheck },
+    { href: "/company/announcements", label: "Announcements", icon: Megaphone },
     { href: "/company/recruiting", label: "Recruiting", icon: Search },
     { href: "/company/cert-expiry", label: "Cert Tracker", icon: ShieldCheck },
     { href: "/company/chat", label: "AI Assistant", icon: MessageSquare },
@@ -110,7 +122,12 @@ export function Header({ title = "Field Daily Reports" }: HeaderProps) {
               data-testid={`nav-${item.label.toLowerCase().replace(/\s+/g, '-')}`}
             >
               <Icon className="w-5 h-5" />
-              <span className="font-medium">{item.label}</span>
+              <span className="font-medium flex-1">{item.label}</span>
+              {"badge" in item && item.badge != null && (
+                <span className="ml-auto bg-amber-500 text-[hsl(220,55%,10%)] text-xs font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">
+                  {item.badge > 99 ? "99+" : item.badge}
+                </span>
+              )}
             </div>
           </Link>
         );

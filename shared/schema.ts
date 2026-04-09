@@ -1500,3 +1500,39 @@ export const insertInspectorDocumentSchema = createInsertSchema(inspectorDocumen
 export type InspectorDocument = typeof inspectorDocuments.$inferSelect;
 export type InsertInspectorDocument = z.infer<typeof insertInspectorDocumentSchema>;
 
+
+// ─── Inspector Broadcast Announcements ──────────────────────────────────────
+
+export type AnnouncementRecipientFilter =
+  | { type: "all" }
+  | { type: "project"; projectId: string; projectName?: string }
+  | { type: "dsa_class"; dsaClass: 1 | 2 | 3 };
+
+export const inspectorAnnouncements = pgTable("inspector_announcements", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
+  sentById: varchar("sent_by_id").notNull(),
+  title: text("title").notNull(),
+  body: text("body").notNull(),
+  recipientFilter: json("recipient_filter").$type<AnnouncementRecipientFilter>().default({ type: "all" }),
+  recipientUserIds: json("recipient_user_ids").$type<string[]>().default([]),
+  recipientCount: integer("recipient_count").default(0),
+  emailSent: boolean("email_sent").default(false),
+  sentAt: timestamp("sent_at").defaultNow(),
+});
+
+export const announcementReads = pgTable("announcement_reads", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  announcementId: varchar("announcement_id").notNull().references(() => inspectorAnnouncements.id, { onDelete: "cascade" }),
+  userId: varchar("user_id").notNull(),
+  readAt: timestamp("read_at").defaultNow(),
+}, (table) => [
+  unique().on(table.announcementId, table.userId),
+]);
+
+export const insertAnnouncementSchema = createInsertSchema(inspectorAnnouncements).omit({
+  id: true,
+  sentAt: true,
+});
+export type InspectorAnnouncement = typeof inspectorAnnouncements.$inferSelect;
+export type InsertAnnouncement = z.infer<typeof insertAnnouncementSchema>;
