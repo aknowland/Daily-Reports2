@@ -17419,46 +17419,81 @@ Transcript: "${transcript}"`;
       }
 
       const idsParam = req.query.ids as string || "";
-      const ids = idsParam.split(",").map(s => s.trim()).filter(Boolean).slice(0, 3);
-      if (ids.length < 1) return res.status(400).json({ message: "At least one inspector ID required" });
+      const rawIds = idsParam.split(",").map(s => s.trim()).filter(Boolean).slice(0, 3);
+      if (rawIds.length < 1) return res.status(400).json({ message: "At least one inspector ID required" });
 
-      // Verify all requested inspectors belong to this company (strict IDOR protection)
+      // Separate team-inspector IDs (prefixed "ti:") from company-member user IDs
+      const tiIds = rawIds.filter(id => id.startsWith("ti:")).map(id => id.slice(3));
+      const memberIds = rawIds.filter(id => !id.startsWith("ti:"));
+
+      // Validate member IDs belong to this company and are inspector-role
       const members = await storage.getCompanyMembers(companyId);
       const memberMap = new Map(members.map(m => [m.userId, m]));
-      const unknownIds = ids.filter(id => !memberMap.has(id));
-      if (unknownIds.length > 0) {
-        return res.status(403).json({ message: "One or more inspectors do not belong to this company" });
+      for (const mid of memberIds) {
+        const m = memberMap.get(mid);
+        if (!m) return res.status(403).json({ message: `Inspector ${mid} does not belong to this company` });
+        if (m.role !== "inspector") return res.status(400).json({ message: `User ${mid} is not an inspector` });
       }
 
-      // Get company projects — filter to "active" (no final closeout date, or closeout in the future)
+      // Validate team inspector IDs belong to this company
+      for (const tid of tiIds) {
+        const ti = await storage.getTeamInspector(tid);
+        if (!ti || ti.companyId !== companyId) {
+          return res.status(403).json({ message: `Team inspector ${tid} does not belong to this company` });
+        }
+      }
+
+      // Get company projects
       const companyProjects = await storage.getProjectsByCompany(companyId);
       const activeCompanyProjects = companyProjects.filter(p =>
         !p.finalCloseoutDate || new Date(p.finalCloseoutDate) > new Date()
       );
-      const companyProjectIds = activeCompanyProjects.map(p => p.id);
-      // Use all project IDs (not just active) for hours aggregation so past months are included
-      const allCompanyProjectIds = companyProjects.map(p => p.id);
+      const activeProjectIds = activeCompanyProjects.map(p => p.id);
+      const allProjectIds = companyProjects.map(p => p.id);
 
       // Current month boundaries
       const now = new Date();
       const monthStart = new Date(Date.UTC(now.getFullYear(), now.getMonth(), 1));
       const monthEnd = new Date(Date.UTC(now.getFullYear(), now.getMonth() + 1, 1));
 
-      const results = await Promise.all(ids.map(async (inspectorId) => {
-        // Get profile
-        const inspectorProfile = await storage.getUserProfile(inspectorId);
-        const member = memberMap.get(inspectorId);
+      const results = await Promise.all(rawIds.map(async (rawId) => {
+        const isTeamInspector = rawId.startsWith("ti:");
+        const entityId = isTeamInspector ? rawId.slice(3) : rawId;
 
-        // Name resolution (fully typed — member is guaranteed in map)
+        if (isTeamInspector) {
+          // Team Inspector path — no project/hours data (not a system user)
+          const ti = await storage.getTeamInspector(entityId);
+          if (!ti) return null;
+          return {
+            id: rawId,
+            inspectorId: rawId,
+            name: `${ti.firstName} ${ti.lastName}`.trim(),
+            title: ti.title || null,
+            licenseNumber: ti.licenseNumber || null,
+            licenseState: ti.licenseState || null,
+            certifications: ti.certifications || [],
+            availabilityDate: null,
+            activeProjectCount: null as number | null,
+            totalHoursThisMonth: null as number | null,
+            regularRate: null as string | null,
+            overtimeRate: null as string | null,
+            premiumRate: null as string | null,
+            isTeamInspector: true,
+            role: "inspector" as string | null,
+          };
+        }
+
+        // Company member path
+        const inspectorProfile = await storage.getUserProfile(entityId);
+        const member = memberMap.get(entityId);
         const firstName = inspectorProfile?.firstName || member?.user?.firstName || null;
         const lastName = inspectorProfile?.lastName || member?.user?.lastName || null;
         const email = member?.user?.email ?? null;
-        const name = [firstName, lastName].filter(Boolean).join(" ") || email || inspectorId;
+        const name = [firstName, lastName].filter(Boolean).join(" ") || email || entityId;
 
-        // Active project count — only counts assignments on active projects
         let activeProjectCount = 0;
         let projectAssignments: Array<{ projectId: string; regularRate: string | null; overtimeRate: string | null; premiumRate: string | null }> = [];
-        if (companyProjectIds.length > 0) {
+        if (activeProjectIds.length > 0) {
           const pmRows = await db
             .select({
               projectId: projectMembers.projectId,
@@ -17467,58 +17502,32 @@ Transcript: "${transcript}"`;
               premiumRate: projectMembers.premiumRate,
             })
             .from(projectMembers)
-            .where(
-              and(
-                eq(projectMembers.userId, inspectorId),
-                inArray(projectMembers.projectId, companyProjectIds)
-              )
-            );
+            .where(and(eq(projectMembers.userId, entityId), inArray(projectMembers.projectId, activeProjectIds)));
           activeProjectCount = pmRows.length;
           projectAssignments = pmRows;
         }
 
-        // Billing rates — use first non-null value across project assignments
         const regularRate = projectAssignments.find(p => p.regularRate)?.regularRate || null;
         const overtimeRate = projectAssignments.find(p => p.overtimeRate)?.overtimeRate || null;
         const premiumRate = projectAssignments.find(p => p.premiumRate)?.premiumRate || null;
 
-        // This-month hours (DR + MTE)
         let totalHoursThisMonth = 0;
-        if (allCompanyProjectIds.length > 0) {
+        if (allProjectIds.length > 0) {
           const [drRows, mteRows] = await Promise.all([
-            db.select({
-              regularHours: dailyReportsTable.regularHours,
-              otHours: dailyReportsTable.otHours,
-            }).from(dailyReportsTable).where(
-              and(
-                eq(dailyReportsTable.inspectorId, inspectorId),
-                sql`${dailyReportsTable.date} >= ${monthStart}`,
-                sql`${dailyReportsTable.date} < ${monthEnd}`,
-                inArray(dailyReportsTable.projectId, allCompanyProjectIds)
-              )
-            ),
-            db.select({
-              regularHours: manualTimeEntries.regularHours,
-              otHours: manualTimeEntries.otHours,
-            }).from(manualTimeEntries).where(
-              and(
-                eq(manualTimeEntries.inspectorId, inspectorId),
-                sql`${manualTimeEntries.date} >= ${monthStart}`,
-                sql`${manualTimeEntries.date} < ${monthEnd}`,
-                inArray(manualTimeEntries.projectId, allCompanyProjectIds)
-              )
-            ),
+            db.select({ regularHours: dailyReportsTable.regularHours, otHours: dailyReportsTable.otHours })
+              .from(dailyReportsTable)
+              .where(and(eq(dailyReportsTable.inspectorId, entityId), sql`${dailyReportsTable.date} >= ${monthStart}`, sql`${dailyReportsTable.date} < ${monthEnd}`, inArray(dailyReportsTable.projectId, allProjectIds))),
+            db.select({ regularHours: manualTimeEntries.regularHours, otHours: manualTimeEntries.otHours })
+              .from(manualTimeEntries)
+              .where(and(eq(manualTimeEntries.inspectorId, entityId), sql`${manualTimeEntries.date} >= ${monthStart}`, sql`${manualTimeEntries.date} < ${monthEnd}`, inArray(manualTimeEntries.projectId, allProjectIds))),
           ]);
-          for (const dr of drRows) {
-            totalHoursThisMonth += parseFloat(dr.regularHours || "0") + parseFloat(dr.otHours || "0");
-          }
-          for (const mte of mteRows) {
-            totalHoursThisMonth += parseFloat(mte.regularHours || "0") + parseFloat(mte.otHours || "0");
-          }
+          for (const dr of drRows) totalHoursThisMonth += parseFloat(dr.regularHours || "0") + parseFloat(dr.otHours || "0");
+          for (const mte of mteRows) totalHoursThisMonth += parseFloat(mte.regularHours || "0") + parseFloat(mte.otHours || "0");
         }
 
         return {
-          inspectorId,
+          id: rawId,
+          inspectorId: rawId,
           name,
           title: inspectorProfile?.title || null,
           licenseNumber: inspectorProfile?.licenseNumber || null,
@@ -17530,11 +17539,12 @@ Transcript: "${transcript}"`;
           regularRate,
           overtimeRate,
           premiumRate,
+          isTeamInspector: false,
           role: member?.role || null,
         };
       }));
 
-      res.json(results);
+      res.json(results.filter(Boolean));
     } catch (error: any) {
       console.error("Error fetching inspector comparison:", error);
       res.status(500).json({ message: error.message });
