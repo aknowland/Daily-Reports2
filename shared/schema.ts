@@ -1483,11 +1483,13 @@ export const INSPECTOR_DOCUMENT_TYPES = [
 ] as const;
 export type InspectorDocumentType = typeof INSPECTOR_DOCUMENT_TYPES[number];
 
+export const inspectorDocumentTypeEnum = pgEnum("inspector_document_type", INSPECTOR_DOCUMENT_TYPES);
+
 export const inspectorDocuments = pgTable("inspector_documents", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   companyId: varchar("company_id").notNull(),
   inspectorId: varchar("inspector_id").notNull(),
-  documentType: varchar("document_type").notNull(),
+  documentType: inspectorDocumentTypeEnum("document_type").notNull(),
   fileName: varchar("file_name").notNull(),
   fileUrl: varchar("file_url").notNull(),
   uploadedAt: timestamp("uploaded_at").defaultNow(),

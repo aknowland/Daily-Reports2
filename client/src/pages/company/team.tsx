@@ -2336,7 +2336,16 @@ function MemberDocumentVault({ member }: { member: MemberWithUser }) {
                       variant="ghost"
                       size="icon"
                       className="h-6 w-6"
-                      onClick={() => window.open(`/api/inspector-documents/${doc.id}/download`, "_blank")}
+                      onClick={async () => {
+                        try {
+                          const res = await fetch(`/api/inspector-documents/${doc.id}/download`, { credentials: "include" });
+                          if (!res.ok) throw new Error("Failed to get download link");
+                          const { url } = await res.json();
+                          window.open(url, "_blank");
+                        } catch {
+                          toast({ title: "Download failed", variant: "destructive" });
+                        }
+                      }}
                       title="Download"
                       data-testid={`button-download-doc-${doc.id}`}
                     >
