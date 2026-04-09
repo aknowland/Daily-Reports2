@@ -127,16 +127,22 @@ function AppContent() {
   const { isLoading, isAuthenticated, user, companies, isCompaniesLoading } = useAuth();
   const [location, setLocation] = useLocation();
 
-  // Only check portal status if user has NO company memberships (i.e. could be portal-only)
-  const hasCompanyMemberships = !isCompaniesLoading && companies.length > 0;
   const { data: portalStatus, isLoading: isPortalStatusLoading } = useQuery<PortalStatus>({
     queryKey: ["/api/client-portal/status"],
-    enabled: !!user && isAuthenticated && !isCompaniesLoading && !hasCompanyMemberships,
+    enabled: !!user && isAuthenticated,
+    queryFn: async () => {
+      const res = await fetch("/api/client-portal/status", { credentials: "include" });
+      // 403 means inspector/admin user — treat as non-portal user, don't throw
+      if (res.status === 403) return { isClientPortalUser: false, portals: [] } as PortalStatus;
+      if (!res.ok) throw new Error(`${res.status}: ${res.statusText}`);
+      return res.json() as Promise<PortalStatus>;
+    },
   });
 
   // Redirect portal-only users to /client-portal when they land on /
   // "Portal-only" = is a portal user AND has no company memberships (no inspector/admin access)
-  const isPortalOnly = !!portalStatus?.isClientPortalUser && !hasCompanyMemberships;
+  const hasNoCompanyMemberships = !isCompaniesLoading && companies.length === 0;
+  const isPortalOnly = !!portalStatus?.isClientPortalUser && hasNoCompanyMemberships;
 
   useEffect(() => {
     if (
