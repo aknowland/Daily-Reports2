@@ -1472,3 +1472,29 @@ export const insertInspectorCandidateNoteSchema = createInsertSchema(inspectorCa
 export type InspectorCandidateNote = typeof inspectorCandidateNotes.$inferSelect;
 export type InsertInspectorCandidateNote = z.infer<typeof insertInspectorCandidateNoteSchema>;
 
+// Inspector Document Vault
+export const INSPECTOR_DOCUMENT_TYPES = [
+  "W9",
+  "Insurance Certificate",
+  "Background Check",
+  "Signed IOR",
+  "Certification Copy",
+  "Other",
+] as const;
+export type InspectorDocumentType = typeof INSPECTOR_DOCUMENT_TYPES[number];
+
+export const inspectorDocuments = pgTable("inspector_documents", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull(),
+  inspectorId: varchar("inspector_id").notNull(),
+  documentType: varchar("document_type").notNull(),
+  fileName: varchar("file_name").notNull(),
+  fileUrl: varchar("file_url").notNull(),
+  uploadedAt: timestamp("uploaded_at").defaultNow(),
+  uploadedById: varchar("uploaded_by_id").notNull(),
+});
+
+export const insertInspectorDocumentSchema = createInsertSchema(inspectorDocuments).omit({ id: true, uploadedAt: true });
+export type InspectorDocument = typeof inspectorDocuments.$inferSelect;
+export type InsertInspectorDocument = z.infer<typeof insertInspectorDocumentSchema>;
+

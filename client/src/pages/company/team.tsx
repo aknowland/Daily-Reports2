@@ -77,8 +77,8 @@ import {
 import { Link } from "wouter";
 import { useState, useMemo, useEffect, useRef } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import type { CompanyMember, User, Project, Invite, JoinRequest, IorAgreement, IorAgreementWithDetails, TeamInspector, CertEntry } from "@shared/schema";
-import { normalizeCerts } from "@shared/schema";
+import type { CompanyMember, User, Project, Invite, JoinRequest, IorAgreement, IorAgreementWithDetails, TeamInspector, CertEntry, InspectorDocument } from "@shared/schema";
+import { normalizeCerts, INSPECTOR_DOCUMENT_TYPES } from "@shared/schema";
 
 const KNOWLAND_COMPANY_NAME = "Knowland Construction Services";
 
@@ -1179,10 +1179,15 @@ export default function CompanyTeamPage() {
                           </div>
                         </div>
                         {isExpanded && (
-                          <MemberProjectsList 
-                            member={member} 
-                            projects={projects} 
-                          />
+                          <>
+                            <MemberProjectsList 
+                              member={member} 
+                              projects={projects} 
+                            />
+                            {isEffectiveCompanyAdmin && (
+                              <MemberDocumentVault member={member} />
+                            )}
+                          </>
                         )}
                       </CardContent>
                     </Card>
@@ -2192,6 +2197,170 @@ export default function CompanyTeamPage() {
         </DialogContent>
       </Dialog>
     </PageLayout>
+  );
+}
+
+// Member Document Vault Component - Admin-only document upload/download per inspector
+function MemberDocumentVault({ member }: { member: MemberWithUser }) {
+  const { toast } = useToast();
+  const [uploading, setUploading] = useState(false);
+  const [docType, setDocType] = useState<string>(INSPECTOR_DOCUMENT_TYPES[0]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const docsQuery = useQuery<InspectorDocument[]>({
+    queryKey: ["/api/inspector-documents", member.userId],
+    queryFn: async () => {
+      const res = await fetch(`/api/inspector-documents/${member.userId}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load documents");
+      return res.json();
+    },
+    staleTime: 30000,
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await apiRequest("DELETE", `/api/inspector-documents/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/inspector-documents", member.userId] });
+      toast({ title: "Document removed" });
+    },
+    onError: () => toast({ title: "Failed to delete", variant: "destructive" }),
+  });
+
+  const handleUpload = async (file: File) => {
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("inspectorId", member.userId);
+      formData.append("documentType", docType);
+      const res = await fetch("/api/inspector-documents", {
+        method: "POST",
+        body: formData,
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.message || "Upload failed");
+      }
+      queryClient.invalidateQueries({ queryKey: ["/api/inspector-documents", member.userId] });
+      toast({ title: "Document uploaded" });
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    } catch (err: any) {
+      toast({ title: err.message || "Upload failed", variant: "destructive" });
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const docs = docsQuery.data ?? [];
+
+  const docsByType: Record<string, InspectorDocument[]> = {};
+  docs.forEach(d => {
+    if (!docsByType[d.documentType]) docsByType[d.documentType] = [];
+    docsByType[d.documentType].push(d);
+  });
+
+  return (
+    <div className="mt-4 pt-4 border-t">
+      <div className="flex items-center gap-2 mb-3">
+        <FileText className="w-4 h-4 text-muted-foreground" />
+        <span className="text-sm font-medium uppercase tracking-wide">Document Vault</span>
+        {docs.length > 0 && (
+          <Badge variant="secondary" className="text-xs no-default-hover-elevate no-default-active-elevate">
+            {docs.length}
+          </Badge>
+        )}
+      </div>
+
+      {/* Upload Controls */}
+      <div className="flex gap-2 flex-wrap mb-3">
+        <Select value={docType} onValueChange={setDocType}>
+          <SelectTrigger className="w-48 h-8 text-xs" data-testid={`select-doc-type-${member.userId}`}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {INSPECTOR_DOCUMENT_TYPES.map(t => (
+              <SelectItem key={t} value={t}>{t}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-8 text-xs gap-1"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={uploading}
+          data-testid={`button-upload-doc-${member.userId}`}
+        >
+          {uploading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Upload className="w-3 h-3" />}
+          Upload
+        </Button>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
+          className="hidden"
+          onChange={e => {
+            const file = e.target.files?.[0];
+            if (file) handleUpload(file);
+          }}
+          data-testid={`input-doc-file-${member.userId}`}
+        />
+      </div>
+
+      {/* Documents List */}
+      {docsQuery.isLoading ? (
+        <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
+          <Loader2 className="w-3 h-3 animate-spin" /> Loading documents...
+        </div>
+      ) : docs.length === 0 ? (
+        <p className="text-xs text-muted-foreground py-1">No documents uploaded yet.</p>
+      ) : (
+        <div className="space-y-1">
+          {Object.entries(docsByType).map(([type, typeDocs]) => (
+            <div key={type}>
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mt-2 mb-1">{type}</p>
+              {typeDocs.map(doc => (
+                <div key={doc.id} className="flex items-center justify-between gap-2 py-1 border-b last:border-0" data-testid={`row-doc-${doc.id}`}>
+                  <div className="flex items-center gap-2 min-w-0">
+                    <FileText className="w-3 h-3 text-muted-foreground flex-shrink-0" />
+                    <span className="text-xs truncate" title={doc.fileName}>{doc.fileName}</span>
+                    <span className="text-xs text-muted-foreground flex-shrink-0">
+                      {doc.uploadedAt ? new Date(doc.uploadedAt).toLocaleDateString() : ""}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1 flex-shrink-0">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6"
+                      onClick={() => window.open(`/api/inspector-documents/${doc.id}/download`, "_blank")}
+                      title="Download"
+                      data-testid={`button-download-doc-${doc.id}`}
+                    >
+                      <Download className="w-3 h-3" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6 text-destructive hover:text-destructive"
+                      onClick={() => deleteMutation.mutate(doc.id)}
+                      disabled={deleteMutation.isPending}
+                      title="Delete"
+                      data-testid={`button-delete-doc-${doc.id}`}
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 

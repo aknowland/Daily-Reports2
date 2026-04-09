@@ -44,6 +44,8 @@ import {
   inspectorCandidates, inspectorCandidateNotes,
   type InspectorCandidate, type InsertInspectorCandidate,
   type InspectorCandidateNote, type InsertInspectorCandidateNote,
+  inspectorDocuments,
+  type InspectorDocument, type InsertInspectorDocument,
 } from "@shared/schema";
 import { users, type User } from "@shared/models/auth";
 import { db } from "./db";
@@ -2746,6 +2748,31 @@ export class DatabaseStorage implements IStorage {
   async createInspectorCandidateNote(data: InsertInspectorCandidateNote): Promise<InspectorCandidateNote> {
     const [note] = await db.insert(inspectorCandidateNotes).values(data).returning();
     return note;
+  }
+
+  // Inspector Document Vault
+  async getInspectorDocuments(companyId: string, inspectorId: string): Promise<InspectorDocument[]> {
+    return db.select()
+      .from(inspectorDocuments)
+      .where(and(
+        eq(inspectorDocuments.companyId, companyId),
+        eq(inspectorDocuments.inspectorId, inspectorId),
+      ))
+      .orderBy(desc(inspectorDocuments.uploadedAt));
+  }
+
+  async getInspectorDocument(id: string): Promise<InspectorDocument | undefined> {
+    const [doc] = await db.select().from(inspectorDocuments).where(eq(inspectorDocuments.id, id));
+    return doc;
+  }
+
+  async createInspectorDocument(data: InsertInspectorDocument): Promise<InspectorDocument> {
+    const [doc] = await db.insert(inspectorDocuments).values(data).returning();
+    return doc;
+  }
+
+  async deleteInspectorDocument(id: string): Promise<void> {
+    await db.delete(inspectorDocuments).where(eq(inspectorDocuments.id, id));
   }
 }
 
