@@ -407,6 +407,7 @@ export const invites = pgTable("invites", {
   inviteCode: varchar("invite_code", { length: 8 }).unique(),
   isClientPortal: boolean("is_client_portal").default(false),
   clientId: varchar("client_id"),
+  allProjectsAccess: boolean("all_projects_access").default(false),
   expiresAt: timestamp("expires_at").notNull(),
   createdAt: timestamp("created_at").defaultNow(),
   acceptedAt: timestamp("accepted_at"),
@@ -699,6 +700,7 @@ export const clientPortalUsers = pgTable("client_portal_users", {
   companyId: varchar("company_id").references(() => companies.id, { onDelete: "cascade" }).notNull(),
   clientId: varchar("client_id").references(() => clients.id, { onDelete: "set null" }),
   isActive: boolean("is_active").default(true).notNull(),
+  allProjectsAccess: boolean("all_projects_access").default(false).notNull(),
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => [
   unique().on(table.userId, table.companyId),
