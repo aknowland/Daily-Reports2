@@ -18243,9 +18243,12 @@ Return ONLY a valid JSON object with the fields above. No explanation, no markdo
           if (emailList.length > 0) {
             const company = await storage.getCompany(companyId);
             const senderProfile = await storage.getUserProfile(userId);
+            const senderUser = await storage.getUserById(userId);
             const senderName = [senderProfile?.firstName, senderProfile?.lastName].filter(Boolean).join(" ") || "Your Company Admin";
+            const senderEmail = senderUser?.email;
             await sendEmail({
               to: emailList,
+              cc: senderEmail || undefined,
               subject: `[${company?.name || "Company"}] ${title.trim()}`,
               html: `
                 <div style="font-family:sans-serif;max-width:600px;margin:0 auto">
