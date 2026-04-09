@@ -981,6 +981,30 @@ export default function CompanyTeamPage() {
           </Dialog>
         </PageHeader>
 
+        {/* Compare bar — shown above tabs when any inspectors selected */}
+        {isEffectiveCompanyAdmin && compareSelected.size >= 2 && (
+          <div className="flex items-center justify-between gap-3 p-3 mb-4 border rounded bg-muted/40" data-testid="compare-bar">
+            <span className="text-sm font-medium">{compareSelected.size} inspector{compareSelected.size > 1 ? "s" : ""} selected for comparison</span>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCompareSelected(new Set())}
+                data-testid="button-clear-compare"
+              >
+                <X className="w-3 h-3 mr-1" /> Clear
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => setShowCompareModal(true)}
+                data-testid="button-open-compare-modal"
+              >
+                <Columns2 className="w-4 h-4 mr-1" /> Compare Selected
+              </Button>
+            </div>
+          </div>
+        )}
+
         <Tabs defaultValue="members" className="w-full">
           <TabsList className="mb-4">
             <TabsTrigger value="members" className="flex items-center gap-2" data-testid="tab-members">
@@ -1037,30 +1061,6 @@ export default function CompanyTeamPage() {
               </div>
             )}
             
-            {/* Compare Selected bar — shown when 2-3 inspectors are checked */}
-            {isEffectiveCompanyAdmin && compareSelected.size >= 2 && (
-              <div className="flex items-center justify-between gap-3 p-3 border rounded bg-muted/40">
-                <span className="text-sm font-medium">{compareSelected.size} inspector{compareSelected.size > 1 ? "s" : ""} selected for comparison</span>
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setCompareSelected(new Set())}
-                    data-testid="button-clear-compare"
-                  >
-                    <X className="w-3 h-3 mr-1" /> Clear
-                  </Button>
-                  <Button
-                    size="sm"
-                    onClick={() => setShowCompareModal(true)}
-                    data-testid="button-open-compare-modal"
-                  >
-                    <Columns2 className="w-4 h-4 mr-1" /> Compare Selected
-                  </Button>
-                </div>
-              </div>
-            )}
-
             {members.length === 0 ? (
               <Card>
                 <CardContent className="flex flex-col items-center justify-center py-12">
@@ -2277,8 +2277,14 @@ export default function CompanyTeamPage() {
           onClose={() => setShowCompareModal(false)}
           onAssignToProject={(inspectorId) => {
             setShowCompareModal(false);
-            const found = members.find(m => m.userId === inspectorId);
-            if (found) setMemberToAssignProjects(found);
+            if (inspectorId.startsWith("ti:")) {
+              // Team inspector — navigate to Team Inspectors tab so admin can invite
+              const el = document.querySelector('[data-testid="tab-team-inspectors"]') as HTMLElement | null;
+              if (el) el.click();
+            } else {
+              const found = members.find(m => m.userId === inspectorId);
+              if (found) setMemberToAssignProjects(found);
+            }
           }}
         />
       )}
