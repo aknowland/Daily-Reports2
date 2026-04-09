@@ -128,7 +128,7 @@ export default function PortalDashboard() {
   const clientName = user?.firstName || user?.email?.split("@")[0] || "";
   const isLoading = isAuthLoading || isStatusLoading || isProjectsLoading;
 
-  if (!isStatusLoading && status && !status.isClientPortalUser && !(isAdmin || isCompanyAdmin)) {
+  if (!isStatusLoading && status && !status.isClientPortalUser) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background" data-testid="portal-unauthorized">
         <Card className="max-w-md w-full">
