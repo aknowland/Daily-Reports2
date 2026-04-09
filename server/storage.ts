@@ -46,6 +46,8 @@ import {
   type InspectorCandidateNote, type InsertInspectorCandidateNote,
   inspectorDocuments,
   type InspectorDocument, type InsertInspectorDocument,
+  inspectorAnnouncements, announcementReads,
+  type InspectorAnnouncement, type InsertAnnouncement,
 } from "@shared/schema";
 import { users, type User } from "@shared/models/auth";
 import { db } from "./db";
@@ -387,6 +389,14 @@ export interface IStorage {
   // Inspector Candidate Notes
   getInspectorCandidateNotes(candidateId: string): Promise<(InspectorCandidateNote & { user?: User })[]>;
   createInspectorCandidateNote(data: InsertInspectorCandidateNote): Promise<InspectorCandidateNote>;
+
+  // Announcements
+  createAnnouncement(data: InsertAnnouncement): Promise<InspectorAnnouncement>;
+  getCompanyAnnouncements(companyId: string): Promise<(InspectorAnnouncement & { senderName?: string })[]>;
+  getInspectorAnnouncements(userId: string, companyIds: string[]): Promise<InspectorAnnouncement[]>;
+  getUnreadAnnouncementCount(userId: string, companyIds: string[]): Promise<number>;
+  markAnnouncementRead(announcementId: string, userId: string): Promise<void>;
+  isAnnouncementRead(announcementId: string, userId: string): Promise<boolean>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -2773,6 +2783,71 @@ export class DatabaseStorage implements IStorage {
 
   async deleteInspectorDocument(id: string): Promise<void> {
     await db.delete(inspectorDocuments).where(eq(inspectorDocuments.id, id));
+  }
+
+  // ─── Announcements ────────────────────────────────────────────────────────
+  async createAnnouncement(data: InsertAnnouncement): Promise<InspectorAnnouncement> {
+    const [row] = await db.insert(inspectorAnnouncements).values(data).returning();
+    return row;
+  }
+
+  async getCompanyAnnouncements(companyId: string): Promise<(InspectorAnnouncement & { senderName?: string })[]> {
+    const rows = await db
+      .select({
+        announcement: inspectorAnnouncements,
+        firstName: users.firstName,
+        lastName: users.lastName,
+      })
+      .from(inspectorAnnouncements)
+      .leftJoin(users, eq(inspectorAnnouncements.sentById, users.id))
+      .where(eq(inspectorAnnouncements.companyId, companyId))
+      .orderBy(desc(inspectorAnnouncements.sentAt));
+    return rows.map(r => ({
+      ...r.announcement,
+      senderName: [r.firstName, r.lastName].filter(Boolean).join(" ") || undefined,
+    }));
+  }
+
+  async getInspectorAnnouncements(userId: string, companyIds: string[]): Promise<InspectorAnnouncement[]> {
+    if (companyIds.length === 0) return [];
+    const rows = await db
+      .select()
+      .from(inspectorAnnouncements)
+      .where(
+        and(
+          inArray(inspectorAnnouncements.companyId, companyIds),
+          sql`${inspectorAnnouncements.recipientUserIds}::jsonb @> ${JSON.stringify([userId])}::jsonb`
+        )
+      )
+      .orderBy(desc(inspectorAnnouncements.sentAt));
+    return rows;
+  }
+
+  async getUnreadAnnouncementCount(userId: string, companyIds: string[]): Promise<number> {
+    if (companyIds.length === 0) return 0;
+    const visible = await this.getInspectorAnnouncements(userId, companyIds);
+    if (visible.length === 0) return 0;
+    const visibleIds = visible.map(a => a.id);
+    const readRows = await db
+      .select({ announcementId: announcementReads.announcementId })
+      .from(announcementReads)
+      .where(and(eq(announcementReads.userId, userId), inArray(announcementReads.announcementId, visibleIds)));
+    const readSet = new Set(readRows.map(r => r.announcementId));
+    return visibleIds.filter(id => !readSet.has(id)).length;
+  }
+
+  async markAnnouncementRead(announcementId: string, userId: string): Promise<void> {
+    await db.insert(announcementReads)
+      .values({ announcementId, userId })
+      .onConflictDoNothing();
+  }
+
+  async isAnnouncementRead(announcementId: string, userId: string): Promise<boolean> {
+    const [row] = await db
+      .select()
+      .from(announcementReads)
+      .where(and(eq(announcementReads.announcementId, announcementId), eq(announcementReads.userId, userId)));
+    return !!row;
   }
 }
 

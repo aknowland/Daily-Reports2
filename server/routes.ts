@@ -18004,5 +18004,178 @@ Return ONLY a valid JSON object with the fields above. No explanation, no markdo
     }
   });
 
+  // ─── Inspector Broadcast Announcements ──────────────────────────────────────
+
+  // POST /api/announcements — create and send an announcement (admin only)
+  app.post("/api/announcements", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      const companyId = profile?.activeCompanyId;
+      if (!companyId) return res.status(403).json({ message: "No active company" });
+      if (!(await isEffectiveCompanyAdmin(userId, companyId, profile))) {
+        return res.status(403).json({ message: "Company admin access required" });
+      }
+
+      const { title, body, recipientFilter, sendEmail: shouldEmail } = req.body;
+      if (!title?.trim() || !body?.trim()) {
+        return res.status(400).json({ message: "Title and body are required" });
+      }
+      const filter = recipientFilter ?? { type: "all" };
+
+      // Resolve recipient user IDs from filter
+      const allMembers = await storage.getCompanyMembers(companyId);
+      const inspectorMembers = allMembers.filter(m => m.role === "inspector");
+
+      let recipientIds: string[] = [];
+      if (filter.type === "all") {
+        recipientIds = inspectorMembers.map(m => m.userId);
+      } else if (filter.type === "project" && filter.projectId) {
+        // Only inspectors assigned to the given project
+        const projectMembersRows = await db
+          .select({ userId: projectMembers.userId })
+          .from(projectMembers)
+          .where(eq(projectMembers.projectId, filter.projectId));
+        const projectUserIds = new Set(projectMembersRows.map((r: { userId: string }) => r.userId));
+        recipientIds = inspectorMembers.filter(m => projectUserIds.has(m.userId)).map(m => m.userId);
+      } else if (filter.type === "dsa_class") {
+        const dsaClass = filter.dsaClass as 1 | 2 | 3;
+        // Filter inspectors who have DSA Class N certification (check cert names)
+        const recipientPromises = inspectorMembers.map(async (m) => {
+          const p = await storage.getUserProfile(m.userId);
+          const certs = (p?.certifications as Array<{ name: string }> | null) || [];
+          const hasClass = certs.some((c: { name: string }) => {
+            const name = c.name?.toLowerCase() || "";
+            return name.includes(`class ${dsaClass}`) || name.includes(`dsa class ${dsaClass}`) || name.includes(`dsa-class-${dsaClass}`);
+          });
+          return hasClass ? m.userId : null;
+        });
+        const resolved = await Promise.all(recipientPromises);
+        recipientIds = resolved.filter((id): id is string => id !== null);
+      }
+
+      // Create announcement record
+      const announcement = await storage.createAnnouncement({
+        companyId,
+        sentById: userId,
+        title: title.trim(),
+        body: body.trim(),
+        recipientFilter: filter,
+        recipientUserIds: recipientIds,
+        recipientCount: recipientIds.length,
+        emailSent: shouldEmail === true,
+      });
+
+      // Optionally send email to each recipient
+      if (shouldEmail && recipientIds.length > 0) {
+        try {
+          // Use already-loaded member data to get emails (user.email from companyMembers join)
+          const memberEmailMap = new Map(
+            allMembers
+              .filter((m: any) => m.user?.email)
+              .map((m: any) => [m.userId, m.user.email as string])
+          );
+          const emailList = recipientIds.map(rid => memberEmailMap.get(rid)).filter((e): e is string => !!e);
+
+          if (emailList.length > 0) {
+            const company = await storage.getCompany(companyId);
+            const senderProfile = await storage.getUserProfile(userId);
+            const senderName = [senderProfile?.firstName, senderProfile?.lastName].filter(Boolean).join(" ") || "Your Company Admin";
+            await sendEmail({
+              to: emailList,
+              subject: `[${company?.name || "Company"}] ${title.trim()}`,
+              html: `
+                <div style="font-family:sans-serif;max-width:600px;margin:0 auto">
+                  <div style="background:#1a2e4a;padding:16px;color:white">
+                    <h2 style="margin:0;font-size:18px">${company?.name || "Field Daily Reports"}</h2>
+                    <p style="margin:4px 0 0;font-size:12px;opacity:0.7">Company Announcement</p>
+                  </div>
+                  <div style="padding:24px;background:#fff;border:1px solid #e5e7eb">
+                    <h3 style="margin:0 0 12px;color:#1a2e4a">${title.trim()}</h3>
+                    <div style="white-space:pre-wrap;color:#374151;line-height:1.6">${body.trim()}</div>
+                    <hr style="margin:24px 0;border:none;border-top:1px solid #e5e7eb">
+                    <p style="font-size:12px;color:#9ca3af">Sent by ${senderName} · ${new Date().toLocaleDateString("en-US", { timeZone: "America/Los_Angeles" })}</p>
+                  </div>
+                </div>
+              `,
+            });
+          }
+        } catch (emailErr) {
+          console.error("Announcement email send error:", emailErr);
+          // Don't fail the request if email fails
+        }
+      }
+
+      res.json(announcement);
+    } catch (error: any) {
+      console.error("Error creating announcement:", error);
+      res.status(500).json({ message: "Failed to create announcement" });
+    }
+  });
+
+  // GET /api/announcements — list company announcements (admin)
+  app.get("/api/announcements", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      const companyId = profile?.activeCompanyId;
+      if (!companyId) return res.status(403).json({ message: "No active company" });
+      if (!(await isEffectiveCompanyAdmin(userId, companyId, profile))) {
+        return res.status(403).json({ message: "Company admin access required" });
+      }
+      const announcements = await storage.getCompanyAnnouncements(companyId);
+      res.json(announcements);
+    } catch (error: any) {
+      console.error("Error fetching announcements:", error);
+      res.status(500).json({ message: "Failed to fetch announcements" });
+    }
+  });
+
+  // GET /api/announcements/feed — announcements visible to current user (inspector)
+  app.get("/api/announcements/feed", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      // Get all companies the user belongs to
+      const memberships = await storage.getCompaniesForUser(userId);
+      const companyIds = memberships.map((m: any) => m.companyId);
+      const announcements = await storage.getInspectorAnnouncements(userId, companyIds);
+      // Enrich with read status
+      const readStatuses = await Promise.all(
+        announcements.map(a => storage.isAnnouncementRead(a.id, userId))
+      );
+      const enriched = announcements.map((a, i) => ({ ...a, isRead: readStatuses[i] }));
+      res.json(enriched);
+    } catch (error: any) {
+      console.error("Error fetching announcement feed:", error);
+      res.status(500).json({ message: "Failed to fetch announcements" });
+    }
+  });
+
+  // GET /api/announcements/unread-count — badge count for inspector
+  app.get("/api/announcements/unread-count", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const memberships = await storage.getCompaniesForUser(userId);
+      const companyIds = memberships.map((m: any) => m.companyId);
+      const count = await storage.getUnreadAnnouncementCount(userId, companyIds);
+      res.json({ count });
+    } catch (error: any) {
+      console.error("Error fetching unread count:", error);
+      res.json({ count: 0 });
+    }
+  });
+
+  // POST /api/announcements/:id/read — mark as read
+  app.post("/api/announcements/:id/read", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      await storage.markAnnouncementRead(req.params.id, userId);
+      res.json({ ok: true });
+    } catch (error: any) {
+      console.error("Error marking announcement read:", error);
+      res.status(500).json({ message: "Failed to mark as read" });
+    }
+  });
+
   return httpServer;
 }
