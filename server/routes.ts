@@ -17452,6 +17452,27 @@ Transcript: "${transcript}"`;
         )
         .groupBy(dailyReportsTable.inspectorId) : [];
 
+      // MTE hours per inspector (same date range) — hours only, no safety data in MTE
+      const mteHoursRows = companyProjectIds.length > 0 ? await db
+        .select({
+          inspectorId: manualTimeEntries.inspectorId,
+          mteHours: sql<string>`COALESCE(SUM(CAST(${manualTimeEntries.regularHours} AS NUMERIC) + CAST(COALESCE(${manualTimeEntries.otHours}, '0') AS NUMERIC)), 0)`,
+        })
+        .from(manualTimeEntries)
+        .where(
+          and(
+            inArray(manualTimeEntries.inspectorId, inspectorIds),
+            inArray(manualTimeEntries.projectId, companyProjectIds),
+            sql`${manualTimeEntries.date} >= ${cutoffStr}`
+          )
+        )
+        .groupBy(manualTimeEntries.inspectorId) : [];
+
+      const mteHoursMap = new Map<string, number>();
+      for (const row of mteHoursRows) {
+        mteHoursMap.set(row.inspectorId, parseFloat(row.mteHours));
+      }
+
       // Monthly breakdown: last 6 months, reports per inspector per month
       const sixMonthsAgo = new Date();
       sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 5);
@@ -17514,8 +17535,10 @@ Transcript: "${transcript}"`;
           totalReports: 0, totalHours: 0, safetyIncidents: 0,
           safetyNearMisses: 0, safetyFlagCount: 0, distinctProjects: 0,
         };
+        const mteHours = mteHoursMap.get(member.userId) ?? 0;
+        const combinedHours = stats.totalHours + mteHours;
         const avgDailyHours = stats.totalReports > 0
-          ? Math.round((stats.totalHours / stats.totalReports) * 100) / 100
+          ? Math.round((combinedHours / stats.totalReports) * 100) / 100
           : 0;
         const submissionRate = expectedWorkdays > 0
           ? Math.min(Math.round((stats.totalReports / expectedWorkdays) * 1000) / 10, 100)
@@ -17526,7 +17549,7 @@ Transcript: "${transcript}"`;
           title: member.title || null,
           email: member.email || null,
           totalReports: stats.totalReports,
-          totalHours: Math.round(stats.totalHours * 100) / 100,
+          totalHours: Math.round(combinedHours * 100) / 100,
           avgDailyHours,
           safetyIncidents: stats.safetyIncidents,
           safetyNearMisses: stats.safetyNearMisses,
