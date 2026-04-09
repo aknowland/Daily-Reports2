@@ -2698,7 +2698,12 @@ export class DatabaseStorage implements IStorage {
         },
       },
     });
-    return accessRows.map(row => (row as any).clientPortalUser).filter(Boolean);
+    type AccessRowWithUser = typeof accessRows[number] & {
+      clientPortalUser: (ClientPortalUser & { user?: User }) | null;
+    };
+    return (accessRows as AccessRowWithUser[])
+      .map(row => row.clientPortalUser)
+      .filter((u): u is ClientPortalUser & { user?: User } => u !== null && u !== undefined);
   }
 
   async getInspectorCandidates(companyId: string): Promise<InspectorCandidate[]> {
