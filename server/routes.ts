@@ -3,7 +3,7 @@ import { createServer, type Server } from "http";
 import { storage, db, projectComments, projectMembers, users, companyNotes, clientPortalUsers, projects } from "./storage";
 import { sql, eq, and, desc, inArray, count, sum, countDistinct } from "drizzle-orm";
 import { setupAuth, isAuthenticated, registerAuthRoutes } from "./replit_integrations/auth";
-import { insertProjectSchema, insertDailyReportSchema, updateUserProfileSchema, WorkActivityRow, VisitorRow, EquipmentRow, MaterialRow, insertContractSchema, insertClientSchema, InsertInspectorCandidate, companyMembers, userProfiles, dailyReports as dailyReportsTable, normalizeCerts, manualTimeEntries } from "@shared/schema";
+import { insertProjectSchema, insertDailyReportSchema, updateUserProfileSchema, WorkActivityRow, VisitorRow, EquipmentRow, MaterialRow, insertContractSchema, insertClientSchema, InsertInspectorCandidate, companyMembers, userProfiles, dailyReports as dailyReportsTable, normalizeCerts, manualTimeEntries, inspectorDocuments, INSPECTOR_DOCUMENT_TYPES, type InspectorDocument } from "@shared/schema";
 import { ObjectStorageService, registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 import multer from "multer";
 import path from "path";
@@ -169,6 +169,26 @@ const resumeUpload = multer({
       cb(null, true);
     } else {
       cb(new Error("Only PDF, DOCX, DOC, and TXT files are allowed"));
+    }
+  },
+});
+
+// Multer config for inspector vault documents (PDF, JPG, PNG, DOCX)
+const documentUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 20 * 1024 * 1024 }, // 20MB
+  fileFilter: (_req, file, cb) => {
+    const allowed = [
+      'application/pdf',
+      'image/jpeg',
+      'image/png',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/msword',
+    ];
+    if (allowed.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error("Only PDF, JPG, PNG, and DOCX files are allowed"));
     }
   },
 });
@@ -17600,6 +17620,115 @@ Transcript: "${transcript}"`;
       ].filter(Boolean);
 
       res.json(entries);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ─── Inspector Document Vault Routes ──────────────────────────────────────
+
+  // GET /api/inspector-documents/:inspectorId — list documents for an inspector
+  app.get("/api/inspector-documents/:inspectorId", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      const companyId = profile?.activeCompanyId;
+      if (!companyId) return res.status(403).json({ message: "No active company" });
+      if (!(await isEffectiveCompanyAdmin(userId, companyId, profile))) {
+        return res.status(403).json({ message: "Company admin access required" });
+      }
+      const { inspectorId } = req.params;
+      const docs = await storage.getInspectorDocuments(companyId, inspectorId);
+      res.json(docs);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // POST /api/inspector-documents — upload a document (multipart/form-data)
+  app.post("/api/inspector-documents", isAuthenticated, documentUpload.single("file"), async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      const companyId = profile?.activeCompanyId;
+      if (!companyId) return res.status(403).json({ message: "No active company" });
+      if (!(await isEffectiveCompanyAdmin(userId, companyId, profile))) {
+        return res.status(403).json({ message: "Company admin access required" });
+      }
+      if (!req.file) return res.status(400).json({ message: "No file uploaded" });
+
+      const { inspectorId, documentType } = req.body;
+      if (!inspectorId) return res.status(400).json({ message: "inspectorId is required" });
+      if (!documentType || !INSPECTOR_DOCUMENT_TYPES.includes(documentType)) {
+        return res.status(400).json({ message: "Invalid document type" });
+      }
+
+      // Upload file to private object storage under inspector-docs/
+      const ext = path.extname(req.file.originalname) || "";
+      const safeFileName = `${Date.now()}-${Math.random().toString(36).slice(2)}${ext}`;
+      const fileUrl = await objectStorage.uploadBuffer({
+        buffer: req.file.buffer,
+        filename: safeFileName,
+        contentType: req.file.mimetype,
+        folder: `inspector-docs/${companyId}/${inspectorId}`,
+      });
+
+      const doc = await storage.createInspectorDocument({
+        companyId,
+        inspectorId,
+        documentType,
+        fileName: req.file.originalname,
+        fileUrl,
+        uploadedById: userId,
+      });
+
+      res.json(doc);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // GET /api/inspector-documents/:id/download — stream a document file
+  app.get("/api/inspector-documents/:id/download", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      const companyId = profile?.activeCompanyId;
+      if (!companyId) return res.status(403).json({ message: "No active company" });
+      if (!(await isEffectiveCompanyAdmin(userId, companyId, profile))) {
+        return res.status(403).json({ message: "Company admin access required" });
+      }
+
+      const doc = await storage.getInspectorDocument(req.params.id);
+      if (!doc) return res.status(404).json({ message: "Document not found" });
+      if (doc.companyId !== companyId) return res.status(403).json({ message: "Access denied" });
+
+      const buffer = await objectStorage.downloadBuffer(doc.fileUrl);
+      res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(doc.fileName)}"`);
+      res.setHeader("Content-Type", "application/octet-stream");
+      res.send(buffer);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // DELETE /api/inspector-documents/:id — delete a document
+  app.delete("/api/inspector-documents/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      const companyId = profile?.activeCompanyId;
+      if (!companyId) return res.status(403).json({ message: "No active company" });
+      if (!(await isEffectiveCompanyAdmin(userId, companyId, profile))) {
+        return res.status(403).json({ message: "Company admin access required" });
+      }
+
+      const doc = await storage.getInspectorDocument(req.params.id);
+      if (!doc) return res.status(404).json({ message: "Document not found" });
+      if (doc.companyId !== companyId) return res.status(403).json({ message: "Access denied" });
+
+      await storage.deleteInspectorDocument(req.params.id);
+      res.json({ success: true });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }
