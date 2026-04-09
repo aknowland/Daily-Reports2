@@ -73,9 +73,15 @@ import {
   BarChart2,
   ArrowUpDown,
   ShieldAlert,
+  Columns2,
+  Calendar,
+  Briefcase,
+  Clock,
+  DollarSign,
+  Award,
 } from "lucide-react";
 import { Link } from "wouter";
-import { useState, useMemo, useEffect, useRef } from "react";
+import { useState, useMemo, useEffect, useRef, type ReactNode } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import type { CompanyMember, User, Project, Invite, JoinRequest, IorAgreement, IorAgreementWithDetails, TeamInspector, CertEntry, InspectorDocument } from "@shared/schema";
 import { normalizeCerts, INSPECTOR_DOCUMENT_TYPES } from "@shared/schema";
@@ -116,6 +122,8 @@ export default function CompanyTeamPage() {
   const resumeInputRef = useRef<HTMLInputElement>(null);
   const [editingMemberName, setEditingMemberName] = useState<{userId: string; firstName: string; lastName: string} | null>(null);
   const [recruitingPrefill, setRecruitingPrefill] = useState<TeamInspector | null>(null);
+  const [compareSelected, setCompareSelected] = useState<Set<string>>(new Set());
+  const [showCompareModal, setShowCompareModal] = useState(false);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -1029,6 +1037,30 @@ export default function CompanyTeamPage() {
               </div>
             )}
             
+            {/* Compare Selected bar — shown when 2-3 inspectors are checked */}
+            {isEffectiveCompanyAdmin && compareSelected.size >= 2 && (
+              <div className="flex items-center justify-between gap-3 p-3 border rounded bg-muted/40">
+                <span className="text-sm font-medium">{compareSelected.size} inspector{compareSelected.size > 1 ? "s" : ""} selected for comparison</span>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCompareSelected(new Set())}
+                    data-testid="button-clear-compare"
+                  >
+                    <X className="w-3 h-3 mr-1" /> Clear
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={() => setShowCompareModal(true)}
+                    data-testid="button-open-compare-modal"
+                  >
+                    <Columns2 className="w-4 h-4 mr-1" /> Compare Selected
+                  </Button>
+                </div>
+              </div>
+            )}
+
             {members.length === 0 ? (
               <Card>
                 <CardContent className="flex flex-col items-center justify-center py-12">
@@ -1061,11 +1093,32 @@ export default function CompanyTeamPage() {
                     : member.user?.email || "Unknown User";
                   const isExpanded = expandedMembers.has(member.id);
 
+                  const isCompareChecked = compareSelected.has(member.userId);
+                  const canAddToCompare = isCompareChecked || compareSelected.size < 3;
+
                   return (
                     <Card key={member.id} data-testid={`card-member-${member.id}`}>
                       <CardContent className="p-4">
                         <div className="flex items-center justify-between gap-4">
                           <div className="flex items-center gap-2 flex-1 min-w-0">
+                            {isEffectiveCompanyAdmin && (
+                              <Checkbox
+                                checked={isCompareChecked}
+                                onCheckedChange={(checked) => {
+                                  const next = new Set(compareSelected);
+                                  if (checked && canAddToCompare) {
+                                    next.add(member.userId);
+                                  } else {
+                                    next.delete(member.userId);
+                                  }
+                                  setCompareSelected(next);
+                                }}
+                                disabled={!canAddToCompare}
+                                className="shrink-0"
+                                data-testid={`checkbox-compare-${member.userId}`}
+                                title={!canAddToCompare ? "Max 3 inspectors" : "Select for comparison"}
+                              />
+                            )}
                             <Button
                               variant="ghost"
                               size="icon"
@@ -2196,6 +2249,14 @@ export default function CompanyTeamPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Inspector Comparison Modal */}
+      {showCompareModal && (
+        <InspectorCompareModal
+          inspectorIds={Array.from(compareSelected)}
+          onClose={() => setShowCompareModal(false)}
+        />
+      )}
     </PageLayout>
   );
 }
@@ -2874,5 +2935,246 @@ function TeamInspectorDialog({
         </form>
       </DialogContent>
     </Dialog>
+  );
+}
+
+// ─── Inspector Comparison Modal ────────────────────────────────────────────────
+
+type InspectorCompareData = {
+  inspectorId: string;
+  name: string;
+  title: string | null;
+  licenseNumber: string | null;
+  licenseState: string | null;
+  certifications: CertEntry[];
+  availabilityDate: string | null;
+  activeProjectCount: number;
+  totalHoursThisMonth: number;
+  regularRate: string | null;
+  overtimeRate: string | null;
+  premiumRate: string | null;
+  role: string | null;
+};
+
+function InspectorCompareModal({
+  inspectorIds,
+  onClose,
+}: {
+  inspectorIds: string[];
+  onClose: () => void;
+}) {
+  const idsKey = inspectorIds.join(",");
+
+  const { data: inspectors = [], isLoading, error } = useQuery<InspectorCompareData[]>({
+    queryKey: ["/api/company/inspector-compare", idsKey],
+    queryFn: async () => {
+      const res = await fetch(`/api/company/inspector-compare?ids=${encodeURIComponent(idsKey)}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load comparison data");
+      return res.json();
+    },
+    enabled: inspectorIds.length >= 1,
+    staleTime: 60000,
+  });
+
+  // Helper: determine if a field "differs" across columns (highlight it)
+  const differs = (values: (string | number | null | undefined)[]): boolean => {
+    const unique = new Set(values.map(v => v ?? null));
+    return unique.size > 1;
+  };
+
+  const projectCounts = inspectors.map(i => i.activeProjectCount);
+  const hourValues = inspectors.map(i => i.totalHoursThisMonth);
+  const regularRates = inspectors.map(i => i.regularRate ? parseFloat(i.regularRate) : null);
+
+  const maxProjects = Math.max(...projectCounts, 0);
+  const maxHours = Math.max(...hourValues, 0);
+  const maxRate = Math.max(...regularRates.filter((r): r is number => r !== null), 0);
+
+  return (
+    <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent className="max-w-5xl w-full overflow-hidden">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Columns2 className="w-5 h-5" />
+            Inspector Comparison
+          </DialogTitle>
+          <DialogDescription>
+            Side-by-side comparison of {inspectorIds.length} inspector{inspectorIds.length > 1 ? "s" : ""}. Highlighted fields differ between inspectors.
+          </DialogDescription>
+        </DialogHeader>
+
+        {isLoading ? (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="w-6 h-6 animate-spin mr-2" />
+            Loading comparison data...
+          </div>
+        ) : error ? (
+          <div className="flex items-center gap-2 text-destructive py-8">
+            <AlertCircle className="w-5 h-5" />
+            Failed to load comparison data
+          </div>
+        ) : (
+          <ScrollArea className="max-h-[70vh]">
+            <div className="grid gap-4" style={{ gridTemplateColumns: `180px repeat(${inspectors.length}, 1fr)` }}>
+              
+              {/* Header row */}
+              <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground pt-2">Field</div>
+              {inspectors.map(ins => (
+                <div key={ins.inspectorId} className="border rounded p-3 bg-muted/20" data-testid={`compare-col-${ins.inspectorId}`}>
+                  <p className="font-semibold truncate" title={ins.name}>{ins.name}</p>
+                  {ins.title && <p className="text-sm text-muted-foreground truncate">{ins.title}</p>}
+                  <Link
+                    href={`/reports?inspector=${ins.inspectorId}`}
+                    className="text-xs text-primary underline-offset-2 hover:underline mt-1 block"
+                    onClick={onClose}
+                  >
+                    Assign to Project →
+                  </Link>
+                </div>
+              ))}
+
+              {/* License Row */}
+              <CompareFieldLabel icon={<Shield className="w-3 h-3" />} label="License" />
+              {inspectors.map(ins => {
+                const val = ins.licenseNumber ? `${ins.licenseState || ""} ${ins.licenseNumber}`.trim() : "—";
+                const diff = differs(inspectors.map(i => i.licenseNumber));
+                return (
+                  <CompareCell key={ins.inspectorId} highlight={diff && !!ins.licenseNumber}>
+                    {val}
+                  </CompareCell>
+                );
+              })}
+
+              {/* Certifications */}
+              <CompareFieldLabel icon={<Award className="w-3 h-3" />} label="Certifications" />
+              {inspectors.map(ins => {
+                const now = new Date();
+                const certs = ins.certifications || [];
+                return (
+                  <CompareCell key={ins.inspectorId}>
+                    {certs.length === 0 ? (
+                      <span className="text-muted-foreground text-xs">None on file</span>
+                    ) : (
+                      <div className="space-y-1">
+                        {certs.map((c, ci) => {
+                          const isExpired = c.expiresAt ? new Date(c.expiresAt) < now : false;
+                          const expiringSoon = c.expiresAt
+                            ? new Date(c.expiresAt) < new Date(now.getTime() + 30 * 86400000)
+                            : false;
+                          return (
+                            <div key={ci} className="flex items-center gap-1 flex-wrap">
+                              <span className="text-xs">{c.name}</span>
+                              {c.expiresAt && (
+                                <Badge
+                                  variant={isExpired ? "destructive" : expiringSoon ? "outline" : "secondary"}
+                                  className="text-[10px] px-1 py-0 no-default-hover-elevate no-default-active-elevate"
+                                >
+                                  {isExpired ? "Expired" : expiringSoon ? "Soon" : ""}
+                                  {!isExpired && !expiringSoon ? new Date(c.expiresAt).toLocaleDateString() : ""}
+                                </Badge>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </CompareCell>
+                );
+              })}
+
+              {/* Availability Date */}
+              <CompareFieldLabel icon={<Calendar className="w-3 h-3" />} label="Available" />
+              {inspectors.map(ins => {
+                const diff = differs(inspectors.map(i => i.availabilityDate));
+                return (
+                  <CompareCell key={ins.inspectorId} highlight={diff && !!ins.availabilityDate}>
+                    {ins.availabilityDate
+                      ? new Date(ins.availabilityDate + "T00:00:00").toLocaleDateString()
+                      : <span className="text-muted-foreground text-xs">Not set</span>}
+                  </CompareCell>
+                );
+              })}
+
+              {/* Active Project Count */}
+              <CompareFieldLabel icon={<Briefcase className="w-3 h-3" />} label="Active Projects" />
+              {inspectors.map(ins => {
+                const diff = differs(projectCounts);
+                const isMax = ins.activeProjectCount === maxProjects && maxProjects > 0;
+                return (
+                  <CompareCell key={ins.inspectorId} highlight={diff && isMax}>
+                    <span className={diff && isMax ? "font-semibold text-amber-600" : ""}>{ins.activeProjectCount}</span>
+                    {diff && ins.activeProjectCount === Math.min(...projectCounts) && ins.activeProjectCount < maxProjects && (
+                      <span className="text-xs text-muted-foreground ml-1">(fewest)</span>
+                    )}
+                  </CompareCell>
+                );
+              })}
+
+              {/* Hours This Month */}
+              <CompareFieldLabel icon={<Clock className="w-3 h-3" />} label="Hours (this month)" />
+              {inspectors.map(ins => {
+                const diff = differs(hourValues);
+                const isTop = ins.totalHoursThisMonth === maxHours && maxHours > 0;
+                return (
+                  <CompareCell key={ins.inspectorId} highlight={diff && isTop}>
+                    <span className={diff && isTop ? "font-semibold text-amber-600" : ""}>{ins.totalHoursThisMonth}h</span>
+                  </CompareCell>
+                );
+              })}
+
+              {/* Regular Rate */}
+              <CompareFieldLabel icon={<DollarSign className="w-3 h-3" />} label="Regular Rate" />
+              {inspectors.map(ins => {
+                const rateNum = ins.regularRate ? parseFloat(ins.regularRate) : null;
+                const diff = differs(regularRates);
+                const isTop = rateNum !== null && rateNum === maxRate && maxRate > 0;
+                return (
+                  <CompareCell key={ins.inspectorId} highlight={diff && isTop}>
+                    {ins.regularRate
+                      ? <span className={diff && isTop ? "font-semibold text-amber-600" : ""}>${ins.regularRate}/hr</span>
+                      : <span className="text-muted-foreground text-xs">Not set</span>}
+                  </CompareCell>
+                );
+              })}
+
+              {/* Overtime Rate */}
+              <CompareFieldLabel icon={<DollarSign className="w-3 h-3" />} label="OT Rate" />
+              {inspectors.map(ins => {
+                const diff = differs(inspectors.map(i => i.overtimeRate));
+                return (
+                  <CompareCell key={ins.inspectorId} highlight={diff && !!ins.overtimeRate}>
+                    {ins.overtimeRate
+                      ? `$${ins.overtimeRate}/hr`
+                      : <span className="text-muted-foreground text-xs">Not set</span>}
+                  </CompareCell>
+                );
+              })}
+            </div>
+          </ScrollArea>
+        )}
+
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} data-testid="button-close-compare">
+            Close
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function CompareFieldLabel({ icon, label }: { icon: ReactNode; label: string }) {
+  return (
+    <div className="flex items-center gap-1 text-xs font-medium text-muted-foreground uppercase tracking-wide pt-3 border-t">
+      {icon} {label}
+    </div>
+  );
+}
+
+function CompareCell({ children, highlight = false }: { children: ReactNode; highlight?: boolean }) {
+  return (
+    <div className={`text-sm pt-3 border-t px-1 ${highlight ? "bg-amber-50 dark:bg-amber-950/20 rounded" : ""}`}>
+      {children}
+    </div>
   );
 }
