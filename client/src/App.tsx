@@ -127,25 +127,29 @@ function AppContent() {
   const { isLoading, isAuthenticated, user, companies, isCompaniesLoading } = useAuth();
   const [location, setLocation] = useLocation();
 
+  // Only check portal status if user has NO company memberships (i.e. could be portal-only)
+  const hasCompanyMemberships = !isCompaniesLoading && companies.length > 0;
   const { data: portalStatus, isLoading: isPortalStatusLoading } = useQuery<PortalStatus>({
     queryKey: ["/api/client-portal/status"],
-    enabled: !!user && isAuthenticated,
+    enabled: !!user && isAuthenticated && !isCompaniesLoading && !hasCompanyMemberships,
   });
 
-  // Redirect portal-only users (no company memberships) to /client-portal when they land on /
+  // Redirect portal-only users to /client-portal when they land on /
+  // "Portal-only" = is a portal user AND has no company memberships (no inspector/admin access)
+  const isPortalOnly = !!portalStatus?.isClientPortalUser && !hasCompanyMemberships;
+
   useEffect(() => {
     if (
       isAuthenticated &&
       !isLoading &&
       !isCompaniesLoading &&
       !isPortalStatusLoading &&
-      portalStatus?.isClientPortalUser &&
-      companies.length === 0 &&
+      isPortalOnly &&
       location === "/"
     ) {
       setLocation("/client-portal");
     }
-  }, [isAuthenticated, isLoading, isCompaniesLoading, isPortalStatusLoading, portalStatus, companies, location, setLocation]);
+  }, [isAuthenticated, isLoading, isCompaniesLoading, isPortalStatusLoading, isPortalOnly, location, setLocation]);
 
   if (isLoading) {
     return <LoadingScreen />;
