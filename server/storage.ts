@@ -375,6 +375,7 @@ export interface IStorage {
   addClientPortalProjectAccess(clientPortalUserId: string, projectId: string): Promise<ClientPortalProjectAccess>;
   removeClientPortalProjectAccess(clientPortalUserId: string, projectId: string): Promise<boolean>;
   getClientPortalUsersForCompany(companyId: string): Promise<(ClientPortalUser & { user?: User; client?: Client; projectAccess?: (ClientPortalProjectAccess & { project?: Project })[] })[]>;
+  getClientPortalUsersForProject(projectId: string): Promise<(ClientPortalUser & { user?: User })[]>;
 
   // Inspector Candidates (Recruiting)
   getInspectorCandidates(companyId: string): Promise<InspectorCandidate[]>;
@@ -2684,6 +2685,20 @@ export class DatabaseStorage implements IStorage {
       },
     });
     return results;
+  }
+
+  async getClientPortalUsersForProject(projectId: string): Promise<(ClientPortalUser & { user?: User })[]> {
+    const accessRows = await db.query.clientPortalProjectAccess.findMany({
+      where: eq(clientPortalProjectAccess.projectId, projectId),
+      with: {
+        clientPortalUser: {
+          with: {
+            user: true,
+          },
+        },
+      },
+    });
+    return accessRows.map(row => (row as any).clientPortalUser).filter(Boolean);
   }
 
   async getInspectorCandidates(companyId: string): Promise<InspectorCandidate[]> {

@@ -9722,12 +9722,47 @@ export async function registerRoutes(
       
       // Assign sequential report number when submitting (status changing from draft to submitted)
       const updateData: any = { ...validated };
-      if (validated.status === 'submitted' && existing.status === 'draft' && !existing.reportNumber) {
+      const isBeingSubmitted = validated.status === 'submitted' && existing.status === 'draft';
+      if (isBeingSubmitted && !existing.reportNumber) {
         updateData.reportNumber = await storage.getNextReportNumber();
       }
       
       const report = await storage.updateReport(req.params.id, updateData);
       res.json(report);
+
+      // After responding, send client portal email notifications if report was just submitted
+      if (isBeingSubmitted && report?.projectId) {
+        try {
+          const portalUsers = await storage.getClientPortalUsersForProject(report.projectId);
+          if (portalUsers.length > 0) {
+            const proj = await storage.getProject(report.projectId);
+            const reportDate = report.date
+              ? new Date(report.date).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric", timeZone: "America/Los_Angeles" })
+              : "Unknown date";
+            const inspectorName = (report as any).inspectorName || "Inspector";
+            const projectName = proj?.name || "your project";
+            const portalLink = `${req.protocol}://${req.get("host")}/client-portal/project/${report.projectId}`;
+            for (const pu of portalUsers) {
+              const recipientEmail = (pu as any).user?.email;
+              if (!recipientEmail) continue;
+              await sendEmail({
+                to: recipientEmail,
+                subject: `New Report Submitted — ${projectName}`,
+                html: `<p>Hello,</p>
+<p>A new daily report has been submitted for <strong>${projectName}</strong>.</p>
+<ul>
+  <li><strong>Date:</strong> ${reportDate}</li>
+  <li><strong>Inspector:</strong> ${inspectorName}</li>
+</ul>
+<p><a href="${portalLink}">View project in the client portal</a></p>
+<p style="color:#888;font-size:12px;">You are receiving this email because you have client portal access to this project.</p>`,
+              }).catch(err => console.error("Error sending portal notification email:", err));
+            }
+          }
+        } catch (notifErr) {
+          console.error("Error sending client portal notifications:", notifErr);
+        }
+      }
     } catch (error) {
       if (error instanceof z.ZodError) {
         return res.status(400).json({ message: "Validation error", errors: error.errors });
@@ -15903,6 +15938,24 @@ Transcript: "${transcript}"`;
         weather: r.weather,
         temperature: r.temperature,
       }));
+      // Hours summary
+      const hoursUsed = reports.reduce((sum, r) => {
+        return sum + parseFloat(r.regularHours || '0') + parseFloat((r as any).otHours || '0');
+      }, 0);
+      const budgetedHours = project.budgetedHours ? parseFloat(String(project.budgetedHours)) : null;
+
+      // Meeting minutes for this project
+      const projectMeetings = await storage.getMeetings(portalUser.companyId, { projectId });
+      const meetingMinutes = projectMeetings
+        .filter(m => m.meetingStatus === 'approved' || m.meetingStatus === 'distributed' || m.pdfPath)
+        .map(m => ({
+          id: m.id,
+          title: `${m.meetingType.replace(/_/g, ' ')} — ${m.meetingDate}`,
+          meetingDate: m.meetingDate,
+          meetingType: m.meetingType,
+          pdfPath: m.pdfPath || null,
+        }));
+
       res.json({
         project: {
           id: project.id,
@@ -15930,12 +15983,16 @@ Transcript: "${transcript}"`;
           temperature: r.temperature,
           inspectorName: r.inspectorName,
           status: r.status,
+          pdfPath: r.pdfPath || null,
         })),
         totalReports: reports.length,
         photos: allPhotos.slice(0, 24),
         issues: issues.slice(0, 20),
         safetyIncidents: safetyIncidents.slice(0, 20),
         weatherSummary,
+        hoursUsed: Math.round(hoursUsed * 10) / 10,
+        budgetedHours,
+        meetingMinutes,
       });
     } catch (error) {
       console.error("Error fetching client portal project data:", error);
@@ -16071,6 +16128,24 @@ Transcript: "${transcript}"`;
         temperature: r.temperature,
       }));
 
+      // Hours summary
+      const hoursUsedV2 = reports.reduce((sum, r) => {
+        return sum + parseFloat(r.regularHours || '0') + parseFloat((r as any).otHours || '0');
+      }, 0);
+      const budgetedHoursV2 = project.budgetedHours ? parseFloat(String(project.budgetedHours)) : null;
+
+      // Meeting minutes for this project
+      const projectMeetingsV2 = await storage.getMeetings(portalUser.companyId, { projectId });
+      const meetingMinutesV2 = projectMeetingsV2
+        .filter(m => m.meetingStatus === 'approved' || m.meetingStatus === 'distributed' || m.pdfPath)
+        .map(m => ({
+          id: m.id,
+          title: `${m.meetingType.replace(/_/g, ' ')} — ${m.meetingDate}`,
+          meetingDate: m.meetingDate,
+          meetingType: m.meetingType,
+          pdfPath: m.pdfPath || null,
+        }));
+
       res.json({
         project: {
           id: project.id,
@@ -16098,12 +16173,16 @@ Transcript: "${transcript}"`;
           temperature: r.temperature,
           inspectorName: r.inspectorName,
           status: r.status,
+          pdfPath: r.pdfPath || null,
         })),
         totalReports: reports.length,
         photos: allPhotos.slice(0, 24),
         issues: issues.slice(0, 20),
         safetyIncidents: safetyIncidents.slice(0, 20),
         weatherSummary,
+        hoursUsed: Math.round(hoursUsedV2 * 10) / 10,
+        budgetedHours: budgetedHoursV2,
+        meetingMinutes: meetingMinutesV2,
       });
     } catch (error) {
       console.error("Error fetching client portal project data:", error);
