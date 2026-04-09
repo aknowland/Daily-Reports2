@@ -1093,6 +1093,7 @@ export default function CompanyTeamPage() {
                     : member.user?.email || "Unknown User";
                   const isExpanded = expandedMembers.has(member.id);
 
+                  const isInspectorRole = member.role === "inspector";
                   const isCompareChecked = compareSelected.has(member.userId);
                   const canAddToCompare = isCompareChecked || compareSelected.size < 3;
 
@@ -1101,7 +1102,7 @@ export default function CompanyTeamPage() {
                       <CardContent className="p-4">
                         <div className="flex items-center justify-between gap-4">
                           <div className="flex items-center gap-2 flex-1 min-w-0">
-                            {isEffectiveCompanyAdmin && (
+                            {isEffectiveCompanyAdmin && isInspectorRole && (
                               <Checkbox
                                 checked={isCompareChecked}
                                 onCheckedChange={(checked) => {
@@ -1611,11 +1612,28 @@ export default function CompanyTeamPage() {
               </Card>
             ) : (
               <div className="grid gap-4">
-                {filteredTeamInspectors.map((inspector) => (
+                {filteredTeamInspectors.map((inspector) => {
+                  const tiKey = `ti:${inspector.id}`;
+                  const tiChecked = compareSelected.has(tiKey);
+                  const tiCanAdd = tiChecked || compareSelected.size < 3;
+                  return (
                   <Card key={inspector.id} className="hover-elevate" data-testid={`card-team-inspector-${inspector.id}`}>
                     <CardContent className="p-4">
                       <div className="flex items-start justify-between gap-4">
-                        <div className="flex-1 min-w-0">
+                        <div className="flex items-start gap-2 flex-1 min-w-0">
+                          <Checkbox
+                            checked={tiChecked}
+                            onCheckedChange={(checked) => {
+                              const next = new Set(compareSelected);
+                              if (checked && tiCanAdd) { next.add(tiKey); } else { next.delete(tiKey); }
+                              setCompareSelected(next);
+                            }}
+                            disabled={!tiCanAdd}
+                            className="mt-1 shrink-0"
+                            data-testid={`checkbox-compare-ti-${inspector.id}`}
+                            title={!tiCanAdd ? "Max 3 inspectors" : "Select for comparison"}
+                          />
+                          <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
                             <h3 className="font-medium">
                               {inspector.firstName} {inspector.lastName}
@@ -1672,6 +1690,7 @@ export default function CompanyTeamPage() {
                             <p className="text-sm text-muted-foreground mt-2 line-clamp-2">{inspector.notes}</p>
                           )}
                         </div>
+                        </div>
                         <div className="flex items-center gap-1">
                           <Button
                             variant="outline"
@@ -1718,7 +1737,8 @@ export default function CompanyTeamPage() {
                       </div>
                     </CardContent>
                   </Card>
-                ))}
+                  );
+                })}
               </div>
             )}
           </TabsContent>
@@ -2953,12 +2973,13 @@ type InspectorCompareData = {
   licenseState: string | null;
   certifications: CertEntry[];
   availabilityDate: string | null;
-  activeProjectCount: number;
-  totalHoursThisMonth: number;
+  activeProjectCount: number | null;
+  totalHoursThisMonth: number | null;
   regularRate: string | null;
   overtimeRate: string | null;
   premiumRate: string | null;
   role: string | null;
+  isTeamInspector?: boolean;
 };
 
 function InspectorCompareModal({
@@ -2993,8 +3014,10 @@ function InspectorCompareModal({
   const hourValues = inspectors.map(i => i.totalHoursThisMonth);
   const regularRates = inspectors.map(i => i.regularRate ? parseFloat(i.regularRate) : null);
 
-  const maxProjects = Math.max(...projectCounts, 0);
-  const maxHours = Math.max(...hourValues, 0);
+  const nonNullProjects = projectCounts.filter((v): v is number => v !== null);
+  const nonNullHours = hourValues.filter((v): v is number => v !== null);
+  const maxProjects = nonNullProjects.length > 0 ? Math.max(...nonNullProjects) : 0;
+  const maxHours = nonNullHours.length > 0 ? Math.max(...nonNullHours) : 0;
   const maxRate = Math.max(...regularRates.filter((r): r is number => r !== null), 0);
 
   return (
@@ -3029,14 +3052,27 @@ function InspectorCompareModal({
               {inspectors.map(ins => (
                 <div key={ins.inspectorId} className="border rounded p-3 bg-muted/20" data-testid={`compare-col-${ins.inspectorId}`}>
                   <p className="font-semibold truncate" title={ins.name}>{ins.name}</p>
-                  {ins.title && <p className="text-sm text-muted-foreground truncate">{ins.title}</p>}
-                  <button
-                    className="text-xs text-primary underline-offset-2 hover:underline mt-1 block"
-                    onClick={() => onAssignToProject(ins.inspectorId)}
-                    data-testid={`button-assign-inspector-${ins.inspectorId}`}
-                  >
-                    Assign to Project →
-                  </button>
+                  {ins.isTeamInspector && (
+                    <span className="text-[10px] bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 px-1.5 py-0.5 rounded font-medium uppercase tracking-wide">Roster Only</span>
+                  )}
+                  {ins.title && <p className="text-sm text-muted-foreground truncate mt-0.5">{ins.title}</p>}
+                  {ins.isTeamInspector ? (
+                    <button
+                      className="text-xs text-primary underline-offset-2 hover:underline mt-1 block"
+                      onClick={() => onAssignToProject(ins.inspectorId)}
+                      data-testid={`button-invite-inspector-${ins.inspectorId}`}
+                    >
+                      Invite to Join →
+                    </button>
+                  ) : (
+                    <button
+                      className="text-xs text-primary underline-offset-2 hover:underline mt-1 block"
+                      onClick={() => onAssignToProject(ins.inspectorId)}
+                      data-testid={`button-assign-inspector-${ins.inspectorId}`}
+                    >
+                      Assign to Project →
+                    </button>
+                  )}
                 </div>
               ))}
 
@@ -3105,13 +3141,19 @@ function InspectorCompareModal({
               {/* Active Project Count */}
               <CompareFieldLabel icon={<Briefcase className="w-3 h-3" />} label="Active Projects" />
               {inspectors.map(ins => {
-                const diff = differs(projectCounts);
+                const diff = differs(nonNullProjects);
                 const isMax = ins.activeProjectCount === maxProjects && maxProjects > 0;
                 return (
                   <CompareCell key={ins.inspectorId} highlight={diff && isMax}>
-                    <span className={diff && isMax ? "font-semibold text-amber-600" : ""}>{ins.activeProjectCount}</span>
-                    {diff && ins.activeProjectCount === Math.min(...projectCounts) && ins.activeProjectCount < maxProjects && (
-                      <span className="text-xs text-muted-foreground ml-1">(fewest)</span>
+                    {ins.activeProjectCount === null ? (
+                      <span className="text-muted-foreground text-xs">N/A</span>
+                    ) : (
+                      <>
+                        <span className={diff && isMax ? "font-semibold text-amber-600" : ""}>{ins.activeProjectCount}</span>
+                        {diff && ins.activeProjectCount === Math.min(...nonNullProjects) && ins.activeProjectCount < maxProjects && (
+                          <span className="text-xs text-muted-foreground ml-1">(fewest)</span>
+                        )}
+                      </>
                     )}
                   </CompareCell>
                 );
@@ -3120,11 +3162,15 @@ function InspectorCompareModal({
               {/* Hours This Month */}
               <CompareFieldLabel icon={<Clock className="w-3 h-3" />} label="Hours (this month)" />
               {inspectors.map(ins => {
-                const diff = differs(hourValues);
-                const isTop = ins.totalHoursThisMonth === maxHours && maxHours > 0;
+                const diff = differs(nonNullHours);
+                const isTop = ins.totalHoursThisMonth !== null && ins.totalHoursThisMonth === maxHours && maxHours > 0;
                 return (
                   <CompareCell key={ins.inspectorId} highlight={diff && isTop}>
-                    <span className={diff && isTop ? "font-semibold text-amber-600" : ""}>{ins.totalHoursThisMonth}h</span>
+                    {ins.totalHoursThisMonth === null ? (
+                      <span className="text-muted-foreground text-xs">N/A</span>
+                    ) : (
+                      <span className={diff && isTop ? "font-semibold text-amber-600" : ""}>{ins.totalHoursThisMonth}h</span>
+                    )}
                   </CompareCell>
                 );
               })}
@@ -3137,9 +3183,13 @@ function InspectorCompareModal({
                 const isTop = rateNum !== null && rateNum === maxRate && maxRate > 0;
                 return (
                   <CompareCell key={ins.inspectorId} highlight={diff && isTop}>
-                    {ins.regularRate
-                      ? <span className={diff && isTop ? "font-semibold text-amber-600" : ""}>${ins.regularRate}/hr</span>
-                      : <span className="text-muted-foreground text-xs">Not set</span>}
+                    {ins.isTeamInspector ? (
+                      <span className="text-muted-foreground text-xs">N/A</span>
+                    ) : ins.regularRate ? (
+                      <span className={diff && isTop ? "font-semibold text-amber-600" : ""}>${ins.regularRate}/hr</span>
+                    ) : (
+                      <span className="text-muted-foreground text-xs">Not set</span>
+                    )}
                   </CompareCell>
                 );
               })}
@@ -3147,12 +3197,16 @@ function InspectorCompareModal({
               {/* Overtime Rate */}
               <CompareFieldLabel icon={<DollarSign className="w-3 h-3" />} label="OT Rate" />
               {inspectors.map(ins => {
-                const diff = differs(inspectors.map(i => i.overtimeRate));
+                const diff = differs(inspectors.filter(i => !i.isTeamInspector).map(i => i.overtimeRate));
                 return (
-                  <CompareCell key={ins.inspectorId} highlight={diff && !!ins.overtimeRate}>
-                    {ins.overtimeRate
-                      ? `$${ins.overtimeRate}/hr`
-                      : <span className="text-muted-foreground text-xs">Not set</span>}
+                  <CompareCell key={ins.inspectorId} highlight={!ins.isTeamInspector && diff && !!ins.overtimeRate}>
+                    {ins.isTeamInspector ? (
+                      <span className="text-muted-foreground text-xs">N/A</span>
+                    ) : ins.overtimeRate ? (
+                      `$${ins.overtimeRate}/hr`
+                    ) : (
+                      <span className="text-muted-foreground text-xs">Not set</span>
+                    )}
                   </CompareCell>
                 );
               })}
@@ -3160,12 +3214,16 @@ function InspectorCompareModal({
               {/* Premium / Weekend Rate */}
               <CompareFieldLabel icon={<DollarSign className="w-3 h-3" />} label="Premium Rate" />
               {inspectors.map(ins => {
-                const diff = differs(inspectors.map(i => i.premiumRate));
+                const diff = differs(inspectors.filter(i => !i.isTeamInspector).map(i => i.premiumRate));
                 return (
-                  <CompareCell key={ins.inspectorId} highlight={diff && !!ins.premiumRate}>
-                    {ins.premiumRate
-                      ? `$${ins.premiumRate}/hr`
-                      : <span className="text-muted-foreground text-xs">Not set</span>}
+                  <CompareCell key={ins.inspectorId} highlight={!ins.isTeamInspector && diff && !!ins.premiumRate}>
+                    {ins.isTeamInspector ? (
+                      <span className="text-muted-foreground text-xs">N/A</span>
+                    ) : ins.premiumRate ? (
+                      `$${ins.premiumRate}/hr`
+                    ) : (
+                      <span className="text-muted-foreground text-xs">Not set</span>
+                    )}
                   </CompareCell>
                 );
               })}
