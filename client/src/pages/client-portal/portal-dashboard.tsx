@@ -128,21 +128,6 @@ export default function PortalDashboard() {
   const clientName = user?.firstName || user?.email?.split("@")[0] || "";
   const isLoading = isAuthLoading || isStatusLoading || isProjectsLoading;
 
-  if (!isStatusLoading && status && !status.isClientPortalUser) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background" data-testid="portal-unauthorized">
-        <Card className="max-w-md w-full">
-          <CardContent className="p-8 text-center">
-            <Building2 className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
-            <h2 className="text-xl font-semibold mb-2">Access Denied</h2>
-            <p className="text-muted-foreground text-sm">
-              You do not have access to the client portal. Please contact your project administrator.
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen bg-background" data-testid="portal-dashboard">

@@ -1,6 +1,6 @@
-import { Switch, Route } from "wouter";
+import { Switch, Route, useLocation } from "wouter";
 import { queryClient } from "./lib/queryClient";
-import { QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider, useQuery } from "@tanstack/react-query";
 import { HelmetProvider } from "react-helmet-async";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -11,6 +11,7 @@ import { AdminRoute } from "@/components/layout/admin-route";
 import { AIChatBubble } from "@/components/chat/ai-chat-bubble";
 import { ProfileSetupPrompt } from "@/components/profile-setup-prompt";
 import { Loader2 } from "lucide-react";
+import { useEffect } from "react";
 
 import NotFound from "@/pages/not-found";
 import LandingPage from "@/pages/landing";
@@ -118,8 +119,30 @@ function AuthenticatedRoutes() {
   );
 }
 
+interface PortalStatus {
+  isClientPortalUser: boolean;
+}
+
 function AppContent() {
-  const { isLoading, isAuthenticated } = useAuth();
+  const { isLoading, isAuthenticated, user } = useAuth();
+  const [location, setLocation] = useLocation();
+
+  const { data: portalStatus, isLoading: isPortalStatusLoading } = useQuery<PortalStatus>({
+    queryKey: ["/api/client-portal/status"],
+    enabled: !!user && isAuthenticated,
+  });
+
+  // Redirect portal-only users to /client-portal when they land on /
+  useEffect(() => {
+    if (
+      isAuthenticated &&
+      !isPortalStatusLoading &&
+      portalStatus?.isClientPortalUser &&
+      location === "/"
+    ) {
+      setLocation("/client-portal");
+    }
+  }, [isAuthenticated, isPortalStatusLoading, portalStatus, location, setLocation]);
 
   if (isLoading) {
     return <LoadingScreen />;
