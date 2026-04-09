@@ -9733,7 +9733,8 @@ export async function registerRoutes(
       // After responding, send client portal email notifications if report was just submitted
       if (isBeingSubmitted && report?.projectId) {
         try {
-          const portalUsers = await storage.getClientPortalUsersForProject(report.projectId);
+          const allPortalUsers = await storage.getClientPortalUsersForProject(report.projectId);
+          const portalUsers = allPortalUsers.filter(pu => pu.isActive !== false);
           if (portalUsers.length > 0) {
             const proj = await storage.getProject(report.projectId);
             const reportDate = report.date
