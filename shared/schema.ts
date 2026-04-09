@@ -1508,7 +1508,8 @@ export type InsertInspectorDocument = z.infer<typeof insertInspectorDocumentSche
 export type AnnouncementRecipientFilter =
   | { type: "all" }
   | { type: "project"; projectId: string; projectName?: string }
-  | { type: "dsa_class"; dsaClass: 1 | 2 | 3 };
+  | { type: "dsa_class"; dsaClass: 1 | 2 | 3 }
+  | { type: "specific_users"; userIds: string[] };
 
 export const inspectorAnnouncements = pgTable("inspector_announcements", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
