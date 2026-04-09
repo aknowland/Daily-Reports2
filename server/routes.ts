@@ -18148,7 +18148,10 @@ Return ONLY a valid JSON object with the fields above. No explanation, no markdo
       const userId = req.user?.claims?.sub;
       // Get all companies the user belongs to
       const memberships = await storage.getCompaniesForUser(userId);
-      const companyIds = memberships.map((m) => m.companyId);
+      // Fast-return empty for users with no inspector memberships
+      const inspectorMemberships = memberships.filter((m) => m.role === "inspector");
+      if (inspectorMemberships.length === 0) return res.json([]);
+      const companyIds = inspectorMemberships.map((m) => m.companyId);
       const announcements = await storage.getInspectorAnnouncements(userId, companyIds);
       // Enrich with read status
       const readStatuses = await Promise.all(
@@ -18167,7 +18170,10 @@ Return ONLY a valid JSON object with the fields above. No explanation, no markdo
     try {
       const userId = req.user?.claims?.sub;
       const memberships = await storage.getCompaniesForUser(userId);
-      const companyIds = memberships.map((m) => m.companyId);
+      // Fast-return zero for users with no inspector memberships
+      const inspectorMemberships = memberships.filter((m) => m.role === "inspector");
+      if (inspectorMemberships.length === 0) return res.json({ count: 0 });
+      const companyIds = inspectorMemberships.map((m) => m.companyId);
       const count = await storage.getUnreadAnnouncementCount(userId, companyIds);
       res.json({ count });
     } catch (error: any) {
@@ -18182,7 +18188,9 @@ Return ONLY a valid JSON object with the fields above. No explanation, no markdo
       const userId = req.user?.claims?.sub;
       // Verify the announcement is visible to this user (membership + recipient inclusion)
       const memberships = await storage.getCompaniesForUser(userId);
-      const companyIds = memberships.map((m) => m.companyId);
+      const inspectorMemberships = memberships.filter((m) => m.role === "inspector");
+      if (inspectorMemberships.length === 0) return res.status(403).json({ message: "Announcement not accessible" });
+      const companyIds = inspectorMemberships.map((m) => m.companyId);
       const visibleAnnouncements = await storage.getInspectorAnnouncements(userId, companyIds);
       const isVisible = visibleAnnouncements.some((a) => a.id === req.params.id);
       if (!isVisible) {
