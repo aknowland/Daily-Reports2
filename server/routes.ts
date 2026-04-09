@@ -15803,6 +15803,11 @@ Transcript: "${transcript}"`;
       const userId = req.user?.claims?.sub;
       const portalUsers = await storage.getClientPortalUsersByUserId(userId);
       if (portalUsers.length === 0) {
+        // If user has company memberships (inspector/admin role), reject access explicitly
+        const memberships = await storage.getCompaniesForUser(userId);
+        if (memberships.length > 0) {
+          return res.status(403).json({ message: "Access denied: client portal is for external clients only" });
+        }
         return res.json({ isClientPortalUser: false, portals: [] });
       }
       res.json({
