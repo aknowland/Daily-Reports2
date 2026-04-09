@@ -12,7 +12,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { useAuth } from "@/hooks/use-auth";
 import {
   Select,
   SelectContent,
@@ -28,9 +27,8 @@ import {
   FolderOpen,
   GraduationCap,
   Calendar,
-  CheckCircle2,
 } from "lucide-react";
-import type { InspectorAnnouncement } from "@shared/schema";
+import type { InspectorAnnouncement, AnnouncementRecipientFilter } from "@shared/schema";
 
 type AnnouncementWithSender = InspectorAnnouncement & { senderName?: string };
 
@@ -42,13 +40,12 @@ type Project = {
 
 export default function CompanyAnnouncementsPage() {
   const { toast } = useToast();
-  const { isEffectiveCompanyAdmin } = useAuth();
 
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [filterType, setFilterType] = useState<"all" | "project" | "dsa_class">("all");
   const [filterProjectId, setFilterProjectId] = useState("");
-  const [filterDsaClass, setFilterDsaClass] = useState<"1" | "2" | "3">("1");
+  const [filterDsaClass, setFilterDsaClass] = useState<1 | 2 | 3>(1);
   const [sendEmailOption, setSendEmailOption] = useState(false);
 
   const { data: announcements = [], isLoading } = useQuery<AnnouncementWithSender[]>({
@@ -68,7 +65,7 @@ export default function CompanyAnnouncementsPage() {
           ? { type: "all" as const }
           : filterType === "project"
           ? { type: "project" as const, projectId: filterProjectId }
-          : { type: "dsa_class" as const, dsaClass: parseInt(filterDsaClass) as 1 | 2 | 3 };
+          : { type: "dsa_class" as const, dsaClass: filterDsaClass };
 
       return apiRequest("POST", "/api/announcements", {
         title,
@@ -97,7 +94,7 @@ export default function CompanyAnnouncementsPage() {
     (filterType !== "project" || filterProjectId.length > 0);
 
   const formatFilter = (a: AnnouncementWithSender) => {
-    const f = a.recipientFilter as any;
+    const f = a.recipientFilter as AnnouncementRecipientFilter | null;
     if (!f || f.type === "all") return "All Inspectors";
     if (f.type === "project") return `Project: ${f.projectId}`;
     if (f.type === "dsa_class") return `DSA Class ${f.dsaClass}`;
@@ -153,7 +150,9 @@ export default function CompanyAnnouncementsPage() {
                 <Label>Recipients</Label>
                 <Select
                   value={filterType}
-                  onValueChange={(v) => setFilterType(v as any)}
+                  onValueChange={(v) => {
+                    if (v === "all" || v === "project" || v === "dsa_class") setFilterType(v);
+                  }}
                 >
                   <SelectTrigger data-testid="select-recipient-filter">
                     <SelectValue />
@@ -199,7 +198,13 @@ export default function CompanyAnnouncementsPage() {
               {filterType === "dsa_class" && (
                 <div className="space-y-1.5">
                   <Label>DSA Class</Label>
-                  <Select value={filterDsaClass} onValueChange={(v) => setFilterDsaClass(v as any)}>
+                  <Select
+                    value={String(filterDsaClass)}
+                    onValueChange={(v) => {
+                      const n = parseInt(v, 10);
+                      if (n === 1 || n === 2 || n === 3) setFilterDsaClass(n);
+                    }}
+                  >
                     <SelectTrigger data-testid="select-filter-class">
                       <SelectValue />
                     </SelectTrigger>

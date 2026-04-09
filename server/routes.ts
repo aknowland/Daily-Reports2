@@ -18017,11 +18017,22 @@ Return ONLY a valid JSON object with the fields above. No explanation, no markdo
         return res.status(403).json({ message: "Company admin access required" });
       }
 
-      const { title, body, recipientFilter, sendEmail: shouldEmail } = req.body;
-      if (!title?.trim() || !body?.trim()) {
-        return res.status(400).json({ message: "Title and body are required" });
+      const recipientFilterSchema = z.discriminatedUnion("type", [
+        z.object({ type: z.literal("all") }),
+        z.object({ type: z.literal("project"), projectId: z.string().min(1) }),
+        z.object({ type: z.literal("dsa_class"), dsaClass: z.union([z.literal(1), z.literal(2), z.literal(3)]) }),
+      ]);
+      const bodyParse = z.object({
+        title: z.string().min(1),
+        body: z.string().min(1),
+        recipientFilter: recipientFilterSchema.optional(),
+        sendEmail: z.boolean().optional(),
+      }).safeParse(req.body);
+      if (!bodyParse.success) {
+        return res.status(400).json({ message: "Invalid request", errors: bodyParse.error.flatten() });
       }
-      const filter = recipientFilter ?? { type: "all" };
+      const { title, body, recipientFilter, sendEmail: shouldEmail } = bodyParse.data;
+      const filter = recipientFilter ?? ({ type: "all" } as const);
 
       // Resolve recipient user IDs from filter
       const allMembers = await storage.getCompanyMembers(companyId);
@@ -18039,7 +18050,7 @@ Return ONLY a valid JSON object with the fields above. No explanation, no markdo
         const projectUserIds = new Set(projectMembersRows.map((r: { userId: string }) => r.userId));
         recipientIds = inspectorMembers.filter(m => projectUserIds.has(m.userId)).map(m => m.userId);
       } else if (filter.type === "dsa_class") {
-        const dsaClass = filter.dsaClass as 1 | 2 | 3;
+        const dsaClass = filter.dsaClass;
         // Filter inspectors who have DSA Class N certification (check cert names)
         const recipientPromises = inspectorMembers.map(async (m) => {
           const p = await storage.getUserProfile(m.userId);
@@ -18072,8 +18083,8 @@ Return ONLY a valid JSON object with the fields above. No explanation, no markdo
           // Use already-loaded member data to get emails (user.email from companyMembers join)
           const memberEmailMap = new Map(
             allMembers
-              .filter((m: any) => m.user?.email)
-              .map((m: any) => [m.userId, m.user.email as string])
+              .filter((m) => !!m.user?.email)
+              .map((m) => [m.userId, m.user!.email as string])
           );
           const emailList = recipientIds.map(rid => memberEmailMap.get(rid)).filter((e): e is string => !!e);
 
@@ -18137,7 +18148,7 @@ Return ONLY a valid JSON object with the fields above. No explanation, no markdo
       const userId = req.user?.claims?.sub;
       // Get all companies the user belongs to
       const memberships = await storage.getCompaniesForUser(userId);
-      const companyIds = memberships.map((m: any) => m.companyId);
+      const companyIds = memberships.map((m) => m.companyId);
       const announcements = await storage.getInspectorAnnouncements(userId, companyIds);
       // Enrich with read status
       const readStatuses = await Promise.all(
@@ -18156,7 +18167,7 @@ Return ONLY a valid JSON object with the fields above. No explanation, no markdo
     try {
       const userId = req.user?.claims?.sub;
       const memberships = await storage.getCompaniesForUser(userId);
-      const companyIds = memberships.map((m: any) => m.companyId);
+      const companyIds = memberships.map((m) => m.companyId);
       const count = await storage.getUnreadAnnouncementCount(userId, companyIds);
       res.json({ count });
     } catch (error: any) {
@@ -18165,10 +18176,18 @@ Return ONLY a valid JSON object with the fields above. No explanation, no markdo
     }
   });
 
-  // POST /api/announcements/:id/read — mark as read
+  // POST /api/announcements/:id/read — mark as read (only if announcement is visible to caller)
   app.post("/api/announcements/:id/read", isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user?.claims?.sub;
+      // Verify the announcement is visible to this user (membership + recipient inclusion)
+      const memberships = await storage.getCompaniesForUser(userId);
+      const companyIds = memberships.map((m) => m.companyId);
+      const visibleAnnouncements = await storage.getInspectorAnnouncements(userId, companyIds);
+      const isVisible = visibleAnnouncements.some((a) => a.id === req.params.id);
+      if (!isVisible) {
+        return res.status(403).json({ message: "Announcement not accessible" });
+      }
       await storage.markAnnouncementRead(req.params.id, userId);
       res.json({ ok: true });
     } catch (error: any) {
