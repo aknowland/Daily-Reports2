@@ -17663,6 +17663,17 @@ Transcript: "${transcript}"`;
         return res.status(400).json({ message: "Invalid document type" });
       }
 
+      // Verify the inspector belongs to this company (as a company member or team inspector)
+      const members = await storage.getCompanyMembers(companyId);
+      const isMember = members.some(m => m.userId === inspectorId);
+      if (!isMember) {
+        const teamInspectors = await storage.getTeamInspectors(companyId);
+        const isTeamInspector = teamInspectors.some(t => t.userId === inspectorId);
+        if (!isTeamInspector) {
+          return res.status(400).json({ message: "Inspector is not a member of this company" });
+        }
+      }
+
       // Upload file to private object storage under inspector-docs/
       const ext = path.extname(req.file.originalname) || "";
       const safeFileName = `${Date.now()}-${Math.random().toString(36).slice(2)}${ext}`;
