@@ -17688,7 +17688,7 @@ Transcript: "${transcript}"`;
     }
   });
 
-  // GET /api/inspector-documents/:id/download — stream a document file
+  // GET /api/inspector-documents/:id/download — returns a short-lived signed URL
   app.get("/api/inspector-documents/:id/download", isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user?.claims?.sub;
@@ -17703,10 +17703,9 @@ Transcript: "${transcript}"`;
       if (!doc) return res.status(404).json({ message: "Document not found" });
       if (doc.companyId !== companyId) return res.status(403).json({ message: "Access denied" });
 
-      const buffer = await objectStorage.downloadBuffer(doc.fileUrl);
-      res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(doc.fileName)}"`);
-      res.setHeader("Content-Type", "application/octet-stream");
-      res.send(buffer);
+      // Issue a 5-minute signed URL — avoid streaming bytes through the API server
+      const url = await objectStorage.getSignedDownloadUrl(doc.fileUrl, 300);
+      res.json({ url, fileName: doc.fileName });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }
@@ -17727,7 +17726,13 @@ Transcript: "${transcript}"`;
       if (!doc) return res.status(404).json({ message: "Document not found" });
       if (doc.companyId !== companyId) return res.status(403).json({ message: "Access denied" });
 
+      // Delete DB record first, then remove the file from object storage
       await storage.deleteInspectorDocument(req.params.id);
+      try {
+        await objectStorage.deleteObject(doc.fileUrl);
+      } catch (_err) {
+        // Best-effort blob cleanup — DB record already removed
+      }
       res.json({ success: true });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
