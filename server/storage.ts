@@ -376,6 +376,7 @@ export interface IStorage {
   removeClientPortalProjectAccess(clientPortalUserId: string, projectId: string): Promise<boolean>;
   getClientPortalUsersForCompany(companyId: string): Promise<(ClientPortalUser & { user?: User; client?: Client; projectAccess?: (ClientPortalProjectAccess & { project?: Project })[] })[]>;
   getClientPortalUsersForProject(projectId: string): Promise<(ClientPortalUser & { user?: User })[]>;
+  updateClientPortalUserAccessLevel(id: string, allProjectsAccess: boolean): Promise<ClientPortalUser>;
 
   // Inspector Candidates (Recruiting)
   getInspectorCandidates(companyId: string): Promise<InspectorCandidate[]>;
@@ -2688,6 +2689,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getClientPortalUsersForProject(projectId: string): Promise<(ClientPortalUser & { user?: User })[]> {
+    // Get users with explicit per-project access
     const accessRows = await db.query.clientPortalProjectAccess.findMany({
       where: eq(clientPortalProjectAccess.projectId, projectId),
       with: {
@@ -2701,9 +2703,42 @@ export class DatabaseStorage implements IStorage {
     type AccessRowWithUser = typeof accessRows[number] & {
       clientPortalUser: (ClientPortalUser & { user?: User }) | null;
     };
-    return (accessRows as AccessRowWithUser[])
+    const perProjectUsers = (accessRows as AccessRowWithUser[])
       .map(row => row.clientPortalUser)
       .filter((u): u is ClientPortalUser & { user?: User } => u !== null && u !== undefined);
+
+    // Also include users with allProjectsAccess=true for the project's company/client
+    const project = await db.query.projects.findFirst({ where: eq(projects.id, projectId) });
+    if (!project) return perProjectUsers;
+
+    const allAccessUsers = await db.query.clientPortalUsers.findMany({
+      where: and(
+        eq(clientPortalUsers.companyId, project.companyId),
+        eq(clientPortalUsers.allProjectsAccess, true),
+        eq(clientPortalUsers.isActive, true),
+        project.clientId ? eq(clientPortalUsers.clientId, project.clientId) : undefined
+      ),
+      with: { user: true },
+    });
+
+    // Merge, deduplicate by portal user id
+    const seen = new Set(perProjectUsers.map(u => u.id));
+    for (const u of allAccessUsers) {
+      if (!seen.has(u.id)) {
+        seen.add(u.id);
+        perProjectUsers.push(u as ClientPortalUser & { user?: User });
+      }
+    }
+    return perProjectUsers;
+  }
+
+  async updateClientPortalUserAccessLevel(id: string, allProjectsAccess: boolean): Promise<ClientPortalUser> {
+    const [result] = await db
+      .update(clientPortalUsers)
+      .set({ allProjectsAccess })
+      .where(eq(clientPortalUsers.id, id))
+      .returning();
+    return result;
   }
 
   async getInspectorCandidates(companyId: string): Promise<InspectorCandidate[]> {

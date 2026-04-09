@@ -12852,11 +12852,14 @@ export async function registerRoutes(
           companyId: invite.companyId!,
           clientId: invite.clientId || null,
           isActive: true,
+          allProjectsAccess: invite.allProjectsAccess === true,
         });
 
-        // Grant access to specified projects
-        for (const projectId of projectIds) {
-          await storage.addClientPortalProjectAccess(portalUser.id, projectId);
+        // Grant access to specified projects (only if not all-projects access)
+        if (!invite.allProjectsAccess) {
+          for (const projectId of projectIds) {
+            await storage.addClientPortalProjectAccess(portalUser.id, projectId);
+          }
         }
 
         // Create minimal profile if needed
@@ -15836,10 +15839,22 @@ Transcript: "${transcript}"`;
         return res.status(403).json({ message: "Not a client portal user" });
       }
       const portalUser = portalUsers[0];
-      const projectAccess = await storage.getClientPortalProjectAccess(portalUser.id);
+
+      // Determine which projects to show
+      let projectList: Project[];
+      if (portalUser.allProjectsAccess) {
+        // All-projects mode: fetch all projects for this client (or all company projects if no client)
+        const allCompanyProjects = await storage.getProjectsByCompany(portalUser.companyId);
+        projectList = portalUser.clientId
+          ? allCompanyProjects.filter(p => p.clientId === portalUser.clientId)
+          : allCompanyProjects;
+      } else {
+        const projectAccess = await storage.getClientPortalProjectAccess(portalUser.id);
+        projectList = projectAccess.map(pa => pa.project).filter(Boolean) as Project[];
+      }
+
       const projectsWithData = await Promise.all(
-        projectAccess.map(async (pa) => {
-          const project = pa.project || await storage.getProject(pa.projectId);
+        projectList.map(async (project) => {
           if (!project) return null;
           const reports = await storage.getReportsByProject(project.id);
           const submittedReports = reports.filter(r => r.status === "submitted");
@@ -15889,8 +15904,20 @@ Transcript: "${transcript}"`;
         return res.status(403).json({ message: "Not a client portal user" });
       }
       const portalUser = portalUsers[0];
-      const projectAccess = await storage.getClientPortalProjectAccess(portalUser.id);
-      if (!projectAccess.find(pa => pa.projectId === req.params.projectId)) {
+
+      // Check project access: explicit per-project OR all-projects access
+      let hasAccess = false;
+      if (portalUser.allProjectsAccess) {
+        // Verify the project belongs to the portal user's company (and client if set)
+        const targetProject = await storage.getProject(req.params.projectId);
+        if (targetProject && targetProject.companyId === portalUser.companyId) {
+          hasAccess = !portalUser.clientId || targetProject.clientId === portalUser.clientId;
+        }
+      } else {
+        const projectAccess = await storage.getClientPortalProjectAccess(portalUser.id);
+        hasAccess = !!projectAccess.find(pa => pa.projectId === req.params.projectId);
+      }
+      if (!hasAccess) {
         return res.status(403).json({ message: "No access to this project" });
       }
       const project = await storage.getProject(req.params.projectId);
@@ -16201,10 +16228,13 @@ Transcript: "${transcript}"`;
     try {
       const userId = req.user?.claims?.sub;
       const profile = await storage.getUserProfile(userId);
-      const { email, firstName, lastName, companyId, clientId, projectIds } = req.body;
+      const { email, firstName, lastName, companyId, clientId, projectIds, allProjectsAccess } = req.body;
 
-      if (!email || !companyId || !projectIds || projectIds.length === 0) {
-        return res.status(400).json({ message: "Email, company, and at least one project are required" });
+      if (!email || !companyId) {
+        return res.status(400).json({ message: "Email and company are required" });
+      }
+      if (!allProjectsAccess && (!projectIds || projectIds.length === 0)) {
+        return res.status(400).json({ message: "Select at least one project, or enable all-projects access" });
       }
 
       const isAdmin = await isEffectiveCompanyAdmin(userId, companyId, profile);
@@ -16212,11 +16242,14 @@ Transcript: "${transcript}"`;
         return res.status(403).json({ message: "Only admins can invite clients" });
       }
 
-      const companyProjects = await storage.getProjectsByCompany(companyId);
-      const companyProjectIds = new Set(companyProjects.map(p => p.id));
-      const invalidProjects = projectIds.filter((pid: string) => !companyProjectIds.has(pid));
-      if (invalidProjects.length > 0) {
-        return res.status(400).json({ message: "One or more selected projects do not belong to this company" });
+      // Validate project IDs only when not granting all-projects access
+      if (!allProjectsAccess && projectIds?.length > 0) {
+        const companyProjects = await storage.getProjectsByCompany(companyId);
+        const companyProjectIds = new Set(companyProjects.map(p => p.id));
+        const invalidProjects = (projectIds as string[]).filter(pid => !companyProjectIds.has(pid));
+        if (invalidProjects.length > 0) {
+          return res.status(400).json({ message: "One or more selected projects do not belong to this company" });
+        }
       }
 
       const crypto = await import("crypto");
@@ -16234,8 +16267,9 @@ Transcript: "${transcript}"`;
         isCompanyAdmin: false,
         isClientPortal: true,
         clientId: clientId || null,
+        allProjectsAccess: allProjectsAccess === true,
         companyId,
-        projectIds,
+        projectIds: allProjectsAccess ? [] : (projectIds || []),
         token,
         inviteCode,
         invitedBy: userId,
@@ -16360,6 +16394,34 @@ Transcript: "${transcript}"`;
     } catch (error) {
       console.error("Error removing project access:", error);
       res.status(500).json({ message: "Failed to remove project access" });
+    }
+  });
+
+  // Admin: Update access level for a portal user (toggle allProjectsAccess)
+  app.patch("/api/client-portal/:portalUserId/access-level", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      const { portalUserId } = req.params;
+      const { allProjectsAccess } = req.body;
+
+      const portalUser = await db.query.clientPortalUsers.findFirst({
+        where: eq(clientPortalUsers.id, portalUserId),
+      });
+      if (!portalUser) {
+        return res.status(404).json({ message: "Portal user not found" });
+      }
+
+      const isAdmin = await isEffectiveCompanyAdmin(userId, portalUser.companyId, profile);
+      if (!isAdmin && !isEffectiveSystemAdmin(profile)) {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const updated = await storage.updateClientPortalUserAccessLevel(portalUserId, allProjectsAccess === true);
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating portal user access level:", error);
+      res.status(500).json({ message: "Failed to update access level" });
     }
   });
 
