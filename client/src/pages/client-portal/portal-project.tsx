@@ -153,7 +153,7 @@ function SectionHeader({ title, children, className = "" }: { title: string; chi
   );
 }
 
-function PortalHeader({ companyName, companyLogo }: { companyName: string; companyLogo: string | null }) {
+function PortalHeader({ companyName, companyLogo, clientName }: { companyName: string; companyLogo: string | null; clientName: string }) {
   return (
     <header className="sticky top-0 z-40 w-full bg-[hsl(220,55%,16%)] text-white border-b-4 border-[hsl(38,92%,50%)]">
       <div className="flex h-14 items-center justify-between gap-4 px-4 max-w-7xl mx-auto">
@@ -167,7 +167,10 @@ function PortalHeader({ companyName, companyLogo }: { companyName: string; compa
           )}
           <span className="font-bold text-sm tracking-widest uppercase hidden sm:inline">{companyName || "Client Portal"}</span>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-4">
+          {clientName && (
+            <span className="text-sm text-white/70 hidden md:inline">Welcome, {clientName}</span>
+          )}
           <Link href="/client-portal">
             <Button variant="ghost" size="sm" className="text-white/80 hover:text-white hover:bg-white/10" data-testid="button-back-portal">
               <ArrowLeft className="w-4 h-4 mr-1" />
@@ -235,11 +238,12 @@ export default function PortalProjectPage() {
   const last7Weather = (data?.weatherSummary || []).slice(0, 7);
   const companyName = data?.company?.name || "";
   const companyLogo = data?.company?.logoPath || null;
+  const clientName = user?.firstName || user?.email?.split("@")[0] || "";
 
   if (isLoading) {
     return (
       <div className="min-h-screen bg-background" data-testid="portal-project-loading">
-        <PortalHeader companyName={companyName} companyLogo={companyLogo} />
+        <PortalHeader companyName={companyName} companyLogo={companyLogo} clientName={clientName} />
         <div className="max-w-7xl mx-auto px-4 md:px-6 lg:px-8 py-6 space-y-6">
           <Card className="rounded-none shadow-sm">
             <CardContent className="p-5 space-y-4">
@@ -269,7 +273,7 @@ export default function PortalProjectPage() {
   if (!data) {
     return (
       <div className="min-h-screen bg-background" data-testid="portal-project-error">
-        <PortalHeader companyName={companyName} companyLogo={companyLogo} />
+        <PortalHeader companyName={companyName} companyLogo={companyLogo} clientName={clientName} />
         <div className="max-w-7xl mx-auto px-4 md:px-6 lg:px-8 py-6">
           <Card className="rounded-none shadow-sm">
             <CardContent className="p-8 text-center">
@@ -291,7 +295,7 @@ export default function PortalProjectPage() {
 
   return (
     <div className="min-h-screen bg-background" data-testid="portal-project">
-      <PortalHeader companyName={companyName} companyLogo={companyLogo} />
+      <PortalHeader companyName={companyName} companyLogo={companyLogo} clientName={clientName} />
 
       <div className="max-w-7xl mx-auto px-4 md:px-6 lg:px-8 py-6 space-y-8">
         <Card className="rounded-none shadow-sm" data-testid="card-project-overview">
