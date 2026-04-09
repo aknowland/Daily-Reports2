@@ -124,7 +124,7 @@ interface PortalStatus {
 }
 
 function AppContent() {
-  const { isLoading, isAuthenticated, user } = useAuth();
+  const { isLoading, isAuthenticated, user, companies, isCompaniesLoading } = useAuth();
   const [location, setLocation] = useLocation();
 
   const { data: portalStatus, isLoading: isPortalStatusLoading } = useQuery<PortalStatus>({
@@ -132,17 +132,20 @@ function AppContent() {
     enabled: !!user && isAuthenticated,
   });
 
-  // Redirect portal-only users to /client-portal when they land on /
+  // Redirect portal-only users (no company memberships) to /client-portal when they land on /
   useEffect(() => {
     if (
       isAuthenticated &&
+      !isLoading &&
+      !isCompaniesLoading &&
       !isPortalStatusLoading &&
       portalStatus?.isClientPortalUser &&
+      companies.length === 0 &&
       location === "/"
     ) {
       setLocation("/client-portal");
     }
-  }, [isAuthenticated, isPortalStatusLoading, portalStatus, location, setLocation]);
+  }, [isAuthenticated, isLoading, isCompaniesLoading, isPortalStatusLoading, portalStatus, companies, location, setLocation]);
 
   if (isLoading) {
     return <LoadingScreen />;
