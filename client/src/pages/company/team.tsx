@@ -2255,6 +2255,11 @@ export default function CompanyTeamPage() {
         <InspectorCompareModal
           inspectorIds={Array.from(compareSelected)}
           onClose={() => setShowCompareModal(false)}
+          onAssignToProject={(inspectorId) => {
+            setShowCompareModal(false);
+            const found = members.find(m => m.userId === inspectorId);
+            if (found) setMemberToAssignProjects(found);
+          }}
         />
       )}
     </PageLayout>
@@ -2959,9 +2964,11 @@ type InspectorCompareData = {
 function InspectorCompareModal({
   inspectorIds,
   onClose,
+  onAssignToProject,
 }: {
   inspectorIds: string[];
   onClose: () => void;
+  onAssignToProject: (inspectorId: string) => void;
 }) {
   const idsKey = inspectorIds.join(",");
 
@@ -3023,13 +3030,13 @@ function InspectorCompareModal({
                 <div key={ins.inspectorId} className="border rounded p-3 bg-muted/20" data-testid={`compare-col-${ins.inspectorId}`}>
                   <p className="font-semibold truncate" title={ins.name}>{ins.name}</p>
                   {ins.title && <p className="text-sm text-muted-foreground truncate">{ins.title}</p>}
-                  <Link
-                    href={`/reports?inspector=${ins.inspectorId}`}
+                  <button
                     className="text-xs text-primary underline-offset-2 hover:underline mt-1 block"
-                    onClick={onClose}
+                    onClick={() => onAssignToProject(ins.inspectorId)}
+                    data-testid={`button-assign-inspector-${ins.inspectorId}`}
                   >
                     Assign to Project →
-                  </Link>
+                  </button>
                 </div>
               ))}
 
@@ -3145,6 +3152,19 @@ function InspectorCompareModal({
                   <CompareCell key={ins.inspectorId} highlight={diff && !!ins.overtimeRate}>
                     {ins.overtimeRate
                       ? `$${ins.overtimeRate}/hr`
+                      : <span className="text-muted-foreground text-xs">Not set</span>}
+                  </CompareCell>
+                );
+              })}
+
+              {/* Premium / Weekend Rate */}
+              <CompareFieldLabel icon={<DollarSign className="w-3 h-3" />} label="Premium Rate" />
+              {inspectors.map(ins => {
+                const diff = differs(inspectors.map(i => i.premiumRate));
+                return (
+                  <CompareCell key={ins.inspectorId} highlight={diff && !!ins.premiumRate}>
+                    {ins.premiumRate
+                      ? `$${ins.premiumRate}/hr`
                       : <span className="text-muted-foreground text-xs">Not set</span>}
                   </CompareCell>
                 );

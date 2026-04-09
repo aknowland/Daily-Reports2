@@ -17422,13 +17422,22 @@ Transcript: "${transcript}"`;
       const ids = idsParam.split(",").map(s => s.trim()).filter(Boolean).slice(0, 3);
       if (ids.length < 1) return res.status(400).json({ message: "At least one inspector ID required" });
 
-      // Verify all requested inspectors belong to this company
+      // Verify all requested inspectors belong to this company (strict IDOR protection)
       const members = await storage.getCompanyMembers(companyId);
       const memberMap = new Map(members.map(m => [m.userId, m]));
+      const unknownIds = ids.filter(id => !memberMap.has(id));
+      if (unknownIds.length > 0) {
+        return res.status(403).json({ message: "One or more inspectors do not belong to this company" });
+      }
 
-      // Get company projects (for project count + hours)
+      // Get company projects — filter to "active" (no final closeout date, or closeout in the future)
       const companyProjects = await storage.getProjectsByCompany(companyId);
-      const companyProjectIds = companyProjects.map(p => p.id);
+      const activeCompanyProjects = companyProjects.filter(p =>
+        !p.finalCloseoutDate || new Date(p.finalCloseoutDate) > new Date()
+      );
+      const companyProjectIds = activeCompanyProjects.map(p => p.id);
+      // Use all project IDs (not just active) for hours aggregation so past months are included
+      const allCompanyProjectIds = companyProjects.map(p => p.id);
 
       // Current month boundaries
       const now = new Date();
@@ -17440,13 +17449,13 @@ Transcript: "${transcript}"`;
         const inspectorProfile = await storage.getUserProfile(inspectorId);
         const member = memberMap.get(inspectorId);
 
-        // Name resolution
+        // Name resolution (fully typed — member is guaranteed in map)
         const firstName = inspectorProfile?.firstName || member?.user?.firstName || null;
         const lastName = inspectorProfile?.lastName || member?.user?.lastName || null;
-        const name = [firstName, lastName].filter(Boolean).join(" ") ||
-          (member as any)?.user?.email || inspectorId;
+        const email = member?.user?.email ?? null;
+        const name = [firstName, lastName].filter(Boolean).join(" ") || email || inspectorId;
 
-        // Active project count
+        // Active project count — only counts assignments on active projects
         let activeProjectCount = 0;
         let projectAssignments: Array<{ projectId: string; regularRate: string | null; overtimeRate: string | null; premiumRate: string | null }> = [];
         if (companyProjectIds.length > 0) {
@@ -17475,7 +17484,7 @@ Transcript: "${transcript}"`;
 
         // This-month hours (DR + MTE)
         let totalHoursThisMonth = 0;
-        if (companyProjectIds.length > 0) {
+        if (allCompanyProjectIds.length > 0) {
           const [drRows, mteRows] = await Promise.all([
             db.select({
               regularHours: dailyReportsTable.regularHours,
@@ -17485,7 +17494,7 @@ Transcript: "${transcript}"`;
                 eq(dailyReportsTable.inspectorId, inspectorId),
                 sql`${dailyReportsTable.date} >= ${monthStart}`,
                 sql`${dailyReportsTable.date} < ${monthEnd}`,
-                inArray(dailyReportsTable.projectId, companyProjectIds)
+                inArray(dailyReportsTable.projectId, allCompanyProjectIds)
               )
             ),
             db.select({
@@ -17496,7 +17505,7 @@ Transcript: "${transcript}"`;
                 eq(manualTimeEntries.inspectorId, inspectorId),
                 sql`${manualTimeEntries.date} >= ${monthStart}`,
                 sql`${manualTimeEntries.date} < ${monthEnd}`,
-                inArray(manualTimeEntries.projectId, companyProjectIds)
+                inArray(manualTimeEntries.projectId, allCompanyProjectIds)
               )
             ),
           ]);
