@@ -2797,15 +2797,17 @@ export class DatabaseStorage implements IStorage {
         announcement: inspectorAnnouncements,
         firstName: users.firstName,
         lastName: users.lastName,
+        email: users.email,
       })
       .from(inspectorAnnouncements)
       .leftJoin(users, eq(inspectorAnnouncements.sentById, users.id))
       .where(eq(inspectorAnnouncements.companyId, companyId))
       .orderBy(desc(inspectorAnnouncements.sentAt));
-    return rows.map(r => ({
-      ...r.announcement,
-      senderName: [r.firstName, r.lastName].filter(Boolean).join(" ") || undefined,
-    }));
+    return rows.map(r => {
+      const fullName = [r.firstName, r.lastName].filter(Boolean).join(" ");
+      const senderName = fullName || r.email || undefined;
+      return { ...r.announcement, senderName };
+    });
   }
 
   async getInspectorAnnouncements(userId: string, companyIds: string[]): Promise<InspectorAnnouncement[]> {
