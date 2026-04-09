@@ -9739,11 +9739,11 @@ export async function registerRoutes(
             const reportDate = report.date
               ? new Date(report.date).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric", timeZone: "America/Los_Angeles" })
               : "Unknown date";
-            const inspectorName = (report as any).inspectorName || "Inspector";
+            const inspectorName = report?.inspectorName || "Inspector";
             const projectName = proj?.name || "your project";
             const portalLink = `${req.protocol}://${req.get("host")}/client-portal/project/${report.projectId}`;
             for (const pu of portalUsers) {
-              const recipientEmail = (pu as any).user?.email;
+              const recipientEmail = pu.user?.email;
               if (!recipientEmail) continue;
               await sendEmail({
                 to: recipientEmail,
@@ -15810,8 +15810,8 @@ Transcript: "${transcript}"`;
         portals: portalUsers.map(pu => ({
           id: pu.id,
           companyId: pu.companyId,
-          companyName: (pu as any).company?.name || "Unknown",
-          clientName: (pu as any).client?.name || null,
+          companyName: pu.company?.name || "Unknown",
+          clientName: pu.client?.name || null,
           isActive: pu.isActive,
         })),
       });
@@ -15940,12 +15940,12 @@ Transcript: "${transcript}"`;
       }));
       // Hours summary
       const hoursUsed = reports.reduce((sum, r) => {
-        return sum + parseFloat(r.regularHours || '0') + parseFloat((r as any).otHours || '0');
+        return sum + parseFloat(r.regularHours || '0') + parseFloat(r.otHours || '0');
       }, 0);
       const budgetedHours = project.budgetedHours ? parseFloat(String(project.budgetedHours)) : null;
 
       // Meeting minutes for this project
-      const projectMeetings = await storage.getMeetings(portalUser.companyId, { projectId });
+      const projectMeetings = await storage.getMeetings(portalUser.companyId, { projectId: req.params.projectId });
       const meetingMinutes = projectMeetings
         .filter(m => m.meetingStatus === 'approved' || m.meetingStatus === 'distributed' || m.pdfPath)
         .map(m => ({
@@ -16038,8 +16038,8 @@ Transcript: "${transcript}"`;
       );
 
       res.json({
-        companyName: (portalUser as any).company?.name || "Unknown",
-        companyLogo: (portalUser as any).company?.logoPath || null,
+        companyName: portalUser.company?.name || "Unknown",
+        companyLogo: portalUser.company?.logoPath || null,
         projects: projectsWithData.filter(Boolean),
       });
     } catch (error) {
@@ -16130,7 +16130,7 @@ Transcript: "${transcript}"`;
 
       // Hours summary
       const hoursUsedV2 = reports.reduce((sum, r) => {
-        return sum + parseFloat(r.regularHours || '0') + parseFloat((r as any).otHours || '0');
+        return sum + parseFloat(r.regularHours || '0') + parseFloat(r.otHours || '0');
       }, 0);
       const budgetedHoursV2 = project.budgetedHours ? parseFloat(String(project.budgetedHours)) : null;
 

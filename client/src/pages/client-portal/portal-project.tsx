@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useParams, Link } from "wouter";
+import { useParams, Link, useLocation } from "wouter";
+import { useAuth } from "@/hooks/use-auth";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -189,11 +190,31 @@ function PortalHeader({ companyName, companyLogo }: { companyName: string; compa
   );
 }
 
+interface PortalStatus {
+  isClientPortalUser: boolean;
+}
+
 export default function PortalProjectPage() {
   const { id: projectId } = useParams<{ id: string }>();
   const [showAllPhotos, setShowAllPhotos] = useState(false);
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState(0);
+  const { user, isLoading: isAuthLoading } = useAuth();
+  const [, setLocation] = useLocation();
+
+  const { data: status, isLoading: isStatusLoading } = useQuery<PortalStatus>({
+    queryKey: ["/api/client-portal/status"],
+    enabled: !!user,
+  });
+
+  useEffect(() => {
+    if (!isAuthLoading && !isStatusLoading && user && status) {
+      if (!status.isClientPortalUser) {
+        setLocation("/");
+      }
+    }
+  }, [isAuthLoading, isStatusLoading, user, status, setLocation]);
+
   const { data, isLoading } = useQuery<ProjectDetail>({
     queryKey: ["/api/client-portal/projects", projectId],
     enabled: !!projectId,
