@@ -173,6 +173,8 @@ type ContractFormData = {
   agency: string;
   serviceType: string;
   questionDeadline: string;
+  hasJobWalk: boolean;
+  jobWalkDateTime: string;
   addendumCount: string;
   lastAddendumDate: string;
   assignedToUserId: string;
@@ -204,6 +206,8 @@ const emptyFormData: ContractFormData = {
   agency: "",
   serviceType: "",
   questionDeadline: "",
+  hasJobWalk: false,
+  jobWalkDateTime: "",
   addendumCount: "",
   lastAddendumDate: "",
   assignedToUserId: "",
@@ -575,15 +579,17 @@ export default function ContractsPage() {
         ...data,
         clientId: data.clientId || null,
         purchaseOrderId: data.purchaseOrderId || null,
-        bidReleaseDate: data.bidReleaseDate || null, // Keep as YYYY-MM-DD string
+        bidReleaseDate: data.bidReleaseDate || null,
         bidDueDate: data.bidDueDate || null,
         awardDate: data.awardDate || null,
         startDate: data.startDate || null,
         substantialCompletionDate: data.substantialCompletionDate || null,
         finalCloseoutDate: data.finalCloseoutDate || null,
+        questionDeadline: data.questionDeadline || null,
+        jobWalkDateTime: data.jobWalkDateTime || null,
         options: data.options.map(opt => ({
           name: opt.name,
-          awardStatus: opt.awardStatus || "pending", // Include award status for partial awards
+          awardStatus: opt.awardStatus || "pending",
           inspectors: opt.inspectors.filter(ins => ins.title.trim() || ins.inspectorName.trim() || ins.rate.trim()),
         })),
       };
@@ -614,15 +620,17 @@ export default function ContractsPage() {
         ...data,
         clientId: data.clientId || null,
         purchaseOrderId: data.purchaseOrderId || null,
-        bidReleaseDate: data.bidReleaseDate || null, // Keep as YYYY-MM-DD string
+        bidReleaseDate: data.bidReleaseDate || null,
         bidDueDate: data.bidDueDate || null,
         awardDate: data.awardDate || null,
         startDate: data.startDate || null,
         substantialCompletionDate: data.substantialCompletionDate || null,
         finalCloseoutDate: data.finalCloseoutDate || null,
+        questionDeadline: data.questionDeadline || null,
+        jobWalkDateTime: data.jobWalkDateTime || null,
         options: data.options.map(opt => ({
           name: opt.name,
-          awardStatus: opt.awardStatus || "pending", // Include award status for partial awards
+          awardStatus: opt.awardStatus || "pending",
           inspectors: opt.inspectors.filter(ins => ins.title.trim() || ins.inspectorName.trim() || ins.rate.trim()),
         })),
       };
@@ -831,6 +839,8 @@ export default function ContractsPage() {
           startDate: formData.startDate || null,
           substantialCompletionDate: formData.substantialCompletionDate || null,
           finalCloseoutDate: formData.finalCloseoutDate || null,
+          questionDeadline: formData.questionDeadline || null,
+          jobWalkDateTime: formData.jobWalkDateTime || null,
           options: contractOptions.map(opt => ({
             name: opt.name,
             inspectors: opt.inspectors.filter(ins => ins.title.trim() || ins.inspectorName.trim() || ins.rate.trim()),
@@ -888,6 +898,8 @@ export default function ContractsPage() {
       agency: (contract as any).agency || "",
       serviceType: (contract as any).serviceType || "",
       questionDeadline: (contract as any).questionDeadline ? format(parseDateSafe((contract as any).questionDeadline), "yyyy-MM-dd") : "",
+      hasJobWalk: (contract as any).hasJobWalk ?? false,
+      jobWalkDateTime: (contract as any).jobWalkDateTime ? format(parseDateSafe((contract as any).jobWalkDateTime), "yyyy-MM-dd'T'HH:mm") : "",
       addendumCount: (contract as any).addendumCount?.toString() || "",
       lastAddendumDate: (contract as any).lastAddendumDate ? format(parseDateSafe((contract as any).lastAddendumDate), "yyyy-MM-dd") : "",
       assignedToUserId: (contract as any).assignedToUserId || "",
@@ -2740,6 +2752,50 @@ export default function ContractsPage() {
                   />
                 </div>
               </div>
+            </div>
+
+            <div className="border-t pt-4 space-y-3">
+              <h4 className="font-medium text-sm">Bid Details</h4>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="questionDeadline">Questions Due Date</Label>
+                  <Input
+                    id="questionDeadline"
+                    type="date"
+                    value={formData.questionDeadline}
+                    onChange={(e) => setFormData({ ...formData, questionDeadline: e.target.value })}
+                    data-testid="input-question-deadline"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">Job Walk</Label>
+                  <div className="flex items-center gap-3 h-10">
+                    <Checkbox
+                      id="hasJobWalk"
+                      checked={formData.hasJobWalk}
+                      onCheckedChange={(checked) =>
+                        setFormData({ ...formData, hasJobWalk: !!checked, jobWalkDateTime: checked ? formData.jobWalkDateTime : "" })
+                      }
+                      data-testid="checkbox-has-job-walk"
+                    />
+                    <label htmlFor="hasJobWalk" className="text-sm cursor-pointer select-none">
+                      {formData.hasJobWalk ? "Yes" : "No"}
+                    </label>
+                  </div>
+                </div>
+              </div>
+              {formData.hasJobWalk && (
+                <div className="space-y-2">
+                  <Label htmlFor="jobWalkDateTime">Job Walk Date &amp; Time</Label>
+                  <Input
+                    id="jobWalkDateTime"
+                    type="datetime-local"
+                    value={formData.jobWalkDateTime}
+                    onChange={(e) => setFormData({ ...formData, jobWalkDateTime: e.target.value })}
+                    data-testid="input-job-walk-datetime"
+                  />
+                </div>
+              )}
             </div>
 
             {formData.startDate && (formData.substantialCompletionDate || formData.finalCloseoutDate) && (() => {
