@@ -312,7 +312,7 @@ export default function ProjectDailyReportsPage() {
                             <span data-testid={`text-report-hours-${report.id}`}>{totalHrs.toFixed(1)} hrs</span>
                           </div>
                           <Badge
-                            variant={report.status === "submitted" ? "default" : "secondary"}
+                            variant={report.status === "submitted" ? "success" : "warning"}
                             className="text-xs"
                             data-testid={`badge-report-status-${report.id}`}
                           >

@@ -467,31 +467,31 @@ type DashboardData = {
 const getScheduleStatusConfig = (status: string) => {
   switch (status) {
     case 'complete':
-      return { color: 'bg-green-500', textColor: 'text-green-600 dark:text-green-400', label: 'Complete', icon: CheckCircle2 };
+      return { color: 'bg-green-500', textColor: 'text-green-600 dark:text-green-400', label: 'Complete', icon: CheckCircle2, variant: 'success' as const };
     case 'on_track':
-      return { color: 'bg-blue-500', textColor: 'text-blue-600 dark:text-blue-400', label: 'On Track', icon: TrendingUp };
+      return { color: 'bg-blue-500', textColor: 'text-blue-600 dark:text-blue-400', label: 'On Track', icon: TrendingUp, variant: 'info' as const };
     case 'warning':
-      return { color: 'bg-yellow-500', textColor: 'text-yellow-600 dark:text-yellow-400', label: 'Near Due', icon: AlertTriangle };
+      return { color: 'bg-yellow-500', textColor: 'text-yellow-600 dark:text-yellow-400', label: 'Near Due', icon: AlertTriangle, variant: 'warning' as const };
     case 'overdue':
-      return { color: 'bg-red-500', textColor: 'text-red-600 dark:text-red-400', label: 'Overdue', icon: AlertTriangle };
+      return { color: 'bg-red-500', textColor: 'text-red-600 dark:text-red-400', label: 'Overdue', icon: AlertTriangle, variant: 'destructive' as const };
     case 'not_started':
     default:
-      return { color: 'bg-gray-400', textColor: 'text-muted-foreground', label: 'Not Started', icon: Clock };
+      return { color: 'bg-gray-400', textColor: 'text-muted-foreground', label: 'Not Started', icon: Clock, variant: 'muted' as const };
   }
 };
 
 const getBudgetStatusConfig = (status: string) => {
   switch (status) {
     case 'under':
-      return { color: 'bg-green-500', textColor: 'text-green-600 dark:text-green-400', label: 'Under Budget' };
+      return { color: 'bg-green-500', textColor: 'text-green-600 dark:text-green-400', label: 'Under Budget', variant: 'success' as const };
     case 'on_track':
-      return { color: 'bg-blue-500', textColor: 'text-blue-600 dark:text-blue-400', label: 'On Track' };
+      return { color: 'bg-blue-500', textColor: 'text-blue-600 dark:text-blue-400', label: 'On Track', variant: 'info' as const };
     case 'warning':
-      return { color: 'bg-yellow-500', textColor: 'text-yellow-600 dark:text-yellow-400', label: 'Approaching Limit' };
+      return { color: 'bg-yellow-500', textColor: 'text-yellow-600 dark:text-yellow-400', label: 'Approaching Limit', variant: 'warning' as const };
     case 'over':
-      return { color: 'bg-red-500', textColor: 'text-red-600 dark:text-red-400', label: 'Over Budget' };
+      return { color: 'bg-red-500', textColor: 'text-red-600 dark:text-red-400', label: 'Over Budget', variant: 'destructive' as const };
     default:
-      return { color: 'bg-gray-400', textColor: 'text-muted-foreground', label: 'Unknown' };
+      return { color: 'bg-gray-400', textColor: 'text-muted-foreground', label: 'Unknown', variant: 'muted' as const };
   }
 };
 
@@ -1021,8 +1021,15 @@ export default function ContractDashboard() {
       </PageHeader>
       <div className="space-y-6">
         <div className="flex items-center gap-2 flex-wrap">
-          <Badge variant="outline" data-testid="badge-contract-status">
-            {dashboard.contract.status.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+          <Badge variant={(() => {
+            const s = dashboard.contract.status;
+            if (['bid_release','bid_received','substantial_completion'].includes(s)) return 'info';
+            if (s === 'under_review') return 'warning';
+            if (['awarded','in_execution'].includes(s)) return 'success';
+            if (s === 'not_awarded') return 'destructive';
+            return 'muted';
+          })()} data-testid="badge-contract-status">
+            {dashboard.contract.status.replace(/_/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())}
           </Badge>
         </div>
 
@@ -1034,7 +1041,7 @@ export default function ContractDashboard() {
                   <Calendar className="h-5 w-5" />
                   Schedule Progress
                 </CardTitle>
-                <Badge className={scheduleConfig.textColor} variant="outline" data-testid="badge-schedule-status">
+                <Badge variant={scheduleConfig.variant} data-testid="badge-schedule-status">
                   <ScheduleIcon className="h-4 w-4 mr-1" />
                   {scheduleConfig.label}
                 </Badge>
@@ -1102,7 +1109,7 @@ export default function ContractDashboard() {
                           <div className="border rounded-md p-3 space-y-2 cursor-pointer hover:border-primary/50 hover:bg-muted/50 transition-colors" data-testid={`project-schedule-${project.id}`}>
                             <div className="flex items-center justify-between gap-2 flex-wrap">
                               <span className="font-medium text-sm">{project.name}</span>
-                              <Badge className={`${projectConfig.textColor} text-xs`} variant="outline">
+                              <Badge variant={projectConfig.variant} className="text-xs">
                                 <ProjectIcon className="h-3 w-3 mr-1" />
                                 {projectConfig.label}
                               </Badge>
@@ -1140,7 +1147,7 @@ export default function ContractDashboard() {
                     {dashboard.budget.trackingMode === 'daily_reports' ? 'Daily Reports' : 
                      dashboard.budget.trackingMode === 'scheduled' ? 'Scheduled' : 'Hybrid'}
                   </Badge>
-                  <Badge className={budgetConfig.textColor} variant="outline" data-testid="badge-budget-status">
+                  <Badge variant={budgetConfig.variant} data-testid="badge-budget-status">
                     {budgetConfig.label}
                   </Badge>
                 </div>
@@ -1567,10 +1574,7 @@ export default function ContractDashboard() {
                             <TableCell>{formatDate(project.substantialCompletionDate)}</TableCell>
                             <TableCell>{formatDate(project.finalCloseoutDate)}</TableCell>
                             <TableCell>
-                              <Badge 
-                                variant="secondary" 
-                                className={`${statusConfig.color} text-white`}
-                              >
+                              <Badge variant={statusConfig.variant}>
                                 {statusConfig.label}
                               </Badge>
                             </TableCell>
@@ -1826,7 +1830,7 @@ export default function ContractDashboard() {
                         </p>
                       </div>
                       {activity.status && (
-                        <Badge variant={activity.status === 'submitted' ? 'default' : 'secondary'} className="text-xs">
+                        <Badge variant={activity.status === 'submitted' ? 'success' : activity.status === 'approved' ? 'info' : 'muted'} className="text-xs">
                           {activity.status}
                         </Badge>
                       )}

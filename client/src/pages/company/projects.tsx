@@ -294,6 +294,22 @@ export default function CompanyProjectsPage() {
     return result.sort((a, b) => getProjectStatusPriority(a) - getProjectStatusPriority(b));
   }, [projects, selectedClient, projectIdFilter, searchQuery, clients]);
 
+  // Helper to derive a project status badge based on dates
+  const getProjectStatus = (project: Project): { label: string; variant: "info" | "success" | "muted" } => {
+    const now = new Date();
+    const startDate = project.startDate ? parseDateSafe(project.startDate) : null;
+    const completionDate = project.substantialCompletionDate ? parseDateSafe(project.substantialCompletionDate) : null;
+    const closeoutDate = project.finalCloseoutDate ? parseDateSafe(project.finalCloseoutDate) : null;
+
+    if ((closeoutDate && closeoutDate < now) || (completionDate && completionDate < now)) {
+      return { label: "Completed", variant: "muted" };
+    }
+    if (!startDate || startDate > now) {
+      return { label: "Upcoming", variant: "info" };
+    }
+    return { label: "Active", variant: "success" };
+  };
+
   // Helper to get client name from clientId
   const getClientName = (project: Project): string | null => {
     const projectClientId = (project as any).clientId;
@@ -765,6 +781,16 @@ export default function CompanyProjectsPage() {
                   className="block cursor-pointer"
                 >
                   <CardContent className="space-y-2">
+                    {(() => {
+                      const status = getProjectStatus(project);
+                      return (
+                        <div>
+                          <Badge variant={status.variant} className="text-xs" data-testid={`badge-status-${project.id}`}>
+                            {status.label}
+                          </Badge>
+                        </div>
+                      );
+                    })()}
                     {getClientName(project) && (
                       <div className="flex items-center gap-2 text-sm text-muted-foreground">
                         <Building2 className="w-4 h-4" />
