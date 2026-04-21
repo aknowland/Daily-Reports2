@@ -987,6 +987,8 @@ export default function ContractsPage() {
       agency: data.agency || "",
       serviceType: data.serviceType || "",
       questionDeadline: data.questionDeadline || "",
+      hasJobWalk: data.hasJobWalk === true,
+      jobWalkDateTime: data.jobWalkDateTime || "",
     };
     setFormData(newFormData);
     setContractOptions([{ ...emptyContractOption, inspectors: [{ ...emptyContractInspector }] }]);

@@ -18116,6 +18116,8 @@ Do not guess or invent data — only extract what is explicitly mentioned.`;
 - agency: string | null (government agency or issuing organization if applicable)
 - serviceType: string | null (type of service e.g. "DSA Inspection", "Special Inspection", etc.)
 - questionDeadline: string | null (ISO date YYYY-MM-DD format, deadline for questions/RFIs)
+- hasJobWalk: boolean | null (true if a mandatory or optional job walk, site walk, pre-bid walk, or site visit is mentioned; false if explicitly stated there is none; null if not mentioned)
+- jobWalkDateTime: string | null (ISO datetime YYYY-MM-DDTHH:mm format if a specific date/time for the job walk is given, otherwise null)
 
 Email Subject: ${subject || ""}
 From: ${sender || ""}
