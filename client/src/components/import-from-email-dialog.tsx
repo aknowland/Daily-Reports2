@@ -57,6 +57,8 @@ interface ExtractedContract {
   agency: string | null;
   serviceType: string | null;
   questionDeadline: string | null;
+  hasJobWalk: boolean | null;
+  jobWalkDateTime: string | null;
 }
 
 type Step = "email-list" | "extracting" | "review";
@@ -332,6 +334,13 @@ export function ImportFromEmailDialog({ open, onOpenChange, onImport }: ImportFr
                 <ExtractedField label="Bid Release Date" value={extracted.bidReleaseDate} />
                 <ExtractedField label="Bid Due Date" value={extracted.bidDueDate} />
                 <ExtractedField label="Question Deadline" value={extracted.questionDeadline} />
+                <ExtractedField
+                  label="Job Walk Required"
+                  value={extracted.hasJobWalk === true ? "Yes" : extracted.hasJobWalk === false ? "No" : null}
+                />
+                {extracted.hasJobWalk && (
+                  <ExtractedField label="Job Walk Date / Time" value={extracted.jobWalkDateTime} />
+                )}
                 <ExtractedField label="Award Date" value={extracted.awardDate} />
                 <ExtractedField label="Start Date" value={extracted.startDate} />
                 <ExtractedField label="Substantial Completion" value={extracted.substantialCompletionDate} />
