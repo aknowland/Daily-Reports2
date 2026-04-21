@@ -507,6 +507,7 @@ export const contracts = pgTable("contracts", {
   questionDeadline: timestamp("question_deadline"),
   hasJobWalk: boolean("has_job_walk").default(false),
   jobWalkDateTime: timestamp("job_walk_date_time"),
+  dsaClass: varchar("dsa_class"), // "1" | "2" | "3" | "non_dsa"
   addendumCount: integer("addendum_count").default(0),
   lastAddendumDate: timestamp("last_addendum_date"),
   assignedToUserId: varchar("assigned_to_user_id").references(() => users.id, { onDelete: "set null" }),
