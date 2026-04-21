@@ -125,8 +125,12 @@ export default function LandingPage() {
         .hero-card-enter {
           animation: fadeUp 0.65s cubic-bezier(0.22, 1, 0.36, 1) forwards;
         }
+        .hero-text-enter {
+          animation: fadeUp 0.60s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+        }
         @media (prefers-reduced-motion: reduce) {
           .hero-card-enter { animation: none; opacity: 1; }
+          .hero-text-enter { animation: none; opacity: 1; }
         }
       `}</style>
 
@@ -159,25 +163,35 @@ export default function LandingPage() {
           <div className="container relative px-4 md:px-6 mx-auto max-w-screen-xl">
             <div className="grid gap-14 lg:grid-cols-2 lg:gap-16 items-center">
               <div className="space-y-8">
-                <div className="inline-flex items-center gap-2 rounded-full px-3.5 py-1.5 text-xs font-semibold border w-fit"
-                  style={{ background: "hsla(38,92%,50%,0.15)", color: "hsl(38,92%,65%)", borderColor: "hsla(38,92%,50%,0.25)" }}
+                <div
+                  className={`inline-flex items-center gap-2 rounded-full px-3.5 py-1.5 text-xs font-semibold border w-fit ${entered ? "hero-text-enter" : "opacity-0"}`}
+                  style={{ background: "hsla(38,92%,50%,0.15)", color: "hsl(38,92%,65%)", borderColor: "hsla(38,92%,50%,0.25)", animationDelay: "0ms" }}
                 >
                   <ClipboardList className="w-3.5 h-3.5" />
                   Built for construction inspectors
                 </div>
 
                 <div className="space-y-5">
-                  <h1 className="text-5xl font-extrabold tracking-tight sm:text-6xl md:text-7xl leading-none text-white">
+                  <h1
+                    className={`text-5xl font-extrabold tracking-tight sm:text-6xl md:text-7xl leading-none text-white ${entered ? "hero-text-enter" : "opacity-0"}`}
+                    style={{ animationDelay: "80ms" }}
+                  >
                     Daily Reports
                     <span className="block text-[hsl(38,92%,50%)]">Made Simple</span>
                   </h1>
-                  <p className="text-lg text-[hsl(210,25%,75%)] max-w-md leading-relaxed">
+                  <p
+                    className={`text-lg text-[hsl(210,25%,75%)] max-w-md leading-relaxed ${entered ? "hero-text-enter" : "opacity-0"}`}
+                    style={{ animationDelay: "160ms" }}
+                  >
                     The mobile-first solution for construction inspectors — create professional 
                     daily reports with photos, signatures, and instant PDF generation.
                   </p>
                 </div>
 
-                <div className="flex flex-col sm:flex-row gap-3">
+                <div
+                  className={`flex flex-col sm:flex-row gap-3 ${entered ? "hero-text-enter" : "opacity-0"}`}
+                  style={{ animationDelay: "240ms" }}
+                >
                   <Button
                     size="lg"
                     asChild
@@ -201,7 +215,10 @@ export default function LandingPage() {
                   </Button>
                 </div>
 
-                <div className="flex flex-wrap gap-x-6 gap-y-2.5 text-sm text-[hsl(210,25%,65%)]">
+                <div
+                  className={`flex flex-wrap gap-x-6 gap-y-2.5 text-sm text-[hsl(210,25%,65%)] ${entered ? "hero-text-enter" : "opacity-0"}`}
+                  style={{ animationDelay: "320ms" }}
+                >
                   {["No credit card required", "Mobile optimized", "Works offline"].map((label) => (
                     <div key={label} className="flex items-center gap-2">
                       <CheckCircle className="w-4 h-4 text-green-400 shrink-0" />
