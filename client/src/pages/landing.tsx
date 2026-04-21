@@ -8,7 +8,8 @@ import {
   Mail, 
   Shield,
   CheckCircle,
-  ArrowRight
+  ArrowRight,
+  ClipboardList
 } from "lucide-react";
 
 export default function LandingPage() {
@@ -47,16 +48,20 @@ export default function LandingPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="sticky top-0 z-50 w-full bg-[hsl(216,32%,15%)] text-white border-b-2 border-[hsl(36,90%,50%)]">
-        <div className="container flex h-14 max-w-screen-2xl items-center justify-between px-4">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded bg-[hsl(36,90%,50%)] flex items-center justify-center">
+      <header className="sticky top-0 z-50 w-full bg-[hsl(216,32%,15%)] text-white border-b border-white/10 backdrop-blur-sm">
+        <div className="container flex h-14 max-w-screen-2xl items-center justify-between px-4 md:px-6">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-[hsl(36,90%,50%)] flex items-center justify-center shadow-sm">
               <HardHat className="w-5 h-5 text-[hsl(216,32%,10%)]" />
             </div>
-            <span className="font-semibold text-lg tracking-tight">Field Daily Reports</span>
+            <span className="font-bold text-base tracking-tight">Field Daily Reports</span>
           </div>
-          <div className="flex items-center gap-2">
-            <Button asChild className="bg-[hsl(36,90%,50%)] text-[hsl(216,32%,10%)] hover:bg-[hsl(36,90%,45%)] font-semibold" data-testid="button-header-login">
+          <div className="flex items-center gap-3">
+            <Button
+              asChild
+              className="bg-[hsl(36,90%,50%)] text-[hsl(216,32%,10%)] hover:bg-[hsl(36,90%,45%)] font-semibold shadow-sm"
+              data-testid="button-header-login"
+            >
               <a href="/api/login">Sign In</a>
             </Button>
           </div>
@@ -64,81 +69,119 @@ export default function LandingPage() {
       </header>
 
       <main>
-        <section className="relative overflow-hidden py-20 md:py-32">
-          <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-primary/10" />
-          <div className="container relative px-4 mx-auto max-w-screen-xl">
-            <div className="grid gap-12 lg:grid-cols-2 lg:gap-16 items-center">
+        <section className="relative overflow-hidden py-24 md:py-36">
+          <div className="absolute inset-0 bg-gradient-to-br from-[hsl(220,72%,20%)] via-[hsl(216,32%,15%)] to-[hsl(216,40%,10%)]" />
+          <div className="absolute inset-0" style={{ background: "radial-gradient(ellipse 80% 60% at 60% -10%, hsla(38,92%,50%,0.18), transparent)" }} />
+          <div className="absolute bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-background to-transparent" />
+
+          <div className="container relative px-4 md:px-6 mx-auto max-w-screen-xl">
+            <div className="grid gap-14 lg:grid-cols-2 lg:gap-16 items-center">
               <div className="space-y-8">
-                <div className="space-y-4">
-                  <h1 className="text-4xl font-bold tracking-tight sm:text-5xl md:text-6xl">
+                <div className="inline-flex items-center gap-2 rounded-full px-3.5 py-1.5 text-xs font-semibold border w-fit"
+                  style={{ background: "hsla(38,92%,50%,0.15)", color: "hsl(38,92%,65%)", borderColor: "hsla(38,92%,50%,0.25)" }}
+                >
+                  <ClipboardList className="w-3.5 h-3.5" />
+                  Built for construction inspectors
+                </div>
+
+                <div className="space-y-5">
+                  <h1 className="text-5xl font-extrabold tracking-tight sm:text-6xl md:text-7xl leading-none text-white">
                     Daily Reports
-                    <span className="block text-primary">Made Simple</span>
+                    <span className="block text-[hsl(38,92%,50%)]">Made Simple</span>
                   </h1>
-                  <p className="text-lg text-muted-foreground max-w-lg">
-                    The mobile-first solution for construction inspectors to create professional 
+                  <p className="text-lg text-[hsl(210,25%,75%)] max-w-md leading-relaxed">
+                    The mobile-first solution for construction inspectors — create professional 
                     daily reports with photos, signatures, and instant PDF generation.
                   </p>
                 </div>
 
-                <div className="flex flex-col sm:flex-row gap-4">
-                  <Button size="lg" asChild className="h-12" data-testid="button-hero-get-started">
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <Button
+                    size="lg"
+                    asChild
+                    className="h-12 px-6 bg-[hsl(38,92%,50%)] hover:bg-[hsl(38,92%,45%)] text-[hsl(216,32%,10%)] font-bold shadow-lg hover:shadow-xl transition-all"
+                    data-testid="button-hero-get-started"
+                  >
                     <a href="/api/login">
-                      Get Started
-                      <ArrowRight className="ml-2 w-5 h-5" />
+                      Get Started Free
+                      <ArrowRight className="ml-2 w-4 h-4" />
                     </a>
                   </Button>
-                  <Button variant="outline" size="lg" asChild className="h-12" data-testid="button-hero-learn-more">
-                    <a href="/learn-more">Learn More</a>
+                  <Button
+                    variant="outline"
+                    size="lg"
+                    asChild
+                    className="h-12 px-6 text-white hover:text-white"
+                    style={{ background: "rgba(255,255,255,0.05)", borderColor: "rgba(255,255,255,0.2)" }}
+                    data-testid="button-hero-learn-more"
+                  >
+                    <a href="/learn-more">See How It Works</a>
                   </Button>
                 </div>
 
-                <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm text-muted-foreground">
-                  <div className="flex items-center gap-2">
-                    <CheckCircle className="w-4 h-4 text-green-600" />
-                    <span>No credit card required</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <CheckCircle className="w-4 h-4 text-green-600" />
-                    <span>Mobile optimized</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <CheckCircle className="w-4 h-4 text-green-600" />
-                    <span>Works offline</span>
-                  </div>
+                <div className="flex flex-wrap gap-x-6 gap-y-2.5 text-sm text-[hsl(210,25%,65%)]">
+                  {["No credit card required", "Mobile optimized", "Works offline"].map((label) => (
+                    <div key={label} className="flex items-center gap-2">
+                      <CheckCircle className="w-4 h-4 text-green-400 shrink-0" />
+                      <span>{label}</span>
+                    </div>
+                  ))}
                 </div>
               </div>
 
-              <div className="relative hidden lg:block">
-                <div className="absolute inset-0 bg-gradient-to-tr from-primary/20 to-primary/5 rounded-3xl" />
-                <div className="relative bg-card border border-border rounded-2xl shadow-lg p-6 transform rotate-1 hover:rotate-0 transition-transform duration-300">
+              <div className="relative hidden lg:flex items-center justify-center">
+                <div className="absolute inset-0 rounded-3xl blur-3xl" style={{ background: "radial-gradient(ellipse at center, hsla(38,92%,50%,0.10), hsla(220,72%,60%,0.10))" }} />
+                <div
+                  className="relative w-full max-w-sm rounded-2xl p-6 hover:-translate-y-0.5 transition-transform duration-300"
+                  style={{
+                    background: "rgba(255,255,255,0.06)",
+                    backdropFilter: "blur(12px)",
+                    border: "1px solid rgba(255,255,255,0.12)",
+                    boxShadow: "0 24px 48px -8px rgba(0,0,0,0.45), 0 0 0 1px rgba(255,255,255,0.08)",
+                  }}
+                >
                   <div className="space-y-4">
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
-                        <FileText className="w-5 h-5 text-primary" />
+                      <div className="w-10 h-10 rounded-xl flex items-center justify-center"
+                        style={{ background: "hsla(38,92%,50%,0.20)", border: "1px solid hsla(38,92%,50%,0.30)" }}
+                      >
+                        <FileText className="w-5 h-5 text-[hsl(38,92%,60%)]" />
                       </div>
                       <div>
-                        <p className="font-medium">Daily Inspection Report</p>
-                        <p className="text-sm text-muted-foreground">Project: Downtown Tower</p>
+                        <p className="font-semibold text-white">Daily Inspection Report</p>
+                        <p className="text-sm" style={{ color: "rgba(255,255,255,0.50)" }}>Project: Downtown Tower</p>
                       </div>
                     </div>
                     <div className="grid grid-cols-2 gap-3">
-                      <div className="bg-muted/50 rounded-lg p-3">
-                        <p className="text-xs text-muted-foreground uppercase tracking-wide">Date</p>
-                        <p className="font-medium">Jan 14, 2026</p>
+                      <div className="rounded-xl p-3" style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.10)" }}>
+                        <p className="text-xs uppercase tracking-wide font-medium mb-1" style={{ color: "rgba(255,255,255,0.40)" }}>Date</p>
+                        <p className="font-semibold text-white text-sm">Apr 21, 2026</p>
                       </div>
-                      <div className="bg-muted/50 rounded-lg p-3">
-                        <p className="text-xs text-muted-foreground uppercase tracking-wide">Weather</p>
-                        <p className="font-medium">Clear, 72°F</p>
+                      <div className="rounded-xl p-3" style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.10)" }}>
+                        <p className="text-xs uppercase tracking-wide font-medium mb-1" style={{ color: "rgba(255,255,255,0.40)" }}>Weather</p>
+                        <p className="font-semibold text-white text-sm">Clear, 72°F</p>
                       </div>
                     </div>
-                    <div className="bg-muted/50 rounded-lg p-3">
-                      <p className="text-xs text-muted-foreground uppercase tracking-wide">Work Performed</p>
-                      <p className="text-sm mt-1">Completed foundation inspection for Section A...</p>
+                    <div className="rounded-xl p-3" style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.10)" }}>
+                      <p className="text-xs uppercase tracking-wide font-medium mb-1" style={{ color: "rgba(255,255,255,0.40)" }}>Work Performed</p>
+                      <p className="text-sm mt-1 leading-relaxed" style={{ color: "rgba(255,255,255,0.70)" }}>Completed foundation inspection for Section A and reviewed rebar placements...</p>
                     </div>
-                    <div className="flex gap-2">
-                      <div className="w-16 h-16 rounded-lg bg-muted animate-pulse" />
-                      <div className="w-16 h-16 rounded-lg bg-muted animate-pulse" />
-                      <div className="w-16 h-16 rounded-lg bg-muted animate-pulse" />
+                    <div className="flex gap-2.5 items-center">
+                      <div className="w-14 h-14 rounded-xl flex items-center justify-center" style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.10)" }}>
+                        <Camera className="w-5 h-5" style={{ color: "rgba(255,255,255,0.30)" }} />
+                      </div>
+                      <div className="w-14 h-14 rounded-xl flex items-center justify-center" style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.10)" }}>
+                        <Camera className="w-5 h-5" style={{ color: "rgba(255,255,255,0.30)" }} />
+                      </div>
+                      <div className="w-14 h-14 rounded-xl flex items-center justify-center" style={{ background: "hsla(38,92%,50%,0.15)", border: "1px solid hsla(38,92%,50%,0.25)" }}>
+                        <span className="text-xs font-bold text-[hsl(38,92%,60%)]">+4</span>
+                      </div>
+                      <div className="ml-auto">
+                        <div className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5" style={{ background: "hsla(145,52%,36%,0.20)", border: "1px solid hsla(145,52%,36%,0.30)" }}>
+                          <div className="w-1.5 h-1.5 rounded-full bg-green-400" />
+                          <span className="text-xs font-semibold text-green-400">Submitted</span>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -147,29 +190,33 @@ export default function LandingPage() {
           </div>
         </section>
 
-        <section className="py-20 bg-muted/30">
-          <div className="container px-4 mx-auto max-w-screen-xl">
-            <div className="text-center space-y-4 mb-12">
-              <h2 className="text-3xl font-bold">Everything You Need</h2>
-              <p className="text-muted-foreground max-w-2xl mx-auto">
-                Powerful features designed specifically for construction field inspectors
+        <section className="py-24">
+          <div className="container px-4 md:px-6 mx-auto max-w-screen-xl">
+            <div className="text-center space-y-3 mb-14">
+              <div className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold bg-primary/10 text-primary border border-primary/20 mb-2">
+                Features
+              </div>
+              <h2 className="text-4xl font-extrabold tracking-tight">Everything You Need</h2>
+              <p className="text-muted-foreground max-w-xl mx-auto text-base leading-relaxed">
+                Powerful features designed specifically for construction field inspectors — from first visit to final sign-off.
               </p>
             </div>
 
-            <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
               {features.map((feature, index) => (
-                <Card 
-                  key={index} 
-                  className="hover-elevate transition-all"
+                <Card
+                  key={index}
+                  className="hover-elevate transition-all hover:shadow-lg border-border/60 bg-card group"
                   data-testid={`card-feature-${index}`}
+                  style={{ boxShadow: "var(--shadow-sm)" }}
                 >
                   <CardContent className="p-6 space-y-4">
-                    <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
+                    <div className="w-11 h-11 rounded-xl bg-primary/10 flex items-center justify-center text-primary group-hover:bg-primary/15 transition-colors">
                       {feature.icon}
                     </div>
-                    <div className="space-y-2">
-                      <h3 className="font-semibold text-lg">{feature.title}</h3>
-                      <p className="text-sm text-muted-foreground">{feature.description}</p>
+                    <div className="space-y-1.5">
+                      <h3 className="font-semibold text-base leading-tight">{feature.title}</h3>
+                      <p className="text-sm text-muted-foreground leading-relaxed">{feature.description}</p>
                     </div>
                   </CardContent>
                 </Card>
@@ -178,36 +225,60 @@ export default function LandingPage() {
           </div>
         </section>
 
-        <section className="py-20">
-          <div className="container px-4 mx-auto max-w-screen-xl">
-            <div className="text-center space-y-6">
-              <h2 className="text-3xl font-bold">Ready to Get Started?</h2>
-              <p className="text-muted-foreground max-w-xl mx-auto">
-                Join construction teams who trust Field Daily Reports for their inspection documentation
-              </p>
-              <Button size="lg" asChild className="h-12" data-testid="button-cta-get-started">
-                <a href="/api/login">
-                  Start Creating Reports
-                  <ArrowRight className="ml-2 w-5 h-5" />
-                </a>
-              </Button>
+        <section className="py-6 px-4 md:px-6 pb-24">
+          <div className="container mx-auto max-w-screen-xl">
+            <div
+              className="relative overflow-hidden rounded-3xl px-8 py-16 md:py-20 text-center"
+              style={{ boxShadow: "var(--shadow-xl)" }}
+            >
+              <div className="absolute inset-0 bg-gradient-to-br from-[hsl(220,72%,20%)] via-[hsl(216,32%,15%)] to-[hsl(216,40%,10%)]" />
+              <div className="absolute inset-0" style={{ background: "radial-gradient(ellipse 70% 60% at 50% -10%, hsla(38,92%,50%,0.18), transparent)" }} />
+              <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-1/2 h-px" style={{ background: "linear-gradient(to right, transparent, hsla(38,92%,50%,0.40), transparent)" }} />
+
+              <div className="relative space-y-6 max-w-2xl mx-auto">
+                <div className="inline-flex items-center gap-2 rounded-full px-3.5 py-1.5 text-xs font-semibold border"
+                  style={{ background: "hsla(38,92%,50%,0.15)", color: "hsl(38,92%,65%)", borderColor: "hsla(38,92%,50%,0.25)" }}
+                >
+                  <CheckCircle className="w-3.5 h-3.5" />
+                  Free to get started
+                </div>
+                <h2 className="text-4xl md:text-5xl font-extrabold tracking-tight text-white leading-tight">
+                  Ready to Streamline<br />Your Reporting?
+                </h2>
+                <p className="text-base md:text-lg max-w-lg mx-auto leading-relaxed" style={{ color: "hsl(210,25%,70%)" }}>
+                  Join construction teams who trust Field Daily Reports for their inspection documentation — no paperwork, no delays.
+                </p>
+                <div className="flex flex-col sm:flex-row gap-3 justify-center pt-2">
+                  <Button
+                    size="lg"
+                    asChild
+                    className="h-12 px-8 bg-[hsl(38,92%,50%)] hover:bg-[hsl(38,92%,45%)] text-[hsl(216,32%,10%)] font-bold shadow-lg hover:shadow-xl transition-all"
+                    data-testid="button-cta-get-started"
+                  >
+                    <a href="/api/login">
+                      Start Creating Reports
+                      <ArrowRight className="ml-2 w-4 h-4" />
+                    </a>
+                  </Button>
+                </div>
+              </div>
             </div>
           </div>
         </section>
       </main>
 
-      <footer className="border-t border-border py-8">
-        <div className="container px-4 mx-auto max-w-screen-xl">
+      <footer className="border-t border-border/60 py-8 bg-muted/20">
+        <div className="container px-4 md:px-6 mx-auto max-w-screen-xl">
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-            <div className="flex items-center gap-2">
-              <div className="w-6 h-6 rounded bg-primary flex items-center justify-center">
-                <HardHat className="w-4 h-4 text-primary-foreground" />
+            <div className="flex items-center gap-2.5">
+              <div className="w-6 h-6 rounded-md bg-primary flex items-center justify-center">
+                <HardHat className="w-3.5 h-3.5 text-primary-foreground" />
               </div>
-              <span className="text-sm text-muted-foreground">
-                © 2026 Field Daily Reports. All rights reserved.
+              <span className="text-sm font-medium text-muted-foreground">
+                © 2026 Field Daily Reports
               </span>
             </div>
-            <div className="flex gap-6 text-sm text-muted-foreground">
+            <div className="flex gap-5 text-sm text-muted-foreground">
               <a href="#" className="hover:text-foreground transition-colors">Privacy</a>
               <a href="#" className="hover:text-foreground transition-colors">Terms</a>
               <a href="#" className="hover:text-foreground transition-colors">Support</a>
