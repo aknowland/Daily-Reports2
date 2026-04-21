@@ -117,15 +117,15 @@ const emptyContractOption: ContractOptionEntry = {
 };
 
 const CONTRACT_STATUS_OPTIONS = [
-  { value: "bid_release", label: "Bid Release", color: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300" },
-  { value: "bid_received", label: "Bid Received", color: "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300" },
-  { value: "under_review", label: "Under Review", color: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300" },
-  { value: "awarded", label: "Awarded", color: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300" },
-  { value: "not_awarded", label: "Not Awarded", color: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300" },
-  { value: "cancelled", label: "Cancelled", color: "bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-300" },
-  { value: "in_execution", label: "In Execution", color: "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-300" },
-  { value: "substantial_completion", label: "Substantial Completion", color: "bg-teal-100 text-teal-800 dark:bg-teal-900 dark:text-teal-300" },
-  { value: "final_closeout", label: "Final Closeout", color: "bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300" },
+  { value: "bid_release", label: "Bid Release", variant: "info" as const },
+  { value: "bid_received", label: "Bid Received", variant: "info" as const },
+  { value: "under_review", label: "Under Review", variant: "warning" as const },
+  { value: "awarded", label: "Awarded", variant: "success" as const },
+  { value: "not_awarded", label: "Not Awarded", variant: "destructive" as const },
+  { value: "cancelled", label: "Cancelled", variant: "muted" as const },
+  { value: "in_execution", label: "In Execution", variant: "success" as const },
+  { value: "substantial_completion", label: "Substantial Completion", variant: "info" as const },
+  { value: "final_closeout", label: "Final Closeout", variant: "muted" as const },
 ];
 
 const CONTRACT_TYPE_OPTIONS = [
@@ -1002,7 +1002,7 @@ export default function ContractsPage() {
   const getStatusBadge = (status: string) => {
     const option = CONTRACT_STATUS_OPTIONS.find(s => s.value === status);
     return option ? (
-      <Badge className={option.color}>{option.label}</Badge>
+      <Badge variant={option.variant}>{option.label}</Badge>
     ) : (
       <Badge variant="secondary">{status}</Badge>
     );
@@ -1836,13 +1836,8 @@ export default function ContractsPage() {
                                 if (awarded > 0 || notAwarded > 0) {
                                   return (
                                     <Badge 
-                                      variant="outline" 
-                                      className={`text-xs ${awarded === total 
-                                        ? "border-green-500 text-green-700 dark:text-green-400" 
-                                        : awarded > 0 
-                                          ? "border-amber-500 text-amber-700 dark:text-amber-400"
-                                          : "border-muted text-muted-foreground"
-                                      }`}
+                                      variant={awarded === total ? "success" : awarded > 0 ? "warning" : "muted"}
+                                      className="text-xs"
                                       data-testid={`award-indicator-${contract.id}`}
                                     >
                                       {awarded === total 
@@ -1853,7 +1848,7 @@ export default function ContractsPage() {
                                   );
                                 } else if (contract.status === "awarded" && pending === total) {
                                   return (
-                                    <Badge variant="outline" className="text-xs border-amber-500 text-amber-700 dark:text-amber-400">
+                                    <Badge variant="warning" className="text-xs">
                                       {total} options pending award selection
                                     </Badge>
                                   );
@@ -2139,9 +2134,10 @@ export default function ContractsPage() {
                           <div className="flex items-center gap-2 mb-1 flex-wrap">
                             <h3 className="font-semibold truncate">{proposal.projectName}</h3>
                             <Badge variant={
-                              proposal.status === 'accepted' ? 'default' :
-                              proposal.status === 'sent' ? 'secondary' :
-                              proposal.status === 'declined' ? 'destructive' : 'outline'
+                              proposal.status === 'accepted' ? 'success' :
+                              proposal.status === 'sent' ? 'info' :
+                              proposal.status === 'declined' ? 'destructive' :
+                              proposal.status === 'expired' ? 'muted' : 'warning'
                             }>
                               {proposal.status.charAt(0).toUpperCase() + proposal.status.slice(1)}
                             </Badge>
@@ -2532,13 +2528,10 @@ export default function ContractsPage() {
                                     <div className="text-sm text-muted-foreground">{event.contract.contractNumber}</div>
                                   </div>
                                 </div>
-                                <Badge variant="outline" className={`shrink-0 ${
-                                  event.type === 'bid_due' 
-                                    ? 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300' 
-                                    : event.type === 'start' 
-                                      ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300'
-                                      : 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300'
-                                }`}>
+                                <Badge
+                                  variant={event.type === 'bid_due' ? 'warning' : event.type === 'start' ? 'success' : 'info'}
+                                  className="shrink-0"
+                                >
                                   {event.type === 'bid_due' ? 'Bid Due' : event.type === 'start' ? 'Start Date' : 'Completion'}
                                 </Badge>
                               </div>

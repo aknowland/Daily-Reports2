@@ -218,6 +218,26 @@ const CONTRACT_STATUS_OPTIONS = [
   { value: "not_awarded", label: "Not Awarded" },
 ];
 
+const getContractStatusVariant = (status: string): "info" | "warning" | "success" | "destructive" | "muted" => {
+  switch (status) {
+    case 'bid_release':
+    case 'bid_received':
+    case 'substantial_completion': return 'info';
+    case 'under_review': return 'warning';
+    case 'awarded':
+    case 'in_execution': return 'success';
+    case 'not_awarded': return 'destructive';
+    case 'cancelled':
+    case 'final_closeout':
+    default: return 'muted';
+  }
+};
+
+const getContractStatusLabel = (status: string): string => {
+  const option = CONTRACT_STATUS_OPTIONS.find(o => o.value === status);
+  return option?.label || status.replace(/_/g, ' ');
+};
+
 export default function CompanyDashboard() {
   const { activeCompany } = useAuth();
   const { toast } = useToast();
@@ -815,7 +835,10 @@ export default function CompanyDashboard() {
                                 <div className="flex-1 min-w-0">
                                   <div className="font-medium truncate">{event.contract.name}</div>
                                   <div className="text-sm text-muted-foreground">{event.contract.contractNumber}</div>
-                                  <Badge variant="outline" className="mt-1">
+                                  <Badge
+                                    variant={event.type === 'bid_due' ? 'warning' : event.type === 'start' ? 'success' : 'info'}
+                                    className="mt-1"
+                                  >
                                     {event.type === 'bid_due' ? 'Bid Due' : event.type === 'start' ? 'Start Date' : 'Completion'}
                                   </Badge>
                                 </div>
@@ -1316,8 +1339,8 @@ export default function CompanyDashboard() {
                                 <span className="font-medium truncate">{contract.name}</span>
                               </div>
                               <div className="flex items-center gap-1 shrink-0">
-                                <Badge variant="outline" className="text-xs">
-                                  {contract.status.replace(/_/g, ' ')}
+                                <Badge variant={getContractStatusVariant(contract.status)} className="text-xs">
+                                  {getContractStatusLabel(contract.status)}
                                 </Badge>
                                 {bidDueInfo && (
                                   <Badge className={`text-xs ${bidDueInfo.color}`} data-testid={`badge-bid-due-${contract.id}`}>
@@ -2036,11 +2059,8 @@ export default function CompanyDashboard() {
                                       <div className="flex items-center gap-2">
                                         <span className="font-medium">{inv.invoiceNumber}</span>
                                         <Badge
-                                          variant="outline"
-                                          className={`text-xs ${isOverdue
-                                            ? 'border-red-400 text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/30'
-                                            : 'border-amber-400 text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30'
-                                          }`}
+                                          variant={isOverdue ? 'destructive' : 'warning'}
+                                          className="text-xs"
                                           data-testid={`badge-invoice-status-${inv.id}`}
                                         >
                                           {isOverdue ? 'Overdue' : 'Sent'}

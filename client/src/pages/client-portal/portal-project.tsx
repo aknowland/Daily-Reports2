@@ -90,30 +90,29 @@ interface ProjectDetail {
   meetingMinutes: MeetingMinute[];
 }
 
-function getReportStatusClasses(status: string) {
+function getReportStatusVariant(status: string): "success" | "warning" | "muted" {
   switch (status) {
     case "submitted":
     case "signed":
-      return "bg-green-600/15 text-green-700 border-green-600/30";
+      return "success";
     case "draft":
-      return "bg-muted text-muted-foreground";
     default:
-      return "bg-muted text-muted-foreground";
+      return "warning";
   }
 }
 
-function getIssueStatusClasses(status: string) {
+function getIssueStatusVariant(status: string): "destructive" | "success" | "warning" | "muted" {
   switch (status?.toLowerCase()) {
     case "open":
-      return "bg-red-600/15 text-red-700 border-red-600/30";
+      return "destructive";
     case "resolved":
     case "closed":
-      return "bg-green-600/15 text-green-700 border-green-600/30";
+      return "success";
     case "in_progress":
     case "in progress":
-      return "bg-amber-600/15 text-amber-700 border-amber-600/30";
+      return "warning";
     default:
-      return "bg-muted text-muted-foreground";
+      return "muted";
   }
 }
 
@@ -430,8 +429,8 @@ export default function PortalProjectPage() {
                               {formatDateSafe(report.date)}
                             </span>
                             <Badge
-                              variant="outline"
-                              className={`${getReportStatusClasses(report.status)} capitalize text-xs no-default-hover-elevate no-default-active-elevate`}
+                              variant={getReportStatusVariant(report.status)}
+                              className="capitalize text-xs"
                               data-testid={`badge-report-status-${report.id}`}
                             >
                               {report.status}
@@ -636,8 +635,8 @@ export default function PortalProjectPage() {
                         </div>
                       </div>
                       <Badge
-                        variant="outline"
-                        className={`${getIssueStatusClasses(issue.status || "")} capitalize text-xs flex-shrink-0 no-default-hover-elevate no-default-active-elevate`}
+                        variant={getIssueStatusVariant(issue.status || "")}
+                        className="capitalize text-xs flex-shrink-0"
                         data-testid={`badge-issue-status-${index}`}
                       >
                         {issue.status?.replace(/_/g, " ") || "Unknown"}

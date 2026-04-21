@@ -1161,7 +1161,7 @@ export default function ProjectDashboardPage() {
                     <>
                       <div className="flex items-center justify-between">
                         <span className="text-2xl font-bold">{Math.round(hours.progress)}%</span>
-                        <Badge variant={hours.status === 'on_track' ? 'default' : hours.status === 'warning' ? 'secondary' : hours.status === 'over' ? 'destructive' : 'outline'}>
+                        <Badge variant={hours.status === 'on_track' || hours.status === 'under' ? 'success' : hours.status === 'warning' ? 'warning' : hours.status === 'over' ? 'destructive' : 'muted'}>
                           {hours.status === 'under' ? 'under budget' : hours.status === 'over' ? 'over budget' : hours.status.replace('_', ' ')}
                         </Badge>
                       </div>
@@ -1181,7 +1181,7 @@ export default function ProjectDashboardPage() {
                     <>
                       <div className="flex items-center justify-between">
                         <span className="text-2xl font-bold">{Math.round(schedule.progress)}%</span>
-                        <Badge variant={schedule.status === 'on_track' ? 'default' : schedule.status === 'warning' ? 'secondary' : schedule.status === 'overdue' ? 'destructive' : 'outline'}>
+                        <Badge variant={schedule.status === 'on_track' || schedule.status === 'complete' ? 'success' : schedule.status === 'warning' ? 'warning' : schedule.status === 'overdue' ? 'destructive' : 'muted'}>
                           {schedule.status.replace('_', ' ')}
                         </Badge>
                       </div>
