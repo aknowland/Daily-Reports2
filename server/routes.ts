@@ -16697,6 +16697,135 @@ Transcript: "${transcript}"`;
     }
   });
 
+  // ── WRITE: Create a new contract / opportunity ──────────────────────────
+  app.post("/api/v1/contracts", apiKeyAuth, async (req: any, res) => {
+    try {
+      const { companyId } = req.apiKey;
+      const {
+        name, contract_number, contract_type, status, agency, service_type,
+        notes, original_value, bid_release_date, bid_due_date,
+        question_deadline, start_date, substantial_completion_date,
+        final_closeout_date, has_job_walk, job_walk_date_time, dsa_class,
+      } = req.body;
+
+      if (!name) return res.status(400).json({ message: "name is required" });
+
+      const validStatuses = ["bid_release","bid_received","under_review","awarded","not_awarded","cancelled","in_execution","substantial_completion","final_closeout"];
+      const validTypes = ["lump_sum","time_and_materials","unit_price","cost_plus","design_build","hourly_rate","other"];
+
+      if (status && !validStatuses.includes(status)) {
+        return res.status(400).json({ message: `Invalid status. Must be one of: ${validStatuses.join(", ")}` });
+      }
+      if (contract_type && !validTypes.includes(contract_type)) {
+        return res.status(400).json({ message: `Invalid contract_type. Must be one of: ${validTypes.join(", ")}` });
+      }
+
+      const parseDate = (v: any) => (v ? new Date(v) : null);
+
+      const contract = await storage.createContract({
+        companyId,
+        name,
+        contractNumber: contract_number || null,
+        contractType: contract_type || "lump_sum",
+        status: status || "bid_release",
+        agency: agency || null,
+        serviceType: service_type || null,
+        notes: notes || null,
+        originalValue: original_value != null ? String(original_value) : null,
+        bidReleaseDate: parseDate(bid_release_date),
+        bidDueDate: parseDate(bid_due_date),
+        questionDeadline: parseDate(question_deadline),
+        startDate: parseDate(start_date),
+        substantialCompletionDate: parseDate(substantial_completion_date),
+        finalCloseoutDate: parseDate(final_closeout_date),
+        hasJobWalk: has_job_walk ?? false,
+        jobWalkDateTime: parseDate(job_walk_date_time),
+        dsaClass: dsa_class || null,
+        clientId: null,
+        currentValue: null,
+        awardDate: null,
+        premiumRate: null,
+        budgetTrackingMode: "daily_reports",
+        addendumCount: 0,
+        lastAddendumDate: null,
+        assignedToUserId: null,
+        sharepointFolderUrl: null,
+      } as any);
+
+      const normalized = await normalizeContract({ ...contract, projects: [], client: null });
+      res.status(201).json({ contract: normalized, message: "Contract created successfully" });
+    } catch (error) {
+      console.error("Error creating v1 contract:", error);
+      res.status(500).json({ message: "Failed to create contract" });
+    }
+  });
+
+  // ── WRITE: Update an existing contract ───────────────────────────────────
+  app.patch("/api/v1/contracts/:id", apiKeyAuth, async (req: any, res) => {
+    try {
+      const { companyId } = req.apiKey;
+      const contract = await storage.getContract(req.params.id);
+      if (!contract || contract.companyId !== companyId) {
+        return res.status(404).json({ message: "Contract not found" });
+      }
+
+      const validStatuses = ["bid_release","bid_received","under_review","awarded","not_awarded","cancelled","in_execution","substantial_completion","final_closeout"];
+      const validTypes = ["lump_sum","time_and_materials","unit_price","cost_plus","design_build","hourly_rate","other"];
+
+      const {
+        name, contract_number, contract_type, status, agency, service_type,
+        notes, original_value, bid_release_date, bid_due_date,
+        question_deadline, start_date, substantial_completion_date,
+        final_closeout_date, has_job_walk, job_walk_date_time, dsa_class,
+        addendum_count, sharepoint_folder_url,
+      } = req.body;
+
+      if (status && !validStatuses.includes(status)) {
+        return res.status(400).json({ message: `Invalid status. Must be one of: ${validStatuses.join(", ")}` });
+      }
+      if (contract_type && !validTypes.includes(contract_type)) {
+        return res.status(400).json({ message: `Invalid contract_type. Must be one of: ${validTypes.join(", ")}` });
+      }
+
+      const parseDate = (v: any) => (v === null ? null : v !== undefined ? new Date(v) : undefined);
+
+      const updates: Record<string, any> = {};
+      if (name !== undefined) updates.name = name;
+      if (contract_number !== undefined) updates.contractNumber = contract_number;
+      if (contract_type !== undefined) updates.contractType = contract_type;
+      if (status !== undefined) updates.status = status;
+      if (agency !== undefined) updates.agency = agency;
+      if (service_type !== undefined) updates.serviceType = service_type;
+      if (notes !== undefined) updates.notes = notes;
+      if (original_value !== undefined) updates.originalValue = original_value != null ? String(original_value) : null;
+      if (bid_release_date !== undefined) updates.bidReleaseDate = parseDate(bid_release_date);
+      if (bid_due_date !== undefined) updates.bidDueDate = parseDate(bid_due_date);
+      if (question_deadline !== undefined) updates.questionDeadline = parseDate(question_deadline);
+      if (start_date !== undefined) updates.startDate = parseDate(start_date);
+      if (substantial_completion_date !== undefined) updates.substantialCompletionDate = parseDate(substantial_completion_date);
+      if (final_closeout_date !== undefined) updates.finalCloseoutDate = parseDate(final_closeout_date);
+      if (has_job_walk !== undefined) updates.hasJobWalk = has_job_walk;
+      if (job_walk_date_time !== undefined) updates.jobWalkDateTime = parseDate(job_walk_date_time);
+      if (dsa_class !== undefined) updates.dsaClass = dsa_class;
+      if (addendum_count !== undefined) updates.addendumCount = addendum_count;
+      if (sharepoint_folder_url !== undefined) updates.sharepointFolderUrl = sharepoint_folder_url;
+
+      if (Object.keys(updates).length === 0) {
+        return res.status(400).json({ message: "No fields provided to update" });
+      }
+
+      const updated = await storage.updateContract(req.params.id, updates);
+      if (!updated) return res.status(500).json({ message: "Update failed" });
+
+      const full = await storage.getContract(req.params.id);
+      const normalized = await normalizeContract(full || updated);
+      res.json({ contract: normalized, message: "Contract updated successfully" });
+    } catch (error) {
+      console.error("Error updating v1 contract:", error);
+      res.status(500).json({ message: "Failed to update contract" });
+    }
+  });
+
   app.get("/api/v1/summary", apiKeyAuth, async (req: any, res) => {
     try {
       const { companyId } = req.apiKey;
@@ -16728,7 +16857,7 @@ Transcript: "${transcript}"`;
       openapi: "3.1.0",
       info: {
         title: "Field Daily Reports API",
-        description: "Read-only API to access construction project reports, projects, and contracts. Authenticate with an API key using the Authorization header as 'Bearer <your-api-key>'.",
+        description: "API for accessing and managing construction project data. Supports reading reports, projects, and contracts, plus creating and updating contracts. Authenticate using the Authorization header: 'Bearer <your-api-key>'.",
         version: "1.0.0",
       },
       servers: [{ url: baseUrl }],
@@ -16881,7 +17010,94 @@ Transcript: "${transcript}"`;
               },
             },
           },
+          patch: {
+            operationId: "updateContract",
+            summary: "Update an existing contract",
+            description: "Partially update any fields on a contract. Only include the fields you want to change — omitted fields are left unchanged. All date fields accept ISO 8601 format (YYYY-MM-DD or YYYY-MM-DDTHH:mm:ss).",
+            parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+            requestBody: {
+              required: true,
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    properties: {
+                      name: { type: "string", description: "Contract / project name" },
+                      contract_number: { type: "string", description: "Bid or contract number" },
+                      contract_type: { type: "string", enum: ["lump_sum","time_and_materials","unit_price","cost_plus","design_build","hourly_rate","other"] },
+                      status: { type: "string", enum: ["bid_release","bid_received","under_review","awarded","not_awarded","cancelled","in_execution","substantial_completion","final_closeout"] },
+                      agency: { type: "string", nullable: true, description: "Issuing agency or school district" },
+                      service_type: { type: "string", nullable: true, description: "e.g. DSA Inspection, Special Inspection" },
+                      notes: { type: "string", nullable: true },
+                      original_value: { type: "number", nullable: true, description: "Contract dollar value" },
+                      bid_release_date: { type: "string", format: "date", nullable: true },
+                      bid_due_date: { type: "string", format: "date", nullable: true, description: "Proposal/bid submission deadline" },
+                      question_deadline: { type: "string", format: "date", nullable: true },
+                      start_date: { type: "string", format: "date", nullable: true },
+                      substantial_completion_date: { type: "string", format: "date", nullable: true },
+                      final_closeout_date: { type: "string", format: "date", nullable: true },
+                      has_job_walk: { type: "boolean", nullable: true },
+                      job_walk_date_time: { type: "string", format: "date-time", nullable: true },
+                      dsa_class: { type: "string", enum: ["1","2","3","non_dsa"], nullable: true },
+                      addendum_count: { type: "integer", nullable: true },
+                      sharepoint_folder_url: { type: "string", nullable: true },
+                    },
+                  },
+                },
+              },
+            },
+            responses: {
+              "200": { description: "Updated contract", content: { "application/json": { schema: { type: "object" } } } },
+              "400": { description: "Validation error" },
+              "404": { description: "Contract not found" },
+            },
+          },
         },
+        "/api/v1/contracts": {
+          post: {
+            operationId: "createContract",
+            summary: "Create a new contract or opportunity",
+            description: "Creates a new contract record. The only required field is 'name'. Status defaults to 'bid_release'. All date fields accept ISO 8601 format (YYYY-MM-DD).",
+            requestBody: {
+              required: true,
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    required: ["name"],
+                    properties: {
+                      name: { type: "string", description: "Contract / project name (required)" },
+                      contract_number: { type: "string", description: "Bid or RFP number" },
+                      contract_type: { type: "string", enum: ["lump_sum","time_and_materials","unit_price","cost_plus","design_build","hourly_rate","other"], default: "lump_sum" },
+                      status: { type: "string", enum: ["bid_release","bid_received","under_review","awarded","not_awarded","cancelled","in_execution","substantial_completion","final_closeout"], default: "bid_release" },
+                      agency: { type: "string", nullable: true, description: "Issuing agency or school district" },
+                      service_type: { type: "string", nullable: true, description: "e.g. DSA Inspection, Special Inspection" },
+                      notes: { type: "string", nullable: true },
+                      original_value: { type: "number", nullable: true, description: "Contract dollar value" },
+                      bid_release_date: { type: "string", format: "date", nullable: true },
+                      bid_due_date: { type: "string", format: "date", nullable: true, description: "Proposal/bid submission deadline" },
+                      question_deadline: { type: "string", format: "date", nullable: true },
+                      start_date: { type: "string", format: "date", nullable: true },
+                      substantial_completion_date: { type: "string", format: "date", nullable: true },
+                      final_closeout_date: { type: "string", format: "date", nullable: true },
+                      has_job_walk: { type: "boolean", nullable: true },
+                      job_walk_date_time: { type: "string", format: "date-time", nullable: true },
+                      dsa_class: { type: "string", enum: ["1","2","3","non_dsa"], nullable: true },
+                    },
+                  },
+                },
+              },
+            },
+            responses: {
+              "201": { description: "Contract created", content: { "application/json": { schema: { type: "object" } } } },
+              "400": { description: "Validation error (e.g. missing name)" },
+            },
+          },
+        },
+      },
+      "x-field-notes": {
+        statuses: "bid_release → bid_received → under_review → awarded/not_awarded → in_execution → substantial_completion → final_closeout",
+        dates: "All dates ISO 8601: YYYY-MM-DD for dates, YYYY-MM-DDTHH:mm for datetimes",
       },
     };
     res.json(spec);
