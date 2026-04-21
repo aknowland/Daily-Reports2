@@ -1830,7 +1830,7 @@ export default function ContractDashboard() {
                         </p>
                       </div>
                       {activity.status && (
-                        <Badge variant={activity.status === 'submitted' ? 'success' : activity.status === 'approved' ? 'info' : 'muted'} className="text-xs">
+                        <Badge variant={activity.status === 'draft' ? 'warning' : activity.status === 'submitted' ? 'info' : activity.status === 'approved' ? 'success' : 'muted'} className="text-xs">
                           {activity.status}
                         </Badge>
                       )}
@@ -2464,7 +2464,7 @@ export default function ContractDashboard() {
                         <TableCell>{report.projectName || '-'}</TableCell>
                         <TableCell>
                           <Badge 
-                            variant={report.status === 'submitted' ? 'default' : 'secondary'}
+                            variant={report.status === 'draft' ? 'warning' : report.status === 'submitted' ? 'info' : report.status === 'approved' ? 'success' : 'muted'}
                             className="capitalize"
                           >
                             {report.status}
