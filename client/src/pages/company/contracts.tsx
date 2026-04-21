@@ -61,9 +61,7 @@ import {
   Search,
   ChevronLeft,
   ChevronRight,
-  ChevronDown,
-  ChevronUp,
-  BarChart3,
+
   Mail,
   FolderPlus,
   Loader2,
@@ -79,7 +77,6 @@ import {
 import { useState, useRef } from "react";
 import type { ContractWithProjects, Project, Client, ContractAttachment, ProposalWithDetails } from "@shared/schema";
 import { ProposalDialog } from "@/components/proposal-dialog";
-import { ContractGanttChart } from "@/components/contract-gantt-chart";
 import { ImportFromEmailDialog } from "@/components/import-from-email-dialog";
 import { ClientSelect } from "@/components/client-select";
 import { PurchaseOrderSelect } from "@/components/purchase-order-select";
@@ -232,7 +229,6 @@ export default function ContractsPage() {
   const [editingContract, setEditingContract] = useState<ContractWithProjects | null>(null);
   const [formData, setFormData] = useState<ContractFormData>(emptyFormData);
   const [activeTab, setActiveTab] = useState("list");
-  const [showGantt, setShowGantt] = useState(true);
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [serviceTypeFilter, setServiceTypeFilter] = useState<string>("");
   const [assignedUserFilter, setAssignedUserFilter] = useState<string>("all");
@@ -1511,20 +1507,6 @@ export default function ContractsPage() {
         )}
       </PageHeader>
 
-      {!isLoading && contracts.length > 0 && (
-        <div className="mb-4">
-          <button
-            onClick={() => setShowGantt(v => !v)}
-            className="flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors mb-2 w-full text-left"
-            data-testid="button-toggle-gantt"
-          >
-            <BarChart3 className="w-4 h-4" />
-            Schedule Timeline
-            {showGantt ? <ChevronUp className="w-4 h-4 ml-auto" /> : <ChevronDown className="w-4 h-4 ml-auto" />}
-          </button>
-          {showGantt && <ContractGanttChart contracts={contracts} />}
-        </div>
-      )}
 
       <Tabs value={activeTab} onValueChange={(tab) => {
         setActiveTab(tab);
