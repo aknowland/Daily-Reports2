@@ -17138,6 +17138,485 @@ Transcript: "${transcript}"`;
     }
   });
 
+  // ════════════════════════════════════════════════════════════════════════
+  // REPORTS (write)
+  // ════════════════════════════════════════════════════════════════════════
+
+  app.post("/api/v1/reports", apiKeyAuth, async (req: any, res) => {
+    try {
+      const { companyId, createdByUserId } = req.apiKey;
+      const {
+        project_id, date, inspector_id,
+        weather_type, weather_notes, weather_am, weather_pm, precipitation,
+        site_conditions, type_of_work, work_performed, trades, manpower,
+        work_activities, visitors, equipment, equipment_rows, inspections,
+        materials_delivered, material_rows, issues_flag, issues_details,
+        safety_flag, safety_details, safety_incidents, notes, status,
+        time_in, time_out, regular_hours, ot_hours,
+      } = req.body;
+      if (!date) return res.status(400).json({ message: "date is required (YYYY-MM-DD)" });
+      if (project_id) {
+        const project = await storage.getProject(project_id);
+        if (!project || project.companyId !== companyId) return res.status(404).json({ message: "Project not found" });
+      }
+      const inspectorId = inspector_id || createdByUserId;
+      const parsed = createReportSchema.safeParse({
+        projectId: project_id || null, date,
+        weatherType: weather_type, weatherNotes: weather_notes,
+        weatherAM: weather_am, weatherPM: weather_pm, precipitation,
+        siteConditions: site_conditions, typeOfWork: type_of_work,
+        workPerformed: work_performed, trades, manpower, workActivities: work_activities,
+        visitors, equipment, equipmentRows: equipment_rows, inspections,
+        materialsDelivered: materials_delivered, materialRows: material_rows,
+        issuesFlag: issues_flag, issuesDetails: issues_details,
+        safetyFlag: safety_flag, safetyDetails: safety_details,
+        safetyIncidents: safety_incidents, notes, status,
+        timeIn: time_in, timeOut: time_out, regularHours: regular_hours, otHours: ot_hours,
+      });
+      if (!parsed.success) return res.status(400).json({ message: "Validation error", errors: parsed.error.errors });
+      const report = await storage.createReport({ ...parsed.data, projectId: parsed.data.projectId || null, inspectorId });
+      res.status(201).json({ report, message: "Report created successfully" });
+    } catch (e) { console.error("Error creating v1 report:", e); res.status(500).json({ message: "Failed to create report" }); }
+  });
+
+  app.patch("/api/v1/reports/:id", apiKeyAuth, async (req: any, res) => {
+    try {
+      const { companyId } = req.apiKey;
+      const existing = await storage.getReport(req.params.id);
+      if (!existing) return res.status(404).json({ message: "Report not found" });
+      if (existing.projectId) {
+        const project = await storage.getProject(existing.projectId);
+        if (!project || project.companyId !== companyId) return res.status(403).json({ message: "Report belongs to a different company" });
+      }
+      const {
+        weather_type, weather_notes, weather_am, weather_pm, precipitation,
+        site_conditions, type_of_work, work_performed, trades, manpower,
+        work_activities, visitors, equipment, equipment_rows, inspections,
+        materials_delivered, material_rows, issues_flag, issues_details,
+        safety_flag, safety_details, safety_incidents, notes, status,
+        time_in, time_out, regular_hours, ot_hours,
+      } = req.body;
+      const updates: Record<string, any> = {};
+      if (weather_type !== undefined) updates.weatherType = weather_type;
+      if (weather_notes !== undefined) updates.weatherNotes = weather_notes;
+      if (weather_am !== undefined) updates.weatherAM = weather_am;
+      if (weather_pm !== undefined) updates.weatherPM = weather_pm;
+      if (precipitation !== undefined) updates.precipitation = precipitation;
+      if (site_conditions !== undefined) updates.siteConditions = site_conditions;
+      if (type_of_work !== undefined) updates.typeOfWork = type_of_work;
+      if (work_performed !== undefined) updates.workPerformed = work_performed;
+      if (trades !== undefined) updates.trades = trades;
+      if (manpower !== undefined) updates.manpower = manpower;
+      if (work_activities !== undefined) updates.workActivities = work_activities;
+      if (visitors !== undefined) updates.visitors = visitors;
+      if (equipment !== undefined) updates.equipment = equipment;
+      if (equipment_rows !== undefined) updates.equipmentRows = equipment_rows;
+      if (inspections !== undefined) updates.inspections = inspections;
+      if (materials_delivered !== undefined) updates.materialsDelivered = materials_delivered;
+      if (material_rows !== undefined) updates.materialRows = material_rows;
+      if (issues_flag !== undefined) updates.issuesFlag = issues_flag;
+      if (issues_details !== undefined) updates.issuesDetails = issues_details;
+      if (safety_flag !== undefined) updates.safetyFlag = safety_flag;
+      if (safety_details !== undefined) updates.safetyDetails = safety_details;
+      if (safety_incidents !== undefined) updates.safetyIncidents = safety_incidents;
+      if (notes !== undefined) updates.notes = notes;
+      if (status !== undefined) updates.status = status;
+      if (time_in !== undefined) updates.timeIn = time_in;
+      if (time_out !== undefined) updates.timeOut = time_out;
+      if (regular_hours !== undefined) updates.regularHours = regular_hours;
+      if (ot_hours !== undefined) updates.otHours = ot_hours;
+      if (!Object.keys(updates).length) return res.status(400).json({ message: "No fields to update" });
+      const report = await storage.updateReport(req.params.id, updates);
+      res.json({ report, message: "Report updated successfully" });
+    } catch (e) { console.error("Error updating v1 report:", e); res.status(500).json({ message: "Failed to update report" }); }
+  });
+
+  // ════════════════════════════════════════════════════════════════════════
+  // MANUAL TIME ENTRIES
+  // ════════════════════════════════════════════════════════════════════════
+
+  app.get("/api/v1/time-entries", apiKeyAuth, async (req: any, res) => {
+    try {
+      const { companyId } = req.apiKey;
+      const { project_id, month, year } = req.query as any;
+      if (!project_id) return res.status(400).json({ message: "project_id is required" });
+      const project = await storage.getProject(project_id);
+      if (!project || project.companyId !== companyId) return res.status(404).json({ message: "Project not found" });
+      const monthNum = month ? parseInt(month) : new Date().getMonth() + 1;
+      const yearNum = year ? parseInt(year) : new Date().getFullYear();
+      const startDate = new Date(yearNum, monthNum - 1, 1);
+      const endDate = new Date(yearNum, monthNum, 0);
+      endDate.setHours(23, 59, 59, 999);
+      // Fetch for all inspectors by passing an empty string (storage fetches all)
+      const members = await storage.getCompanyMembers(companyId);
+      const allEntries: any[] = [];
+      for (const m of members) {
+        const entries = await storage.getManualTimeEntries(project_id, m.userId, startDate, endDate);
+        allEntries.push(...entries);
+      }
+      res.json({ time_entries: allEntries, total: allEntries.length });
+    } catch (e) { res.status(500).json({ message: "Failed to fetch time entries" }); }
+  });
+
+  app.post("/api/v1/time-entries", apiKeyAuth, async (req: any, res) => {
+    try {
+      const { companyId, createdByUserId } = req.apiKey;
+      const { project_id, inspector_id, date, regular_hours, ot_hours, notes, inspector_name } = req.body;
+      if (!project_id) return res.status(400).json({ message: "project_id is required" });
+      if (!date) return res.status(400).json({ message: "date is required (YYYY-MM-DD)" });
+      const project = await storage.getProject(project_id);
+      if (!project || project.companyId !== companyId) return res.status(404).json({ message: "Project not found" });
+      const entry = await storage.createManualTimeEntry({
+        projectId: project_id,
+        inspectorId: inspector_id || createdByUserId,
+        inspectorName: inspector_name || null,
+        date: new Date(date + "T12:00:00"),
+        regularHours: regular_hours != null ? String(regular_hours) : "0",
+        otHours: ot_hours != null ? String(ot_hours) : "0",
+        notes: notes || null,
+      });
+      res.status(201).json({ time_entry: entry, message: "Time entry created successfully" });
+    } catch (e: any) {
+      if (e?.code === "23505") return res.status(409).json({ message: "A time entry already exists for this inspector on this date for this project" });
+      console.error("Error creating v1 time entry:", e);
+      res.status(500).json({ message: "Failed to create time entry" });
+    }
+  });
+
+  app.delete("/api/v1/time-entries/:id", apiKeyAuth, async (req: any, res) => {
+    try {
+      const { companyId } = req.apiKey;
+      const entry = await storage.getManualTimeEntry(req.params.id);
+      if (!entry) return res.status(404).json({ message: "Time entry not found" });
+      const project = await storage.getProject(entry.projectId);
+      if (!project || project.companyId !== companyId) return res.status(403).json({ message: "Time entry belongs to a different company" });
+      await storage.deleteManualTimeEntry(req.params.id);
+      res.json({ message: "Time entry deleted successfully" });
+    } catch (e) { res.status(500).json({ message: "Failed to delete time entry" }); }
+  });
+
+  // ════════════════════════════════════════════════════════════════════════
+  // PROJECT MEMBERS
+  // ════════════════════════════════════════════════════════════════════════
+
+  app.post("/api/v1/projects/:id/members", apiKeyAuth, async (req: any, res) => {
+    try {
+      const { companyId } = req.apiKey;
+      const project = await storage.getProject(req.params.id);
+      if (!project || project.companyId !== companyId) return res.status(404).json({ message: "Project not found" });
+      const { user_id, regular_rate, overtime_rate, premium_rate } = req.body;
+      if (!user_id) return res.status(400).json({ message: "user_id is required (get from GET /api/v1/team)" });
+      const member = await storage.addProjectMember(req.params.id, user_id, {
+        regularRate: regular_rate, overtimeRate: overtime_rate, premiumRate: premium_rate,
+      });
+      res.status(201).json({ member, message: "Member added to project" });
+    } catch (e: any) {
+      if (e?.code === "23505") return res.status(409).json({ message: "User is already a member of this project" });
+      console.error("Error adding v1 project member:", e);
+      res.status(500).json({ message: "Failed to add project member" });
+    }
+  });
+
+  app.delete("/api/v1/projects/:id/members/:userId", apiKeyAuth, async (req: any, res) => {
+    try {
+      const { companyId } = req.apiKey;
+      const project = await storage.getProject(req.params.id);
+      if (!project || project.companyId !== companyId) return res.status(404).json({ message: "Project not found" });
+      const removed = await storage.removeProjectMember(req.params.id, req.params.userId);
+      if (!removed) return res.status(404).json({ message: "Member not found on this project" });
+      res.json({ message: "Member removed from project" });
+    } catch (e) { res.status(500).json({ message: "Failed to remove project member" }); }
+  });
+
+  // ════════════════════════════════════════════════════════════════════════
+  // PROJECT BILLING RATES
+  // ════════════════════════════════════════════════════════════════════════
+
+  app.get("/api/v1/projects/:id/billing-rates", apiKeyAuth, async (req: any, res) => {
+    try {
+      const { companyId } = req.apiKey;
+      const project = await storage.getProject(req.params.id);
+      if (!project || project.companyId !== companyId) return res.status(404).json({ message: "Project not found" });
+      const rates = await storage.getProjectBillingRates(req.params.id);
+      res.json({ billing_rates: rates, total: rates.length });
+    } catch (e) { res.status(500).json({ message: "Failed to fetch billing rates" }); }
+  });
+
+  app.put("/api/v1/projects/:id/billing-rates", apiKeyAuth, async (req: any, res) => {
+    try {
+      const { companyId } = req.apiKey;
+      const project = await storage.getProject(req.params.id);
+      if (!project || project.companyId !== companyId) return res.status(404).json({ message: "Project not found" });
+      const { rates } = req.body;
+      if (!Array.isArray(rates)) return res.status(400).json({ message: "rates must be an array of { title, rate, hours, inspector_name?, schedule_type? }" });
+      const normalized = rates.map((r: any) => ({
+        projectId: req.params.id,
+        title: r.title,
+        inspectorName: r.inspector_name || null,
+        rate: String(r.rate),
+        hours: String(r.hours),
+        scheduleType: r.schedule_type || "fullTime",
+      }));
+      const saved = await storage.setProjectBillingRates(req.params.id, normalized);
+      res.json({ billing_rates: saved, message: "Billing rates updated" });
+    } catch (e) { console.error("Error setting v1 billing rates:", e); res.status(500).json({ message: "Failed to set billing rates" }); }
+  });
+
+  // ════════════════════════════════════════════════════════════════════════
+  // INVOICES
+  // ════════════════════════════════════════════════════════════════════════
+
+  app.get("/api/v1/invoices", apiKeyAuth, async (req: any, res) => {
+    try {
+      const { companyId } = req.apiKey;
+      const { project_id } = req.query as any;
+      const invoices = project_id
+        ? await storage.getInvoicesByProject(project_id)
+        : await storage.getInvoices(companyId);
+      res.json({ invoices, total: invoices.length });
+    } catch (e) { res.status(500).json({ message: "Failed to fetch invoices" }); }
+  });
+
+  app.post("/api/v1/invoices", apiKeyAuth, async (req: any, res) => {
+    try {
+      const { companyId } = req.apiKey;
+      const {
+        project_id, contract_id, client_id, purchase_order_id,
+        month, year, regular_hours, overtime_hours, premium_hours,
+        regular_rate, overtime_rate, premium_rate,
+        regular_amount, overtime_amount, premium_amount,
+        subtotal, total_amount, due_date, notes, status,
+      } = req.body;
+      if (!project_id || !month || !year) return res.status(400).json({ message: "project_id, month, and year are required" });
+      const project = await storage.getProject(project_id);
+      if (!project || project.companyId !== companyId) return res.status(404).json({ message: "Project not found" });
+      const invoiceNumber = await storage.getNextInvoiceNumber();
+      const invoice = await storage.createInvoice({
+        companyId, projectId: project_id,
+        contractId: contract_id || null, clientId: client_id || null, purchaseOrderId: purchase_order_id || null,
+        invoiceNumber, month: parseInt(month), year: parseInt(year),
+        regularHours: regular_hours != null ? String(regular_hours) : "0",
+        overtimeHours: overtime_hours != null ? String(overtime_hours) : "0",
+        premiumHours: premium_hours != null ? String(premium_hours) : "0",
+        regularRate: regular_rate ? String(regular_rate) : null,
+        overtimeRate: overtime_rate ? String(overtime_rate) : null,
+        premiumRate: premium_rate ? String(premium_rate) : null,
+        regularAmount: regular_amount != null ? String(regular_amount) : "0",
+        overtimeAmount: overtime_amount != null ? String(overtime_amount) : "0",
+        premiumAmount: premium_amount != null ? String(premium_amount) : "0",
+        subtotal: subtotal != null ? String(subtotal) : "0",
+        totalAmount: total_amount != null ? String(total_amount) : "0",
+        dueDate: due_date ? new Date(due_date) : null,
+        notes: notes || null,
+        status: status || "draft",
+        pdfPath: null,
+        taxRate: null, taxAmount: null,
+        paidDate: null,
+      });
+      res.status(201).json({ invoice, message: "Invoice created successfully" });
+    } catch (e) { console.error("Error creating v1 invoice:", e); res.status(500).json({ message: "Failed to create invoice" }); }
+  });
+
+  app.patch("/api/v1/invoices/:id", apiKeyAuth, async (req: any, res) => {
+    try {
+      const { companyId } = req.apiKey;
+      const existing = await storage.getInvoice(req.params.id);
+      if (!existing) return res.status(404).json({ message: "Invoice not found" });
+      const project = await storage.getProject(existing.projectId);
+      if (!project || project.companyId !== companyId) return res.status(403).json({ message: "Invoice belongs to a different company" });
+      const {
+        status, due_date, paid_date, notes,
+        regular_hours, overtime_hours, premium_hours,
+        regular_rate, overtime_rate, premium_rate,
+        regular_amount, overtime_amount, premium_amount,
+        subtotal, total_amount,
+      } = req.body;
+      const updates: Record<string, any> = {};
+      if (status !== undefined) updates.status = status;
+      if (due_date !== undefined) updates.dueDate = due_date ? new Date(due_date) : null;
+      if (paid_date !== undefined) updates.paidDate = paid_date ? new Date(paid_date) : null;
+      if (notes !== undefined) updates.notes = notes;
+      if (regular_hours !== undefined) updates.regularHours = String(regular_hours);
+      if (overtime_hours !== undefined) updates.overtimeHours = String(overtime_hours);
+      if (premium_hours !== undefined) updates.premiumHours = String(premium_hours);
+      if (regular_rate !== undefined) updates.regularRate = String(regular_rate);
+      if (overtime_rate !== undefined) updates.overtimeRate = String(overtime_rate);
+      if (premium_rate !== undefined) updates.premiumRate = String(premium_rate);
+      if (regular_amount !== undefined) updates.regularAmount = String(regular_amount);
+      if (overtime_amount !== undefined) updates.overtimeAmount = String(overtime_amount);
+      if (premium_amount !== undefined) updates.premiumAmount = String(premium_amount);
+      if (subtotal !== undefined) updates.subtotal = String(subtotal);
+      if (total_amount !== undefined) updates.totalAmount = String(total_amount);
+      if (!Object.keys(updates).length) return res.status(400).json({ message: "No fields to update" });
+      const invoice = await storage.updateInvoice(req.params.id, updates);
+      res.json({ invoice, message: "Invoice updated successfully" });
+    } catch (e) { res.status(500).json({ message: "Failed to update invoice" }); }
+  });
+
+  // ════════════════════════════════════════════════════════════════════════
+  // PROPOSALS
+  // ════════════════════════════════════════════════════════════════════════
+
+  app.get("/api/v1/proposals", apiKeyAuth, async (req: any, res) => {
+    try {
+      const { companyId } = req.apiKey;
+      const proposals = await storage.getProposals(companyId);
+      res.json({ proposals, total: proposals.length });
+    } catch (e) { res.status(500).json({ message: "Failed to fetch proposals" }); }
+  });
+
+  app.post("/api/v1/proposals", apiKeyAuth, async (req: any, res) => {
+    try {
+      const { companyId, createdByUserId } = req.apiKey;
+      const {
+        client_name, project_name, client_id, contract_id, project_id,
+        project_manager, start_date, end_date, total_hours, schedule_type,
+        rate_escalation_note, terms, status,
+      } = req.body;
+      if (!client_name) return res.status(400).json({ message: "client_name is required" });
+      if (!project_name) return res.status(400).json({ message: "project_name is required" });
+      const proposalNumber = await storage.getNextProposalNumber(companyId);
+      const proposal = await storage.createProposal({
+        companyId, proposalNumber, createdById: createdByUserId,
+        clientName: client_name, projectName: project_name,
+        clientId: client_id || null, contractId: contract_id || null, projectId: project_id || null,
+        projectManager: project_manager || null,
+        startDate: start_date ? new Date(start_date) : null,
+        endDate: end_date ? new Date(end_date) : null,
+        totalHours: total_hours != null ? String(total_hours) : null,
+        scheduleType: schedule_type || "fullTime",
+        rateEscalationNote: rate_escalation_note || null,
+        terms: terms || null,
+        status: status || "draft",
+        sentDate: null, acceptedDate: null, pdfPath: null,
+      });
+      res.status(201).json({ proposal, message: "Proposal created successfully" });
+    } catch (e) { console.error("Error creating v1 proposal:", e); res.status(500).json({ message: "Failed to create proposal" }); }
+  });
+
+  app.patch("/api/v1/proposals/:id", apiKeyAuth, async (req: any, res) => {
+    try {
+      const { companyId } = req.apiKey;
+      const existing = await storage.getProposal(req.params.id);
+      if (!existing || existing.companyId !== companyId) return res.status(404).json({ message: "Proposal not found" });
+      const {
+        client_name, project_name, client_id, contract_id, project_id,
+        project_manager, start_date, end_date, total_hours, schedule_type,
+        rate_escalation_note, terms, status,
+      } = req.body;
+      const updates: Record<string, any> = {};
+      if (client_name !== undefined) updates.clientName = client_name;
+      if (project_name !== undefined) updates.projectName = project_name;
+      if (client_id !== undefined) updates.clientId = client_id;
+      if (contract_id !== undefined) updates.contractId = contract_id;
+      if (project_id !== undefined) updates.projectId = project_id;
+      if (project_manager !== undefined) updates.projectManager = project_manager;
+      if (start_date !== undefined) updates.startDate = start_date ? new Date(start_date) : null;
+      if (end_date !== undefined) updates.endDate = end_date ? new Date(end_date) : null;
+      if (total_hours !== undefined) updates.totalHours = total_hours != null ? String(total_hours) : null;
+      if (schedule_type !== undefined) updates.scheduleType = schedule_type;
+      if (rate_escalation_note !== undefined) updates.rateEscalationNote = rate_escalation_note;
+      if (terms !== undefined) updates.terms = terms;
+      if (status !== undefined) updates.status = status;
+      if (!Object.keys(updates).length) return res.status(400).json({ message: "No fields to update" });
+      const proposal = await storage.updateProposal(req.params.id, updates);
+      res.json({ proposal, message: "Proposal updated successfully" });
+    } catch (e) { res.status(500).json({ message: "Failed to update proposal" }); }
+  });
+
+  // ════════════════════════════════════════════════════════════════════════
+  // PURCHASE ORDERS
+  // ════════════════════════════════════════════════════════════════════════
+
+  app.get("/api/v1/purchase-orders", apiKeyAuth, async (req: any, res) => {
+    try {
+      const { companyId } = req.apiKey;
+      const pos = await storage.getPurchaseOrders(companyId);
+      res.json({ purchase_orders: pos, total: pos.length });
+    } catch (e) { res.status(500).json({ message: "Failed to fetch purchase orders" }); }
+  });
+
+  app.post("/api/v1/purchase-orders", apiKeyAuth, async (req: any, res) => {
+    try {
+      const { companyId } = req.apiKey;
+      const { po_number, client_id, description, total_amount, remaining_amount, issue_date, expiration_date, status, notes } = req.body;
+      if (!po_number) return res.status(400).json({ message: "po_number is required" });
+      const po = await storage.createPurchaseOrder({
+        companyId, poNumber: po_number,
+        clientId: client_id || null,
+        description: description || null,
+        totalAmount: total_amount != null ? String(total_amount) : null,
+        remainingAmount: remaining_amount != null ? String(remaining_amount) : null,
+        issueDate: issue_date ? new Date(issue_date) : null,
+        expirationDate: expiration_date ? new Date(expiration_date) : null,
+        status: status || "active",
+        notes: notes || null,
+      });
+      res.status(201).json({ purchase_order: po, message: "Purchase order created successfully" });
+    } catch (e) { console.error("Error creating v1 PO:", e); res.status(500).json({ message: "Failed to create purchase order" }); }
+  });
+
+  app.patch("/api/v1/purchase-orders/:id", apiKeyAuth, async (req: any, res) => {
+    try {
+      const { companyId } = req.apiKey;
+      const existing = await storage.getPurchaseOrder(req.params.id);
+      if (!existing || existing.companyId !== companyId) return res.status(404).json({ message: "Purchase order not found" });
+      const { po_number, client_id, description, total_amount, remaining_amount, issue_date, expiration_date, status, notes } = req.body;
+      const updates: Record<string, any> = {};
+      if (po_number !== undefined) updates.poNumber = po_number;
+      if (client_id !== undefined) updates.clientId = client_id;
+      if (description !== undefined) updates.description = description;
+      if (total_amount !== undefined) updates.totalAmount = total_amount != null ? String(total_amount) : null;
+      if (remaining_amount !== undefined) updates.remainingAmount = remaining_amount != null ? String(remaining_amount) : null;
+      if (issue_date !== undefined) updates.issueDate = issue_date ? new Date(issue_date) : null;
+      if (expiration_date !== undefined) updates.expirationDate = expiration_date ? new Date(expiration_date) : null;
+      if (status !== undefined) updates.status = status;
+      if (notes !== undefined) updates.notes = notes;
+      if (!Object.keys(updates).length) return res.status(400).json({ message: "No fields to update" });
+      const po = await storage.updatePurchaseOrder(req.params.id, updates);
+      res.json({ purchase_order: po, message: "Purchase order updated successfully" });
+    } catch (e) { res.status(500).json({ message: "Failed to update purchase order" }); }
+  });
+
+  // ════════════════════════════════════════════════════════════════════════
+  // COMPANY NOTES
+  // ════════════════════════════════════════════════════════════════════════
+
+  app.get("/api/v1/notes", apiKeyAuth, async (req: any, res) => {
+    try {
+      const { companyId } = req.apiKey;
+      const notes = await db.query.companyNotes.findMany({
+        where: eq(companyNotes.companyId, companyId),
+        orderBy: [desc(companyNotes.createdAt)],
+      });
+      res.json({ notes, total: notes.length });
+    } catch (e) { res.status(500).json({ message: "Failed to fetch notes" }); }
+  });
+
+  app.post("/api/v1/notes", apiKeyAuth, async (req: any, res) => {
+    try {
+      const { companyId, createdByUserId } = req.apiKey;
+      const { content, mentions } = req.body;
+      if (!content) return res.status(400).json({ message: "content is required" });
+      const [note] = await db.insert(companyNotes).values({
+        companyId, authorId: createdByUserId,
+        content,
+        mentions: Array.isArray(mentions) ? mentions : [],
+      }).returning();
+      res.status(201).json({ note, message: "Note created successfully" });
+    } catch (e) { console.error("Error creating v1 note:", e); res.status(500).json({ message: "Failed to create note" }); }
+  });
+
+  app.delete("/api/v1/notes/:id", apiKeyAuth, async (req: any, res) => {
+    try {
+      const { companyId } = req.apiKey;
+      const note = await db.query.companyNotes.findFirst({ where: eq(companyNotes.id, req.params.id) });
+      if (!note || note.companyId !== companyId) return res.status(404).json({ message: "Note not found" });
+      await db.delete(companyNotes).where(eq(companyNotes.id, req.params.id));
+      res.json({ message: "Note deleted successfully" });
+    } catch (e) { res.status(500).json({ message: "Failed to delete note" }); }
+  });
+
   app.get("/api/v1/summary", apiKeyAuth, async (req: any, res) => {
     try {
       const { companyId } = req.apiKey;
@@ -17628,11 +18107,441 @@ Transcript: "${transcript}"`;
             responses: { "200": { description: "Updated IOR agreement" }, "404": { description: "Not found" } },
           },
         },
+        "/api/v1/reports": {
+          post: {
+            operationId: "createReport",
+            summary: "Create a daily field report",
+            description: "Creates a report for a project. inspector_id defaults to the API key owner if omitted.",
+            requestBody: {
+              required: true,
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    required: ["date"],
+                    properties: {
+                      project_id: { type: "string", nullable: true },
+                      inspector_id: { type: "string", nullable: true, description: "Defaults to API key owner" },
+                      date: { type: "string", format: "date", description: "YYYY-MM-DD" },
+                      status: { type: "string", enum: ["draft", "submitted"], default: "draft" },
+                      weather_type: { type: "string", enum: ["clear","cloudy","rain","wind","heat","cold"], nullable: true },
+                      weather_notes: { type: "string", nullable: true },
+                      work_performed: { type: "string", nullable: true },
+                      site_conditions: { type: "string", nullable: true },
+                      notes: { type: "string", nullable: true },
+                      issues_flag: { type: "boolean", nullable: true },
+                      issues_details: { type: "string", nullable: true },
+                      safety_flag: { type: "boolean", nullable: true },
+                      safety_details: { type: "string", nullable: true },
+                      regular_hours: { type: "string", nullable: true, description: "e.g. '8.00'" },
+                      ot_hours: { type: "string", nullable: true },
+                      time_in: { type: "string", nullable: true },
+                      time_out: { type: "string", nullable: true },
+                      trades: { type: "array", items: { type: "object" } },
+                      work_activities: { type: "array", items: { type: "object" } },
+                      visitors: { type: "array", items: { type: "object" } },
+                    },
+                  },
+                },
+              },
+            },
+            responses: { "201": { description: "Report created" }, "400": { description: "Validation error" } },
+          },
+        },
+        "/api/v1/reports/{id}": {
+          patch: {
+            operationId: "updateReport",
+            summary: "Update a daily report",
+            parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+            requestBody: {
+              required: true,
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    properties: {
+                      status: { type: "string", enum: ["draft","submitted"] },
+                      weather_type: { type: "string", nullable: true },
+                      weather_notes: { type: "string", nullable: true },
+                      work_performed: { type: "string", nullable: true },
+                      notes: { type: "string", nullable: true },
+                      issues_flag: { type: "boolean", nullable: true },
+                      issues_details: { type: "string", nullable: true },
+                      safety_flag: { type: "boolean", nullable: true },
+                      safety_details: { type: "string", nullable: true },
+                      regular_hours: { type: "string", nullable: true },
+                      ot_hours: { type: "string", nullable: true },
+                    },
+                  },
+                },
+              },
+            },
+            responses: { "200": { description: "Updated report" }, "404": { description: "Not found" } },
+          },
+        },
+        "/api/v1/time-entries": {
+          get: {
+            operationId: "listTimeEntries",
+            summary: "List manual time entries for a project/month",
+            parameters: [
+              { name: "project_id", in: "query", required: true, schema: { type: "string" } },
+              { name: "month", in: "query", required: false, schema: { type: "integer" }, description: "1–12, defaults to current month" },
+              { name: "year", in: "query", required: false, schema: { type: "integer" }, description: "e.g. 2026, defaults to current year" },
+            ],
+            responses: { "200": { description: "Time entries", content: { "application/json": { schema: { type: "object" } } } } },
+          },
+          post: {
+            operationId: "createTimeEntry",
+            summary: "Log manual hours for an inspector on a project",
+            requestBody: {
+              required: true,
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    required: ["project_id", "date"],
+                    properties: {
+                      project_id: { type: "string" },
+                      inspector_id: { type: "string", nullable: true, description: "user_id from /api/v1/team; defaults to API key owner" },
+                      inspector_name: { type: "string", nullable: true },
+                      date: { type: "string", format: "date" },
+                      regular_hours: { type: "number", description: "e.g. 8" },
+                      ot_hours: { type: "number", description: "Overtime hours" },
+                      notes: { type: "string", nullable: true },
+                    },
+                  },
+                },
+              },
+            },
+            responses: { "201": { description: "Time entry created" }, "409": { description: "Entry already exists for this date" } },
+          },
+        },
+        "/api/v1/time-entries/{id}": {
+          delete: {
+            operationId: "deleteTimeEntry",
+            summary: "Delete a manual time entry",
+            parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+            responses: { "200": { description: "Deleted" }, "404": { description: "Not found" } },
+          },
+        },
+        "/api/v1/projects/{id}/members": {
+          post: {
+            operationId: "addProjectMember",
+            summary: "Add a team member to a project",
+            parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" }, description: "Project ID" }],
+            requestBody: {
+              required: true,
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    required: ["user_id"],
+                    properties: {
+                      user_id: { type: "string", description: "user_id from GET /api/v1/team" },
+                      regular_rate: { type: "string", nullable: true },
+                      overtime_rate: { type: "string", nullable: true },
+                      premium_rate: { type: "string", nullable: true },
+                    },
+                  },
+                },
+              },
+            },
+            responses: { "201": { description: "Member added" }, "409": { description: "Already a member" } },
+          },
+        },
+        "/api/v1/projects/{id}/members/{userId}": {
+          delete: {
+            operationId: "removeProjectMember",
+            summary: "Remove a team member from a project",
+            parameters: [
+              { name: "id", in: "path", required: true, schema: { type: "string" }, description: "Project ID" },
+              { name: "userId", in: "path", required: true, schema: { type: "string" } },
+            ],
+            responses: { "200": { description: "Removed" }, "404": { description: "Not found" } },
+          },
+        },
+        "/api/v1/projects/{id}/billing-rates": {
+          get: {
+            operationId: "getProjectBillingRates",
+            summary: "Get billing rates for a project",
+            parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+            responses: { "200": { description: "Billing rates", content: { "application/json": { schema: { type: "object" } } } } },
+          },
+          put: {
+            operationId: "setProjectBillingRates",
+            summary: "Set (replace) billing rates for a project",
+            parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+            requestBody: {
+              required: true,
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    required: ["rates"],
+                    properties: {
+                      rates: {
+                        type: "array",
+                        items: {
+                          type: "object",
+                          required: ["title","rate","hours"],
+                          properties: {
+                            title: { type: "string", description: "Role/title e.g. 'DSA Class 1 Inspector'" },
+                            rate: { type: "number" },
+                            hours: { type: "number" },
+                            inspector_name: { type: "string", nullable: true },
+                            schedule_type: { type: "string", enum: ["fullTime","partTime"], default: "fullTime" },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+            responses: { "200": { description: "Rates updated" } },
+          },
+        },
+        "/api/v1/invoices": {
+          get: {
+            operationId: "listInvoices",
+            summary: "List invoices",
+            parameters: [{ name: "project_id", in: "query", required: false, schema: { type: "string" }, description: "Filter by project" }],
+            responses: { "200": { description: "Invoices", content: { "application/json": { schema: { type: "object" } } } } },
+          },
+          post: {
+            operationId: "createInvoice",
+            summary: "Create an invoice",
+            requestBody: {
+              required: true,
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    required: ["project_id","month","year"],
+                    properties: {
+                      project_id: { type: "string" },
+                      contract_id: { type: "string", nullable: true },
+                      client_id: { type: "string", nullable: true },
+                      purchase_order_id: { type: "string", nullable: true },
+                      month: { type: "integer", description: "1–12" },
+                      year: { type: "integer" },
+                      regular_hours: { type: "number" },
+                      overtime_hours: { type: "number" },
+                      premium_hours: { type: "number" },
+                      regular_rate: { type: "number" },
+                      overtime_rate: { type: "number" },
+                      premium_rate: { type: "number" },
+                      regular_amount: { type: "number" },
+                      overtime_amount: { type: "number" },
+                      premium_amount: { type: "number" },
+                      subtotal: { type: "number" },
+                      total_amount: { type: "number" },
+                      due_date: { type: "string", format: "date", nullable: true },
+                      notes: { type: "string", nullable: true },
+                      status: { type: "string", enum: ["draft","sent","paid","overdue","cancelled"], default: "draft" },
+                    },
+                  },
+                },
+              },
+            },
+            responses: { "201": { description: "Invoice created" } },
+          },
+        },
+        "/api/v1/invoices/{id}": {
+          patch: {
+            operationId: "updateInvoice",
+            summary: "Update an invoice",
+            parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+            requestBody: {
+              required: true,
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    properties: {
+                      status: { type: "string", enum: ["draft","sent","paid","overdue","cancelled"] },
+                      due_date: { type: "string", format: "date", nullable: true },
+                      paid_date: { type: "string", format: "date", nullable: true },
+                      total_amount: { type: "number", nullable: true },
+                      notes: { type: "string", nullable: true },
+                    },
+                  },
+                },
+              },
+            },
+            responses: { "200": { description: "Updated" }, "404": { description: "Not found" } },
+          },
+        },
+        "/api/v1/proposals": {
+          get: {
+            operationId: "listProposals",
+            summary: "List proposals",
+            responses: { "200": { description: "Proposals", content: { "application/json": { schema: { type: "object" } } } } },
+          },
+          post: {
+            operationId: "createProposal",
+            summary: "Create a proposal",
+            requestBody: {
+              required: true,
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    required: ["client_name","project_name"],
+                    properties: {
+                      client_name: { type: "string" },
+                      project_name: { type: "string" },
+                      client_id: { type: "string", nullable: true },
+                      contract_id: { type: "string", nullable: true },
+                      project_id: { type: "string", nullable: true },
+                      project_manager: { type: "string", nullable: true },
+                      start_date: { type: "string", format: "date", nullable: true },
+                      end_date: { type: "string", format: "date", nullable: true },
+                      total_hours: { type: "number", nullable: true },
+                      schedule_type: { type: "string", enum: ["fullTime","partTime"], default: "fullTime" },
+                      rate_escalation_note: { type: "string", nullable: true },
+                      terms: { type: "string", nullable: true },
+                      status: { type: "string", enum: ["draft","sent","accepted","rejected"], default: "draft" },
+                    },
+                  },
+                },
+              },
+            },
+            responses: { "201": { description: "Proposal created" } },
+          },
+        },
+        "/api/v1/proposals/{id}": {
+          patch: {
+            operationId: "updateProposal",
+            summary: "Update a proposal",
+            parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+            requestBody: {
+              required: true,
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    properties: {
+                      client_name: { type: "string" },
+                      project_name: { type: "string" },
+                      status: { type: "string", enum: ["draft","sent","accepted","rejected"] },
+                      project_manager: { type: "string", nullable: true },
+                      start_date: { type: "string", format: "date", nullable: true },
+                      end_date: { type: "string", format: "date", nullable: true },
+                      total_hours: { type: "number", nullable: true },
+                      terms: { type: "string", nullable: true },
+                    },
+                  },
+                },
+              },
+            },
+            responses: { "200": { description: "Updated" }, "404": { description: "Not found" } },
+          },
+        },
+        "/api/v1/purchase-orders": {
+          get: {
+            operationId: "listPurchaseOrders",
+            summary: "List purchase orders",
+            responses: { "200": { description: "Purchase orders", content: { "application/json": { schema: { type: "object" } } } } },
+          },
+          post: {
+            operationId: "createPurchaseOrder",
+            summary: "Create a purchase order",
+            requestBody: {
+              required: true,
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    required: ["po_number"],
+                    properties: {
+                      po_number: { type: "string" },
+                      client_id: { type: "string", nullable: true },
+                      description: { type: "string", nullable: true },
+                      total_amount: { type: "number", nullable: true },
+                      remaining_amount: { type: "number", nullable: true },
+                      issue_date: { type: "string", format: "date", nullable: true },
+                      expiration_date: { type: "string", format: "date", nullable: true },
+                      status: { type: "string", enum: ["active","closed","cancelled"], default: "active" },
+                      notes: { type: "string", nullable: true },
+                    },
+                  },
+                },
+              },
+            },
+            responses: { "201": { description: "Purchase order created" } },
+          },
+        },
+        "/api/v1/purchase-orders/{id}": {
+          patch: {
+            operationId: "updatePurchaseOrder",
+            summary: "Update a purchase order",
+            parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+            requestBody: {
+              required: true,
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    properties: {
+                      po_number: { type: "string" },
+                      description: { type: "string", nullable: true },
+                      total_amount: { type: "number", nullable: true },
+                      remaining_amount: { type: "number", nullable: true },
+                      issue_date: { type: "string", format: "date", nullable: true },
+                      expiration_date: { type: "string", format: "date", nullable: true },
+                      status: { type: "string", enum: ["active","closed","cancelled"] },
+                      notes: { type: "string", nullable: true },
+                    },
+                  },
+                },
+              },
+            },
+            responses: { "200": { description: "Updated" }, "404": { description: "Not found" } },
+          },
+        },
+        "/api/v1/notes": {
+          get: {
+            operationId: "listNotes",
+            summary: "List company notes",
+            responses: { "200": { description: "Notes", content: { "application/json": { schema: { type: "object" } } } } },
+          },
+          post: {
+            operationId: "createNote",
+            summary: "Add a company note",
+            requestBody: {
+              required: true,
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    required: ["content"],
+                    properties: {
+                      content: { type: "string" },
+                      mentions: { type: "array", items: { type: "string" }, description: "Array of user IDs to mention" },
+                    },
+                  },
+                },
+              },
+            },
+            responses: { "201": { description: "Note created" } },
+          },
+        },
+        "/api/v1/notes/{id}": {
+          delete: {
+            operationId: "deleteNote",
+            summary: "Delete a company note",
+            parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+            responses: { "200": { description: "Deleted" }, "404": { description: "Not found" } },
+          },
+        },
       },
       "x-field-notes": {
         statuses: "bid_release → bid_received → under_review → awarded/not_awarded → in_execution → substantial_completion → final_closeout",
+        invoice_statuses: "draft → sent → paid | overdue | cancelled",
+        proposal_statuses: "draft → sent → accepted | rejected",
         dates: "All dates ISO 8601: YYYY-MM-DD for dates, YYYY-MM-DDTHH:mm for datetimes",
-        workflow: "Typical flow: 1) list clients/team, 2) create project linked to client+contract, 3) create IOR agreement for inspector on that project",
+        workflow: "Typical flow: 1) list clients/team → 2) create project → 3) add members → 4) set billing rates → 5) create reports/time entries → 6) create invoices",
       },
     };
     res.json(spec);
