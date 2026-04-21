@@ -85,11 +85,11 @@ const YEAR_OPTIONS = Array.from({ length: 5 }, (_, i) => {
 });
 
 const STATUS_CONFIG = {
-  draft: { label: "Draft", variant: "secondary" as const, icon: FileText },
-  sent: { label: "Sent", variant: "default" as const, icon: Send },
-  paid: { label: "Paid", variant: "default" as const, icon: CheckCircle },
+  draft: { label: "Draft", variant: "warning" as const, icon: FileText },
+  sent: { label: "Sent", variant: "info" as const, icon: Send },
+  paid: { label: "Paid", variant: "success" as const, icon: CheckCircle },
   overdue: { label: "Overdue", variant: "destructive" as const, icon: AlertCircle },
-  cancelled: { label: "Cancelled", variant: "outline" as const, icon: XCircle },
+  cancelled: { label: "Cancelled", variant: "muted" as const, icon: XCircle },
 };
 
 export default function BillingManagementPage() {
@@ -1280,8 +1280,8 @@ export default function BillingManagementPage() {
                         <TableCell>
                           <Badge
                             variant={
-                              po.status === "active" ? "default" :
-                              po.status === "closed" ? "secondary" : "outline"
+                              po.status === "active" ? "success" :
+                              po.status === "closed" ? "muted" : "destructive"
                             }
                           >
                             {po.status.charAt(0).toUpperCase() + po.status.slice(1)}

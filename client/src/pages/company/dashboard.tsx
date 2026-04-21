@@ -57,6 +57,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Link } from "wouter";
+import { ContractStatusLegend } from "@/components/contract-status-legend";
 import { useState } from "react";
 import { format, differenceInDays, startOfMonth, endOfMonth, eachDayOfInterval, isWeekend, isSameMonth, startOfWeek, endOfWeek, isSameDay, addMonths, subMonths } from "date-fns";
 import { parseDateSafe } from "@/lib/timezone";
@@ -1199,6 +1200,7 @@ export default function CompanyDashboard() {
                   <div className="flex items-center gap-2">
                     <Target className="h-5 w-5 text-primary" />
                     <CardTitle>Contract Status</CardTitle>
+                    <ContractStatusLegend />
                   </div>
                   <Link href="/company/contracts">
                     <Button variant="ghost" size="sm" className="h-8 gap-1">
