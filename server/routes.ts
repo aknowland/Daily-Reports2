@@ -16826,6 +16826,318 @@ Transcript: "${transcript}"`;
     }
   });
 
+  // ════════════════════════════════════════════════════════════════════════
+  // CLIENTS
+  // ════════════════════════════════════════════════════════════════════════
+
+  app.get("/api/v1/clients", apiKeyAuth, async (req: any, res) => {
+    try {
+      const { companyId } = req.apiKey;
+      const clients = await storage.getClients(companyId);
+      res.json({ clients, total: clients.length });
+    } catch (e) { res.status(500).json({ message: "Failed to fetch clients" }); }
+  });
+
+  app.post("/api/v1/clients", apiKeyAuth, async (req: any, res) => {
+    try {
+      const { companyId } = req.apiKey;
+      const { name, contact_name, email, phone, address, director_of_facilities, notes } = req.body;
+      if (!name) return res.status(400).json({ message: "name is required" });
+      const client = await storage.createClient({
+        companyId, name,
+        contactName: contact_name || null,
+        email: email || null,
+        phone: phone || null,
+        address: address || null,
+        directorOfFacilities: director_of_facilities || null,
+        notes: notes || null,
+      });
+      res.status(201).json({ client, message: "Client created successfully" });
+    } catch (e) { res.status(500).json({ message: "Failed to create client" }); }
+  });
+
+  app.patch("/api/v1/clients/:id", apiKeyAuth, async (req: any, res) => {
+    try {
+      const { companyId } = req.apiKey;
+      const existing = await storage.getClient(req.params.id);
+      if (!existing || existing.companyId !== companyId) return res.status(404).json({ message: "Client not found" });
+      const { name, contact_name, email, phone, address, director_of_facilities, notes } = req.body;
+      const updates: Record<string, any> = {};
+      if (name !== undefined) updates.name = name;
+      if (contact_name !== undefined) updates.contactName = contact_name;
+      if (email !== undefined) updates.email = email;
+      if (phone !== undefined) updates.phone = phone;
+      if (address !== undefined) updates.address = address;
+      if (director_of_facilities !== undefined) updates.directorOfFacilities = director_of_facilities;
+      if (notes !== undefined) updates.notes = notes;
+      if (!Object.keys(updates).length) return res.status(400).json({ message: "No fields to update" });
+      const client = await storage.updateClient(req.params.id, updates);
+      res.json({ client, message: "Client updated successfully" });
+    } catch (e) { res.status(500).json({ message: "Failed to update client" }); }
+  });
+
+  // ════════════════════════════════════════════════════════════════════════
+  // PROJECTS (create + update)
+  // ════════════════════════════════════════════════════════════════════════
+
+  app.post("/api/v1/projects", apiKeyAuth, async (req: any, res) => {
+    try {
+      const { companyId } = req.apiKey;
+      const {
+        name, project_number, client_id, contract_id, address,
+        start_date, substantial_completion_date, final_closeout_date,
+        budget_amount, budgeted_hours, scope_of_work, project_value,
+        dsa_file_no, distribution_emails,
+      } = req.body;
+
+      if (!name) return res.status(400).json({ message: "name is required" });
+
+      // Auto-generate project number if not provided
+      let projectNumber = project_number;
+      if (!projectNumber) {
+        const existing = await storage.getProjectsByCompany(companyId);
+        const nums = existing
+          .map((p: any) => { const m = p.projectNumber?.match(/(\d+)$/); return m ? parseInt(m[1]) : 0; })
+          .filter((n: number) => !isNaN(n));
+        const next = nums.length ? Math.max(...nums) + 1 : 1;
+        const y = new Date().getFullYear();
+        projectNumber = `PRJ-${y}-${String(next).padStart(4, "0")}`;
+      }
+
+      const parseDate = (v: any) => (v ? new Date(v) : null);
+      const project = await storage.createProject({
+        companyId,
+        name,
+        projectNumber,
+        clientId: client_id || null,
+        contractId: contract_id || null,
+        contractOptionId: null,
+        client: null,
+        address: address || null,
+        startDate: parseDate(start_date),
+        substantialCompletionDate: parseDate(substantial_completion_date),
+        finalCloseoutDate: parseDate(final_closeout_date),
+        budgetAmount: budget_amount != null ? String(budget_amount) : null,
+        budgetedHours: budgeted_hours != null ? String(budgeted_hours) : null,
+        baseBudget: null,
+        budgetTrackingMode: null,
+        inheritBillingRates: true,
+        scopeOfWork: scope_of_work || null,
+        projectValue: project_value ? String(project_value) : null,
+        dsaFileNo: dsa_file_no || null,
+        distributionEmails: distribution_emails || [],
+        defaultFolderPath: null,
+      } as any);
+      res.status(201).json({ project, message: "Project created successfully" });
+    } catch (e: any) {
+      if (e?.code === "23505") return res.status(409).json({ message: "Project number already exists — provide a unique project_number" });
+      console.error("Error creating v1 project:", e);
+      res.status(500).json({ message: "Failed to create project" });
+    }
+  });
+
+  app.patch("/api/v1/projects/:id", apiKeyAuth, async (req: any, res) => {
+    try {
+      const { companyId } = req.apiKey;
+      const existing = await storage.getProject(req.params.id);
+      if (!existing || existing.companyId !== companyId) return res.status(404).json({ message: "Project not found" });
+      const {
+        name, address, client_id, contract_id,
+        start_date, substantial_completion_date, final_closeout_date,
+        budget_amount, budgeted_hours, scope_of_work, project_value,
+        dsa_file_no, distribution_emails,
+      } = req.body;
+      const parseDate = (v: any) => (v === null ? null : v !== undefined ? new Date(v) : undefined);
+      const updates: Record<string, any> = {};
+      if (name !== undefined) updates.name = name;
+      if (address !== undefined) updates.address = address;
+      if (client_id !== undefined) updates.clientId = client_id;
+      if (contract_id !== undefined) updates.contractId = contract_id;
+      if (start_date !== undefined) updates.startDate = parseDate(start_date);
+      if (substantial_completion_date !== undefined) updates.substantialCompletionDate = parseDate(substantial_completion_date);
+      if (final_closeout_date !== undefined) updates.finalCloseoutDate = parseDate(final_closeout_date);
+      if (budget_amount !== undefined) updates.budgetAmount = budget_amount != null ? String(budget_amount) : null;
+      if (budgeted_hours !== undefined) updates.budgetedHours = budgeted_hours != null ? String(budgeted_hours) : null;
+      if (scope_of_work !== undefined) updates.scopeOfWork = scope_of_work;
+      if (project_value !== undefined) updates.projectValue = project_value != null ? String(project_value) : null;
+      if (dsa_file_no !== undefined) updates.dsaFileNo = dsa_file_no;
+      if (distribution_emails !== undefined) updates.distributionEmails = distribution_emails;
+      if (!Object.keys(updates).length) return res.status(400).json({ message: "No fields to update" });
+      const project = await storage.updateProject(req.params.id, updates);
+      res.json({ project, message: "Project updated successfully" });
+    } catch (e) {
+      console.error("Error updating v1 project:", e);
+      res.status(500).json({ message: "Failed to update project" });
+    }
+  });
+
+  // ════════════════════════════════════════════════════════════════════════
+  // TEAM — list members (so Claude can get inspector IDs for IOR agreements)
+  // ════════════════════════════════════════════════════════════════════════
+
+  app.get("/api/v1/team", apiKeyAuth, async (req: any, res) => {
+    try {
+      const { companyId } = req.apiKey;
+      const members = await storage.getCompanyMembers(companyId);
+      const team = await Promise.all(members.map(async (m: any) => {
+        const profile = await storage.getUserProfile(m.userId);
+        return {
+          user_id: m.userId,
+          role: m.role,
+          name: [profile?.firstName, profile?.lastName].filter(Boolean).join(" ") || null,
+          email: profile?.email || null,
+        };
+      }));
+      res.json({ team, total: team.length });
+    } catch (e) { res.status(500).json({ message: "Failed to fetch team" }); }
+  });
+
+  // ════════════════════════════════════════════════════════════════════════
+  // INVITES — send team member invitations
+  // ════════════════════════════════════════════════════════════════════════
+
+  app.post("/api/v1/invites", apiKeyAuth, async (req: any, res) => {
+    try {
+      const { companyId, createdByUserId } = req.apiKey;
+      const { email, first_name, last_name, role = "inspector", is_company_admin = false, project_ids = [], all_projects_access = false } = req.body;
+      if (!email) return res.status(400).json({ message: "email is required" });
+
+      const validRoles = ["inspector", "admin"];
+      if (!validRoles.includes(role)) return res.status(400).json({ message: `role must be one of: ${validRoles.join(", ")}` });
+
+      const crypto = await import("crypto");
+      const token = crypto.randomBytes(32).toString("hex");
+      const inviteCode = crypto.randomBytes(4).toString("hex").toUpperCase().slice(0, 8);
+      const expiresAt = new Date();
+      expiresAt.setDate(expiresAt.getDate() + 30);
+
+      const invite = await storage.createInvite({
+        email,
+        firstName: first_name || null,
+        lastName: last_name || null,
+        role: role as any,
+        isCompanyAdmin: is_company_admin,
+        isClientPortal: false,
+        clientId: null,
+        allProjectsAccess: all_projects_access,
+        companyId,
+        projectIds: all_projects_access ? [] : project_ids,
+        token,
+        inviteCode,
+        invitedBy: createdByUserId,
+        expiresAt,
+        status: "pending",
+      });
+
+      // Send invite email
+      try {
+        const { sendEmail } = await import("./replit_integrations/email/client");
+        const baseUrl = process.env.REPLIT_DOMAINS
+          ? `https://${process.env.REPLIT_DOMAINS.split(",")[0]}`
+          : `https://${process.env.REPLIT_DEV_DOMAIN || "localhost:5000"}`;
+        const company = await storage.getCompany(companyId);
+        await sendEmail({
+          to: email,
+          subject: `You've been invited to join ${company?.name || "Field Daily Reports"}`,
+          html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto">
+            <h2 style="color:#1a2e4a">Team Invitation</h2>
+            <p>You have been invited to join <strong>${company?.name || "Field Daily Reports"}</strong> as a team member.</p>
+            <div style="text-align:center;margin:30px 0">
+              <a href="${baseUrl}/accept-invite/${token}" style="background:#f59e0b;color:#1a2e4a;padding:12px 24px;text-decoration:none;border-radius:6px;font-weight:bold">Accept Invitation</a>
+            </div>
+            <p style="color:#666;font-size:14px">Or use invite code: <strong>${inviteCode}</strong></p>
+            <p style="color:#666;font-size:12px">This invitation expires in 30 days.</p>
+          </div>`,
+        });
+      } catch (emailErr) {
+        console.error("Invite email failed (invite still created):", emailErr);
+      }
+
+      res.status(201).json({
+        invite: { id: invite.id, email: invite.email, invite_code: inviteCode, expires_at: expiresAt },
+        message: "Invitation created and email sent",
+      });
+    } catch (e) {
+      console.error("Error creating v1 invite:", e);
+      res.status(500).json({ message: "Failed to create invite" });
+    }
+  });
+
+  // ════════════════════════════════════════════════════════════════════════
+  // IOR AGREEMENTS
+  // ════════════════════════════════════════════════════════════════════════
+
+  app.get("/api/v1/ior-agreements", apiKeyAuth, async (req: any, res) => {
+    try {
+      const { companyId } = req.apiKey;
+      const agreements = await storage.getIorAgreements(companyId);
+      res.json({ ior_agreements: agreements, total: agreements.length });
+    } catch (e) { res.status(500).json({ message: "Failed to fetch IOR agreements" }); }
+  });
+
+  app.post("/api/v1/ior-agreements", apiKeyAuth, async (req: any, res) => {
+    try {
+      const { companyId } = req.apiKey;
+      const {
+        project_id, inspector_id, contract_id,
+        agreement_date, client_name, consultant_name, agent_name,
+        project_location, dsa_app_number, rate, terms,
+      } = req.body;
+      if (!project_id) return res.status(400).json({ message: "project_id is required" });
+      if (!inspector_id) return res.status(400).json({ message: "inspector_id is required" });
+      const project = await storage.getProject(project_id);
+      if (!project || project.companyId !== companyId) return res.status(404).json({ message: "Project not found" });
+      const agreementNumber = await storage.getNextIorAgreementNumber(companyId);
+      const agreement = await storage.createIorAgreement({
+        companyId,
+        projectId: project_id,
+        inspectorId: inspector_id,
+        contractId: contract_id || null,
+        agreementNumber,
+        agreementDate: agreement_date || null,
+        clientName: client_name || null,
+        consultantName: consultant_name || null,
+        agentName: agent_name || null,
+        projectLocation: project_location || null,
+        dsaAppNumber: dsa_app_number || null,
+        rate: rate ? String(rate) : null,
+        terms: terms || null,
+        pdfPath: null,
+      });
+      res.status(201).json({ ior_agreement: agreement, message: "IOR agreement created successfully" });
+    } catch (e) {
+      console.error("Error creating v1 IOR agreement:", e);
+      res.status(500).json({ message: "Failed to create IOR agreement" });
+    }
+  });
+
+  app.patch("/api/v1/ior-agreements/:id", apiKeyAuth, async (req: any, res) => {
+    try {
+      const { companyId } = req.apiKey;
+      const existing = await storage.getIorAgreement(req.params.id);
+      if (!existing || existing.companyId !== companyId) return res.status(404).json({ message: "IOR agreement not found" });
+      const {
+        agreement_date, client_name, consultant_name, agent_name,
+        project_location, dsa_app_number, rate, terms,
+      } = req.body;
+      const updates: Record<string, any> = {};
+      if (agreement_date !== undefined) updates.agreementDate = agreement_date;
+      if (client_name !== undefined) updates.clientName = client_name;
+      if (consultant_name !== undefined) updates.consultantName = consultant_name;
+      if (agent_name !== undefined) updates.agentName = agent_name;
+      if (project_location !== undefined) updates.projectLocation = project_location;
+      if (dsa_app_number !== undefined) updates.dsaAppNumber = dsa_app_number;
+      if (rate !== undefined) updates.rate = rate != null ? String(rate) : null;
+      if (terms !== undefined) updates.terms = terms;
+      if (!Object.keys(updates).length) return res.status(400).json({ message: "No fields to update" });
+      const agreement = await storage.updateIorAgreement(req.params.id, updates);
+      res.json({ ior_agreement: agreement, message: "IOR agreement updated successfully" });
+    } catch (e) {
+      console.error("Error updating v1 IOR agreement:", e);
+      res.status(500).json({ message: "Failed to update IOR agreement" });
+    }
+  });
+
   app.get("/api/v1/summary", apiKeyAuth, async (req: any, res) => {
     try {
       const { companyId } = req.apiKey;
@@ -16857,7 +17169,7 @@ Transcript: "${transcript}"`;
       openapi: "3.1.0",
       info: {
         title: "Field Daily Reports API",
-        description: "API for accessing and managing construction project data. Supports reading reports, projects, and contracts, plus creating and updating contracts. Authenticate using the Authorization header: 'Bearer <your-api-key>'.",
+        description: "Full read/write API for construction project management. Supports creating and updating contracts, projects, clients, IOR agreements, and team invites — plus reading reports and summary data. Authenticate using the Authorization header: 'Bearer <your-api-key>'.",
         version: "1.0.0",
       },
       servers: [{ url: baseUrl }],
@@ -16897,6 +17209,39 @@ Transcript: "${transcript}"`;
               },
             },
           },
+          post: {
+            operationId: "createProject",
+            summary: "Create a new project",
+            description: "Creates a project. project_number is auto-generated if omitted. Link to a contract or client by passing contract_id or client_id.",
+            requestBody: {
+              required: true,
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    required: ["name"],
+                    properties: {
+                      name: { type: "string" },
+                      project_number: { type: "string", nullable: true, description: "Auto-generated (PRJ-YYYY-NNNN) if not provided" },
+                      client_id: { type: "string", nullable: true, description: "ID from GET /api/v1/clients" },
+                      contract_id: { type: "string", nullable: true, description: "ID from GET /api/v1/contracts" },
+                      address: { type: "string", nullable: true },
+                      start_date: { type: "string", format: "date", nullable: true },
+                      substantial_completion_date: { type: "string", format: "date", nullable: true },
+                      final_closeout_date: { type: "string", format: "date", nullable: true },
+                      budget_amount: { type: "number", nullable: true, description: "Total dollar budget" },
+                      budgeted_hours: { type: "number", nullable: true, description: "Total hours allocated" },
+                      scope_of_work: { type: "string", nullable: true },
+                      project_value: { type: "number", nullable: true },
+                      dsa_file_no: { type: "string", nullable: true, description: "DSA file number for school/state projects" },
+                      distribution_emails: { type: "array", items: { type: "string" }, description: "Email addresses to receive reports" },
+                    },
+                  },
+                },
+              },
+            },
+            responses: { "201": { description: "Project created" }, "409": { description: "Project number already exists" } },
+          },
         },
         "/api/v1/projects/{id}": {
           get: {
@@ -16909,6 +17254,37 @@ Transcript: "${transcript}"`;
                 content: { "application/json": { schema: { type: "object" } } },
               },
             },
+          },
+          patch: {
+            operationId: "updateProject",
+            summary: "Update a project — budget, schedule, scope, and more",
+            parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+            requestBody: {
+              required: true,
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    properties: {
+                      name: { type: "string" },
+                      address: { type: "string", nullable: true },
+                      client_id: { type: "string", nullable: true },
+                      contract_id: { type: "string", nullable: true },
+                      start_date: { type: "string", format: "date", nullable: true },
+                      substantial_completion_date: { type: "string", format: "date", nullable: true },
+                      final_closeout_date: { type: "string", format: "date", nullable: true },
+                      budget_amount: { type: "number", nullable: true },
+                      budgeted_hours: { type: "number", nullable: true },
+                      scope_of_work: { type: "string", nullable: true },
+                      project_value: { type: "number", nullable: true },
+                      dsa_file_no: { type: "string", nullable: true },
+                      distribution_emails: { type: "array", items: { type: "string" } },
+                    },
+                  },
+                },
+              },
+            },
+            responses: { "200": { description: "Updated project" }, "404": { description: "Not found" } },
           },
         },
         "/api/v1/reports": {
@@ -16996,6 +17372,45 @@ Transcript: "${transcript}"`;
               },
             },
           },
+          post: {
+            operationId: "createContract",
+            summary: "Create a new contract or opportunity",
+            description: "Creates a new contract record. The only required field is 'name'. Status defaults to 'bid_release'. All date fields accept ISO 8601 format (YYYY-MM-DD).",
+            requestBody: {
+              required: true,
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    required: ["name"],
+                    properties: {
+                      name: { type: "string", description: "Contract / project name (required)" },
+                      contract_number: { type: "string", description: "Bid or RFP number" },
+                      contract_type: { type: "string", enum: ["lump_sum","time_and_materials","unit_price","cost_plus","design_build","hourly_rate","other"], default: "lump_sum" },
+                      status: { type: "string", enum: ["bid_release","bid_received","under_review","awarded","not_awarded","cancelled","in_execution","substantial_completion","final_closeout"], default: "bid_release" },
+                      agency: { type: "string", nullable: true },
+                      service_type: { type: "string", nullable: true },
+                      notes: { type: "string", nullable: true },
+                      original_value: { type: "number", nullable: true },
+                      bid_release_date: { type: "string", format: "date", nullable: true },
+                      bid_due_date: { type: "string", format: "date", nullable: true },
+                      question_deadline: { type: "string", format: "date", nullable: true },
+                      start_date: { type: "string", format: "date", nullable: true },
+                      substantial_completion_date: { type: "string", format: "date", nullable: true },
+                      final_closeout_date: { type: "string", format: "date", nullable: true },
+                      has_job_walk: { type: "boolean", nullable: true },
+                      job_walk_date_time: { type: "string", format: "date-time", nullable: true },
+                      dsa_class: { type: "string", enum: ["1","2","3","non_dsa"], nullable: true },
+                    },
+                  },
+                },
+              },
+            },
+            responses: {
+              "201": { description: "Contract created", content: { "application/json": { schema: { type: "object" } } } },
+              "400": { description: "Validation error (e.g. missing name)" },
+            },
+          },
         },
         "/api/v1/contracts/{id}": {
           get: {
@@ -17053,11 +17468,15 @@ Transcript: "${transcript}"`;
             },
           },
         },
-        "/api/v1/contracts": {
+        "/api/v1/clients": {
+          get: {
+            operationId: "listClients",
+            summary: "List all clients",
+            responses: { "200": { description: "List of clients", content: { "application/json": { schema: { type: "object" } } } } },
+          },
           post: {
-            operationId: "createContract",
-            summary: "Create a new contract or opportunity",
-            description: "Creates a new contract record. The only required field is 'name'. Status defaults to 'bid_release'. All date fields accept ISO 8601 format (YYYY-MM-DD).",
+            operationId: "createClient",
+            summary: "Create a new client",
             requestBody: {
               required: true,
               content: {
@@ -17066,38 +17485,154 @@ Transcript: "${transcript}"`;
                     type: "object",
                     required: ["name"],
                     properties: {
-                      name: { type: "string", description: "Contract / project name (required)" },
-                      contract_number: { type: "string", description: "Bid or RFP number" },
-                      contract_type: { type: "string", enum: ["lump_sum","time_and_materials","unit_price","cost_plus","design_build","hourly_rate","other"], default: "lump_sum" },
-                      status: { type: "string", enum: ["bid_release","bid_received","under_review","awarded","not_awarded","cancelled","in_execution","substantial_completion","final_closeout"], default: "bid_release" },
-                      agency: { type: "string", nullable: true, description: "Issuing agency or school district" },
-                      service_type: { type: "string", nullable: true, description: "e.g. DSA Inspection, Special Inspection" },
+                      name: { type: "string", description: "Client / agency name (required)" },
+                      contact_name: { type: "string", nullable: true },
+                      email: { type: "string", nullable: true },
+                      phone: { type: "string", nullable: true },
+                      address: { type: "string", nullable: true },
+                      director_of_facilities: { type: "string", nullable: true },
                       notes: { type: "string", nullable: true },
-                      original_value: { type: "number", nullable: true, description: "Contract dollar value" },
-                      bid_release_date: { type: "string", format: "date", nullable: true },
-                      bid_due_date: { type: "string", format: "date", nullable: true, description: "Proposal/bid submission deadline" },
-                      question_deadline: { type: "string", format: "date", nullable: true },
-                      start_date: { type: "string", format: "date", nullable: true },
-                      substantial_completion_date: { type: "string", format: "date", nullable: true },
-                      final_closeout_date: { type: "string", format: "date", nullable: true },
-                      has_job_walk: { type: "boolean", nullable: true },
-                      job_walk_date_time: { type: "string", format: "date-time", nullable: true },
-                      dsa_class: { type: "string", enum: ["1","2","3","non_dsa"], nullable: true },
                     },
                   },
                 },
               },
             },
-            responses: {
-              "201": { description: "Contract created", content: { "application/json": { schema: { type: "object" } } } },
-              "400": { description: "Validation error (e.g. missing name)" },
+            responses: { "201": { description: "Client created" } },
+          },
+        },
+        "/api/v1/clients/{id}": {
+          patch: {
+            operationId: "updateClient",
+            summary: "Update a client",
+            parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+            requestBody: {
+              required: true,
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    properties: {
+                      name: { type: "string" },
+                      contact_name: { type: "string", nullable: true },
+                      email: { type: "string", nullable: true },
+                      phone: { type: "string", nullable: true },
+                      address: { type: "string", nullable: true },
+                      director_of_facilities: { type: "string", nullable: true },
+                      notes: { type: "string", nullable: true },
+                    },
+                  },
+                },
+              },
             },
+            responses: { "200": { description: "Updated client" }, "404": { description: "Not found" } },
+          },
+        },
+        "/api/v1/team": {
+          get: {
+            operationId: "listTeam",
+            summary: "List team members",
+            description: "Returns team members with their user_id, name, and role. Use user_id when creating IOR agreements (inspector_id field).",
+            responses: { "200": { description: "Team members", content: { "application/json": { schema: { type: "object" } } } } },
+          },
+        },
+        "/api/v1/invites": {
+          post: {
+            operationId: "sendInvite",
+            summary: "Invite a new team member by email",
+            description: "Sends an email invitation. The recipient must click the link to create their account and join the team.",
+            requestBody: {
+              required: true,
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    required: ["email"],
+                    properties: {
+                      email: { type: "string", format: "email" },
+                      first_name: { type: "string", nullable: true },
+                      last_name: { type: "string", nullable: true },
+                      role: { type: "string", enum: ["inspector", "admin"], default: "inspector" },
+                      is_company_admin: { type: "boolean", default: false },
+                      all_projects_access: { type: "boolean", default: false, description: "Grant access to all current and future projects" },
+                      project_ids: { type: "array", items: { type: "string" }, description: "Specific project IDs to grant access to (if all_projects_access is false)" },
+                    },
+                  },
+                },
+              },
+            },
+            responses: { "201": { description: "Invite created and email sent" }, "400": { description: "Validation error" } },
+          },
+        },
+        "/api/v1/ior-agreements": {
+          get: {
+            operationId: "listIorAgreements",
+            summary: "List all IOR agreements",
+            responses: { "200": { description: "IOR agreements", content: { "application/json": { schema: { type: "object" } } } } },
+          },
+          post: {
+            operationId: "createIorAgreement",
+            summary: "Create an IOR (Inspector of Record) agreement",
+            description: "Creates an IOR agreement. Get project_id from GET /api/v1/projects and inspector_id (user_id) from GET /api/v1/team.",
+            requestBody: {
+              required: true,
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    required: ["project_id", "inspector_id"],
+                    properties: {
+                      project_id: { type: "string", description: "ID from GET /api/v1/projects" },
+                      inspector_id: { type: "string", description: "user_id from GET /api/v1/team" },
+                      contract_id: { type: "string", nullable: true },
+                      agreement_date: { type: "string", nullable: true, description: "Date string e.g. 'April 21, 2026' or '2026-04-21'" },
+                      client_name: { type: "string", nullable: true },
+                      consultant_name: { type: "string", nullable: true },
+                      agent_name: { type: "string", nullable: true },
+                      project_location: { type: "string", nullable: true },
+                      dsa_app_number: { type: "string", nullable: true },
+                      rate: { type: "string", nullable: true, description: "Hourly rate e.g. '125.00'" },
+                      terms: { type: "string", nullable: true, description: "Agreement terms text" },
+                    },
+                  },
+                },
+              },
+            },
+            responses: { "201": { description: "IOR agreement created" } },
+          },
+        },
+        "/api/v1/ior-agreements/{id}": {
+          patch: {
+            operationId: "updateIorAgreement",
+            summary: "Update an IOR agreement",
+            parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+            requestBody: {
+              required: true,
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    properties: {
+                      agreement_date: { type: "string", nullable: true },
+                      client_name: { type: "string", nullable: true },
+                      consultant_name: { type: "string", nullable: true },
+                      agent_name: { type: "string", nullable: true },
+                      project_location: { type: "string", nullable: true },
+                      dsa_app_number: { type: "string", nullable: true },
+                      rate: { type: "string", nullable: true },
+                      terms: { type: "string", nullable: true },
+                    },
+                  },
+                },
+              },
+            },
+            responses: { "200": { description: "Updated IOR agreement" }, "404": { description: "Not found" } },
           },
         },
       },
       "x-field-notes": {
         statuses: "bid_release → bid_received → under_review → awarded/not_awarded → in_execution → substantial_completion → final_closeout",
         dates: "All dates ISO 8601: YYYY-MM-DD for dates, YYYY-MM-DDTHH:mm for datetimes",
+        workflow: "Typical flow: 1) list clients/team, 2) create project linked to client+contract, 3) create IOR agreement for inspector on that project",
       },
     };
     res.json(spec);
