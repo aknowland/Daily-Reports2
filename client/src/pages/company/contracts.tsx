@@ -77,6 +77,7 @@ import {
 import { useState, useRef } from "react";
 import type { ContractWithProjects, Project, Client, ContractAttachment, ProposalWithDetails } from "@shared/schema";
 import { ProposalDialog } from "@/components/proposal-dialog";
+import { ContractStatusLegend } from "@/components/contract-status-legend";
 import { ImportFromEmailDialog } from "@/components/import-from-email-dialog";
 import { ClientSelect } from "@/components/client-select";
 import { PurchaseOrderSelect } from "@/components/purchase-order-select";
@@ -1568,6 +1569,7 @@ export default function ContractsPage() {
                     ))}
                   </SelectContent>
                 </Select>
+                <ContractStatusLegend />
               </div>
               <div className="flex flex-col sm:flex-row gap-3">
                 <Input
