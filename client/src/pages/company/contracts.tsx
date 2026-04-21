@@ -177,6 +177,7 @@ type ContractFormData = {
   questionDeadline: string;
   hasJobWalk: boolean;
   jobWalkDateTime: string;
+  dsaClass: string;
   addendumCount: string;
   lastAddendumDate: string;
   assignedToUserId: string;
@@ -210,6 +211,7 @@ const emptyFormData: ContractFormData = {
   questionDeadline: "",
   hasJobWalk: false,
   jobWalkDateTime: "",
+  dsaClass: "",
   addendumCount: "",
   lastAddendumDate: "",
   assignedToUserId: "",
@@ -906,6 +908,7 @@ export default function ContractsPage() {
       questionDeadline: (contract as any).questionDeadline ? format(parseDateSafe((contract as any).questionDeadline), "yyyy-MM-dd") : "",
       hasJobWalk: (contract as any).hasJobWalk ?? false,
       jobWalkDateTime: (contract as any).jobWalkDateTime ? format(parseDateSafe((contract as any).jobWalkDateTime), "yyyy-MM-dd'T'HH:mm") : "",
+      dsaClass: (contract as any).dsaClass || "",
       addendumCount: (contract as any).addendumCount?.toString() || "",
       lastAddendumDate: (contract as any).lastAddendumDate ? format(parseDateSafe((contract as any).lastAddendumDate), "yyyy-MM-dd") : "",
       assignedToUserId: (contract as any).assignedToUserId || "",
@@ -989,6 +992,7 @@ export default function ContractsPage() {
       questionDeadline: data.questionDeadline || "",
       hasJobWalk: data.hasJobWalk === true,
       jobWalkDateTime: data.jobWalkDateTime || "",
+      dsaClass: (data as any).dsaClass || "",
     };
     setFormData(newFormData);
     setContractOptions([{ ...emptyContractOption, inspectors: [{ ...emptyContractInspector }] }]);
@@ -2849,6 +2853,24 @@ export default function ContractsPage() {
                   />
                 </div>
               )}
+              <div className="space-y-2">
+                <Label htmlFor="dsaClass">DSA Class</Label>
+                <Select
+                  value={formData.dsaClass || "none"}
+                  onValueChange={(value) => setFormData({ ...formData, dsaClass: value === "none" ? "" : value })}
+                >
+                  <SelectTrigger id="dsaClass" data-testid="select-dsa-class">
+                    <SelectValue placeholder="Select DSA class..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Not specified</SelectItem>
+                    <SelectItem value="1">Class 1</SelectItem>
+                    <SelectItem value="2">Class 2</SelectItem>
+                    <SelectItem value="3">Class 3</SelectItem>
+                    <SelectItem value="non_dsa">Non-DSA</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
 
             {formData.startDate && (formData.substantialCompletionDate || formData.finalCloseoutDate) && (() => {

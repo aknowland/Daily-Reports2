@@ -18118,6 +18118,7 @@ Do not guess or invent data — only extract what is explicitly mentioned.`;
 - questionDeadline: string | null (ISO date YYYY-MM-DD format, deadline for questions/RFIs)
 - hasJobWalk: boolean | null (true if a mandatory or optional job walk, site walk, pre-bid walk, or site visit is mentioned; false if explicitly stated there is none; null if not mentioned)
 - jobWalkDateTime: string | null (ISO datetime YYYY-MM-DDTHH:mm format if a specific date/time for the job walk is given, otherwise null)
+- dsaClass: "1" | "2" | "3" | "non_dsa" | null (DSA inspector class required: 1=Class 1, 2=Class 2, 3=Class 3; use "non_dsa" if the work is explicitly non-DSA or not DSA-related; null if not mentioned. Look for phrases like "DSA Class 1", "Class II inspector", "DSA certified", "non-DSA", "not DSA", etc.)
 
 Email Subject: ${subject || ""}
 From: ${sender || ""}

@@ -59,6 +59,7 @@ interface ExtractedContract {
   questionDeadline: string | null;
   hasJobWalk: boolean | null;
   jobWalkDateTime: string | null;
+  dsaClass: string | null;
 }
 
 type Step = "email-list" | "extracting" | "review";
@@ -331,6 +332,16 @@ export function ImportFromEmailDialog({ open, onOpenChange, onImport }: ImportFr
                 <ExtractedField label="Budget / Value" value={extracted.originalValue ? `$${extracted.originalValue}` : null} />
                 <ExtractedField label="Agency" value={extracted.agency} />
                 <ExtractedField label="Service Type" value={extracted.serviceType} />
+                <ExtractedField
+                  label="DSA Class"
+                  value={
+                    extracted.dsaClass === "1" ? "Class 1" :
+                    extracted.dsaClass === "2" ? "Class 2" :
+                    extracted.dsaClass === "3" ? "Class 3" :
+                    extracted.dsaClass === "non_dsa" ? "Non-DSA" :
+                    null
+                  }
+                />
                 <ExtractedField label="Bid Release Date" value={extracted.bidReleaseDate} />
                 <ExtractedField label="Bid Due Date" value={extracted.bidDueDate} />
                 <ExtractedField label="Question Deadline" value={extracted.questionDeadline} />
