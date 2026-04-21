@@ -65,6 +65,8 @@ import {
   ChevronUp,
   BarChart3,
   Mail,
+  FolderPlus,
+  Loader2,
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import {
@@ -221,6 +223,10 @@ export default function ContractsPage() {
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [showImportFromEmailDialog, setShowImportFromEmailDialog] = useState(false);
   const [contractToDelete, setContractToDelete] = useState<ContractWithProjects | null>(null);
+  const [contractForNewProject, setContractForNewProject] = useState<ContractWithProjects | null>(null);
+  const [newProjectName, setNewProjectName] = useState("");
+  const [newProjectNumber, setNewProjectNumber] = useState("");
+  const [isCreatingProject, setIsCreatingProject] = useState(false);
   const [editingContract, setEditingContract] = useState<ContractWithProjects | null>(null);
   const [formData, setFormData] = useState<ContractFormData>(emptyFormData);
   const [activeTab, setActiveTab] = useState("list");
@@ -924,6 +930,38 @@ export default function ContractsPage() {
     }
     
     setEditingContract(contract);
+  };
+
+  const handleOpenCreateProjectDialog = (contract: ContractWithProjects) => {
+    setContractForNewProject(contract);
+    setNewProjectName(contract.name);
+    setNewProjectNumber(`PRJ-${contract.contractNumber}`);
+  };
+
+  const handleCreateProjectFromContract = async () => {
+    if (!contractForNewProject || !activeCompany?.id) return;
+    setIsCreatingProject(true);
+    try {
+      await apiRequest("POST", "/api/projects", {
+        name: newProjectName,
+        projectNumber: newProjectNumber,
+        contractId: contractForNewProject.id,
+        clientId: contractForNewProject.clientId || null,
+        client: contractForNewProject.client?.name || "",
+        companyId: activeCompany.id,
+        startDate: contractForNewProject.startDate || null,
+        substantialCompletionDate: contractForNewProject.substantialCompletionDate || null,
+        finalCloseoutDate: contractForNewProject.finalCloseoutDate || null,
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/contracts"] });
+      setContractForNewProject(null);
+      toast({ title: "Project created", description: `"${newProjectName}" is now linked to this contract.` });
+    } catch (error: any) {
+      toast({ title: "Failed to create project", description: error.message || "Please try again.", variant: "destructive" });
+    } finally {
+      setIsCreatingProject(false);
+    }
   };
 
   const handleImportFromEmail = (data: any) => {
@@ -1841,6 +1879,19 @@ export default function ContractsPage() {
                       <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
                         {isEffectiveCompanyAdmin && (
                           <>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => handleOpenCreateProjectDialog(contract)}
+                                  data-testid={`button-create-project-${contract.id}`}
+                                >
+                                  <FolderPlus className="w-4 h-4 text-primary" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>Create Project from Contract</TooltipContent>
+                            </Tooltip>
                             <Button
                               variant="ghost"
                               size="icon"
@@ -3242,6 +3293,59 @@ export default function ContractsPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Create Project from Contract Dialog */}
+      <Dialog open={!!contractForNewProject} onOpenChange={(open) => { if (!open) setContractForNewProject(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FolderPlus className="w-5 h-5 text-primary" />
+              Create Project from Contract
+            </DialogTitle>
+            <DialogDescription>
+              A new project will be created and linked to contract <strong>{contractForNewProject?.contractNumber}</strong>.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="new-project-name">Project Name</Label>
+              <Input
+                id="new-project-name"
+                value={newProjectName}
+                onChange={(e) => setNewProjectName(e.target.value)}
+                placeholder="Project name"
+                data-testid="input-new-project-name"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="new-project-number">Project Number</Label>
+              <Input
+                id="new-project-number"
+                value={newProjectNumber}
+                onChange={(e) => setNewProjectNumber(e.target.value)}
+                placeholder="e.g. PRJ-C001"
+                data-testid="input-new-project-number"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setContractForNewProject(null)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleCreateProjectFromContract}
+              disabled={isCreatingProject || !newProjectName.trim() || !newProjectNumber.trim()}
+              data-testid="button-confirm-create-project"
+            >
+              {isCreatingProject ? (
+                <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Creating...</>
+              ) : (
+                <><FolderPlus className="w-4 h-4 mr-2" />Create Project</>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <ProposalDialog
         open={showProposalDialog}
