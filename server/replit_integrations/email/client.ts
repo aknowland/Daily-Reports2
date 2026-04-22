@@ -51,6 +51,8 @@ export interface SendEmailOptions {
   to: string | string[];
   subject: string;
   html: string;
+  cc?: string | string[];
+  bcc?: string | string[];
   attachments?: {
     filename: string;
     content: Buffer;
@@ -63,6 +65,7 @@ export async function sendEmail(options: SendEmailOptions) {
   console.log("Sending email via Resend:", {
     from: fromEmail,
     to: options.to,
+    cc: options.cc,
     subject: options.subject,
     hasAttachments: !!options.attachments?.length,
   });
@@ -72,6 +75,8 @@ export async function sendEmail(options: SendEmailOptions) {
     to: options.to,
     subject: options.subject,
     html: options.html,
+    cc: options.cc,
+    bcc: options.bcc,
     attachments: options.attachments,
   });
   

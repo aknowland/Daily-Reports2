@@ -6,9 +6,9 @@ export default {
   theme: {
     extend: {
       borderRadius: {
-        lg: ".25rem", /* 4px */
-        md: ".1875rem", /* 3px */
-        sm: ".125rem", /* 2px */
+        lg: ".5rem",   /* 8px — modern card/panel radius */
+        md: ".375rem", /* 6px — inputs, selects */
+        sm: ".25rem",  /* 4px — small chips */
       },
       colors: {
         // Flat / base colors (regular buttons)

@@ -66,17 +66,17 @@ type NoteWithUser = InspectorCandidateNote & { user?: User };
 type RecruitingStatus = "prospect" | "contacted" | "interested" | "not_available" | "not_interested" | "hired";
 
 const STATUS_OPTIONS = [
-  { value: "prospect", label: "Prospect", color: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300" },
-  { value: "contacted", label: "Contacted", color: "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300" },
-  { value: "interested", label: "Interested", color: "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300" },
-  { value: "not_available", label: "Not Available", color: "bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300" },
-  { value: "not_interested", label: "Not Interested", color: "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300" },
-  { value: "hired", label: "Hired", color: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300" },
+  { value: "prospect", label: "Prospect", variant: "muted" as const, color: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300" },
+  { value: "contacted", label: "Contacted", variant: "info" as const, color: "bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-300" },
+  { value: "interested", label: "Interested", variant: "success" as const, color: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300" },
+  { value: "not_available", label: "Not Available", variant: "warning" as const, color: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300" },
+  { value: "not_interested", label: "Not Interested", variant: "destructive" as const, color: "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300" },
+  { value: "hired", label: "Hired", variant: "success" as const, color: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300" },
 ];
 
 function getStatusBadge(status: string) {
   const opt = STATUS_OPTIONS.find(o => o.value === status);
-  return opt || { value: status, label: status, color: "bg-gray-100 text-gray-700" };
+  return opt || { value: status, label: status, variant: "muted" as const, color: "bg-gray-100 text-gray-700" };
 }
 
 function formatAvailDate(d: string | Date | null): string {
@@ -313,31 +313,31 @@ export default function CompanyRecruitingPage() {
           <div className="flex flex-wrap gap-2">
             {candidates.length > 0 && (
               <>
-                <Badge variant="outline" className="text-xs" data-testid="badge-total-candidates">
+                <Badge variant="secondary" className="text-xs" data-testid="badge-total-candidates">
                   {candidates.length} inspectors
                 </Badge>
                 {statusCounts.prospect > 0 && (
-                  <Badge variant="outline" className="text-xs bg-slate-50 dark:bg-slate-900">
+                  <Badge variant="muted" className="text-xs">
                     {statusCounts.prospect} prospects
                   </Badge>
                 )}
                 {statusCounts.contacted > 0 && (
-                  <Badge variant="outline" className="text-xs bg-blue-50 dark:bg-blue-950">
+                  <Badge variant="info" className="text-xs">
                     {statusCounts.contacted} contacted
                   </Badge>
                 )}
                 {statusCounts.interested > 0 && (
-                  <Badge variant="outline" className="text-xs bg-green-50 dark:bg-green-950">
+                  <Badge variant="success" className="text-xs">
                     {statusCounts.interested} interested
                   </Badge>
                 )}
                 {statusCounts.hired > 0 && (
-                  <Badge variant="outline" className="text-xs bg-emerald-50 dark:bg-emerald-950">
+                  <Badge variant="success" className="text-xs">
                     {statusCounts.hired} hired
                   </Badge>
                 )}
                 {availableNowCount > 0 && (
-                  <Badge variant="outline" className="text-xs bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300 border-green-300 dark:border-green-700" data-testid="badge-available-now">
+                  <Badge variant="success" className="text-xs" data-testid="badge-available-now">
                     <CheckCircle2 className="w-3 h-3 mr-1" />
                     {availableNowCount} available now
                   </Badge>

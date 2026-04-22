@@ -113,9 +113,9 @@ export default function BillingPage() {
     if (!subscriptionStatus) return null;
     
     if (subscriptionStatus.hasActiveSubscription) {
-      return <Badge className="bg-green-600" data-testid="badge-subscription-active">Active</Badge>;
+      return <Badge variant="success" data-testid="badge-subscription-active">Active</Badge>;
     }
-    return <Badge variant="secondary" data-testid="badge-subscription-free">Free Plan</Badge>;
+    return <Badge variant="muted" data-testid="badge-subscription-free">Free Plan</Badge>;
   };
 
   const getPlanName = () => {

@@ -1,7 +1,7 @@
 import { useCallback, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Camera, X, Upload, Loader2 } from "lucide-react";
+import { Camera, X, Loader2 } from "lucide-react";
 
 interface PhotoItem {
   id?: string;
@@ -15,6 +15,68 @@ interface PhotoUploadProps {
   onPhotosChange: (photos: PhotoItem[]) => void;
   disabled?: boolean;
   maxPhotos?: number;
+}
+
+const MAX_DIMENSION = 1920;
+const JPEG_QUALITY = 0.82;
+
+async function compressImage(file: File): Promise<File> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const objectUrl = URL.createObjectURL(file);
+
+    img.onload = () => {
+      URL.revokeObjectURL(objectUrl);
+
+      let { width, height } = img;
+
+      // Scale down if either dimension exceeds MAX_DIMENSION
+      if (width > MAX_DIMENSION || height > MAX_DIMENSION) {
+        if (width >= height) {
+          height = Math.round((height / width) * MAX_DIMENSION);
+          width = MAX_DIMENSION;
+        } else {
+          width = Math.round((width / height) * MAX_DIMENSION);
+          height = MAX_DIMENSION;
+        }
+      }
+
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        reject(new Error("Canvas context unavailable"));
+        return;
+      }
+      ctx.drawImage(img, 0, 0, width, height);
+
+      canvas.toBlob(
+        (blob) => {
+          if (!blob) {
+            reject(new Error("Canvas toBlob failed"));
+            return;
+          }
+          const baseName = file.name.replace(/\.[^.]+$/, "");
+          const compressed = new File([blob], `${baseName}.jpg`, {
+            type: "image/jpeg",
+            lastModified: Date.now(),
+          });
+          resolve(compressed);
+        },
+        "image/jpeg",
+        JPEG_QUALITY,
+      );
+    };
+
+    img.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      // Fallback: return original file unchanged
+      resolve(file);
+    };
+
+    img.src = objectUrl;
+  });
 }
 
 export function PhotoUpload({ photos, onPhotosChange, disabled, maxPhotos = 20 }: PhotoUploadProps) {
@@ -31,12 +93,15 @@ export function PhotoUpload({ photos, onPhotosChange, disabled, maxPhotos = 20 }
       const file = files[i];
       if (!file.type.startsWith("image/")) continue;
 
-      const preview = URL.createObjectURL(file);
-      newPhotos.push({
-        file,
-        preview,
-        caption: "",
-      });
+      try {
+        const compressed = await compressImage(file);
+        const preview = URL.createObjectURL(compressed);
+        newPhotos.push({ file: compressed, preview, caption: "" });
+      } catch {
+        // If compression fails, fall back to original
+        const preview = URL.createObjectURL(file);
+        newPhotos.push({ file, preview, caption: "" });
+      }
     }
 
     onPhotosChange([...photos, ...newPhotos]);
@@ -79,7 +144,7 @@ export function PhotoUpload({ photos, onPhotosChange, disabled, maxPhotos = 20 }
           {isUploading ? (
             <div className="flex flex-col items-center gap-2">
               <Loader2 className="w-8 h-8 animate-spin text-primary" />
-              <p className="text-sm text-muted-foreground">Processing photos...</p>
+              <p className="text-sm text-muted-foreground">Compressing photos...</p>
             </div>
           ) : (
             <div className="flex flex-col items-center gap-2">
@@ -89,7 +154,7 @@ export function PhotoUpload({ photos, onPhotosChange, disabled, maxPhotos = 20 }
               <div>
                 <p className="font-medium text-foreground">Tap to upload photos</p>
                 <p className="text-sm text-muted-foreground">
-                  {photos.length} of {maxPhotos} photos added
+                  {photos.length} of {maxPhotos} photos added · auto-compressed
                 </p>
               </div>
             </div>

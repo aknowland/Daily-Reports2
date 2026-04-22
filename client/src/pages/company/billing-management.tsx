@@ -1,4 +1,5 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { PageLayout } from "@/components/layout/page-layout";
 import { PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
@@ -47,10 +48,11 @@ import {
   ArrowLeft,
 } from "lucide-react";
 import { Link } from "wouter";
-import { useState } from "react";
-import type { Project, ContractWithProjects, InvoiceWithDetails, PurchaseOrder, Client } from "@shared/schema";
+import { useState, useMemo } from "react";
+import type { Project, ContractWithProjects, InvoiceWithDetails, PurchaseOrder, Client, Timesheet } from "@shared/schema";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
   DialogContent,
@@ -85,11 +87,11 @@ const YEAR_OPTIONS = Array.from({ length: 5 }, (_, i) => {
 });
 
 const STATUS_CONFIG = {
-  draft: { label: "Draft", variant: "secondary" as const, icon: FileText },
-  sent: { label: "Sent", variant: "default" as const, icon: Send },
-  paid: { label: "Paid", variant: "default" as const, icon: CheckCircle },
+  draft: { label: "Draft", variant: "warning" as const, icon: FileText },
+  sent: { label: "Sent", variant: "info" as const, icon: Send },
+  paid: { label: "Paid", variant: "success" as const, icon: CheckCircle },
   overdue: { label: "Overdue", variant: "destructive" as const, icon: AlertCircle },
-  cancelled: { label: "Cancelled", variant: "outline" as const, icon: XCircle },
+  cancelled: { label: "Cancelled", variant: "muted" as const, icon: XCircle },
 };
 
 export default function BillingManagementPage() {
@@ -117,6 +119,8 @@ export default function BillingManagementPage() {
     expirationDate: "",
     status: "active",
   });
+  const [rejectTimesheetDialog, setRejectTimesheetDialog] = useState<{ id: string; action: "revert" | "reject" } | null>(null);
+  const [rejectNote, setRejectNote] = useState("");
   const [showEmailDialog, setShowEmailDialog] = useState(false);
   const [emailInvoice, setEmailInvoice] = useState<InvoiceWithDetails | null>(null);
   const [invoiceToDelete, setInvoiceToDelete] = useState<InvoiceWithDetails | null>(null);
@@ -135,6 +139,8 @@ export default function BillingManagementPage() {
     year: new Date().getFullYear().toString(),
     notes: "",
   });
+  const [isEditingContractAmount, setIsEditingContractAmount] = useState(false);
+  const [contractAmountInput, setContractAmountInput] = useState("");
 
   const { data: projects, isLoading: projectsLoading } = useQuery<Project[]>({
     queryKey: ["/api/projects"],
@@ -192,6 +198,38 @@ export default function BillingManagementPage() {
     },
     onError: () => {
       toast({ title: "Failed to update invoice", variant: "destructive" });
+    },
+  });
+
+  type TimesheetWithDetails = Timesheet & { projectName?: string; inspectorName?: string };
+
+  const { data: timesheetRecords = [], isLoading: timesheetsLoading } = useQuery<TimesheetWithDetails[]>({
+    queryKey: ["/api/timesheets", activeCompany?.id],
+    queryFn: async () => {
+      const response = await fetch("/api/timesheets", { credentials: "include" });
+      if (!response.ok) throw new Error("Failed to fetch timesheets");
+      return response.json();
+    },
+    enabled: !!activeCompany?.id && (isEffectiveCompanyAdmin || isEffectiveSystemAdmin),
+  });
+
+  const updateTimesheetStatusMutation = useMutation({
+    mutationFn: async ({ id, status, adminNote }: { id: string; status: string; adminNote?: string }) => {
+      const response = await fetch(`/api/timesheets/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ status, adminNote }),
+      });
+      if (!response.ok) throw new Error("Failed to update timesheet");
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/timesheets"] });
+      toast({ title: "Timesheet status updated" });
+    },
+    onError: () => {
+      toast({ title: "Failed to update timesheet status", variant: "destructive" });
     },
   });
 
@@ -295,6 +333,27 @@ export default function BillingManagementPage() {
     },
   });
 
+  const updateProjectBudgetMutation = useMutation({
+    mutationFn: async ({ id, budgetAmount }: { id: string; budgetAmount: string }) => {
+      const response = await fetch(`/api/projects/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ budgetAmount }),
+      });
+      if (!response.ok) throw new Error("Failed to update project budget");
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+      setIsEditingContractAmount(false);
+      toast({ title: "Contract amount saved" });
+    },
+    onError: () => {
+      toast({ title: "Failed to save contract amount", variant: "destructive" });
+    },
+  });
+
   const resetPOForm = () => {
     setPOFormData({
       poNumber: "",
@@ -343,15 +402,66 @@ export default function BillingManagementPage() {
     ? contracts?.find(c => c.id === selectedProjectData.contractId)
     : undefined;
 
-  const filteredInvoices = invoices?.filter(inv => 
-    statusFilter === "all" || inv.status === statusFilter
+  const originalContractValue = projectContract?.originalValue 
+    ? parseFloat(projectContract.originalValue) 
+    : null;
+  const currentContractValue = projectContract?.currentValue 
+    ? parseFloat(projectContract.currentValue) 
+    : null;
+  const contractAmount = currentContractValue ?? (
+    selectedProjectData?.budgetAmount ? parseFloat(String(selectedProjectData.budgetAmount)) : null
   );
 
+  const projectInvoicesForCalc = useMemo(() => {
+    if (!invoices || !selectedProject) return [];
+    return invoices
+      .filter(inv => inv.projectId === selectedProject)
+      .sort((a, b) => {
+        if (a.year !== b.year) return a.year - b.year;
+        return a.month - b.month;
+      });
+  }, [invoices, selectedProject]);
+
+  const totalBilledToDate = projectInvoicesForCalc.reduce(
+    (sum, inv) => (inv.status === "sent" || inv.status === "paid")
+      ? sum + parseFloat(inv.totalAmount || "0")
+      : sum,
+    0
+  );
+
+  const cumulativeByInvoiceId = useMemo(() => {
+    const map: Record<string, { billedToDate: number; pctOfContract: number | null }> = {};
+    let running = 0;
+    for (const inv of projectInvoicesForCalc) {
+      if (inv.status !== "cancelled") {
+        if (inv.status === "sent" || inv.status === "paid") {
+          running += parseFloat(inv.totalAmount || "0");
+        }
+      }
+      map[inv.id] = {
+        billedToDate: running,
+        pctOfContract: contractAmount && contractAmount > 0 ? (running / contractAmount) * 100 : null,
+      };
+    }
+    return map;
+  }, [projectInvoicesForCalc, contractAmount]);
+
+  const filteredInvoices = invoices?.filter(inv => {
+    const matchesProject = !selectedProject || inv.projectId === selectedProject;
+    const matchesStatus = statusFilter === "all" || inv.status === statusFilter;
+    return matchesProject && matchesStatus;
+  });
+
+  const projectFilteredInvoices = invoices?.filter(inv =>
+    !selectedProject || inv.projectId === selectedProject
+  ) || [];
+
   const invoiceSummary = {
-    draft: invoices?.filter(inv => inv.status === "draft") || [],
-    sent: invoices?.filter(inv => inv.status === "sent") || [],
-    paid: invoices?.filter(inv => inv.status === "paid") || [],
-    overdue: invoices?.filter(inv => inv.status === "overdue") || [],
+    draft: projectFilteredInvoices.filter(inv => inv.status === "draft"),
+    sent: projectFilteredInvoices.filter(inv => inv.status === "sent"),
+    paid: projectFilteredInvoices.filter(inv => inv.status === "paid"),
+    overdue: projectFilteredInvoices.filter(inv => inv.status === "overdue"),
+    cancelled: projectFilteredInvoices.filter(inv => inv.status === "cancelled"),
   };
 
   const calculateTotal = (invList: InvoiceWithDetails[]) => {
@@ -396,6 +506,7 @@ export default function BillingManagementPage() {
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
 
+      queryClient.invalidateQueries({ queryKey: ["/api/timesheets"] });
       toast({
         title: "Success",
         description: "Timesheet generated successfully",
@@ -422,7 +533,6 @@ export default function BillingManagementPage() {
     }
     
     // Find contract for selected project
-    const selectedProjectData = filteredProjects?.find(p => p.id === selectedProject);
     const linkedContract = contracts?.find(c => 
       c.projects?.some((p: any) => p.id === selectedProject)
     );
@@ -441,6 +551,18 @@ export default function BillingManagementPage() {
       notes: "",
     });
     
+    setShowInvoiceDialog(true);
+  };
+
+  const openNewInvoiceDialog = () => {
+    setInvoiceFormData({
+      projectId: "",
+      contractId: "",
+      purchaseOrderId: "",
+      month: selectedMonth,
+      year: selectedYear,
+      notes: "",
+    });
     setShowInvoiceDialog(true);
   };
 
@@ -676,7 +798,17 @@ export default function BillingManagementPage() {
   return (
     <PageLayout title="Billing">
       <div className="p-4 space-y-6">
-        <PageHeader icon={Receipt} title="Billing Management" subtitle={activeCompany?.name} />
+        <PageHeader icon={Receipt} title="Billing Management" subtitle={activeCompany?.name}>
+          <Button
+            onClick={openNewInvoiceDialog}
+            size="sm"
+            className="bg-[hsl(36,90%,50%)] text-[hsl(216,32%,10%)] hover:bg-[hsl(36,90%,45%)] font-semibold"
+            data-testid="button-new-invoice"
+          >
+            <Plus className="h-4 w-4 mr-2" />
+            New Invoice
+          </Button>
+        </PageHeader>
         <Tabs defaultValue="invoices" className="space-y-4">
           <TabsList>
             <TabsTrigger value="invoices" className="gap-2" data-testid="tab-invoices">
@@ -757,6 +889,126 @@ export default function BillingManagementPage() {
               </Card>
             </div>
 
+            {selectedProject && (
+              <Card data-testid="contract-billing-summary">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Building2 className="h-5 w-5" />
+                    Contract Billing Summary
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {contractAmount !== null ? (
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                      <div className="rounded-lg border bg-muted/30 p-4 space-y-1">
+                        <p className="text-xs text-muted-foreground uppercase tracking-wide">Original Contract Value</p>
+                        <p className="text-xl font-bold" data-testid="text-original-contract-value">
+                          {originalContractValue !== null
+                            ? `$${originalContractValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                            : "--"}
+                        </p>
+                      </div>
+                      <div className="rounded-lg border bg-muted/30 p-4 space-y-1">
+                        <p className="text-xs text-muted-foreground uppercase tracking-wide">Current Contract Value</p>
+                        <p className="text-xl font-bold" data-testid="text-current-contract-value">
+                          {contractAmount !== null
+                            ? `$${contractAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                            : "--"}
+                        </p>
+                        {originalContractValue !== null && currentContractValue !== null && originalContractValue !== currentContractValue && (
+                          <p className="text-xs text-muted-foreground">Amended from original</p>
+                        )}
+                      </div>
+                      <div className="rounded-lg border bg-muted/30 p-4 space-y-1">
+                        <p className="text-xs text-muted-foreground uppercase tracking-wide">Total Billed to Date</p>
+                        <p className="text-xl font-bold text-blue-600" data-testid="text-total-billed">
+                          ${totalBilledToDate.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </p>
+                        <p className="text-xs text-muted-foreground">Sent + paid invoices</p>
+                      </div>
+                      <div className="rounded-lg border bg-muted/30 p-4 space-y-1">
+                        <p className="text-xs text-muted-foreground uppercase tracking-wide">Remaining Balance</p>
+                        <p className="text-xl font-bold text-green-600" data-testid="text-remaining-balance">
+                          {contractAmount !== null
+                            ? `$${Math.max(0, contractAmount - totalBilledToDate).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                            : "--"}
+                        </p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="rounded-lg border border-dashed p-4 space-y-3">
+                      <p className="text-sm text-muted-foreground">No contract amount found for this project. Enter a contract amount to enable billing tracking.</p>
+                      {isEditingContractAmount ? (
+                        <div className="flex items-center gap-2">
+                          <div className="relative w-48">
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
+                            <Input
+                              className="pl-7"
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              placeholder="0.00"
+                              value={contractAmountInput}
+                              onChange={(e) => setContractAmountInput(e.target.value)}
+                              data-testid="input-contract-amount"
+                            />
+                          </div>
+                          <Button
+                            size="sm"
+                            onClick={() => {
+                              if (contractAmountInput && selectedProjectData) {
+                                updateProjectBudgetMutation.mutate({
+                                  id: selectedProjectData.id,
+                                  budgetAmount: contractAmountInput,
+                                });
+                              }
+                            }}
+                            disabled={!contractAmountInput || updateProjectBudgetMutation.isPending}
+                            data-testid="button-save-contract-amount"
+                          >
+                            {updateProjectBudgetMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save"}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => { setIsEditingContractAmount(false); setContractAmountInput(""); }}
+                          >
+                            Cancel
+                          </Button>
+                        </div>
+                      ) : (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setIsEditingContractAmount(true)}
+                          data-testid="button-set-contract-amount"
+                        >
+                          <Edit className="h-4 w-4 mr-2" />
+                          Set Contract Amount
+                        </Button>
+                      )}
+                    </div>
+                  )}
+                  {contractAmount !== null && contractAmount > 0 && (
+                    <div className="space-y-2">
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">% Billed</span>
+                        <span className="font-medium" data-testid="text-pct-billed">
+                          {Math.min(100, (totalBilledToDate / contractAmount) * 100).toFixed(1)}%
+                        </span>
+                      </div>
+                      <div className="h-2 w-full bg-muted rounded-full overflow-hidden" data-testid="progress-billed">
+                        <div
+                          className="h-full bg-blue-500 rounded-full transition-all"
+                          style={{ width: `${Math.min(100, (totalBilledToDate / contractAmount) * 100)}%` }}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+
             <Card>
               <CardHeader className="flex flex-row items-center justify-between gap-4">
                 <CardTitle className="flex items-center gap-2">
@@ -780,6 +1032,128 @@ export default function BillingManagementPage() {
                 </div>
               </CardHeader>
               <CardContent>
+                {projectFilteredInvoices.length > 0 && (
+                  <div className="flex flex-wrap items-center gap-2 mb-4 p-3 bg-muted/40 rounded-lg border" data-testid="invoice-status-summary-bar">
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          onClick={() => setStatusFilter("all")}
+                          data-testid="pill-status-all"
+                          className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-medium transition-all border ${
+                            statusFilter === "all"
+                              ? "bg-foreground text-background border-foreground"
+                              : "bg-background text-foreground border-border hover:border-foreground/50"
+                          }`}
+                        >
+                          All <span className="font-bold">{projectFilteredInvoices.length}</span>
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        ${calculateTotal(projectFilteredInvoices).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} total
+                      </TooltipContent>
+                    </Tooltip>
+                    {invoiceSummary.draft.length > 0 && (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <button
+                            onClick={() => setStatusFilter(statusFilter === "draft" ? "all" : "draft")}
+                            data-testid="pill-status-draft"
+                            className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-medium transition-all border ${
+                              statusFilter === "draft"
+                                ? "bg-yellow-500 text-white border-yellow-500"
+                                : "bg-yellow-50 text-yellow-700 border-yellow-200 hover:bg-yellow-100 dark:bg-yellow-950/40 dark:text-yellow-400 dark:border-yellow-800 dark:hover:bg-yellow-900/40"
+                            }`}
+                          >
+                            Draft <span className="font-bold">{invoiceSummary.draft.length}</span>
+                          </button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          ${calculateTotal(invoiceSummary.draft).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} total
+                        </TooltipContent>
+                      </Tooltip>
+                    )}
+                    {invoiceSummary.sent.length > 0 && (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <button
+                            onClick={() => setStatusFilter(statusFilter === "sent" ? "all" : "sent")}
+                            data-testid="pill-status-sent"
+                            className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-medium transition-all border ${
+                              statusFilter === "sent"
+                                ? "bg-blue-500 text-white border-blue-500"
+                                : "bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100 dark:bg-blue-950/40 dark:text-blue-400 dark:border-blue-800 dark:hover:bg-blue-900/40"
+                            }`}
+                          >
+                            Sent <span className="font-bold">{invoiceSummary.sent.length}</span>
+                          </button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          ${calculateTotal(invoiceSummary.sent).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} total
+                        </TooltipContent>
+                      </Tooltip>
+                    )}
+                    {invoiceSummary.paid.length > 0 && (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <button
+                            onClick={() => setStatusFilter(statusFilter === "paid" ? "all" : "paid")}
+                            data-testid="pill-status-paid"
+                            className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-medium transition-all border ${
+                              statusFilter === "paid"
+                                ? "bg-green-500 text-white border-green-500"
+                                : "bg-green-50 text-green-700 border-green-200 hover:bg-green-100 dark:bg-green-950/40 dark:text-green-400 dark:border-green-800 dark:hover:bg-green-900/40"
+                            }`}
+                          >
+                            Paid <span className="font-bold">{invoiceSummary.paid.length}</span>
+                          </button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          ${calculateTotal(invoiceSummary.paid).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} total
+                        </TooltipContent>
+                      </Tooltip>
+                    )}
+                    {invoiceSummary.overdue.length > 0 && (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <button
+                            onClick={() => setStatusFilter(statusFilter === "overdue" ? "all" : "overdue")}
+                            data-testid="pill-status-overdue"
+                            className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-medium transition-all border ${
+                              statusFilter === "overdue"
+                                ? "bg-red-500 text-white border-red-500"
+                                : "bg-red-50 text-red-700 border-red-200 hover:bg-red-100 dark:bg-red-950/40 dark:text-red-400 dark:border-red-800 dark:hover:bg-red-900/40"
+                            }`}
+                          >
+                            Overdue <span className="font-bold">{invoiceSummary.overdue.length}</span>
+                          </button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          ${calculateTotal(invoiceSummary.overdue).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} total
+                        </TooltipContent>
+                      </Tooltip>
+                    )}
+                    {invoiceSummary.cancelled.length > 0 && (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <button
+                            onClick={() => setStatusFilter(statusFilter === "cancelled" ? "all" : "cancelled")}
+                            data-testid="pill-status-cancelled"
+                            className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-medium transition-all border ${
+                              statusFilter === "cancelled"
+                                ? "bg-gray-500 text-white border-gray-500"
+                                : "bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100 dark:bg-gray-800/40 dark:text-gray-400 dark:border-gray-700 dark:hover:bg-gray-800/60"
+                            }`}
+                          >
+                            Cancelled <span className="font-bold">{invoiceSummary.cancelled.length}</span>
+                          </button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          ${calculateTotal(invoiceSummary.cancelled).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} total
+                        </TooltipContent>
+                      </Tooltip>
+                    )}
+                  </div>
+                )}
                 {invoicesLoading ? (
                   <div className="space-y-2">
                     <Skeleton className="h-10 w-full" />
@@ -796,6 +1170,8 @@ export default function BillingManagementPage() {
                         <TableHead>Client</TableHead>
                         <TableHead>Period</TableHead>
                         <TableHead>Amount</TableHead>
+                        {selectedProject && <TableHead>Billed to Date</TableHead>}
+                        {selectedProject && <TableHead>% of Contract</TableHead>}
                         <TableHead>Due Date</TableHead>
                         <TableHead>Status</TableHead>
                         <TableHead className="text-right">Actions</TableHead>
@@ -805,6 +1181,7 @@ export default function BillingManagementPage() {
                       {filteredInvoices.map((invoice) => {
                         const statusConfig = STATUS_CONFIG[invoice.status as keyof typeof STATUS_CONFIG] || STATUS_CONFIG.draft;
                         const StatusIcon = statusConfig.icon;
+                        const cumData = selectedProject ? cumulativeByInvoiceId[invoice.id] : undefined;
                         return (
                           <TableRow key={invoice.id} data-testid={`invoice-row-${invoice.id}`}>
                             <TableCell className="font-medium">{invoice.invoiceNumber}</TableCell>
@@ -821,6 +1198,20 @@ export default function BillingManagementPage() {
                             <TableCell className="font-medium">
                               ${parseFloat(invoice.totalAmount || "0").toLocaleString()}
                             </TableCell>
+                            {selectedProject && (
+                              <TableCell className="font-medium" data-testid={`text-billed-to-date-${invoice.id}`}>
+                                {cumData && contractAmount !== null
+                                  ? `$${cumData.billedToDate.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                                  : "--"}
+                              </TableCell>
+                            )}
+                            {selectedProject && (
+                              <TableCell data-testid={`text-pct-contract-${invoice.id}`}>
+                                {cumData && cumData.pctOfContract !== null
+                                  ? `${cumData.pctOfContract.toFixed(1)}%`
+                                  : "--"}
+                              </TableCell>
+                            )}
                             <TableCell>
                               {invoice.dueDate ? format(parseDateSafe(invoice.dueDate), "MMM d, yyyy") : "-"}
                             </TableCell>
@@ -1053,8 +1444,8 @@ export default function BillingManagementPage() {
                         <TableCell>
                           <Badge
                             variant={
-                              po.status === "active" ? "default" :
-                              po.status === "closed" ? "secondary" : "outline"
+                              po.status === "active" ? "success" :
+                              po.status === "closed" ? "muted" : "destructive"
                             }
                           >
                             {po.status.charAt(0).toUpperCase() + po.status.slice(1)}
@@ -1176,6 +1567,127 @@ export default function BillingManagementPage() {
                 </Button>
               </CardContent>
             </Card>
+
+            {(isEffectiveCompanyAdmin || isEffectiveSystemAdmin) && (
+              <Card className="mt-6">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <FileText className="h-5 w-5" />
+                    Timesheet Records
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {timesheetsLoading ? (
+                    <div className="space-y-2">
+                      {[1, 2, 3].map((i) => (
+                        <Skeleton key={i} className="h-12 w-full" />
+                      ))}
+                    </div>
+                  ) : timesheetRecords.length === 0 ? (
+                    <p className="text-muted-foreground text-sm text-center py-6">
+                      No timesheet records found. Generate a timesheet to create records.
+                    </p>
+                  ) : (
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Project</TableHead>
+                          <TableHead>Period</TableHead>
+                          <TableHead>Inspector</TableHead>
+                          <TableHead>Status</TableHead>
+                          <TableHead className="text-right">Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {timesheetRecords.map((record) => {
+                          const monthName = MONTH_OPTIONS.find((m) => m.value === String(record.month))?.label ?? String(record.month);
+                          return (
+                            <TableRow key={record.id} data-testid={`row-timesheet-${record.id}`}>
+                              <TableCell className="font-medium">
+                                <span data-testid={`text-timesheet-project-${record.id}`}>
+                                  {record.projectName ?? "—"}
+                                </span>
+                              </TableCell>
+                              <TableCell data-testid={`text-timesheet-period-${record.id}`}>
+                                {monthName} {record.year}
+                              </TableCell>
+                              <TableCell data-testid={`text-timesheet-inspector-${record.id}`}>
+                                {record.inspectorName ?? "—"}
+                              </TableCell>
+                              <TableCell>
+                                <Badge
+                                  variant={
+                                    record.status === "approved"
+                                      ? "success"
+                                      : record.status === "submitted"
+                                      ? "info"
+                                      : "warning"
+                                  }
+                                  data-testid={`badge-timesheet-status-${record.id}`}
+                                >
+                                  {record.status === "approved"
+                                    ? "Approved"
+                                    : record.status === "submitted"
+                                    ? "Submitted"
+                                    : "Draft"}
+                                </Badge>
+                              </TableCell>
+                              <TableCell className="text-right">
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      data-testid={`button-timesheet-actions-${record.id}`}
+                                    >
+                                      <MoreHorizontal className="h-4 w-4" />
+                                    </Button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end">
+                                    {record.status !== "approved" && (
+                                      <DropdownMenuItem
+                                        onClick={() =>
+                                          updateTimesheetStatusMutation.mutate({
+                                            id: record.id,
+                                            status: "approved",
+                                          })
+                                        }
+                                        data-testid={`action-approve-timesheet-${record.id}`}
+                                      >
+                                        <CheckCircle className="h-4 w-4 mr-2 text-green-600" />
+                                        Approve
+                                      </DropdownMenuItem>
+                                    )}
+                                    {record.status === "approved" && (
+                                      <DropdownMenuItem
+                                        onClick={() => { setRejectNote(""); setRejectTimesheetDialog({ id: record.id, action: "revert" }); }}
+                                        data-testid={`action-revert-timesheet-${record.id}`}
+                                      >
+                                        <XCircle className="h-4 w-4 mr-2 text-muted-foreground" />
+                                        Revert to Draft
+                                      </DropdownMenuItem>
+                                    )}
+                                    {record.status === "submitted" && (
+                                      <DropdownMenuItem
+                                        onClick={() => { setRejectNote(""); setRejectTimesheetDialog({ id: record.id, action: "reject" }); }}
+                                        data-testid={`action-reject-timesheet-${record.id}`}
+                                      >
+                                        <XCircle className="h-4 w-4 mr-2 text-destructive" />
+                                        Reject (Return to Draft)
+                                      </DropdownMenuItem>
+                                    )}
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  )}
+                </CardContent>
+              </Card>
+            )}
           </TabsContent>
 
           <TabsContent value="combined">
@@ -1511,6 +2023,60 @@ export default function BillingManagementPage() {
         </DialogContent>
       </Dialog>
 
+      <Dialog open={!!rejectTimesheetDialog} onOpenChange={(open) => !open && setRejectTimesheetDialog(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {rejectTimesheetDialog?.action === "reject" ? "Reject Timesheet" : "Revert Timesheet to Draft"}
+            </DialogTitle>
+            <DialogDescription>
+              {rejectTimesheetDialog?.action === "reject"
+                ? "This timesheet will be returned to draft status. Optionally, add a note to let the inspector know why it was rejected."
+                : "This timesheet will be reverted to draft status. Optionally, add a note for the inspector."}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="reject-note">Note for inspector (optional)</Label>
+            <Textarea
+              id="reject-note"
+              placeholder="Explain what needs to be corrected..."
+              value={rejectNote}
+              onChange={(e) => setRejectNote(e.target.value)}
+              rows={3}
+              data-testid="input-reject-note"
+            />
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setRejectTimesheetDialog(null)}
+              data-testid="button-cancel-reject-timesheet"
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={updateTimesheetStatusMutation.isPending}
+              onClick={() => {
+                if (!rejectTimesheetDialog) return;
+                updateTimesheetStatusMutation.mutate(
+                  { id: rejectTimesheetDialog.id, status: "draft", adminNote: rejectNote.trim() || undefined },
+                  { onSettled: () => setRejectTimesheetDialog(null) }
+                );
+              }}
+              data-testid="button-confirm-reject-timesheet"
+            >
+              {updateTimesheetStatusMutation.isPending ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Saving...
+                </>
+              ) : rejectTimesheetDialog?.action === "reject" ? "Reject" : "Revert to Draft"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={showInvoiceDialog} onOpenChange={setShowInvoiceDialog}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
@@ -1537,9 +2103,42 @@ export default function BillingManagementPage() {
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label className="text-muted-foreground">Project</Label>
-                      <div className="font-medium">{selectedProjectData?.name || 'Unknown Project'}</div>
-                      {selectedProjectData?.projectNumber && (
-                        <div className="text-sm text-muted-foreground">#{selectedProjectData.projectNumber}</div>
+                      {invoiceFormData.projectId ? (
+                        <>
+                          <div className="font-medium">{selectedProjectData?.name || 'Unknown Project'}</div>
+                          {selectedProjectData?.projectNumber && (
+                            <div className="text-sm text-muted-foreground">#{selectedProjectData.projectNumber}</div>
+                          )}
+                        </>
+                      ) : (
+                        <Select
+                          value={invoiceFormData.projectId}
+                          onValueChange={(pid) => {
+                            const linked = contracts?.find(c =>
+                              c.projects?.some((p: any) => p.id === pid)
+                            );
+                            const po = linked?.purchaseOrderId
+                              ? purchaseOrders.find(po => po.id === linked.purchaseOrderId)
+                              : null;
+                            setInvoiceFormData({
+                              ...invoiceFormData,
+                              projectId: pid,
+                              contractId: linked?.id || "",
+                              purchaseOrderId: po?.id || "",
+                            });
+                          }}
+                        >
+                          <SelectTrigger data-testid="select-invoice-project">
+                            <SelectValue placeholder="Select a project…" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {filteredProjects?.map((p: any) => (
+                              <SelectItem key={p.id} value={p.id}>
+                                {p.name}{p.projectNumber ? ` — #${p.projectNumber}` : ""}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                       )}
                     </div>
                     
@@ -1597,12 +2196,13 @@ export default function BillingManagementPage() {
                     <div className="space-y-2">
                       <Label className="text-muted-foreground">Contract</Label>
                       <Select 
-                        value={invoiceFormData.contractId}
+                        value={invoiceFormData.contractId || "none"}
                         onValueChange={(v) => {
-                          const newContract = contracts?.find(c => c.id === v);
+                          const contractId = v === "none" ? "" : v;
+                          const newContract = contracts?.find(c => c.id === contractId);
                           setInvoiceFormData({
                             ...invoiceFormData, 
-                            contractId: v,
+                            contractId,
                             purchaseOrderId: newContract?.purchaseOrderId || invoiceFormData.purchaseOrderId
                           });
                         }}
@@ -1611,7 +2211,7 @@ export default function BillingManagementPage() {
                           <SelectValue placeholder="Select a contract (optional)" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="">No contract</SelectItem>
+                          <SelectItem value="none">No contract</SelectItem>
                           {contracts?.map((c) => (
                             <SelectItem key={c.id} value={c.id}>
                               {c.contractNumber || c.name} {c.regularRate && `($${c.regularRate}/hr)`}
@@ -1632,14 +2232,14 @@ export default function BillingManagementPage() {
                     <div className="space-y-2">
                       <Label className="text-muted-foreground">Purchase Order</Label>
                       <Select 
-                        value={invoiceFormData.purchaseOrderId}
-                        onValueChange={(v) => setInvoiceFormData({...invoiceFormData, purchaseOrderId: v})}
+                        value={invoiceFormData.purchaseOrderId || "none"}
+                        onValueChange={(v) => setInvoiceFormData({...invoiceFormData, purchaseOrderId: v === "none" ? "" : v})}
                       >
                         <SelectTrigger>
                           <SelectValue placeholder="Select a PO (optional)" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="">No PO</SelectItem>
+                          <SelectItem value="none">No PO</SelectItem>
                           {purchaseOrders.map((po) => (
                             <SelectItem key={po.id} value={po.id}>
                               PO #{po.poNumber} {po.totalAmount && `($${parseFloat(po.totalAmount).toLocaleString()})`}

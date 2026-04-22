@@ -1,7 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
-import { PageHeader } from "@/components/layout/page-header";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -13,7 +12,9 @@ import {
   FileText,
   LogOut,
   FolderOpen,
+  HardHat,
 } from "lucide-react";
+import { useEffect } from "react";
 
 interface ClientProject {
   id: string;
@@ -61,11 +62,57 @@ function formatDate(dateStr: string | null) {
   });
 }
 
-export default function PortalDashboard() {
-  const { user } = useAuth();
+function PortalHeader({ companyName, companyLogo, clientName }: { companyName: string; companyLogo: string | null; clientName: string }) {
+  return (
+    <header className="sticky top-0 z-40 w-full bg-[hsl(220,55%,16%)] text-white border-b-4 border-[hsl(38,92%,50%)]">
+      <div className="flex h-14 items-center justify-between gap-4 px-4 max-w-7xl mx-auto">
+        <div className="flex items-center gap-3">
+          {companyLogo ? (
+            <img src={companyLogo} alt={companyName} className="h-8 w-8 object-contain" />
+          ) : (
+            <div className="w-8 h-8 bg-[hsl(38,92%,50%)] flex items-center justify-center flex-shrink-0">
+              <HardHat className="w-5 h-5 text-[hsl(220,55%,10%)]" />
+            </div>
+          )}
+          <div>
+            <span className="font-bold text-sm tracking-widest uppercase hidden sm:inline">{companyName}</span>
+            <span className="font-bold text-sm tracking-widest uppercase sm:hidden">Client Portal</span>
+          </div>
+        </div>
+        <div className="flex items-center gap-4">
+          {clientName && (
+            <span className="text-sm text-white/70 hidden md:inline">Welcome, {clientName}</span>
+          )}
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-white/80 hover:text-white hover:bg-white/10"
+            onClick={() => { window.location.href = "/api/logout"; }}
+            data-testid="button-logout"
+          >
+            <LogOut className="w-4 h-4 mr-2" />
+            Sign out
+          </Button>
+        </div>
+      </div>
+    </header>
+  );
+}
 
-  const { data: status, isLoading: isStatusLoading } = useQuery<PortalStatus>({
+export default function PortalDashboard() {
+  const { user, isLoading: isAuthLoading } = useAuth();
+  const [, setLocation] = useLocation();
+
+  const { data: status, isLoading: isStatusLoading, isError: isStatusError } = useQuery<PortalStatus>({
     queryKey: ["/api/client-portal/status"],
+    enabled: !!user,
+    queryFn: async () => {
+      const res = await fetch("/api/client-portal/status", { credentials: "include" });
+      // 403 = inspector/admin user — treat as non-portal user, don't throw
+      if (res.status === 403) return { isClientPortalUser: false, portals: [] } as PortalStatus;
+      if (!res.ok) throw new Error(`${res.status}: ${res.statusText}`);
+      return res.json() as Promise<PortalStatus>;
+    },
   });
 
   const { data: projectsData, isLoading: isProjectsLoading } = useQuery<ProjectsResponse>({
@@ -73,47 +120,26 @@ export default function PortalDashboard() {
     enabled: status?.isClientPortalUser === true,
   });
 
+  // Redirect any authenticated user who is NOT a client portal user away from this page
+  useEffect(() => {
+    if (!isAuthLoading && !isStatusLoading && user) {
+      // Redirect if: status says not portal user, OR status query errored out
+      if ((status && !status.isClientPortalUser) || isStatusError) {
+        setLocation("/");
+      }
+    }
+  }, [isAuthLoading, isStatusLoading, user, status, isStatusError, setLocation]);
+
   const projects = projectsData?.projects || [];
-  const companyName = projectsData?.companyName || status?.portals?.[0]?.companyName || "";
-  const isLoading = isStatusLoading || isProjectsLoading;
+  const companyName = projectsData?.companyName || status?.portals?.[0]?.companyName || "Client Portal";
+  const companyLogo = projectsData?.companyLogo || null;
+  const clientName = user?.firstName || user?.email?.split("@")[0] || "";
+  const isLoading = isAuthLoading || isStatusLoading || isProjectsLoading;
 
-  const handleLogout = () => {
-    window.location.href = "/api/logout";
-  };
-
-  if (!isStatusLoading && status && !status.isClientPortalUser) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background" data-testid="portal-unauthorized">
-        <Card className="max-w-md w-full">
-          <CardContent className="p-8 text-center">
-            <Building2 className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
-            <h2 className="text-xl font-semibold mb-2">Access Denied</h2>
-            <p className="text-muted-foreground text-sm">
-              You do not have access to the client portal. Please contact your project administrator.
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen bg-background" data-testid="portal-dashboard">
-      <PageHeader
-        icon={Building2}
-        title="Client Portal"
-        subtitle={`Welcome back, ${user?.firstName || "Client"}`}
-      >
-        <Button
-          variant="outline"
-          className="border-white/30 text-white"
-          onClick={handleLogout}
-          data-testid="button-logout"
-        >
-          <LogOut className="w-4 h-4 mr-2" />
-          Logout
-        </Button>
-      </PageHeader>
+      <PortalHeader companyName={companyName} companyLogo={companyLogo} clientName={clientName} />
 
       <div className="max-w-7xl mx-auto px-4 md:px-6 lg:px-8 py-6">
         <div className="mb-6">

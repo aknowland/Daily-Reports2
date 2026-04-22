@@ -19,6 +19,8 @@ import { PhotoUpload } from "@/components/ui/photo-upload";
 import {
   VisitorRowInput,
   WorkActivityRowInput,
+  EquipmentRowInput,
+  MaterialRowInput,
   AddRowButton,
 } from "@/components/reports/repeatable-row";
 import { EmailDistributionDialog } from "@/components/reports/email-distribution-dialog";
@@ -33,7 +35,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Loader2, Save, Send, ChevronDown, ChevronUp } from "lucide-react";
-import type { VisitorRow, WorkActivityRow } from "@shared/schema";
+import type { VisitorRow, WorkActivityRow, EquipmentRow, MaterialRow } from "@shared/schema";
 import { VoiceInput } from "@/components/ui/voice-input";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 
@@ -86,17 +88,29 @@ export function DailyReportDialog({ open, onOpenChange, project, onSuccess }: Da
     date: getTodayPacific(),
     weatherType: "clear" as const,
     weatherNotes: "",
+    weatherAM: "",
+    weatherPM: "",
+    precipitation: "",
+    siteConditions: "",
     typeOfWork: [] as string[],
     workPerformed: "",
     workActivities: [] as WorkActivityRow[],
     visitors: [] as VisitorRow[],
     equipment: "",
+    equipmentRows: [] as EquipmentRow[],
     inspections: "",
     materialsDelivered: "",
+    materialRows: [] as MaterialRow[],
     issuesFlag: false,
     issuesDetails: "",
     safetyFlag: false,
     safetyDetails: "",
+    safetyIncidents: 0,
+    safetyNearMisses: 0,
+    safetyAttendees: "" as string | number,
+    safetySiteConditions: "",
+    toolboxTalkTopic: "",
+    notes: "",
     timeIn: "07:00",
     timeOut: "15:00",
     regularHours: "",
@@ -110,19 +124,19 @@ export function DailyReportDialog({ open, onOpenChange, project, onSuccess }: Da
   const [submittedReportId, setSubmittedReportId] = useState<string | null>(null);
   const [hasFetchedDefaults, setHasFetchedDefaults] = useState(false);
 
-  // Collapsible sections state
   const [sectionsOpen, setSectionsOpen] = useState({
     workActivities: false,
-    inspections: false,
+    workPerformed: true,
+    inspections: true,
     additionalNotes: false,
     visitors: false,
     issues: false,
+    safety: false,
     equipment: false,
     materials: false,
     photos: false,
   });
 
-  // Reset form when dialog opens with a new project
   useEffect(() => {
     if (open) {
       setFormData(prev => ({
@@ -134,105 +148,103 @@ export function DailyReportDialog({ open, onOpenChange, project, onSuccess }: Da
     }
   }, [open, project.id]);
 
-  // Calculate regular hours when time fields change
   useEffect(() => {
     const { timeIn, timeOut } = formData;
-    
     const parseTime = (t: string): number | null => {
       if (!t) return null;
       const [h, m] = t.split(":").map(Number);
       if (isNaN(h) || isNaN(m)) return null;
       return h * 60 + m;
     };
-    
     if (!timeIn || !timeOut) {
-      if (formData.regularHours !== "") {
-        setFormData(prev => ({ ...prev, regularHours: "" }));
-      }
+      if (formData.regularHours !== "") setFormData(prev => ({ ...prev, regularHours: "" }));
       return;
     }
-    
     const inMins = parseTime(timeIn);
     const outMins = parseTime(timeOut);
-    
     if (inMins === null || outMins === null || outMins <= inMins) {
-      if (formData.regularHours !== "") {
-        setFormData(prev => ({ ...prev, regularHours: "" }));
-      }
+      if (formData.regularHours !== "") setFormData(prev => ({ ...prev, regularHours: "" }));
       return;
     }
-    
-    const totalMinutes = outMins - inMins;
-    const hours = Math.max(0, totalMinutes / 60);
-    const regularHrs = Math.min(hours, 8).toFixed(2);
-    setFormData(prev => ({ ...prev, regularHours: regularHrs }));
+    const hours = Math.max(0, (outMins - inMins) / 60);
+    setFormData(prev => ({ ...prev, regularHours: Math.min(hours, 8).toFixed(2) }));
   }, [formData.timeIn, formData.timeOut]);
 
-  // Fetch previous report defaults when dialog opens
   useEffect(() => {
     const fetchPreviousReportDefaults = async () => {
       if (!open || hasFetchedDefaults || !project.id) return;
-      
       setHasFetchedDefaults(true);
-      
       try {
-        const response = await fetch(`/api/projects/${project.id}/latest-report`, {
-          credentials: 'include'
-        });
-        
+        const response = await fetch(`/api/projects/${project.id}/latest-report`, { credentials: 'include' });
         if (!response.ok) return;
-        
-        const previousReport = await response.json();
-        
-        setFormData(prev => ({
-          ...prev,
+        const prev = await response.json();
+        setFormData(p => ({
+          ...p,
           projectId: project.id,
-          date: prev.date,
-          weatherType: (previousReport.weatherType || "clear") as typeof formData.weatherType,
-          weatherNotes: previousReport.weatherNotes || "",
-          typeOfWork: (previousReport.typeOfWork as string[]) || [],
-          workPerformed: previousReport.workPerformed || "",
-          workActivities: (previousReport.workActivities as WorkActivityRow[]) || [],
-          visitors: (previousReport.visitors as VisitorRow[]) || [],
-          equipment: previousReport.equipment || "",
-          inspections: previousReport.inspections || "",
-          materialsDelivered: previousReport.materialsDelivered || "",
-          issuesFlag: previousReport.issuesFlag || false,
-          issuesDetails: previousReport.issuesDetails || "",
-          safetyFlag: previousReport.safetyFlag || false,
-          safetyDetails: previousReport.safetyDetails || "",
-          timeIn: previousReport.timeIn || "07:00",
-          timeOut: previousReport.timeOut || "15:00",
-          regularHours: previousReport.regularHours || "",
-          otHours: previousReport.otHours || "",
+          date: p.date,
+          weatherType: (prev.weatherType || "clear") as typeof p.weatherType,
+          weatherNotes: prev.weatherNotes || "",
+          weatherAM: prev.weatherAM || "",
+          weatherPM: prev.weatherPM || "",
+          precipitation: prev.precipitation || "",
+          siteConditions: prev.siteConditions || "",
+          typeOfWork: (prev.typeOfWork as string[]) || [],
+          workPerformed: prev.workPerformed || "",
+          workActivities: (prev.workActivities as WorkActivityRow[]) || [],
+          visitors: (prev.visitors as VisitorRow[]) || [],
+          equipment: prev.equipment || "",
+          equipmentRows: (prev.equipmentRows as EquipmentRow[]) || [],
+          inspections: prev.inspections || "",
+          materialsDelivered: prev.materialsDelivered || "",
+          materialRows: (prev.materialRows as MaterialRow[]) || [],
+          issuesFlag: prev.issuesFlag || false,
+          issuesDetails: prev.issuesDetails || "",
+          safetyFlag: prev.safetyFlag || false,
+          safetyDetails: prev.safetyDetails || "",
+          safetyIncidents: prev.safetyIncidents || 0,
+          safetyNearMisses: prev.safetyNearMisses || 0,
+          safetyAttendees: prev.safetyAttendees || "",
+          safetySiteConditions: prev.safetySiteConditions || "",
+          toolboxTalkTopic: prev.toolboxTalkTopic || "",
+          notes: prev.notes || "",
+          timeIn: prev.timeIn || "07:00",
+          timeOut: prev.timeOut || "15:00",
+          regularHours: prev.regularHours || "",
+          otHours: prev.otHours || "",
         }));
-        
-        toast({
-          title: "Previous report loaded",
-          description: "Form pre-filled with values from the last report",
-        });
+        toast({ title: "Previous report loaded", description: "Form pre-filled with values from the last report" });
       } catch (error) {
         console.error("Error fetching previous report defaults:", error);
       }
     };
-    
     fetchPreviousReportDefaults();
   }, [open, hasFetchedDefaults, project.id, toast]);
 
   const saveMutation = useMutation({
     mutationFn: async (status: "draft" | "submitted") => {
       setIsSaving(true);
-      
+
+      // Auto-fill Work Performed from workforce descriptions when left blank
+      const activitiesWithDesc = (formData.workActivities as WorkActivityRow[])
+        .filter(a => a.workDescription?.trim());
+      const autoWorkPerformed = !formData.workPerformed?.trim() && activitiesWithDesc.length > 0
+        ? activitiesWithDesc.map(a => {
+            const header = [a.contractor, a.headcount ? `(${a.headcount})` : null]
+              .filter(Boolean).join(' ');
+            return header ? `${header}:\n${a.workDescription}` : a.workDescription;
+          }).join('\n\n')
+        : formData.workPerformed;
+
       const reportData = {
         ...formData,
+        workPerformed: autoWorkPerformed,
         projectId: formData.projectId || null,
         customProjectName: formData.projectId ? null : (formData.customProjectName || null),
-        date: formData.date, // Keep as YYYY-MM-DD string to avoid timezone shifts
+        date: formData.date,
         status,
         inspectorId: user?.id,
+        safetyAttendees: formData.safetyAttendees !== "" ? Number(formData.safetyAttendees) : null,
       };
-
-      let reportId: string | undefined;
 
       const response = await fetch("/api/reports", {
         method: "POST",
@@ -240,13 +252,12 @@ export function DailyReportDialog({ open, onOpenChange, project, onSuccess }: Da
         body: JSON.stringify(reportData),
         credentials: "include",
       });
-      
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.message || "Failed to create report");
       }
       const result = await response.json();
-      reportId = result.id;
+      const reportId: string = result.id;
 
       if (signature && reportId && signature.startsWith("data:")) {
         await apiRequest("POST", `/api/reports/${reportId}/signature`, { signature });
@@ -261,7 +272,6 @@ export function DailyReportDialog({ open, onOpenChange, project, onSuccess }: Da
             formDataUpload.append(`captions[${index}]`, photo.caption);
           }
         });
-        
         await fetch(`/api/reports/${reportId}/photos`, {
           method: "POST",
           body: formDataUpload,
@@ -274,90 +284,56 @@ export function DailyReportDialog({ open, onOpenChange, project, onSuccess }: Da
     onSuccess: async ({ reportId, status }) => {
       queryClient.invalidateQueries({ queryKey: ["/api/reports"] });
       queryClient.invalidateQueries({ queryKey: ["/api/projects", project.id, "dashboard"] });
-      
+
       if (status === "submitted" && reportId) {
         const defaultEmails = project?.distributionEmails || [];
-        
         try {
-          toast({
-            title: "Report Submitted",
-            description: "Generating PDF and sending...",
-          });
-          
+          toast({ title: "Report Submitted", description: "Generating PDF and sending..." });
           await apiRequest("POST", `/api/reports/${reportId}/pdf`);
-          
           if (defaultEmails.length > 0) {
             try {
               await apiRequest("POST", `/api/reports/${reportId}/distribute`, {
                 recipients: defaultEmails,
                 message: "",
               });
-              
               setIsSaving(false);
-              toast({
-                title: "Report Sent",
-                description: `PDF generated and emailed to ${defaultEmails.length} recipient(s).`,
-              });
+              toast({ title: "Report Sent", description: `PDF generated and emailed to ${defaultEmails.length} recipient(s).` });
               onOpenChange(false);
               onSuccess?.();
             } catch (distError) {
-              console.error("Failed to distribute:", distError);
               setIsSaving(false);
               setSubmittedReportId(reportId);
               setShowEmailDialog(true);
-              toast({
-                title: "Distribution Failed",
-                description: "PDF generated but email failed. Please try again.",
-                variant: "destructive",
-              });
+              toast({ title: "Distribution Failed", description: "PDF generated but email failed. Please try again.", variant: "destructive" });
             }
           } else {
             setIsSaving(false);
             setSubmittedReportId(reportId);
             setShowEmailDialog(true);
-            toast({
-              title: "PDF Generated",
-              description: "Enter email addresses to distribute the report.",
-            });
+            toast({ title: "PDF Generated", description: "Enter email addresses to distribute the report." });
           }
         } catch (pdfError) {
-          console.error("Failed to generate PDF:", pdfError);
           setIsSaving(false);
-          toast({
-            title: "Report Submitted",
-            description: "Report submitted but PDF generation failed.",
-            variant: "destructive",
-          });
+          toast({ title: "Report Submitted", description: "Report submitted but PDF generation failed.", variant: "destructive" });
           onOpenChange(false);
           onSuccess?.();
         }
       } else {
         setIsSaving(false);
-        toast({
-          title: "Report Saved",
-          description: "Your report has been saved as a draft",
-        });
+        toast({ title: "Report Saved", description: "Your report has been saved as a draft" });
         onOpenChange(false);
         onSuccess?.();
       }
     },
     onError: (error) => {
       setIsSaving(false);
-      toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to save report",
-        variant: "destructive",
-      });
+      toast({ title: "Error", description: error instanceof Error ? error.message : "Failed to save report", variant: "destructive" });
     },
   });
 
   const handleSubmit = (status: "draft" | "submitted") => {
     if (status === "submitted" && !signature) {
-      toast({
-        title: "Signature Required",
-        description: "Please sign the report before submitting",
-        variant: "destructive",
-      });
+      toast({ title: "Signature Required", description: "Please sign the report before submitting", variant: "destructive" });
       return;
     }
     saveMutation.mutate(status);
@@ -383,7 +359,7 @@ export function DailyReportDialog({ open, onOpenChange, project, onSuccess }: Da
           <DialogHeader className="p-4 pb-2 border-b">
             <DialogTitle>New Daily Report - {project.name}</DialogTitle>
           </DialogHeader>
-          
+
           <ScrollArea className="max-h-[calc(90vh-140px)]">
             <div className="p-4 space-y-4">
               {/* Basic Details */}
@@ -414,9 +390,9 @@ export function DailyReportDialog({ open, onOpenChange, project, onSuccess }: Da
 
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div className="space-y-2">
-                    <Label htmlFor="dialog-weather">Weather</Label>
-                    <Select 
-                      value={formData.weatherType} 
+                    <Label htmlFor="dialog-weather">Weather Type</Label>
+                    <Select
+                      value={formData.weatherType}
                       onValueChange={(value: any) => setFormData(prev => ({ ...prev, weatherType: value }))}
                     >
                       <SelectTrigger id="dialog-weather" data-testid="dialog-select-weather">
@@ -424,15 +400,13 @@ export function DailyReportDialog({ open, onOpenChange, project, onSuccess }: Da
                       </SelectTrigger>
                       <SelectContent>
                         {WEATHER_OPTIONS.map((option) => (
-                          <SelectItem key={option.value} value={option.value}>
-                            {option.label}
-                          </SelectItem>
+                          <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="dialog-weather-notes">Weather Notes</Label>
+                    <Label htmlFor="dialog-weather-notes">General Weather Notes</Label>
                     <Input
                       id="dialog-weather-notes"
                       value={formData.weatherNotes}
@@ -443,9 +417,55 @@ export function DailyReportDialog({ open, onOpenChange, project, onSuccess }: Da
                   </div>
                 </div>
 
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="dialog-weather-am">Morning (AM) Conditions</Label>
+                    <Input
+                      id="dialog-weather-am"
+                      value={formData.weatherAM}
+                      onChange={(e) => setFormData(prev => ({ ...prev, weatherAM: e.target.value }))}
+                      placeholder="e.g., Clear, 58°F, Wind: calm"
+                      data-testid="dialog-input-weather-am"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="dialog-weather-pm">Afternoon (PM) Conditions</Label>
+                    <Input
+                      id="dialog-weather-pm"
+                      value={formData.weatherPM}
+                      onChange={(e) => setFormData(prev => ({ ...prev, weatherPM: e.target.value }))}
+                      placeholder="e.g., Sunny, 72°F, Wind: SW 5mph"
+                      data-testid="dialog-input-weather-pm"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="dialog-precipitation">Precipitation</Label>
+                    <Input
+                      id="dialog-precipitation"
+                      value={formData.precipitation}
+                      onChange={(e) => setFormData(prev => ({ ...prev, precipitation: e.target.value }))}
+                      placeholder="e.g., None, 0.2 inches"
+                      data-testid="dialog-input-precipitation"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="dialog-site-conditions">Site Conditions</Label>
+                    <Input
+                      id="dialog-site-conditions"
+                      value={formData.siteConditions}
+                      onChange={(e) => setFormData(prev => ({ ...prev, siteConditions: e.target.value }))}
+                      placeholder="e.g., Dry, firm ground"
+                      data-testid="dialog-input-site-conditions"
+                    />
+                  </div>
+                </div>
+
                 <div className="space-y-2">
                   <Label>Type of Work</Label>
-                  <div className="flex flex-wrap gap-3" data-testid="dialog-section-type-of-work">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-2" data-testid="dialog-section-type-of-work">
                     {TYPE_OF_WORK_OPTIONS.map((option) => (
                       <div key={option.value} className="flex items-center space-x-2">
                         <Checkbox
@@ -461,10 +481,7 @@ export function DailyReportDialog({ open, onOpenChange, project, onSuccess }: Da
                           }}
                           data-testid={`dialog-checkbox-work-type-${option.value}`}
                         />
-                        <Label 
-                          htmlFor={`dialog-work-type-${option.value}`}
-                          className="text-sm font-normal cursor-pointer"
-                        >
+                        <Label htmlFor={`dialog-work-type-${option.value}`} className="text-sm font-normal cursor-pointer">
                           {option.label}
                         </Label>
                       </div>
@@ -524,17 +541,17 @@ export function DailyReportDialog({ open, onOpenChange, project, onSuccess }: Da
                 </div>
               </div>
 
-              {/* Collapsible Sections */}
+              {/* Work Activities */}
               <Collapsible open={sectionsOpen.workActivities} onOpenChange={() => toggleSection('workActivities')}>
                 <CollapsibleTrigger asChild>
                   <Button variant="ghost" className="w-full justify-between p-4 h-auto bg-muted/30 hover:bg-muted/50" data-testid="dialog-toggle-work-activities">
-                    <span className="font-medium text-sm">Work Activities {formData.workActivities.length > 0 && `(${formData.workActivities.length})`}</span>
+                    <span className="font-medium text-sm">Workforce / Work Activities {formData.workActivities.length > 0 && `(${formData.workActivities.length})`}</span>
                     {sectionsOpen.workActivities ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                   </Button>
                 </CollapsibleTrigger>
                 <CollapsibleContent className="p-4 pt-2 space-y-3 border rounded-b-lg border-t-0">
                   <div className="flex items-center justify-between">
-                    <p className="text-xs text-muted-foreground">Add work activities with contractor and headcount</p>
+                    <p className="text-xs text-muted-foreground">Trade, contractor, headcount, and work description</p>
                     <VoiceInput
                       targetField="workActivities"
                       onTranscript={() => {}}
@@ -543,16 +560,14 @@ export function DailyReportDialog({ open, onOpenChange, project, onSuccess }: Da
                           const newActivities = data
                             .filter((item: any) => item && typeof item === "object")
                             .map((item: any) => ({
+                              trade: String(item.trade || "").trim(),
                               contractor: String(item.contractor || "").trim(),
                               headcount: Math.max(0, parseInt(String(item.headcount)) || 0),
                               workDescription: String(item.workDescription || item.description || "").trim(),
                             }))
                             .filter(a => a.contractor || a.workDescription);
                           if (newActivities.length > 0) {
-                            setFormData(prev => ({
-                              ...prev,
-                              workActivities: [...prev.workActivities, ...newActivities]
-                            }));
+                            setFormData(prev => ({ ...prev, workActivities: [...prev.workActivities, ...newActivities] }));
                           }
                         }
                       }}
@@ -562,24 +577,24 @@ export function DailyReportDialog({ open, onOpenChange, project, onSuccess }: Da
                     <WorkActivityRowInput
                       key={index}
                       index={index}
+                      trade={activity.trade}
                       contractor={activity.contractor}
                       headcount={activity.headcount}
                       workDescription={activity.workDescription}
-                      onChange={(c, h, w) => {
+                      onChange={(trade, c, h, w) => {
                         const newActivities = [...formData.workActivities];
-                        newActivities[index] = { contractor: c, headcount: h, workDescription: w };
+                        newActivities[index] = { trade, contractor: c, headcount: h, workDescription: w };
                         setFormData(prev => ({ ...prev, workActivities: newActivities }));
                       }}
                       onRemove={() => {
-                        const newActivities = formData.workActivities.filter((_, i) => i !== index);
-                        setFormData(prev => ({ ...prev, workActivities: newActivities }));
+                        setFormData(prev => ({ ...prev, workActivities: prev.workActivities.filter((_, i) => i !== index) }));
                       }}
                     />
                   ))}
                   <AddRowButton
-                    onClick={() => setFormData(prev => ({ 
-                      ...prev, 
-                      workActivities: [...prev.workActivities, { contractor: "", headcount: 0, workDescription: "" }] 
+                    onClick={() => setFormData(prev => ({
+                      ...prev,
+                      workActivities: [...prev.workActivities, { trade: "", contractor: "", headcount: 0, workDescription: "" }]
                     }))}
                     label="Add Work Activity"
                     testId="dialog-button-add-work-activity"
@@ -587,6 +602,33 @@ export function DailyReportDialog({ open, onOpenChange, project, onSuccess }: Da
                 </CollapsibleContent>
               </Collapsible>
 
+              {/* Work Performed */}
+              <Collapsible open={sectionsOpen.workPerformed} onOpenChange={() => toggleSection('workPerformed')}>
+                <CollapsibleTrigger asChild>
+                  <Button variant="ghost" className="w-full justify-between p-4 h-auto bg-muted/30 hover:bg-muted/50" data-testid="dialog-toggle-work-performed">
+                    <span className="font-medium text-sm">Work Performed {formData.workPerformed && "(filled)"}</span>
+                    {sectionsOpen.workPerformed ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                  </Button>
+                </CollapsibleTrigger>
+                <CollapsibleContent className="p-4 pt-2 space-y-2 border rounded-b-lg border-t-0">
+                  <div className="flex items-center justify-between">
+                    <VoiceInput
+                      onTranscript={(text) => {
+                        setFormData(prev => ({ ...prev, workPerformed: prev.workPerformed ? `${prev.workPerformed} ${text}` : text }));
+                      }}
+                    />
+                  </div>
+                  <Textarea
+                    value={formData.workPerformed}
+                    onChange={(e) => setFormData(prev => ({ ...prev, workPerformed: e.target.value }))}
+                    placeholder="Describe all work performed today across all trades and activities..."
+                    rows={4}
+                    data-testid="dialog-textarea-work-performed"
+                  />
+                </CollapsibleContent>
+              </Collapsible>
+
+              {/* Inspections */}
               <Collapsible open={sectionsOpen.inspections} onOpenChange={() => toggleSection('inspections')}>
                 <CollapsibleTrigger asChild>
                   <Button variant="ghost" className="w-full justify-between p-4 h-auto bg-muted/30 hover:bg-muted/50" data-testid="dialog-toggle-inspections">
@@ -598,27 +640,25 @@ export function DailyReportDialog({ open, onOpenChange, project, onSuccess }: Da
                   <div className="flex items-center justify-between">
                     <VoiceInput
                       onTranscript={(text) => {
-                        setFormData(prev => ({
-                          ...prev,
-                          inspections: prev.inspections ? `${prev.inspections} ${text}` : text
-                        }));
+                        setFormData(prev => ({ ...prev, inspections: prev.inspections ? `${prev.inspections} ${text}` : text }));
                       }}
                     />
                   </div>
                   <Textarea
                     value={formData.inspections}
                     onChange={(e) => setFormData(prev => ({ ...prev, inspections: e.target.value }))}
-                    placeholder="Describe inspections performed today..."
-                    rows={3}
+                    placeholder="Describe inspection activities, results, and observations..."
+                    rows={4}
                     data-testid="dialog-textarea-inspections"
                   />
                 </CollapsibleContent>
               </Collapsible>
 
+              {/* Additional Notes */}
               <Collapsible open={sectionsOpen.additionalNotes} onOpenChange={() => toggleSection('additionalNotes')}>
                 <CollapsibleTrigger asChild>
                   <Button variant="ghost" className="w-full justify-between p-4 h-auto bg-muted/30 hover:bg-muted/50" data-testid="dialog-toggle-additional-notes">
-                    <span className="font-medium text-sm">Additional Notes {formData.workPerformed && "(filled)"}</span>
+                    <span className="font-medium text-sm">Superintendent Notes {formData.notes && "(filled)"}</span>
                     {sectionsOpen.additionalNotes ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                   </Button>
                 </CollapsibleTrigger>
@@ -626,23 +666,21 @@ export function DailyReportDialog({ open, onOpenChange, project, onSuccess }: Da
                   <div className="flex items-center justify-between">
                     <VoiceInput
                       onTranscript={(text) => {
-                        setFormData(prev => ({
-                          ...prev,
-                          workPerformed: prev.workPerformed ? `${prev.workPerformed} ${text}` : text
-                        }));
+                        setFormData(prev => ({ ...prev, notes: prev.notes ? `${prev.notes} ${text}` : text }));
                       }}
                     />
                   </div>
                   <Textarea
-                    value={formData.workPerformed}
-                    onChange={(e) => setFormData(prev => ({ ...prev, workPerformed: e.target.value }))}
-                    placeholder="Additional work notes or general observations..."
+                    value={formData.notes}
+                    onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
+                    placeholder="Superintendent remarks, scheduling notes, observations..."
                     rows={3}
-                    data-testid="dialog-textarea-work-performed"
+                    data-testid="dialog-textarea-notes"
                   />
                 </CollapsibleContent>
               </Collapsible>
 
+              {/* Visitors */}
               <Collapsible open={sectionsOpen.visitors} onOpenChange={() => toggleSection('visitors')}>
                 <CollapsibleTrigger asChild>
                   <Button variant="ghost" className="w-full justify-between p-4 h-auto bg-muted/30 hover:bg-muted/50" data-testid="dialog-toggle-visitors">
@@ -666,10 +704,7 @@ export function DailyReportDialog({ open, onOpenChange, project, onSuccess }: Da
                             }))
                             .filter(v => v.name || v.company);
                           if (newVisitors.length > 0) {
-                            setFormData(prev => ({
-                              ...prev,
-                              visitors: [...prev.visitors, ...newVisitors]
-                            }));
+                            setFormData(prev => ({ ...prev, visitors: [...prev.visitors, ...newVisitors] }));
                           }
                         }
                       }}
@@ -688,15 +723,14 @@ export function DailyReportDialog({ open, onOpenChange, project, onSuccess }: Da
                         setFormData(prev => ({ ...prev, visitors: newVisitors }));
                       }}
                       onRemove={() => {
-                        const newVisitors = formData.visitors.filter((_, i) => i !== index);
-                        setFormData(prev => ({ ...prev, visitors: newVisitors }));
+                        setFormData(prev => ({ ...prev, visitors: prev.visitors.filter((_, i) => i !== index) }));
                       }}
                     />
                   ))}
                   <AddRowButton
-                    onClick={() => setFormData(prev => ({ 
-                      ...prev, 
-                      visitors: [...prev.visitors, { name: "", company: "", notes: "" }] 
+                    onClick={() => setFormData(prev => ({
+                      ...prev,
+                      visitors: [...prev.visitors, { name: "", company: "", notes: "" }]
                     }))}
                     label="Add Visitor"
                     testId="dialog-button-add-visitor"
@@ -704,14 +738,72 @@ export function DailyReportDialog({ open, onOpenChange, project, onSuccess }: Da
                 </CollapsibleContent>
               </Collapsible>
 
-              <Collapsible open={sectionsOpen.issues} onOpenChange={() => toggleSection('issues')}>
+              {/* Safety */}
+              <Collapsible open={sectionsOpen.safety} onOpenChange={() => toggleSection('safety')}>
                 <CollapsibleTrigger asChild>
-                  <Button variant="ghost" className="w-full justify-between p-4 h-auto bg-muted/30 hover:bg-muted/50" data-testid="dialog-toggle-issues">
-                    <span className="font-medium text-sm">Issues & Safety {(formData.issuesFlag || formData.safetyFlag) && "(flagged)"}</span>
-                    {sectionsOpen.issues ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                  <Button variant="ghost" className="w-full justify-between p-4 h-auto bg-muted/30 hover:bg-muted/50" data-testid="dialog-toggle-safety">
+                    <span className="font-medium text-sm">Safety {(formData.safetyIncidents > 0 || formData.safetyNearMisses > 0) && "(incidents logged)"}</span>
+                    {sectionsOpen.safety ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                   </Button>
                 </CollapsibleTrigger>
                 <CollapsibleContent className="p-4 pt-2 space-y-4 border rounded-b-lg border-t-0">
+                  <div className="grid gap-4 sm:grid-cols-3">
+                    <div className="space-y-2">
+                      <Label htmlFor="dialog-safety-incidents">Incidents</Label>
+                      <Input
+                        id="dialog-safety-incidents"
+                        type="number"
+                        min="0"
+                        value={formData.safetyIncidents}
+                        onChange={(e) => setFormData(prev => ({ ...prev, safetyIncidents: parseInt(e.target.value) || 0 }))}
+                        data-testid="dialog-input-safety-incidents"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="dialog-safety-near-misses">Near Misses</Label>
+                      <Input
+                        id="dialog-safety-near-misses"
+                        type="number"
+                        min="0"
+                        value={formData.safetyNearMisses}
+                        onChange={(e) => setFormData(prev => ({ ...prev, safetyNearMisses: parseInt(e.target.value) || 0 }))}
+                        data-testid="dialog-input-safety-near-misses"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="dialog-safety-attendees">Safety Meeting Attendees</Label>
+                      <Input
+                        id="dialog-safety-attendees"
+                        type="number"
+                        min="0"
+                        value={formData.safetyAttendees}
+                        onChange={(e) => setFormData(prev => ({ ...prev, safetyAttendees: e.target.value }))}
+                        placeholder="0"
+                        data-testid="dialog-input-safety-attendees"
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="dialog-toolbox-talk">Toolbox Talk Topic</Label>
+                    <Input
+                      id="dialog-toolbox-talk"
+                      value={formData.toolboxTalkTopic}
+                      onChange={(e) => setFormData(prev => ({ ...prev, toolboxTalkTopic: e.target.value }))}
+                      placeholder="e.g., Fall Protection — Ladder Safety & Scaffold Tie-Off"
+                      data-testid="dialog-input-toolbox-talk"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="dialog-safety-site-conditions">Site Safety Conditions</Label>
+                    <Textarea
+                      id="dialog-safety-site-conditions"
+                      value={formData.safetySiteConditions}
+                      onChange={(e) => setFormData(prev => ({ ...prev, safetySiteConditions: e.target.value }))}
+                      placeholder="e.g., All barricades in place. Excavation properly shored. SWPPP BMPs inspected — compliant."
+                      rows={2}
+                      data-testid="dialog-textarea-safety-site-conditions"
+                    />
+                  </div>
                   <div className="space-y-4">
                     <div className="flex items-center justify-between">
                       <Label htmlFor="dialog-issues-flag">Any delays or issues today?</Label>
@@ -734,7 +826,7 @@ export function DailyReportDialog({ open, onOpenChange, project, onSuccess }: Da
                   </div>
                   <div className="space-y-4">
                     <div className="flex items-center justify-between">
-                      <Label htmlFor="dialog-safety-flag">Any safety incidents?</Label>
+                      <Label htmlFor="dialog-safety-flag">Any recordable safety incidents?</Label>
                       <Switch
                         id="dialog-safety-flag"
                         checked={formData.safetyFlag}
@@ -755,42 +847,83 @@ export function DailyReportDialog({ open, onOpenChange, project, onSuccess }: Da
                 </CollapsibleContent>
               </Collapsible>
 
+              {/* Equipment */}
               <Collapsible open={sectionsOpen.equipment} onOpenChange={() => toggleSection('equipment')}>
                 <CollapsibleTrigger asChild>
                   <Button variant="ghost" className="w-full justify-between p-4 h-auto bg-muted/30 hover:bg-muted/50" data-testid="dialog-toggle-equipment">
-                    <span className="font-medium text-sm">Equipment {formData.equipment && "(filled)"}</span>
+                    <span className="font-medium text-sm">Equipment on Site {formData.equipmentRows.length > 0 && `(${formData.equipmentRows.length})`}</span>
                     {sectionsOpen.equipment ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                   </Button>
                 </CollapsibleTrigger>
-                <CollapsibleContent className="p-4 pt-2 space-y-2 border rounded-b-lg border-t-0">
-                  <Textarea
-                    value={formData.equipment}
-                    onChange={(e) => setFormData(prev => ({ ...prev, equipment: e.target.value }))}
-                    placeholder="List equipment used on site today..."
-                    rows={2}
-                    data-testid="dialog-textarea-equipment"
+                <CollapsibleContent className="p-4 pt-2 space-y-3 border rounded-b-lg border-t-0">
+                  {formData.equipmentRows.map((row, index) => (
+                    <EquipmentRowInput
+                      key={index}
+                      index={index}
+                      equipment={row.equipment}
+                      hours={row.hours}
+                      status={row.status}
+                      usage={row.usage}
+                      onChange={(equipment, hours, status, usage) => {
+                        const newRows = [...formData.equipmentRows];
+                        newRows[index] = { equipment, hours, status, usage };
+                        setFormData(prev => ({ ...prev, equipmentRows: newRows }));
+                      }}
+                      onRemove={() => {
+                        setFormData(prev => ({ ...prev, equipmentRows: prev.equipmentRows.filter((_, i) => i !== index) }));
+                      }}
+                    />
+                  ))}
+                  <AddRowButton
+                    onClick={() => setFormData(prev => ({
+                      ...prev,
+                      equipmentRows: [...prev.equipmentRows, { equipment: "", hours: "", status: "", usage: "" }]
+                    }))}
+                    label="Add Equipment"
+                    testId="dialog-button-add-equipment"
                   />
                 </CollapsibleContent>
               </Collapsible>
 
+              {/* Materials */}
               <Collapsible open={sectionsOpen.materials} onOpenChange={() => toggleSection('materials')}>
                 <CollapsibleTrigger asChild>
                   <Button variant="ghost" className="w-full justify-between p-4 h-auto bg-muted/30 hover:bg-muted/50" data-testid="dialog-toggle-materials">
-                    <span className="font-medium text-sm">Materials Delivered {formData.materialsDelivered && "(filled)"}</span>
+                    <span className="font-medium text-sm">Material Deliveries {formData.materialRows.length > 0 && `(${formData.materialRows.length})`}</span>
                     {sectionsOpen.materials ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                   </Button>
                 </CollapsibleTrigger>
-                <CollapsibleContent className="p-4 pt-2 space-y-2 border rounded-b-lg border-t-0">
-                  <Textarea
-                    value={formData.materialsDelivered}
-                    onChange={(e) => setFormData(prev => ({ ...prev, materialsDelivered: e.target.value }))}
-                    placeholder="List materials delivered to site today..."
-                    rows={2}
-                    data-testid="dialog-textarea-materials"
+                <CollapsibleContent className="p-4 pt-2 space-y-3 border rounded-b-lg border-t-0">
+                  {formData.materialRows.map((row, index) => (
+                    <MaterialRowInput
+                      key={index}
+                      index={index}
+                      material={row.material}
+                      quantity={row.quantity}
+                      status={row.status}
+                      supplierNotes={row.supplierNotes}
+                      onChange={(material, quantity, status, supplierNotes) => {
+                        const newRows = [...formData.materialRows];
+                        newRows[index] = { material, quantity, status, supplierNotes };
+                        setFormData(prev => ({ ...prev, materialRows: newRows }));
+                      }}
+                      onRemove={() => {
+                        setFormData(prev => ({ ...prev, materialRows: prev.materialRows.filter((_, i) => i !== index) }));
+                      }}
+                    />
+                  ))}
+                  <AddRowButton
+                    onClick={() => setFormData(prev => ({
+                      ...prev,
+                      materialRows: [...prev.materialRows, { material: "", quantity: "", status: "", supplierNotes: "" }]
+                    }))}
+                    label="Add Material Delivery"
+                    testId="dialog-button-add-material"
                   />
                 </CollapsibleContent>
               </Collapsible>
 
+              {/* Photos */}
               <Collapsible open={sectionsOpen.photos} onOpenChange={() => toggleSection('photos')}>
                 <CollapsibleTrigger asChild>
                   <Button variant="ghost" className="w-full justify-between p-4 h-auto bg-muted/30 hover:bg-muted/50" data-testid="dialog-toggle-photos">
@@ -799,25 +932,18 @@ export function DailyReportDialog({ open, onOpenChange, project, onSuccess }: Da
                   </Button>
                 </CollapsibleTrigger>
                 <CollapsibleContent className="p-4 pt-2 border rounded-b-lg border-t-0">
-                  <PhotoUpload
-                    photos={photos}
-                    onPhotosChange={setPhotos}
-                  />
+                  <PhotoUpload photos={photos} onPhotosChange={setPhotos} />
                 </CollapsibleContent>
               </Collapsible>
 
-              {/* Signature - Always visible */}
+              {/* Signature */}
               <div className="space-y-3 p-4 bg-muted/30 rounded-lg">
                 <h3 className="font-medium text-sm">Signature *</h3>
-                <SignaturePad
-                  initialSignature={signature}
-                  onSave={setSignature}
-                />
+                <SignaturePad initialSignature={signature} onSave={setSignature} />
               </div>
             </div>
           </ScrollArea>
 
-          {/* Footer with action buttons */}
           <div className="flex gap-3 p-4 border-t bg-background">
             <Button
               variant="outline"
@@ -826,11 +952,7 @@ export function DailyReportDialog({ open, onOpenChange, project, onSuccess }: Da
               disabled={isSaving}
               data-testid="dialog-button-save-draft"
             >
-              {isSaving ? (
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-              ) : (
-                <Save className="w-4 h-4 mr-2" />
-              )}
+              {isSaving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
               Save Draft
             </Button>
             <Button
@@ -839,18 +961,13 @@ export function DailyReportDialog({ open, onOpenChange, project, onSuccess }: Da
               disabled={isSaving}
               data-testid="dialog-button-submit-report"
             >
-              {isSaving ? (
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-              ) : (
-                <Send className="w-4 h-4 mr-2" />
-              )}
+              {isSaving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Send className="w-4 h-4 mr-2" />}
               Submit Report
             </Button>
           </div>
         </DialogContent>
       </Dialog>
 
-      {/* Email Distribution Dialog */}
       {submittedReportId && (
         <EmailDistributionDialog
           open={showEmailDialog}
@@ -866,7 +983,6 @@ export function DailyReportDialog({ open, onOpenChange, project, onSuccess }: Da
           defaultEmails={project.distributionEmails || []}
         />
       )}
-
     </>
   );
 }

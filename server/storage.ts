@@ -1,7 +1,7 @@
 import { 
   projects, dailyReports, photos, distributionLogs, appSettings, userProfiles, projectMembers, invites,
   companies, companyMembers, joinRequests, invoices, contracts, clients, contractAttachments, contractOptions, contractOptionInspectors, timesheets, monthlyReportBundles,
-  proposals, proposalOptions, proposalOptionInspectors, iorAgreements, purchaseOrders, contractNotifications, budgetNotifications, projectBudgetNotifications, pendingMemberAssignments, teamInspectors, manualTimeEntries, projectBillingRates, projectBaseHours, projectComments, meetings, dismissedAlerts, companyNotes,
+  proposals, proposalOptions, proposalOptionInspectors, iorAgreements, purchaseOrders, contractNotifications, budgetNotifications, projectBudgetNotifications, certExpiryNotifications, pendingMemberAssignments, teamInspectors, manualTimeEntries, projectBillingRates, projectBaseHours, projectComments, meetings, dismissedAlerts, companyNotes,
   clientPortalUsers, clientPortalProjectAccess,
   type Project, type InsertProject,
   type ProjectBillingRate, type InsertProjectBillingRate,
@@ -28,6 +28,7 @@ import {
   type ContractNotification, type InsertContractNotification,
   type BudgetNotification, type InsertBudgetNotification,
   type ProjectBudgetNotification, type InsertProjectBudgetNotification,
+  type CertExpiryNotification, type InsertCertExpiryNotification, normalizeCerts, type CertEntry,
   type Timesheet, type InsertTimesheet,
   type MonthlyReportBundle, type InsertMonthlyReportBundle,
   type Proposal, type InsertProposal, type ProposalWithDetails,
@@ -43,13 +44,19 @@ import {
   inspectorCandidates, inspectorCandidateNotes,
   type InspectorCandidate, type InsertInspectorCandidate,
   type InspectorCandidateNote, type InsertInspectorCandidateNote,
+  inspectorDocuments,
+  type InspectorDocument, type InsertInspectorDocument,
+  inspectorAnnouncements, announcementReads,
+  type InspectorAnnouncement, type InsertAnnouncement,
+  adminNotifications,
+  type AdminNotification, type InsertAdminNotification,
 } from "@shared/schema";
 import { users, type User } from "@shared/models/auth";
 import { db } from "./db";
 import { eq, desc, asc, and, or, sql, inArray, isNull, gte, lte } from "drizzle-orm";
 
 // Re-export db and schema tables for use in other modules
-export { db, projectComments, projectMembers, users, meetings, companyNotes, clientPortalUsers, clientPortalProjectAccess };
+export { db, projectComments, projectMembers, projects, users, meetings, companyNotes, clientPortalUsers, clientPortalProjectAccess };
 
 // Initialize database sequences (ensures they exist on fresh deployments)
 export async function initDatabaseSequences() {
@@ -370,6 +377,8 @@ export interface IStorage {
   addClientPortalProjectAccess(clientPortalUserId: string, projectId: string): Promise<ClientPortalProjectAccess>;
   removeClientPortalProjectAccess(clientPortalUserId: string, projectId: string): Promise<boolean>;
   getClientPortalUsersForCompany(companyId: string): Promise<(ClientPortalUser & { user?: User; client?: Client; projectAccess?: (ClientPortalProjectAccess & { project?: Project })[] })[]>;
+  getClientPortalUsersForProject(projectId: string): Promise<(ClientPortalUser & { user?: User })[]>;
+  updateClientPortalUserAccessLevel(id: string, allProjectsAccess: boolean): Promise<ClientPortalUser>;
 
   // Inspector Candidates (Recruiting)
   getInspectorCandidates(companyId: string): Promise<InspectorCandidate[]>;
@@ -384,6 +393,30 @@ export interface IStorage {
   // Inspector Candidate Notes
   getInspectorCandidateNotes(candidateId: string): Promise<(InspectorCandidateNote & { user?: User })[]>;
   createInspectorCandidateNote(data: InsertInspectorCandidateNote): Promise<InspectorCandidateNote>;
+
+  // Announcements
+  createAnnouncement(data: InsertAnnouncement): Promise<InspectorAnnouncement>;
+  getCompanyAnnouncements(companyId: string): Promise<(InspectorAnnouncement & { senderName?: string })[]>;
+  getInspectorAnnouncements(userId: string, companyIds: string[]): Promise<InspectorAnnouncement[]>;
+  getUnreadAnnouncementCount(userId: string, companyIds: string[]): Promise<number>;
+  markAnnouncementRead(announcementId: string, userId: string): Promise<void>;
+  isAnnouncementRead(announcementId: string, userId: string): Promise<boolean>;
+
+  // Timesheets
+  getTimesheets(companyId: string): Promise<(Timesheet & { projectName?: string; inspectorName?: string })[]>;
+  getTimesheetsByInspectorAndProject(inspectorId: string, projectId: string): Promise<Timesheet[]>;
+  getTimesheet(id: string): Promise<Timesheet | undefined>;
+  updateTimesheetStatus(id: string, status: string): Promise<Timesheet | undefined>;
+  upsertTimesheet(data: InsertTimesheet): Promise<Timesheet>;
+
+  // Admin Notifications
+  getCompanyAdminUserIds(companyId: string): Promise<string[]>;
+  createAdminNotification(data: InsertAdminNotification): Promise<AdminNotification>;
+  getAdminNotifications(userId: string, companyId: string): Promise<AdminNotification[]>;
+  getAdminNotification(id: string): Promise<AdminNotification | undefined>;
+  markAdminNotificationRead(id: string, userId: string): Promise<void>;
+  markAllAdminNotificationsRead(userId: string, companyId: string): Promise<void>;
+  getAdminNotificationUnreadCount(userId: string, companyId: string): Promise<number>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -2042,6 +2075,92 @@ export class DatabaseStorage implements IStorage {
       .where(sql`${projects.budgetAmount} IS NOT NULL AND CAST(${projects.budgetAmount} AS NUMERIC) > 0`);
   }
 
+  // Cert Expiry Notifications
+  async hasCertExpiryNotificationBeenSent(
+    inspectorId: string,
+    inspectorType: string,
+    certName: string,
+    expiresAt: string,
+    windowDays: number
+  ): Promise<boolean> {
+    const existing = await db
+      .select()
+      .from(certExpiryNotifications)
+      .where(
+        and(
+          eq(certExpiryNotifications.inspectorId, inspectorId),
+          eq(certExpiryNotifications.inspectorType, inspectorType),
+          eq(certExpiryNotifications.certName, certName),
+          eq(certExpiryNotifications.expiresAt, expiresAt),
+          eq(certExpiryNotifications.windowDays, windowDays)
+        )
+      )
+      .limit(1);
+    return existing.length > 0;
+  }
+
+  async createCertExpiryNotification(data: InsertCertExpiryNotification): Promise<CertExpiryNotification> {
+    const [notification] = await db.insert(certExpiryNotifications).values(data).returning();
+    return notification;
+  }
+
+  async getAllInspectorsWithCerts(): Promise<{
+    users: Array<{ id: string; companyId: string; name: string; email: string | null; certifications: CertEntry[] }>;
+    teamInspectors: Array<{ id: string; companyId: string; name: string; email: string | null; certifications: CertEntry[] }>;
+  }> {
+    // User inspectors: join company_members to get companyId since userProfiles doesn't have it
+    const [userRows, teamRows] = await Promise.all([
+      db.select({
+        id: userProfiles.userId,
+        companyId: companyMembers.companyId,
+        firstName: userProfiles.firstName,
+        lastName: userProfiles.lastName,
+        certifications: userProfiles.certifications,
+        email: users.email,
+      }).from(userProfiles)
+        .innerJoin(companyMembers, eq(companyMembers.userId, userProfiles.userId))
+        .leftJoin(users, eq(users.id, userProfiles.userId))
+        .where(sql`${userProfiles.certifications} IS NOT NULL`),
+      db.select({
+        id: teamInspectors.id,
+        companyId: teamInspectors.companyId,
+        name: teamInspectors.name,
+        email: teamInspectors.email,
+        certifications: teamInspectors.certifications,
+      }).from(teamInspectors).where(sql`${teamInspectors.certifications} IS NOT NULL`),
+    ]);
+
+    // Deduplicate user rows (a user may belong to multiple companies; keep one row per user per company)
+    const userResults: Array<{ id: string; companyId: string; name: string; email: string | null; certifications: CertEntry[] }> = [];
+    const seen = new Set<string>();
+    for (const r of userRows) {
+      if (!r.id || !r.companyId) continue;
+      const key = `${r.id}:${r.companyId}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const certs = normalizeCerts(r.certifications);
+      if (certs.length === 0) continue;
+      userResults.push({
+        id: r.id,
+        companyId: r.companyId,
+        name: [r.firstName, r.lastName].filter(Boolean).join(" ") || r.id,
+        email: r.email || null,
+        certifications: certs,
+      });
+    }
+
+    return {
+      users: userResults,
+      teamInspectors: teamRows.map((r) => ({
+        id: r.id!,
+        companyId: r.companyId!,
+        name: r.name || r.id!,
+        email: r.email || null,
+        certifications: normalizeCerts(r.certifications),
+      })).filter((r) => r.certifications.length > 0),
+    };
+  }
+
   // Proposals
   async getProposals(companyId: string): Promise<ProposalWithDetails[]> {
     const proposalList = await db
@@ -2587,6 +2706,59 @@ export class DatabaseStorage implements IStorage {
     return results;
   }
 
+  async getClientPortalUsersForProject(projectId: string): Promise<(ClientPortalUser & { user?: User })[]> {
+    // Get users with explicit per-project access
+    const accessRows = await db.query.clientPortalProjectAccess.findMany({
+      where: eq(clientPortalProjectAccess.projectId, projectId),
+      with: {
+        clientPortalUser: {
+          with: {
+            user: true,
+          },
+        },
+      },
+    });
+    type AccessRowWithUser = typeof accessRows[number] & {
+      clientPortalUser: (ClientPortalUser & { user?: User }) | null;
+    };
+    const perProjectUsers = (accessRows as AccessRowWithUser[])
+      .map(row => row.clientPortalUser)
+      .filter((u): u is ClientPortalUser & { user?: User } => u !== null && u !== undefined);
+
+    // Also include users with allProjectsAccess=true for the project's company/client
+    const project = await db.query.projects.findFirst({ where: eq(projects.id, projectId) });
+    if (!project) return perProjectUsers;
+
+    const allAccessUsers = await db.query.clientPortalUsers.findMany({
+      where: and(
+        eq(clientPortalUsers.companyId, project.companyId),
+        eq(clientPortalUsers.allProjectsAccess, true),
+        eq(clientPortalUsers.isActive, true),
+        project.clientId ? eq(clientPortalUsers.clientId, project.clientId) : undefined
+      ),
+      with: { user: true },
+    });
+
+    // Merge, deduplicate by portal user id
+    const seen = new Set(perProjectUsers.map(u => u.id));
+    for (const u of allAccessUsers) {
+      if (!seen.has(u.id)) {
+        seen.add(u.id);
+        perProjectUsers.push(u as ClientPortalUser & { user?: User });
+      }
+    }
+    return perProjectUsers;
+  }
+
+  async updateClientPortalUserAccessLevel(id: string, allProjectsAccess: boolean): Promise<ClientPortalUser> {
+    const [result] = await db
+      .update(clientPortalUsers)
+      .set({ allProjectsAccess })
+      .where(eq(clientPortalUsers.id, id))
+      .returning();
+    return result;
+  }
+
   async getInspectorCandidates(companyId: string): Promise<InspectorCandidate[]> {
     return db.select().from(inspectorCandidates)
       .where(eq(inspectorCandidates.companyId, companyId))
@@ -2659,6 +2831,250 @@ export class DatabaseStorage implements IStorage {
   async createInspectorCandidateNote(data: InsertInspectorCandidateNote): Promise<InspectorCandidateNote> {
     const [note] = await db.insert(inspectorCandidateNotes).values(data).returning();
     return note;
+  }
+
+  // Inspector Document Vault
+  async getInspectorDocuments(companyId: string, inspectorId: string): Promise<InspectorDocument[]> {
+    return db.select()
+      .from(inspectorDocuments)
+      .where(and(
+        eq(inspectorDocuments.companyId, companyId),
+        eq(inspectorDocuments.inspectorId, inspectorId),
+      ))
+      .orderBy(desc(inspectorDocuments.uploadedAt));
+  }
+
+  async getInspectorDocument(id: string): Promise<InspectorDocument | undefined> {
+    const [doc] = await db.select().from(inspectorDocuments).where(eq(inspectorDocuments.id, id));
+    return doc;
+  }
+
+  async createInspectorDocument(data: InsertInspectorDocument): Promise<InspectorDocument> {
+    const [doc] = await db.insert(inspectorDocuments).values(data).returning();
+    return doc;
+  }
+
+  async deleteInspectorDocument(id: string): Promise<void> {
+    await db.delete(inspectorDocuments).where(eq(inspectorDocuments.id, id));
+  }
+
+  // ─── Announcements ────────────────────────────────────────────────────────
+  async createAnnouncement(data: InsertAnnouncement): Promise<InspectorAnnouncement> {
+    const [row] = await db.insert(inspectorAnnouncements).values(data).returning();
+    return row;
+  }
+
+  async getCompanyAnnouncements(companyId: string): Promise<(InspectorAnnouncement & { senderName?: string })[]> {
+    const rows = await db
+      .select({
+        announcement: inspectorAnnouncements,
+        firstName: users.firstName,
+        lastName: users.lastName,
+        email: users.email,
+      })
+      .from(inspectorAnnouncements)
+      .leftJoin(users, eq(inspectorAnnouncements.sentById, users.id))
+      .where(eq(inspectorAnnouncements.companyId, companyId))
+      .orderBy(desc(inspectorAnnouncements.sentAt));
+    return rows.map(r => {
+      const fullName = [r.firstName, r.lastName].filter(Boolean).join(" ");
+      const senderName = fullName || r.email || undefined;
+      return { ...r.announcement, senderName };
+    });
+  }
+
+  async getInspectorAnnouncements(userId: string, companyIds: string[]): Promise<InspectorAnnouncement[]> {
+    if (companyIds.length === 0) return [];
+    const rows = await db
+      .select()
+      .from(inspectorAnnouncements)
+      .where(
+        and(
+          inArray(inspectorAnnouncements.companyId, companyIds),
+          sql`${inspectorAnnouncements.recipientUserIds}::jsonb @> ${JSON.stringify([userId])}::jsonb`
+        )
+      )
+      .orderBy(desc(inspectorAnnouncements.sentAt));
+    return rows;
+  }
+
+  async getUnreadAnnouncementCount(userId: string, companyIds: string[]): Promise<number> {
+    if (companyIds.length === 0) return 0;
+    const visible = await this.getInspectorAnnouncements(userId, companyIds);
+    if (visible.length === 0) return 0;
+    const visibleIds = visible.map(a => a.id);
+    const readRows = await db
+      .select({ announcementId: announcementReads.announcementId })
+      .from(announcementReads)
+      .where(and(eq(announcementReads.userId, userId), inArray(announcementReads.announcementId, visibleIds)));
+    const readSet = new Set(readRows.map(r => r.announcementId));
+    return visibleIds.filter(id => !readSet.has(id)).length;
+  }
+
+  async markAnnouncementRead(announcementId: string, userId: string): Promise<void> {
+    await db.insert(announcementReads)
+      .values({ announcementId, userId })
+      .onConflictDoNothing();
+  }
+
+  async isAnnouncementRead(announcementId: string, userId: string): Promise<boolean> {
+    const [row] = await db
+      .select()
+      .from(announcementReads)
+      .where(and(eq(announcementReads.announcementId, announcementId), eq(announcementReads.userId, userId)));
+    return !!row;
+  }
+
+  async getTimesheets(companyId: string): Promise<(Timesheet & { projectName?: string; inspectorName?: string })[]> {
+    const rows = await db
+      .select({
+        timesheet: timesheets,
+        projectName: projects.name,
+        inspectorFirstName: userProfiles.firstName,
+        inspectorLastName: userProfiles.lastName,
+      })
+      .from(timesheets)
+      .leftJoin(projects, eq(timesheets.projectId, projects.id))
+      .leftJoin(userProfiles, eq(timesheets.inspectorId, userProfiles.userId))
+      .where(eq(timesheets.companyId, companyId))
+      .orderBy(desc(timesheets.createdAt));
+
+    return rows.map(({ timesheet, projectName, inspectorFirstName, inspectorLastName }) => ({
+      ...timesheet,
+      projectName: projectName ?? undefined,
+      inspectorName: inspectorFirstName && inspectorLastName
+        ? `${inspectorFirstName} ${inspectorLastName}`
+        : inspectorFirstName ?? inspectorLastName ?? undefined,
+    }));
+  }
+
+  async getTimesheetsByInspectorAndProject(inspectorId: string, projectId: string): Promise<Timesheet[]> {
+    return db
+      .select()
+      .from(timesheets)
+      .where(and(eq(timesheets.inspectorId, inspectorId), eq(timesheets.projectId, projectId)))
+      .orderBy(desc(timesheets.year), desc(timesheets.month));
+  }
+
+  async getTimesheet(id: string): Promise<Timesheet | undefined> {
+    const [row] = await db.select().from(timesheets).where(eq(timesheets.id, id));
+    return row;
+  }
+
+  async updateTimesheetStatus(id: string, status: string, adminNote?: string): Promise<Timesheet | undefined> {
+    const [row] = await db
+      .update(timesheets)
+      .set({ status: status as "draft" | "submitted" | "approved", adminNote: adminNote ?? null, updatedAt: new Date() })
+      .where(eq(timesheets.id, id))
+      .returning();
+    return row;
+  }
+
+  async upsertTimesheet(data: InsertTimesheet): Promise<Timesheet> {
+    const [row] = await db
+      .insert(timesheets)
+      .values(data)
+      .onConflictDoUpdate({
+        target: [timesheets.projectId, timesheets.inspectorId, timesheets.month, timesheets.year],
+        set: {
+          totalRegularHours: data.totalRegularHours,
+          totalOvertimeHours: data.totalOvertimeHours,
+          totalPremiumHours: data.totalPremiumHours,
+          period1RegularHours: data.period1RegularHours,
+          period1OvertimeHours: data.period1OvertimeHours,
+          period1PremiumHours: data.period1PremiumHours,
+          period2RegularHours: data.period2RegularHours,
+          period2OvertimeHours: data.period2OvertimeHours,
+          period2PremiumHours: data.period2PremiumHours,
+          // Explicitly preserve the existing status so that regenerating a PDF
+          // never resets an approved (or otherwise reviewed) timesheet back to
+          // "submitted". New rows still receive the status supplied in data.
+          status: sql`${timesheets.status}`,
+          updatedAt: new Date(),
+        },
+      })
+      .returning();
+    return row;
+  }
+
+  // Admin Notifications
+  async getCompanyAdminUserIds(companyId: string): Promise<string[]> {
+    const adminMembers = await db
+      .select({ userId: companyMembers.userId })
+      .from(companyMembers)
+      .where(
+        and(
+          eq(companyMembers.companyId, companyId),
+          or(
+            eq(companyMembers.role, 'admin'),
+            eq(companyMembers.role, 'owner')
+          )
+        )
+      );
+    return adminMembers.map(m => m.userId);
+  }
+
+  async createAdminNotification(data: InsertAdminNotification): Promise<AdminNotification> {
+    const [row] = await db.insert(adminNotifications).values(data).returning();
+    return row;
+  }
+
+  async getAdminNotifications(userId: string, companyId: string): Promise<AdminNotification[]> {
+    return db
+      .select()
+      .from(adminNotifications)
+      .where(
+        and(
+          eq(adminNotifications.recipientUserId, userId),
+          eq(adminNotifications.companyId, companyId)
+        )
+      )
+      .orderBy(desc(adminNotifications.createdAt))
+      .limit(50);
+  }
+
+  async getAdminNotification(id: string): Promise<AdminNotification | undefined> {
+    const [row] = await db.select().from(adminNotifications).where(eq(adminNotifications.id, id));
+    return row;
+  }
+
+  async markAdminNotificationRead(id: string, userId: string): Promise<void> {
+    await db
+      .update(adminNotifications)
+      .set({ isRead: true })
+      .where(
+        and(
+          eq(adminNotifications.id, id),
+          eq(adminNotifications.recipientUserId, userId)
+        )
+      );
+  }
+
+  async markAllAdminNotificationsRead(userId: string, companyId: string): Promise<void> {
+    await db
+      .update(adminNotifications)
+      .set({ isRead: true })
+      .where(
+        and(
+          eq(adminNotifications.recipientUserId, userId),
+          eq(adminNotifications.companyId, companyId),
+          eq(adminNotifications.isRead, false)
+        )
+      );
+  }
+
+  async getAdminNotificationUnreadCount(userId: string, companyId: string): Promise<number> {
+    const [result] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(adminNotifications)
+      .where(
+        and(
+          eq(adminNotifications.recipientUserId, userId),
+          eq(adminNotifications.companyId, companyId),
+          eq(adminNotifications.isRead, false)
+        )
+      );
+    return result?.count ?? 0;
   }
 }
 

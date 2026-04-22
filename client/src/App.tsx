@@ -1,6 +1,6 @@
-import { Switch, Route } from "wouter";
+import { Switch, Route, useLocation } from "wouter";
 import { queryClient } from "./lib/queryClient";
-import { QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider, useQuery } from "@tanstack/react-query";
 import { HelmetProvider } from "react-helmet-async";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -11,6 +11,7 @@ import { AdminRoute } from "@/components/layout/admin-route";
 import { AIChatBubble } from "@/components/chat/ai-chat-bubble";
 import { ProfileSetupPrompt } from "@/components/profile-setup-prompt";
 import { Loader2 } from "lucide-react";
+import { useEffect } from "react";
 
 import NotFound from "@/pages/not-found";
 import LandingPage from "@/pages/landing";
@@ -40,9 +41,12 @@ import ContractDashboardPage from "@/pages/company/contract-dashboard";
 import ProjectDashboardPage from "@/pages/project-dashboard";
 import ProjectDailyReportsPage from "@/pages/project-daily-reports";
 import CompanyMeetingsPage from "@/pages/company/meetings";
+import CompanyAnnouncementsPage from "@/pages/company/announcements";
 import ApiKeysPage from "@/pages/company/api-keys";
 import AIChatPage from "@/pages/company/ai-chat";
 import CompanyRecruitingPage from "@/pages/company/recruiting";
+import AnnouncementsFeedPage from "@/pages/announcements";
+import CertExpiryPage from "@/pages/company/cert-expiry";
 import BillingPage from "@/pages/billing";
 import LearnMorePage from "@/pages/learn-more";
 import PricingPage from "@/pages/pricing";
@@ -84,9 +88,12 @@ function AuthenticatedRoutes() {
       <Route path="/company/settings" component={CompanySettingsPage} />
       <Route path="/company/dashboard" component={CompanyDashboardPage} />
       <Route path="/company/meetings" component={CompanyMeetingsPage} />
+      <Route path="/company/announcements" component={CompanyAnnouncementsPage} />
       <Route path="/company/api-keys" component={ApiKeysPage} />
       <Route path="/company/chat" component={AIChatPage} />
       <Route path="/company/recruiting" component={CompanyRecruitingPage} />
+      <Route path="/announcements" component={AnnouncementsFeedPage} />
+      <Route path="/company/cert-expiry" component={CertExpiryPage} />
       <Route path="/client-portal" component={PortalDashboardPage} />
       <Route path="/client-portal/project/:id" component={PortalProjectPage} />
       <Route path="/settings">
@@ -112,8 +119,43 @@ function AuthenticatedRoutes() {
   );
 }
 
+interface PortalStatus {
+  isClientPortalUser: boolean;
+}
+
 function AppContent() {
-  const { isLoading, isAuthenticated } = useAuth();
+  const { isLoading, isAuthenticated, user, companies, isCompaniesLoading } = useAuth();
+  const [location, setLocation] = useLocation();
+
+  const { data: portalStatus, isLoading: isPortalStatusLoading } = useQuery<PortalStatus>({
+    queryKey: ["/api/client-portal/status"],
+    enabled: !!user && isAuthenticated,
+    queryFn: async () => {
+      const res = await fetch("/api/client-portal/status", { credentials: "include" });
+      // 403 means inspector/admin user — treat as non-portal user, don't throw
+      if (res.status === 403) return { isClientPortalUser: false, portals: [] } as PortalStatus;
+      if (!res.ok) throw new Error(`${res.status}: ${res.statusText}`);
+      return res.json() as Promise<PortalStatus>;
+    },
+  });
+
+  // Redirect portal-only users to /client-portal when they land on /
+  // "Portal-only" = is a portal user AND has no company memberships (no inspector/admin access)
+  const hasNoCompanyMemberships = !isCompaniesLoading && companies.length === 0;
+  const isPortalOnly = !!portalStatus?.isClientPortalUser && hasNoCompanyMemberships;
+
+  useEffect(() => {
+    if (
+      isAuthenticated &&
+      !isLoading &&
+      !isCompaniesLoading &&
+      !isPortalStatusLoading &&
+      isPortalOnly &&
+      location === "/"
+    ) {
+      setLocation("/client-portal");
+    }
+  }, [isAuthenticated, isLoading, isCompaniesLoading, isPortalStatusLoading, isPortalOnly, location, setLocation]);
 
   if (isLoading) {
     return <LoadingScreen />;

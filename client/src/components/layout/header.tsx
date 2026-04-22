@@ -16,41 +16,66 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
-import {
-  LogOut,
-  User,
-  Settings,
-  HardHat,
-  Menu,
-  FolderOpen,
-  Users,
-  Building2,
-  FileText,
-  CalendarCheck,
-} from "lucide-react";
-import { Link } from "wouter";
+import { LogOut, User, Settings, HardHat, Menu, LayoutDashboard, FolderOpen, Users, UserPlus, Building2, FilePlus, FileText, Receipt, Briefcase, MessageSquare, CalendarCheck, Key, Search, ShieldCheck, Megaphone, Bell, CheckCheck } from "lucide-react";
+import { Link, useLocation } from "wouter";
+import { cn } from "@/lib/utils";
 import { useState } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { ProjectSwitcher } from "./project-switcher";
 import { ThemeToggle } from "./theme-toggle";
 import { ModeToggle } from "./mode-toggle";
 import { SidebarNav } from "./sidebar-nav";
+import { queryClient, apiRequest } from "@/lib/queryClient";
+import type { AdminNotification } from "@shared/schema";
 
 interface HeaderProps {
   title?: string;
 }
 
 export function Header({ title = "Field Daily Reports" }: HeaderProps) {
-  const {
-    user,
-    isLoading,
-    isAdmin,
-    isCompanyAdmin,
-    isEffectiveCompanyAdmin,
-    activeCompany,
-    logout,
-    profile,
-  } = useAuth();
+  const { user, isLoading, isAdmin, isCompanyAdmin, isEffectiveCompanyAdmin, isEffectiveSystemAdmin, activeCompany, logout, profile } = useAuth();
+  const [location, navigate] = useLocation();
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [notifOpen, setNotifOpen] = useState(false);
+
+  const { data: adminNotifCountData } = useQuery<{ count: number }>({
+    queryKey: ["/api/admin-notifications/unread-count", activeCompany?.id],
+    queryFn: async () => {
+      if (!activeCompany?.id) return { count: 0 };
+      const res = await fetch(`/api/admin-notifications/unread-count?companyId=${activeCompany.id}`, { credentials: "include" });
+      return res.json();
+    },
+    staleTime: 30000,
+    enabled: !!user && (isEffectiveCompanyAdmin || isAdmin) && !!activeCompany?.id,
+    refetchInterval: 2 * 60 * 1000,
+  });
+
+  const { data: adminNotifications } = useQuery<AdminNotification[]>({
+    queryKey: ["/api/admin-notifications", activeCompany?.id],
+    queryFn: async () => {
+      if (!activeCompany?.id) return [];
+      const res = await fetch(`/api/admin-notifications?companyId=${activeCompany.id}`, { credentials: "include" });
+      return res.json();
+    },
+    staleTime: 30000,
+    enabled: !!user && (isEffectiveCompanyAdmin || isAdmin) && !!activeCompany?.id && notifOpen,
+  });
+
+  const markReadMutation = useMutation({
+    mutationFn: async (id: string) => apiRequest("PATCH", `/api/admin-notifications/${id}/read`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin-notifications/unread-count", activeCompany?.id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin-notifications", activeCompany?.id] });
+    },
+  });
+
+  const markAllReadMutation = useMutation({
+    mutationFn: async () => apiRequest("POST", "/api/admin-notifications/read-all", { companyId: activeCompany?.id }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin-notifications/unread-count", activeCompany?.id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin-notifications", activeCompany?.id] });
+    },
+  });
 
   const getInitials = (firstName?: string | null, lastName?: string | null) => {
     const first = firstName?.charAt(0) || "";
@@ -64,6 +89,22 @@ export function Header({ title = "Field Daily Reports" }: HeaderProps) {
     }
     return user?.email || "User";
   };
+
+  const adminNotifCount = adminNotifCountData?.count ?? 0;
+
+  const formatRelativeTime = (date: string | Date) => {
+    const d = new Date(date);
+    const now = new Date();
+    const diffMs = now.getTime() - d.getTime();
+    const diffMin = Math.floor(diffMs / 60000);
+    if (diffMin < 1) return "just now";
+    if (diffMin < 60) return `${diffMin}m ago`;
+    const diffHr = Math.floor(diffMin / 60);
+    if (diffHr < 24) return `${diffHr}h ago`;
+    const diffDay = Math.floor(diffHr / 24);
+    return `${diffDay}d ago`;
+  };
+
 
   return (
     <header className="sticky top-0 z-40 w-full bg-background/80 surface-glass border-b border-border">
@@ -123,6 +164,87 @@ export function Header({ title = "Field Daily Reports" }: HeaderProps) {
           {(isAdmin || isCompanyAdmin) && <ModeToggle />}
           {user && <ProjectSwitcher activeProjectId={profile?.activeProjectId} />}
           {user && <ThemeToggle />}
+
+          {/* Admin Notification Bell */}
+          {user && (isEffectiveCompanyAdmin || isAdmin) && activeCompany && (
+            <DropdownMenu open={notifOpen} onOpenChange={setNotifOpen}>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="relative text-white/80 hover:text-white hover:bg-white/10"
+                  data-testid="button-admin-notifications"
+                >
+                  <Bell className="w-5 h-5" />
+                  {adminNotifCount > 0 && (
+                    <span className="absolute -top-0.5 -right-0.5 bg-red-500 text-white text-[10px] font-bold rounded-full min-w-[16px] h-4 flex items-center justify-center px-0.5 leading-none" data-testid="badge-admin-notification-count">
+                      {adminNotifCount > 99 ? "99+" : adminNotifCount}
+                    </span>
+                  )}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-80 max-h-[400px] overflow-y-auto">
+                <DropdownMenuLabel className="flex items-center justify-between">
+                  <span>Notifications</span>
+                  {adminNotifCount > 0 && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-auto py-0.5 px-2 text-xs text-muted-foreground hover:text-foreground"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        markAllReadMutation.mutate();
+                      }}
+                      data-testid="button-mark-all-notifications-read"
+                    >
+                      <CheckCheck className="w-3 h-3 mr-1" />
+                      Mark all read
+                    </Button>
+                  )}
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                {!adminNotifications || adminNotifications.length === 0 ? (
+                  <div className="px-3 py-4 text-center text-sm text-muted-foreground" data-testid="text-no-notifications">
+                    No notifications
+                  </div>
+                ) : (
+                  adminNotifications.map((notif) => (
+                    <DropdownMenuItem
+                      key={notif.id}
+                      className={cn(
+                        "flex flex-col items-start gap-0.5 px-3 py-2.5 cursor-pointer",
+                        !notif.isRead && "bg-blue-50 dark:bg-blue-950/30"
+                      )}
+                      data-testid={`notification-item-${notif.id}`}
+                      onClick={() => {
+                        if (!notif.isRead) {
+                          markReadMutation.mutate(notif.id);
+                        }
+                        navigate(notif.link);
+                        setNotifOpen(false);
+                      }}
+                    >
+                      <div className="flex items-center gap-2 w-full">
+                        {!notif.isRead && (
+                          <span className="w-2 h-2 rounded-full bg-blue-500 flex-shrink-0" />
+                        )}
+                        <span className={cn("text-sm font-medium leading-tight", !notif.isRead ? "text-foreground" : "text-muted-foreground pl-4")}>
+                          {notif.title}
+                        </span>
+                      </div>
+                      <span className={cn("text-xs leading-snug pl-4", !notif.isRead ? "text-foreground/80" : "text-muted-foreground")}>
+                        {notif.message}
+                      </span>
+                      <span className="text-[10px] text-muted-foreground pl-4 mt-0.5">
+                        {formatRelativeTime(notif.createdAt)}
+                      </span>
+                    </DropdownMenuItem>
+                  ))
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+
           {isLoading ? (
             <div className="w-9 h-9 rounded-full shimmer" />
           ) : user ? (

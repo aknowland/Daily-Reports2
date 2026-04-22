@@ -1,6 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Plus, Trash2 } from "lucide-react";
 
 interface TradeRowProps {
@@ -144,23 +145,32 @@ export function VisitorRowInput({ name, company, notes, onChange, onRemove, disa
 }
 
 interface WorkActivityRowProps {
+  trade?: string;
   contractor: string;
   headcount: number;
   workDescription: string;
-  onChange: (contractor: string, headcount: number, workDescription: string) => void;
+  onChange: (trade: string, contractor: string, headcount: number, workDescription: string) => void;
   onRemove: () => void;
   disabled?: boolean;
   index: number;
 }
 
-export function WorkActivityRowInput({ contractor, headcount, workDescription, onChange, onRemove, disabled, index }: WorkActivityRowProps) {
+export function WorkActivityRowInput({ trade, contractor, headcount, workDescription, onChange, onRemove, disabled, index }: WorkActivityRowProps) {
   return (
     <div className="flex flex-col gap-2 p-3 bg-muted/50 border border-border">
       <div className="flex items-center gap-2">
         <Input
+          value={trade || ""}
+          onChange={(e) => onChange(e.target.value, contractor, headcount, workDescription)}
+          placeholder="Trade (e.g., Iron Workers)"
+          disabled={disabled}
+          className="flex-1"
+          data-testid={`input-activity-trade-${index}`}
+        />
+        <Input
           value={contractor}
-          onChange={(e) => onChange(e.target.value, headcount, workDescription)}
-          placeholder="Contractor/Trade (or GC)"
+          onChange={(e) => onChange(trade || "", e.target.value, headcount, workDescription)}
+          placeholder="Contractor / Subcontractor"
           disabled={disabled}
           className="flex-1"
           data-testid={`input-activity-contractor-${index}`}
@@ -168,10 +178,10 @@ export function WorkActivityRowInput({ contractor, headcount, workDescription, o
         <Input
           type="number"
           value={headcount || ""}
-          onChange={(e) => onChange(contractor, parseInt(e.target.value) || 0, workDescription)}
-          placeholder="Headcount"
+          onChange={(e) => onChange(trade || "", contractor, parseInt(e.target.value) || 0, workDescription)}
+          placeholder="Count"
           disabled={disabled}
-          className="w-24"
+          className="w-20"
           min={0}
           data-testid={`input-activity-headcount-${index}`}
         />
@@ -187,13 +197,150 @@ export function WorkActivityRowInput({ contractor, headcount, workDescription, o
         </Button>
       </div>
       <Textarea
-        value={workDescription}
-        onChange={(e) => onChange(contractor, headcount, e.target.value)}
-        placeholder="Work description / activity performed"
+        value={workDescription || ""}
+        onChange={(e) => onChange(trade || "", contractor, headcount, e.target.value)}
+        placeholder="Work description (auto-fills Work Performed if left blank above)"
         disabled={disabled}
-        rows={3}
-        className="resize-none"
-        data-testid={`input-activity-work-${index}`}
+        className="text-sm resize-none"
+        rows={2}
+        data-testid={`input-activity-description-${index}`}
+      />
+    </div>
+  );
+}
+
+const EQUIPMENT_STATUS_OPTIONS = ["ACTIVE", "STANDBY", "IDLE", "OFFSITE"];
+const MATERIAL_STATUS_OPTIONS = ["DELIVERED", "DELAYED", "ORDERED", "PENDING"];
+
+interface EquipmentRowProps {
+  equipment: string;
+  hours?: string;
+  status?: string;
+  usage?: string;
+  onChange: (equipment: string, hours: string, status: string, usage: string) => void;
+  onRemove: () => void;
+  disabled?: boolean;
+  index: number;
+}
+
+export function EquipmentRowInput({ equipment, hours, status, usage, onChange, onRemove, disabled, index }: EquipmentRowProps) {
+  return (
+    <div className="flex flex-col gap-2 p-3 bg-muted/50 border border-border">
+      <div className="flex items-center gap-2">
+        <Input
+          value={equipment}
+          onChange={(e) => onChange(e.target.value, hours || "", status || "", usage || "")}
+          placeholder="Equipment name/type"
+          disabled={disabled}
+          className="flex-1"
+          data-testid={`input-equipment-name-${index}`}
+        />
+        <Input
+          value={hours || ""}
+          onChange={(e) => onChange(equipment, e.target.value, status || "", usage || "")}
+          placeholder="Hours"
+          disabled={disabled}
+          className="w-20"
+          data-testid={`input-equipment-hours-${index}`}
+        />
+        <Select
+          value={status || ""}
+          onValueChange={(v) => onChange(equipment, hours || "", v, usage || "")}
+          disabled={disabled}
+        >
+          <SelectTrigger className="w-28" data-testid={`select-equipment-status-${index}`}>
+            <SelectValue placeholder="Status" />
+          </SelectTrigger>
+          <SelectContent>
+            {EQUIPMENT_STATUS_OPTIONS.map(opt => (
+              <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          onClick={onRemove}
+          disabled={disabled}
+          data-testid={`button-remove-equipment-${index}`}
+        >
+          <Trash2 className="w-4 h-4 text-muted-foreground" />
+        </Button>
+      </div>
+      <Input
+        value={usage || ""}
+        onChange={(e) => onChange(equipment, hours || "", status || "", e.target.value)}
+        placeholder="Usage description"
+        disabled={disabled}
+        data-testid={`input-equipment-usage-${index}`}
+      />
+    </div>
+  );
+}
+
+interface MaterialRowProps {
+  material: string;
+  quantity?: string;
+  status?: string;
+  supplierNotes?: string;
+  onChange: (material: string, quantity: string, status: string, supplierNotes: string) => void;
+  onRemove: () => void;
+  disabled?: boolean;
+  index: number;
+}
+
+export function MaterialRowInput({ material, quantity, status, supplierNotes, onChange, onRemove, disabled, index }: MaterialRowProps) {
+  return (
+    <div className="flex flex-col gap-2 p-3 bg-muted/50 border border-border">
+      <div className="flex items-center gap-2">
+        <Input
+          value={material}
+          onChange={(e) => onChange(e.target.value, quantity || "", status || "", supplierNotes || "")}
+          placeholder="Material name"
+          disabled={disabled}
+          className="flex-1"
+          data-testid={`input-material-name-${index}`}
+        />
+        <Input
+          value={quantity || ""}
+          onChange={(e) => onChange(material, e.target.value, status || "", supplierNotes || "")}
+          placeholder="Qty"
+          disabled={disabled}
+          className="w-24"
+          data-testid={`input-material-qty-${index}`}
+        />
+        <Select
+          value={status || ""}
+          onValueChange={(v) => onChange(material, quantity || "", v, supplierNotes || "")}
+          disabled={disabled}
+        >
+          <SelectTrigger className="w-28" data-testid={`select-material-status-${index}`}>
+            <SelectValue placeholder="Status" />
+          </SelectTrigger>
+          <SelectContent>
+            {MATERIAL_STATUS_OPTIONS.map(opt => (
+              <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          onClick={onRemove}
+          disabled={disabled}
+          data-testid={`button-remove-material-${index}`}
+        >
+          <Trash2 className="w-4 h-4 text-muted-foreground" />
+        </Button>
+      </div>
+      <Input
+        value={supplierNotes || ""}
+        onChange={(e) => onChange(material, quantity || "", status || "", e.target.value)}
+        placeholder="Supplier / Notes"
+        disabled={disabled}
+        data-testid={`input-material-supplier-${index}`}
       />
     </div>
   );
