@@ -196,7 +196,7 @@ export default function ReportDetailPage() {
       >
         <Button
           variant="outline"
-          className="border-white/30 text-white hover:bg-white/10"
+          className=""
           onClick={() => navigate("/reports")}
           data-testid="button-back"
         >
@@ -204,7 +204,7 @@ export default function ReportDetailPage() {
           Back
         </Button>
         {report.status === "draft" && (
-          <Button asChild className="bg-[hsl(36,90%,50%)] text-[hsl(216,32%,10%)] hover:bg-[hsl(36,90%,45%)] font-semibold" data-testid="button-edit-report">
+          <Button asChild className="bg-accent text-accent-foreground hover:bg-accent/90 font-semibold shadow-sm" data-testid="button-edit-report">
             <Link href={`/reports/${id}/edit`}>
               <Edit className="w-4 h-4 mr-2" />
               Edit

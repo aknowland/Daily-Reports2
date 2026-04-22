@@ -1150,7 +1150,7 @@ export default function ProjectDashboardPage() {
           <Button
             variant="outline"
             size="sm"
-            className="border-white/30 text-white hover:bg-white/10"
+            className=""
             asChild
           >
             <Link href="/my-projects">
@@ -1160,7 +1160,7 @@ export default function ProjectDashboardPage() {
           </Button>
           <Button
             size="sm"
-            className="bg-[hsl(36,90%,50%)] text-[hsl(216,32%,10%)] hover:bg-[hsl(36,90%,45%)] font-semibold"
+            className="bg-accent text-accent-foreground hover:bg-accent/90 font-semibold shadow-sm"
             onClick={() => setDailyReportDialogOpen(true)}
             data-testid="button-new-daily-report-header"
           >
@@ -1171,7 +1171,7 @@ export default function ProjectDashboardPage() {
             <Button
               variant="outline"
               size="sm"
-              className="border-white/30 text-white hover:bg-white/10"
+              className=""
               onClick={openEditDialog}
               data-testid="button-edit-project"
             >

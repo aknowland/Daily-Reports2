@@ -104,7 +104,7 @@ export default function DashboardPage() {
         title={`${getGreeting()}, ${user?.firstName || "Inspector"}`}
         subtitle="Here's an overview of your daily reports"
       >
-        <Button asChild className="bg-[hsl(36,90%,50%)] text-[hsl(216,32%,10%)] hover:bg-[hsl(36,90%,45%)] font-semibold" data-testid="button-new-report-header">
+        <Button asChild className="bg-accent text-accent-foreground hover:bg-accent/90 font-semibold shadow-sm" data-testid="button-new-report-header">
           <Link href="/reports/new">
             <Plus className="w-4 h-4 mr-2" />
             New Report
@@ -309,7 +309,7 @@ export default function DashboardPage() {
                 <p className="text-sm text-muted-foreground mt-1 mb-5">
                   Create your first daily report to get started
                 </p>
-                <Button asChild className="bg-[hsl(36,90%,50%)] text-[hsl(216,32%,10%)] hover:bg-[hsl(36,90%,45%)] font-semibold" data-testid="button-create-first-report">
+                <Button asChild className="bg-accent text-accent-foreground hover:bg-accent/90 font-semibold shadow-sm" data-testid="button-create-first-report">
                   <Link href="/reports/new">
                     <Plus className="w-4 h-4 mr-2" />
                     Create Report

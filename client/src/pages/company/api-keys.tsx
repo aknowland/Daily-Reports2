@@ -216,7 +216,7 @@ export default function ApiKeysPage() {
               </div>
               <Button
                 size="sm"
-                className="bg-[hsl(36,90%,50%)] text-[hsl(216,32%,10%)] hover:bg-[hsl(36,90%,45%)] font-semibold"
+                className="bg-accent text-accent-foreground hover:bg-accent/90 font-semibold shadow-sm"
                 onClick={() => setShowCreateDialog(true)}
                 data-testid="button-create-key"
               >
@@ -326,7 +326,7 @@ export default function ApiKeysPage() {
             <Button
               onClick={() => createMutation.mutate(newKeyName.trim())}
               disabled={!newKeyName.trim() || createMutation.isPending}
-              className="bg-[hsl(36,90%,50%)] text-[hsl(216,32%,10%)] hover:bg-[hsl(36,90%,45%)] font-semibold"
+              className="bg-accent text-accent-foreground hover:bg-accent/90 font-semibold shadow-sm"
               data-testid="button-confirm-create-key"
             >
               {createMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}

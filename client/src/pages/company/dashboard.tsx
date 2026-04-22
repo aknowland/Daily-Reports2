@@ -61,6 +61,8 @@ import { ContractStatusLegend } from "@/components/contract-status-legend";
 import { useState } from "react";
 import { format, differenceInDays, startOfMonth, endOfMonth, eachDayOfInterval, isWeekend, isSameMonth, startOfWeek, endOfWeek, isSameDay, addMonths, subMonths } from "date-fns";
 import { parseDateSafe } from "@/lib/timezone";
+import { cn } from "@/lib/utils";
+import { ContractStatusPill } from "@/components/ui/status-pill";
 
 type ContractDashboardSummary = {
   id: string;
@@ -205,6 +207,61 @@ const formatDate = (dateStr: string | null) => {
     return '-';
   }
 };
+
+type KpiTone = "info" | "success" | "warning" | "danger" | "accent" | "neutral";
+
+const KPI_TONE_CLASSES: Record<KpiTone, { chip: string; icon: string; value: string }> = {
+  info:    { chip: "bg-primary/10 ring-primary/20",       icon: "text-primary",                    value: "text-foreground" },
+  success: { chip: "bg-[hsl(145_55%_38%/0.12)] ring-[hsl(145_55%_38%/0.25)]", icon: "text-[hsl(145_55%_38%)] dark:text-[hsl(145_55%_60%)]", value: "text-[hsl(145_55%_32%)] dark:text-[hsl(145_55%_62%)]" },
+  warning: { chip: "bg-[hsl(36_95%_50%/0.12)] ring-[hsl(36_95%_50%/0.25)]",  icon: "text-[hsl(32_90%_42%)] dark:text-[hsl(36_95%_65%)]",    value: "text-foreground" },
+  danger:  { chip: "bg-destructive/10 ring-destructive/25", icon: "text-destructive",              value: "text-destructive" },
+  accent:  { chip: "bg-accent/12 ring-accent/25",           icon: "text-accent",                    value: "text-foreground" },
+  neutral: { chip: "bg-muted ring-border",                  icon: "text-muted-foreground",          value: "text-foreground" },
+};
+
+function KpiCard({
+  testId,
+  label,
+  icon: Icon,
+  tone,
+  loading,
+  value,
+  caption,
+  valueTestId,
+}: {
+  testId?: string;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  tone: KpiTone;
+  loading?: boolean;
+  value: React.ReactNode;
+  caption?: React.ReactNode;
+  valueTestId?: string;
+}) {
+  const t = KPI_TONE_CLASSES[tone];
+  return (
+    <Card className="card-interactive overflow-hidden" data-testid={testId}>
+      <CardContent className="p-4 md:p-5">
+        <div className="flex items-start justify-between gap-2 mb-3">
+          <span className="text-eyebrow text-muted-foreground">{label}</span>
+          <div className={cn("w-9 h-9 rounded-lg flex items-center justify-center ring-1 flex-shrink-0", t.chip)}>
+            <Icon className={cn("w-[18px] h-[18px]", t.icon)} />
+          </div>
+        </div>
+        {loading ? (
+          <Skeleton className="h-8 w-20" />
+        ) : (
+          <div className={cn("text-2xl md:text-[28px] font-semibold tabular-nums tracking-tight leading-none", t.value)} data-testid={valueTestId}>
+            {value}
+          </div>
+        )}
+        {caption && (
+          <p className="text-xs text-muted-foreground mt-2 truncate">{caption}</p>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
 
 const CONTRACT_STATUS_OPTIONS = [
   { value: "all", label: "All Statuses" },
@@ -612,11 +669,10 @@ export default function CompanyDashboard() {
 
   return (
     <PageLayout title="Company Dashboard">
-      <div className="space-y-6 p-4 overflow-x-hidden">
+      <div className="space-y-6">
         <PageHeader icon={LayoutDashboard} title="Company Dashboard" subtitle={activeCompany?.name || undefined}>
           <Button
             variant="outline"
-            className="border-white/30 text-white hover:bg-white/10"
             onClick={() => setShowCalendar(!showCalendar)}
             data-testid="button-toggle-calendar"
           >
@@ -858,111 +914,57 @@ export default function CompanyDashboard() {
         )}
 
         {/* KPI Cards */}
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
-          <Card data-testid="card-kpi-hours">
-            <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Hours This Month</CardTitle>
-              <Timer className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              {dashboardLoading ? (
-                <Skeleton className="h-8 w-20" />
-              ) : (
-                <>
-                  <div className="text-2xl font-bold" data-testid="text-hours-this-month">
-                    {companyDashboard?.summary.hoursThisMonth?.toFixed(1) || '0'}
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    Across {companyDashboard?.summary.totalInspectors || 0} inspectors
-                  </p>
-                </>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card data-testid="card-kpi-reports">
-            <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Reports Submitted</CardTitle>
-              <ClipboardList className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              {statsLoading ? (
-                <Skeleton className="h-8 w-16" />
-              ) : (
-                <>
-                  <div className="text-2xl font-bold" data-testid="text-reports-submitted">
-                    {reportStats?.thisMonth || 0}
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    {reportStats?.total || 0} total reports
-                  </p>
-                </>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card data-testid="card-kpi-active-contracts">
-            <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Active Contracts</CardTitle>
-              <Briefcase className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              {dashboardLoading ? (
-                <Skeleton className="h-8 w-16" />
-              ) : (
-                <>
-                  <div className="text-2xl font-bold" data-testid="text-active-contracts">
-                    {companyDashboard?.summary.activeContracts || 0}
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    {companyDashboard?.summary.upcomingContracts || 0} upcoming
-                  </p>
-                </>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card data-testid="card-kpi-revenue">
-            <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Revenue Billed</CardTitle>
-              <DollarSign className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              {invoiceStatsLoading ? (
-                <Skeleton className="h-8 w-24" />
-              ) : (
-                <>
-                  <div className="text-2xl font-bold text-green-600 dark:text-green-500" data-testid="text-revenue-billed">
-                    {formatCurrency(invoiceStats?.paidAmount || 0)}
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    {formatCurrency(invoiceStats?.outstandingAmount || 0)} outstanding
-                  </p>
-                </>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card data-testid="card-kpi-completion">
-            <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Completion Rate</CardTitle>
-              <TrendingUp className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              {contractsLoading ? (
-                <Skeleton className="h-8 w-16" />
-              ) : (
-                <>
-                  <div className="text-2xl font-bold text-blue-600 dark:text-blue-500" data-testid="text-completion-rate">
-                    {completionRate}%
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    {completedContracts} of {totalContracts} contracts
-                  </p>
-                </>
-              )}
-            </CardContent>
-          </Card>
+        <div className="grid gap-3 md:gap-4 grid-cols-2 md:grid-cols-3 lg:grid-cols-5">
+          <KpiCard
+            testId="card-kpi-hours"
+            label="Hours This Month"
+            icon={Timer}
+            tone="info"
+            loading={dashboardLoading}
+            value={companyDashboard?.summary.hoursThisMonth?.toFixed(1) || '0'}
+            caption={`Across ${companyDashboard?.summary.totalInspectors || 0} inspectors`}
+            valueTestId="text-hours-this-month"
+          />
+          <KpiCard
+            testId="card-kpi-reports"
+            label="Reports Submitted"
+            icon={ClipboardList}
+            tone="neutral"
+            loading={statsLoading}
+            value={reportStats?.thisMonth || 0}
+            caption={`${reportStats?.total || 0} total reports`}
+            valueTestId="text-reports-submitted"
+          />
+          <KpiCard
+            testId="card-kpi-active-contracts"
+            label="Active Contracts"
+            icon={Briefcase}
+            tone="accent"
+            loading={dashboardLoading}
+            value={companyDashboard?.summary.activeContracts || 0}
+            caption={`${companyDashboard?.summary.upcomingContracts || 0} upcoming`}
+            valueTestId="text-active-contracts"
+          />
+          <KpiCard
+            testId="card-kpi-revenue"
+            label="Revenue Billed"
+            icon={DollarSign}
+            tone="success"
+            loading={invoiceStatsLoading}
+            value={formatCurrency(invoiceStats?.paidAmount || 0)}
+            caption={`${formatCurrency(invoiceStats?.outstandingAmount || 0)} outstanding`}
+            valueTestId="text-revenue-billed"
+          />
+          <KpiCard
+            testId="card-kpi-completion"
+            label="Completion Rate"
+            icon={TrendingUp}
+            tone="info"
+            loading={contractsLoading}
+            value={`${completionRate}%`}
+            caption={`${completedContracts} of ${totalContracts} contracts`}
+            valueTestId="text-completion-rate"
+          />
         </div>
 
         {/* Main Dashboard Grid */}
