@@ -403,18 +403,20 @@ export function ProposalDialog({ open, onOpenChange, editingProposal }: Proposal
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <FileText className="h-5 w-5" />
+      <DialogContent className="max-w-5xl max-h-[92vh] p-0 gap-0 overflow-hidden flex flex-col">
+        <DialogHeader className="px-6 pt-6 pb-4 border-b border-border bg-gradient-subtle">
+          <DialogTitle className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-lg bg-accent/12 ring-1 ring-accent/20 flex items-center justify-center">
+              <FileText className="h-[18px] w-[18px] text-accent" />
+            </div>
             {editingProposal ? "Edit Proposal" : "Create Quick Proposal"}
           </DialogTitle>
-          <DialogDescription>
+          <DialogDescription className="pl-[46px]">
             Generate a professional proposal for project inspector services
           </DialogDescription>
         </DialogHeader>
 
-        <div className="grid gap-6 py-4">
+        <div className="grid gap-6 p-6 overflow-y-auto flex-1">
           {/* Contract & Project Linking Section */}
           <Card className="bg-muted/30 border-dashed">
             <CardHeader className="pb-3">
@@ -926,13 +928,14 @@ export function ProposalDialog({ open, onOpenChange, editingProposal }: Proposal
           </div>
         </div>
 
-        <DialogFooter>
+        <DialogFooter className="px-6 py-4 border-t border-border bg-card sticky bottom-0 gap-2">
           <Button variant="outline" onClick={() => onOpenChange(false)} data-testid="button-cancel-proposal">
             Cancel
           </Button>
-          <Button 
-            onClick={handleSubmit} 
+          <Button
+            onClick={handleSubmit}
             disabled={isSubmitting}
+            className="min-w-[140px]"
             data-testid="button-save-proposal"
           >
             {isSubmitting ? "Saving..." : editingProposal ? "Update Proposal" : "Create Proposal"}

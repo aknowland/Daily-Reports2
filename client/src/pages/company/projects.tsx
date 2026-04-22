@@ -802,11 +802,16 @@ export default function CompanyProjectsPage() {
           setBaseHours([]);
         }
       }}>
-        <DialogContent className="max-h-[90vh] max-w-2xl p-0">
-          <div className="flex flex-col max-h-[90vh]">
-          <DialogHeader className="flex-shrink-0 p-6 pb-0">
-            <DialogTitle>{editingProject ? "Edit Project" : "Create Project"}</DialogTitle>
-            <DialogDescription>
+        <DialogContent className="max-h-[92vh] max-w-3xl p-0">
+          <div className="flex flex-col max-h-[92vh]">
+          <DialogHeader className="flex-shrink-0 px-6 pt-6 pb-4 border-b border-border bg-gradient-subtle">
+            <DialogTitle className="flex items-center gap-2.5">
+              <div className="w-9 h-9 rounded-lg bg-accent/12 ring-1 ring-accent/20 flex items-center justify-center">
+                <FolderOpen className="h-[18px] w-[18px] text-accent" />
+              </div>
+              {editingProject ? "Edit Project" : "Create Project"}
+            </DialogTitle>
+            <DialogDescription className="pl-[46px]">
               {editingProject ? "Update project details" : "Add a new project to your company"}
             </DialogDescription>
           </DialogHeader>
