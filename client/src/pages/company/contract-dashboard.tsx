@@ -14,6 +14,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
 import { useLocation, useParams, Link } from "wouter";
 import { IorAgreementDialog } from "@/components/ior-agreement-dialog";
+import { ContractStatusLegend } from "@/components/contract-status-legend";
 import { SummaryReportDropdown, ReportType, ReportParams } from "@/components/summary-report-dropdown";
 import { ClientSelect } from "@/components/client-select";
 import { PurchaseOrderSelect } from "@/components/purchase-order-select";
@@ -1031,6 +1032,7 @@ export default function ContractDashboard() {
           })()} data-testid="badge-contract-status">
             {dashboard.contract.status.replace(/_/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())}
           </Badge>
+          <ContractStatusLegend />
         </div>
 
         <div className="grid gap-6 md:grid-cols-2">

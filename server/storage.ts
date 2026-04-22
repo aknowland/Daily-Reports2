@@ -48,6 +48,8 @@ import {
   type InspectorDocument, type InsertInspectorDocument,
   inspectorAnnouncements, announcementReads,
   type InspectorAnnouncement, type InsertAnnouncement,
+  adminNotifications,
+  type AdminNotification, type InsertAdminNotification,
 } from "@shared/schema";
 import { users, type User } from "@shared/models/auth";
 import { db } from "./db";
@@ -399,6 +401,22 @@ export interface IStorage {
   getUnreadAnnouncementCount(userId: string, companyIds: string[]): Promise<number>;
   markAnnouncementRead(announcementId: string, userId: string): Promise<void>;
   isAnnouncementRead(announcementId: string, userId: string): Promise<boolean>;
+
+  // Timesheets
+  getTimesheets(companyId: string): Promise<(Timesheet & { projectName?: string; inspectorName?: string })[]>;
+  getTimesheetsByInspectorAndProject(inspectorId: string, projectId: string): Promise<Timesheet[]>;
+  getTimesheet(id: string): Promise<Timesheet | undefined>;
+  updateTimesheetStatus(id: string, status: string): Promise<Timesheet | undefined>;
+  upsertTimesheet(data: InsertTimesheet): Promise<Timesheet>;
+
+  // Admin Notifications
+  getCompanyAdminUserIds(companyId: string): Promise<string[]>;
+  createAdminNotification(data: InsertAdminNotification): Promise<AdminNotification>;
+  getAdminNotifications(userId: string, companyId: string): Promise<AdminNotification[]>;
+  getAdminNotification(id: string): Promise<AdminNotification | undefined>;
+  markAdminNotificationRead(id: string, userId: string): Promise<void>;
+  markAllAdminNotificationsRead(userId: string, companyId: string): Promise<void>;
+  getAdminNotificationUnreadCount(userId: string, companyId: string): Promise<number>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -2905,6 +2923,158 @@ export class DatabaseStorage implements IStorage {
       .from(announcementReads)
       .where(and(eq(announcementReads.announcementId, announcementId), eq(announcementReads.userId, userId)));
     return !!row;
+  }
+
+  async getTimesheets(companyId: string): Promise<(Timesheet & { projectName?: string; inspectorName?: string })[]> {
+    const rows = await db
+      .select({
+        timesheet: timesheets,
+        projectName: projects.name,
+        inspectorFirstName: userProfiles.firstName,
+        inspectorLastName: userProfiles.lastName,
+      })
+      .from(timesheets)
+      .leftJoin(projects, eq(timesheets.projectId, projects.id))
+      .leftJoin(userProfiles, eq(timesheets.inspectorId, userProfiles.userId))
+      .where(eq(timesheets.companyId, companyId))
+      .orderBy(desc(timesheets.createdAt));
+
+    return rows.map(({ timesheet, projectName, inspectorFirstName, inspectorLastName }) => ({
+      ...timesheet,
+      projectName: projectName ?? undefined,
+      inspectorName: inspectorFirstName && inspectorLastName
+        ? `${inspectorFirstName} ${inspectorLastName}`
+        : inspectorFirstName ?? inspectorLastName ?? undefined,
+    }));
+  }
+
+  async getTimesheetsByInspectorAndProject(inspectorId: string, projectId: string): Promise<Timesheet[]> {
+    return db
+      .select()
+      .from(timesheets)
+      .where(and(eq(timesheets.inspectorId, inspectorId), eq(timesheets.projectId, projectId)))
+      .orderBy(desc(timesheets.year), desc(timesheets.month));
+  }
+
+  async getTimesheet(id: string): Promise<Timesheet | undefined> {
+    const [row] = await db.select().from(timesheets).where(eq(timesheets.id, id));
+    return row;
+  }
+
+  async updateTimesheetStatus(id: string, status: string, adminNote?: string): Promise<Timesheet | undefined> {
+    const [row] = await db
+      .update(timesheets)
+      .set({ status: status as "draft" | "submitted" | "approved", adminNote: adminNote ?? null, updatedAt: new Date() })
+      .where(eq(timesheets.id, id))
+      .returning();
+    return row;
+  }
+
+  async upsertTimesheet(data: InsertTimesheet): Promise<Timesheet> {
+    const [row] = await db
+      .insert(timesheets)
+      .values(data)
+      .onConflictDoUpdate({
+        target: [timesheets.projectId, timesheets.inspectorId, timesheets.month, timesheets.year],
+        set: {
+          totalRegularHours: data.totalRegularHours,
+          totalOvertimeHours: data.totalOvertimeHours,
+          totalPremiumHours: data.totalPremiumHours,
+          period1RegularHours: data.period1RegularHours,
+          period1OvertimeHours: data.period1OvertimeHours,
+          period1PremiumHours: data.period1PremiumHours,
+          period2RegularHours: data.period2RegularHours,
+          period2OvertimeHours: data.period2OvertimeHours,
+          period2PremiumHours: data.period2PremiumHours,
+          // Explicitly preserve the existing status so that regenerating a PDF
+          // never resets an approved (or otherwise reviewed) timesheet back to
+          // "submitted". New rows still receive the status supplied in data.
+          status: sql`${timesheets.status}`,
+          updatedAt: new Date(),
+        },
+      })
+      .returning();
+    return row;
+  }
+
+  // Admin Notifications
+  async getCompanyAdminUserIds(companyId: string): Promise<string[]> {
+    const adminMembers = await db
+      .select({ userId: companyMembers.userId })
+      .from(companyMembers)
+      .where(
+        and(
+          eq(companyMembers.companyId, companyId),
+          or(
+            eq(companyMembers.role, 'admin'),
+            eq(companyMembers.role, 'owner')
+          )
+        )
+      );
+    return adminMembers.map(m => m.userId);
+  }
+
+  async createAdminNotification(data: InsertAdminNotification): Promise<AdminNotification> {
+    const [row] = await db.insert(adminNotifications).values(data).returning();
+    return row;
+  }
+
+  async getAdminNotifications(userId: string, companyId: string): Promise<AdminNotification[]> {
+    return db
+      .select()
+      .from(adminNotifications)
+      .where(
+        and(
+          eq(adminNotifications.recipientUserId, userId),
+          eq(adminNotifications.companyId, companyId)
+        )
+      )
+      .orderBy(desc(adminNotifications.createdAt))
+      .limit(50);
+  }
+
+  async getAdminNotification(id: string): Promise<AdminNotification | undefined> {
+    const [row] = await db.select().from(adminNotifications).where(eq(adminNotifications.id, id));
+    return row;
+  }
+
+  async markAdminNotificationRead(id: string, userId: string): Promise<void> {
+    await db
+      .update(adminNotifications)
+      .set({ isRead: true })
+      .where(
+        and(
+          eq(adminNotifications.id, id),
+          eq(adminNotifications.recipientUserId, userId)
+        )
+      );
+  }
+
+  async markAllAdminNotificationsRead(userId: string, companyId: string): Promise<void> {
+    await db
+      .update(adminNotifications)
+      .set({ isRead: true })
+      .where(
+        and(
+          eq(adminNotifications.recipientUserId, userId),
+          eq(adminNotifications.companyId, companyId),
+          eq(adminNotifications.isRead, false)
+        )
+      );
+  }
+
+  async getAdminNotificationUnreadCount(userId: string, companyId: string): Promise<number> {
+    const [result] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(adminNotifications)
+      .where(
+        and(
+          eq(adminNotifications.recipientUserId, userId),
+          eq(adminNotifications.companyId, companyId),
+          eq(adminNotifications.isRead, false)
+        )
+      );
+    return result?.count ?? 0;
   }
 }
 

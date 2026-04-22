@@ -2342,6 +2342,7 @@ export default function ContractsPage() {
                   Contract Calendar
                 </CardTitle>
                 <div className="flex items-center gap-2">
+                  <ContractStatusLegend />
                   <Button 
                     variant="outline" 
                     size="icon"

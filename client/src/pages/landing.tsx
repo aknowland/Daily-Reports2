@@ -10,7 +10,9 @@ import {
   Shield,
   CheckCircle,
   ArrowRight,
-  ClipboardList
+  ClipboardList,
+  Pause,
+  Lock
 } from "lucide-react";
 
 const CARD_STATES = [
@@ -56,18 +58,38 @@ export default function LandingPage() {
   const [cardStateIndex, setCardStateIndex] = useState(0);
   const [visible, setVisible] = useState(true);
   const [entered, setEntered] = useState(false);
+  const [paused, setPaused] = useState(false);
+  const [lockedPause, setLockedPause] = useState(false);
   const innerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pausedRef = useRef(false);
+  const lockedPauseRef = useRef(false);
+  const hoveredRef = useRef(false);
   const reducedMotion = typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const featuresRef = useRef<HTMLDivElement>(null);
+  const [featuresVisible, setFeaturesVisible] = useState(false);
 
   useEffect(() => {
-    if (reducedMotion) { setEntered(true); return; }
+    if (reducedMotion) { setEntered(true); setFeaturesVisible(true); return; }
     const enterTimer = setTimeout(() => setEntered(true), 80);
     return () => clearTimeout(enterTimer);
   }, [reducedMotion]);
 
   useEffect(() => {
     if (reducedMotion) return;
+    const el = featuresRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => { if (entry.isIntersecting) { setFeaturesVisible(true); observer.disconnect(); } },
+      { threshold: 0.1 }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [reducedMotion]);
+
+  useEffect(() => {
+    if (reducedMotion) return;
     const cycle = setInterval(() => {
+      if (pausedRef.current) return;
       setVisible(false);
       innerTimerRef.current = setTimeout(() => {
         setCardStateIndex((i) => (i + 1) % CARD_STATES.length);
@@ -128,9 +150,18 @@ export default function LandingPage() {
         .hero-text-enter {
           animation: fadeUp 0.60s cubic-bezier(0.22, 1, 0.36, 1) forwards;
         }
+        .feature-card-hidden {
+          opacity: 0;
+          transform: translateY(24px);
+        }
+        .feature-card-enter {
+          animation: fadeUp 0.55s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+        }
         @media (prefers-reduced-motion: reduce) {
           .hero-card-enter { animation: none; opacity: 1; }
           .hero-text-enter { animation: none; opacity: 1; }
+          .feature-card-hidden { opacity: 1; transform: none; }
+          .feature-card-enter { animation: none; opacity: 1; }
         }
       `}</style>
 
@@ -233,14 +264,92 @@ export default function LandingPage() {
 
                 <div
                   className={`relative w-full max-w-sm rounded-2xl p-6 hover:-translate-y-0.5 transition-transform duration-300 ${entered ? "hero-card-enter" : "opacity-0"}`}
+                  data-testid="hero-preview-card"
+                  tabIndex={0}
                   style={{
                     background: "rgba(255,255,255,0.06)",
                     backdropFilter: "blur(12px)",
-                    border: "1px solid rgba(255,255,255,0.12)",
-                    boxShadow: "0 24px 48px -8px rgba(0,0,0,0.45), 0 0 0 1px rgba(255,255,255,0.08)",
+                    border: paused ? "1px solid rgba(255,255,255,0.30)" : "1px solid rgba(255,255,255,0.12)",
+                    boxShadow: paused
+                      ? "0 24px 48px -8px rgba(0,0,0,0.45), 0 0 0 2px rgba(255,255,255,0.18)"
+                      : "0 24px 48px -8px rgba(0,0,0,0.45), 0 0 0 1px rgba(255,255,255,0.08)",
+                    transition: "border 0.2s ease, box-shadow 0.2s ease",
+                    cursor: "pointer",
                   }}
-                  data-testid="hero-preview-card"
+                  onClick={() => {
+                    const next = !lockedPauseRef.current;
+                    lockedPauseRef.current = next;
+                    setLockedPause(next);
+                    const shouldPause = next || hoveredRef.current;
+                    pausedRef.current = shouldPause;
+                    setPaused(shouldPause);
+                    if (next) {
+                      if (innerTimerRef.current) {
+                        clearTimeout(innerTimerRef.current);
+                        innerTimerRef.current = null;
+                        setVisible(true);
+                      }
+                    }
+                  }}
+                  onMouseEnter={() => {
+                    hoveredRef.current = true;
+                    pausedRef.current = true;
+                    setPaused(true);
+                    if (innerTimerRef.current) {
+                      clearTimeout(innerTimerRef.current);
+                      innerTimerRef.current = null;
+                      setVisible(true);
+                    }
+                  }}
+                  onMouseLeave={() => {
+                    hoveredRef.current = false;
+                    if (!lockedPauseRef.current) {
+                      pausedRef.current = false;
+                      setPaused(false);
+                    }
+                  }}
+                  onFocus={() => { pausedRef.current = true; setPaused(true); }}
+                  onBlur={() => {
+                    if (!lockedPauseRef.current && !hoveredRef.current) {
+                      pausedRef.current = false;
+                      setPaused(false);
+                    }
+                  }}
                 >
+                  <div
+                    data-testid="pause-indicator"
+                    style={{
+                      position: "absolute",
+                      top: "10px",
+                      right: "10px",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "4px",
+                      padding: "3px 8px",
+                      borderRadius: "9999px",
+                      background: lockedPause ? "rgba(250,204,21,0.18)" : "rgba(255,255,255,0.12)",
+                      border: lockedPause ? "1px solid rgba(250,204,21,0.40)" : "1px solid rgba(255,255,255,0.22)",
+                      backdropFilter: "blur(8px)",
+                      opacity: paused ? 1 : 0,
+                      visibility: paused ? "visible" : "hidden",
+                      transform: paused ? "scale(1)" : "scale(0.85)",
+                      transition: "opacity 0.2s ease, transform 0.2s ease, background 0.2s ease, border 0.2s ease",
+                      pointerEvents: "none",
+                    }}
+                  >
+                    {lockedPause
+                      ? <Lock className="w-3 h-3" style={{ color: "rgba(250,204,21,0.85)" }} />
+                      : <Pause className="w-3 h-3" style={{ color: "rgba(255,255,255,0.70)" }} />
+                    }
+                    <span style={{
+                      fontSize: "11px",
+                      color: lockedPause ? "rgba(250,204,21,0.80)" : "rgba(255,255,255,0.60)",
+                      fontWeight: 500,
+                      letterSpacing: "0.02em",
+                    }}>
+                      {lockedPause ? "Locked" : "Paused"}
+                    </span>
+                  </div>
                   <div
                     className="space-y-4"
                     style={{
@@ -341,13 +450,16 @@ export default function LandingPage() {
               </p>
             </div>
 
-            <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3" ref={featuresRef}>
               {features.map((feature, index) => (
                 <Card
                   key={index}
-                  className="hover-elevate transition-all hover:shadow-lg border-border/60 bg-card group"
+                  className={`hover-elevate transition-all hover:shadow-lg border-border/60 bg-card group ${featuresVisible ? "feature-card-enter" : "feature-card-hidden"}`}
                   data-testid={`card-feature-${index}`}
-                  style={{ boxShadow: "var(--shadow-sm)" }}
+                  style={{
+                    boxShadow: "var(--shadow-sm)",
+                    animationDelay: featuresVisible ? `${index * 80}ms` : undefined,
+                  }}
                 >
                   <CardContent className="p-6 space-y-4">
                     <div className="w-11 h-11 rounded-xl bg-primary/10 flex items-center justify-center text-primary group-hover:bg-primary/15 transition-colors">

@@ -11190,6 +11190,108 @@ export async function registerRoutes(
     }
   });
 
+  // ========== TIMESHEET RECORDS ==========
+
+  // GET /api/timesheets/my - list the current inspector's own timesheets for a project
+  app.get("/api/timesheets/my", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const { projectId } = req.query;
+      if (!projectId || typeof projectId !== "string") {
+        return res.status(400).json({ message: "projectId is required" });
+      }
+      const records = await storage.getTimesheetsByInspectorAndProject(userId, projectId);
+      res.json(records);
+    } catch (error: any) {
+      console.error("Error fetching inspector timesheets:", error);
+      res.status(500).json({ message: "Failed to fetch timesheets" });
+    }
+  });
+
+  // GET /api/timesheets - list all timesheet records for the active company
+  app.get("/api/timesheets", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      const companyId = profile?.activeCompanyId;
+      if (!companyId) {
+        return res.status(400).json({ message: "No active company" });
+      }
+      if (!isEffectiveSystemAdmin(profile) && !await isEffectiveCompanyAdmin(userId, companyId, profile)) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      const records = await storage.getTimesheets(companyId);
+      res.json(records);
+    } catch (error: any) {
+      console.error("Error fetching timesheets:", error);
+      res.status(500).json({ message: "Failed to fetch timesheets" });
+    }
+  });
+
+  // PATCH /api/timesheets/:id - update timesheet status (approve/reject back to draft)
+  // Admins can set any status; the owning inspector can only move draft -> submitted
+  app.patch("/api/timesheets/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      const { status, adminNote } = req.body;
+
+      if (!status || !["draft", "submitted", "approved"].includes(status)) {
+        return res.status(400).json({ message: "Invalid status" });
+      }
+
+      const timesheet = await storage.getTimesheet(req.params.id);
+      if (!timesheet) {
+        return res.status(404).json({ message: "Timesheet not found" });
+      }
+
+      const isAdmin = isEffectiveSystemAdmin(profile) ||
+        await isEffectiveCompanyAdmin(userId, timesheet.companyId, profile);
+      const isOwner = timesheet.inspectorId === userId;
+
+      if (!isAdmin && !isOwner) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      // Inspectors can only submit their own draft timesheets; admins can set any status
+      if (!isAdmin && isOwner) {
+        if (timesheet.status !== "draft" || status !== "submitted") {
+          return res.status(403).json({ message: "Inspectors can only submit their own draft timesheets" });
+        }
+      }
+
+      const noteToSave = isAdmin && status === "draft" ? (adminNote ?? null) : null;
+      const updated = await storage.updateTimesheetStatus(req.params.id, status, noteToSave ?? undefined);
+
+      // Notify all company admins when an inspector submits a timesheet for review
+      if (!isAdmin && isOwner && status === "submitted") {
+        try {
+          const adminUserIds = await storage.getCompanyAdminUserIds(timesheet.companyId);
+          const inspectorName = profile
+            ? `${profile.firstName ?? ""} ${profile.lastName ?? ""}`.trim() || "An inspector"
+            : "An inspector";
+          for (const adminId of adminUserIds) {
+            await storage.createAdminNotification({
+              recipientUserId: adminId,
+              companyId: timesheet.companyId,
+              title: "Timesheet Submitted for Review",
+              message: `${inspectorName} has submitted a timesheet for review.`,
+              link: "/company/billing-management",
+              isRead: false,
+            });
+          }
+        } catch (notifError) {
+          console.error("Error creating admin notifications for timesheet submission:", notifError);
+        }
+      }
+
+      res.json(updated);
+    } catch (error: any) {
+      console.error("Error updating timesheet:", error);
+      res.status(500).json({ message: "Failed to update timesheet" });
+    }
+  });
+
   // ========== BILLING & TIMESHEETS ==========
 
   // Generate timesheet PDF for a project/month
@@ -11281,7 +11383,52 @@ export async function registerRoutes(
 
       // Generate PDF
       const pdfBuffer = await generateTimesheetPdf(timesheetData);
-      
+
+      // Compute totals from timesheetData to persist the record
+      if (project.companyId) {
+        let totalReg = 0, totalOT = 0, totalPrm = 0;
+        let p1Reg = 0, p1OT = 0, p1Prm = 0;
+        let p2Reg = 0, p2OT = 0, p2Prm = 0;
+        for (const proj of timesheetData.projects) {
+          for (const [dayStr, hrs] of Object.entries(proj.dailyHours)) {
+            const day = parseInt(dayStr, 10);
+            totalReg += hrs.reg;
+            totalOT += hrs.ot;
+            totalPrm += hrs.prm;
+            if (day <= 15) {
+              p1Reg += hrs.reg;
+              p1OT += hrs.ot;
+              p1Prm += hrs.prm;
+            } else {
+              p2Reg += hrs.reg;
+              p2OT += hrs.ot;
+              p2Prm += hrs.prm;
+            }
+          }
+        }
+        try {
+          await storage.upsertTimesheet({
+            companyId: project.companyId,
+            projectId,
+            inspectorId: targetInspectorId,
+            month: parseInt(String(month), 10),
+            year: parseInt(String(year), 10),
+            status: "submitted",
+            totalRegularHours: String(totalReg),
+            totalOvertimeHours: String(totalOT),
+            totalPremiumHours: String(totalPrm),
+            period1RegularHours: String(p1Reg),
+            period1OvertimeHours: String(p1OT),
+            period1PremiumHours: String(p1Prm),
+            period2RegularHours: String(p2Reg),
+            period2OvertimeHours: String(p2OT),
+            period2PremiumHours: String(p2Prm),
+          });
+        } catch (upsertErr) {
+          console.error("Error upserting timesheet record:", upsertErr);
+        }
+      }
+
       const monthName = format(startDate, 'MMMM-yyyy');
       const filename = `Timesheet_${project.name || project.projectNumber}_${monthName}.pdf`;
       
@@ -11350,6 +11497,57 @@ export async function registerRoutes(
       }
 
       const pdfBuffer = await generateTimesheetPdf(timesheetData);
+
+      // Upsert a timesheet record for each project included in the PDF
+      for (const project of allProjects) {
+        if (!project.companyId) continue;
+        const projectReports = allReports.filter(r => r.projectId === project.id);
+        const projectTimesheetData = aggregateReportsToTimesheetData(
+          projectReports, [project], contracts, company, inspectorProfile, month, year
+        );
+        let totalReg = 0, totalOT = 0, totalPrm = 0;
+        let p1Reg = 0, p1OT = 0, p1Prm = 0;
+        let p2Reg = 0, p2OT = 0, p2Prm = 0;
+        for (const proj of projectTimesheetData.projects) {
+          for (const [dayStr, hrs] of Object.entries(proj.dailyHours as Record<string, { reg: number; ot: number; prm: number }>)) {
+            const day = parseInt(dayStr, 10);
+            totalReg += hrs.reg;
+            totalOT += hrs.ot;
+            totalPrm += hrs.prm;
+            if (day <= 15) {
+              p1Reg += hrs.reg;
+              p1OT += hrs.ot;
+              p1Prm += hrs.prm;
+            } else {
+              p2Reg += hrs.reg;
+              p2OT += hrs.ot;
+              p2Prm += hrs.prm;
+            }
+          }
+        }
+        try {
+          await storage.upsertTimesheet({
+            companyId: project.companyId,
+            projectId: project.id,
+            inspectorId: userId,
+            month: parseInt(String(month), 10),
+            year: parseInt(String(year), 10),
+            status: "submitted",
+            totalRegularHours: String(totalReg),
+            totalOvertimeHours: String(totalOT),
+            totalPremiumHours: String(totalPrm),
+            period1RegularHours: String(p1Reg),
+            period1OvertimeHours: String(p1OT),
+            period1PremiumHours: String(p1Prm),
+            period2RegularHours: String(p2Reg),
+            period2OvertimeHours: String(p2OT),
+            period2PremiumHours: String(p2Prm),
+          });
+        } catch (upsertErr) {
+          console.error(`Error upserting timesheet record for project ${project.id}:`, upsertErr);
+        }
+      }
+
       const startDate = new Date(year, month - 1, 1);
       const monthName = format(startDate, 'MMMM-yyyy');
       const filename = `Timesheet_MultiProject_${monthName}.pdf`;
@@ -20019,6 +20217,85 @@ Return ONLY a valid JSON object with the fields above. No explanation, no markdo
     } catch (error: any) {
       console.error("Error marking announcement read:", error);
       res.status(500).json({ message: "Failed to mark as read" });
+    }
+  });
+
+  // ========== ADMIN NOTIFICATIONS ==========
+
+  // GET /api/admin-notifications - get in-app notifications for current company admin
+  app.get("/api/admin-notifications", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      const companyId = req.query.companyId as string;
+      if (!companyId) return res.status(400).json({ message: "companyId required" });
+      const isAdmin = isEffectiveSystemAdmin(profile) ||
+        await isEffectiveCompanyAdmin(userId, companyId, profile);
+      if (!isAdmin) return res.status(403).json({ message: "Access denied" });
+      const notifications = await storage.getAdminNotifications(userId, companyId);
+      res.json(notifications);
+    } catch (error: any) {
+      console.error("Error fetching admin notifications:", error);
+      res.status(500).json({ message: "Failed to fetch notifications" });
+    }
+  });
+
+  // GET /api/admin-notifications/unread-count - unread badge count
+  app.get("/api/admin-notifications/unread-count", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      const companyId = req.query.companyId as string;
+      if (!companyId) return res.json({ count: 0 });
+      const isAdmin = isEffectiveSystemAdmin(profile) ||
+        await isEffectiveCompanyAdmin(userId, companyId, profile);
+      if (!isAdmin) return res.json({ count: 0 });
+      const count = await storage.getAdminNotificationUnreadCount(userId, companyId);
+      res.json({ count });
+    } catch (error: any) {
+      console.error("Error fetching admin notification count:", error);
+      res.json({ count: 0 });
+    }
+  });
+
+  // PATCH /api/admin-notifications/:id/read - mark a single notification read
+  // Only the recipient admin may mark their own notification read
+  app.patch("/api/admin-notifications/:id/read", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      const notif = await storage.getAdminNotification(req.params.id);
+      if (!notif) return res.status(404).json({ message: "Notification not found" });
+      if (notif.recipientUserId !== userId) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      // Also verify caller is still an effective admin for that company
+      const isAdmin = isEffectiveSystemAdmin(profile) ||
+        await isEffectiveCompanyAdmin(userId, notif.companyId, profile);
+      if (!isAdmin) return res.status(403).json({ message: "Access denied" });
+      await storage.markAdminNotificationRead(req.params.id, userId);
+      res.json({ ok: true });
+    } catch (error: any) {
+      console.error("Error marking admin notification read:", error);
+      res.status(500).json({ message: "Failed to mark notification as read" });
+    }
+  });
+
+  // POST /api/admin-notifications/read-all - mark all notifications read for current user/company
+  app.post("/api/admin-notifications/read-all", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      const { companyId } = req.body;
+      if (!companyId) return res.status(400).json({ message: "companyId required" });
+      const isAdmin = isEffectiveSystemAdmin(profile) ||
+        await isEffectiveCompanyAdmin(userId, companyId, profile);
+      if (!isAdmin) return res.status(403).json({ message: "Access denied" });
+      await storage.markAllAdminNotificationsRead(userId, companyId);
+      res.json({ ok: true });
+    } catch (error: any) {
+      console.error("Error marking all admin notifications read:", error);
+      res.status(500).json({ message: "Failed to mark notifications as read" });
     }
   });
 

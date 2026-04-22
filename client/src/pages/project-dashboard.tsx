@@ -492,6 +492,41 @@ export default function ProjectDashboardPage() {
     enabled: !!id,
   });
 
+  // Fetch inspector's own timesheets for this project
+  const { data: myTimesheets = [], refetch: refetchMyTimesheets } = useQuery<{
+    id: string;
+    month: number;
+    year: number;
+    status: string;
+    totalRegularHours: string | null;
+    totalOvertimeHours: string | null;
+    totalPremiumHours: string | null;
+  }[]>({
+    queryKey: ['/api/timesheets/my', id],
+    queryFn: async () => {
+      const res = await fetch(`/api/timesheets/my?projectId=${id}`, { credentials: 'include' });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!id,
+  });
+
+  // Mutation to submit a timesheet for review
+  const submitTimesheetMutation = useMutation({
+    mutationFn: async (timesheetId: string) => {
+      const res = await apiRequest('PATCH', `/api/timesheets/${timesheetId}`, { status: 'submitted' });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/timesheets/my', id] });
+      refetchMyTimesheets();
+      toast({ title: "Timesheet Submitted", description: "Your timesheet has been submitted for admin review." });
+    },
+    onError: (err: any) => {
+      toast({ title: "Submission Failed", description: err.message || "Please try again.", variant: "destructive" });
+    },
+  });
+
   // Add comment mutation
   const addCommentMutation = useMutation({
     mutationFn: async (data: { content: string; mentions: string[] }) => {
@@ -1454,6 +1489,72 @@ export default function ProjectDashboardPage() {
                 </div>
               </CardContent>
             </Card>
+
+            {myTimesheets.length > 0 && (
+              <Card data-testid="card-my-timesheets">
+                <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">My Timesheets</CardTitle>
+                  <ClipboardList className="w-4 h-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-2">
+                    {myTimesheets.map((ts) => {
+                      const monthLabel = months.find(m => m.value === String(ts.month))?.label ?? String(ts.month);
+                      const totalHours = (
+                        parseFloat(ts.totalRegularHours || '0') +
+                        parseFloat(ts.totalOvertimeHours || '0') +
+                        parseFloat(ts.totalPremiumHours || '0')
+                      ).toFixed(1);
+                      return (
+                        <div
+                          key={ts.id}
+                          className="p-2 bg-muted rounded text-sm"
+                          data-testid={`row-timesheet-${ts.id}`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <div className="font-medium">{monthLabel} {ts.year}</div>
+                              <div className="text-xs text-muted-foreground">{totalHours} hrs</div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Badge
+                                variant={ts.status === 'approved' ? 'success' : ts.status === 'submitted' ? 'warning' : 'secondary'}
+                                className="capitalize text-xs"
+                                data-testid={`status-timesheet-${ts.id}`}
+                              >
+                                {ts.status}
+                              </Badge>
+                              {ts.status === 'draft' && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-7 text-xs"
+                                  disabled={submitTimesheetMutation.isPending}
+                                  onClick={() => submitTimesheetMutation.mutate(ts.id)}
+                                  data-testid={`button-submit-timesheet-${ts.id}`}
+                                >
+                                  <Send className="w-3 h-3 mr-1" />
+                                  Submit for Review
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                          {ts.status === 'draft' && ts.adminNote && (
+                            <div
+                              className="mt-1.5 text-xs bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded px-2 py-1"
+                              data-testid={`note-timesheet-${ts.id}`}
+                            >
+                              <span className="font-medium text-amber-700 dark:text-amber-400">Admin note: </span>
+                              <span className="text-amber-800 dark:text-amber-300">{ts.adminNote}</span>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
 
             {upcomingMilestones.length > 0 && (
               <Card data-testid="card-milestones">

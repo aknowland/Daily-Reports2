@@ -643,9 +643,12 @@ export const timesheets = pgTable("timesheets", {
   estPercentComplete: varchar("est_percent_complete"),
   estCompletionDate: timestamp("est_completion_date"),
   remarks: text("remarks"),
+  adminNote: text("admin_note"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => [
+  unique("timesheets_project_inspector_month_year_unique").on(table.projectId, table.inspectorId, table.month, table.year),
+]);
 
 // Invoice status enum
 export const invoiceStatusEnum = pgEnum("invoice_status", ["draft", "sent", "paid", "overdue", "cancelled"]);
@@ -1542,3 +1545,21 @@ export const insertAnnouncementSchema = createInsertSchema(inspectorAnnouncement
 });
 export type InspectorAnnouncement = typeof inspectorAnnouncements.$inferSelect;
 export type InsertAnnouncement = z.infer<typeof insertAnnouncementSchema>;
+
+// ─── Admin Notifications ─────────────────────────────────────────────────────
+// General-purpose in-app notifications for company admins (e.g. timesheet submitted)
+
+export const adminNotifications = pgTable("admin_notifications", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  recipientUserId: varchar("recipient_user_id").notNull(),
+  companyId: varchar("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
+  title: text("title").notNull(),
+  message: text("message").notNull(),
+  link: text("link").notNull(),
+  isRead: boolean("is_read").default(false).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertAdminNotificationSchema = createInsertSchema(adminNotifications).omit({ id: true, createdAt: true });
+export type AdminNotification = typeof adminNotifications.$inferSelect;
+export type InsertAdminNotification = z.infer<typeof insertAdminNotificationSchema>;

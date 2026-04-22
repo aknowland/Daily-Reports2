@@ -64,20 +64,24 @@
   --font-sans: 'Inter', 'Source Sans Pro', system-ui, sans-serif;
   --font-serif: Georgia, serif;
   --font-mono: 'Roboto Mono', Menlo, monospace;
-
-  /* Border radius — updated for modern SaaS feel */
-  --radius: .5rem;
-
-  /* Shadows: layered, natural depth */
-  --shadow-2xs: 0px 1px 2px 0px hsl(220 40% 10% / 0.04);
-  --shadow-xs:  0px 1px 3px 0px hsl(220 40% 10% / 0.07);
-  --shadow-sm:  0px 1px 4px 0px hsl(220 40% 10% / 0.09), 0px 1px 2px -1px hsl(220 40% 10% / 0.05);
-  --shadow:     0px 2px 6px -1px hsl(220 40% 10% / 0.10), 0px 1px 3px -1px hsl(220 40% 10% / 0.06);
-  --shadow-md:  0px 4px 10px -2px hsl(220 40% 10% / 0.11), 0px 2px 4px -2px hsl(220 40% 10% / 0.06);
-  --shadow-lg:  0px 8px 20px -4px hsl(220 40% 10% / 0.12), 0px 4px 8px -4px hsl(220 40% 10% / 0.06);
-  --shadow-xl:  0px 14px 30px -6px hsl(220 40% 10% / 0.14), 0px 6px 12px -6px hsl(220 40% 10% / 0.07);
-  --shadow-2xl: 0px 24px 48px -8px hsl(220 40% 10% / 0.18);
-
+  --radius: 0.625rem;
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --ease-out-quint: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --motion-fast: 120ms;
+  --motion-base: 180ms;
+  --motion-slow: 260ms;
+  --shadow-2xs: 0px 1px 0px 0px hsl(216 28% 12% / 0.04);
+  --shadow-xs: 0px 1px 1px 0px hsl(216 28% 12% / 0.06);
+  --shadow-sm: 0px 1px 2px 0px hsl(216 28% 12% / 0.06), 0px 1px 1px -1px hsl(216 28% 12% / 0.04);
+  --shadow: 0px 1px 3px 0px hsl(216 28% 12% / 0.08), 0px 1px 2px -1px hsl(216 28% 12% / 0.06);
+  --shadow-md: 0px 2px 4px 0px hsl(216 28% 12% / 0.08), 0px 1px 3px -1px hsl(216 28% 12% / 0.06);
+  --shadow-lg: 0px 4px 8px 0px hsl(216 28% 12% / 0.10), 0px 2px 4px -1px hsl(216 28% 12% / 0.06);
+  --shadow-xl: 0px 8px 16px 0px hsl(216 28% 12% / 0.10), 0px 4px 6px -1px hsl(216 28% 12% / 0.06);
+  --shadow-2xl: 0px 12px 24px 0px hsl(216 28% 12% / 0.14);
   --tracking-normal: 0em;
   --spacing: 0.25rem;
 
@@ -193,10 +197,77 @@
     @apply border-border;
   }
 
+  html {
+    -webkit-text-size-adjust: 100%;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+
   body {
     @apply font-sans antialiased bg-background text-foreground;
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
+    font-synthesis-weight: none;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Refined focus ring — visible but not shouty */
+  :focus-visible {
+    outline: 2px solid hsl(var(--ring) / 0.6);
+    outline-offset: 2px;
+    border-radius: var(--radius-sm);
+    transition: outline-offset var(--motion-fast) var(--ease-out-quint);
+  }
+
+  /* Custom scrollbar — thin, themed, unobtrusive */
+  @supports (scrollbar-width: thin) {
+    * {
+      scrollbar-width: thin;
+      scrollbar-color: hsl(var(--muted-foreground) / 0.25) transparent;
+    }
+  }
+
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  *::-webkit-scrollbar-thumb {
+    background-color: hsl(var(--muted-foreground) / 0.22);
+    border-radius: 9999px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+    transition: background-color var(--motion-base) var(--ease-out-quint);
+  }
+  *::-webkit-scrollbar-thumb:hover {
+    background-color: hsl(var(--muted-foreground) / 0.42);
+    background-clip: content-box;
+  }
+
+  /* Selection */
+  ::selection {
+    background-color: hsl(var(--accent) / 0.3);
+    color: hsl(var(--foreground));
+  }
+
+  /* Smoother transitions on interactive primitives by default */
+  button, a, [role="button"] {
+    transition-property: background-color, color, border-color, box-shadow, transform, opacity;
+    transition-duration: var(--motion-base);
+    transition-timing-function: var(--ease-out-quint);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    letter-spacing: -0.02em;
+    font-weight: 600;
   }
 
   /* Tighter, bolder heading hierarchy */
@@ -213,47 +284,81 @@
   tbody td { @apply px-3 py-2 text-sm; }
 }
 
-/* ── Sidebar active-item accent bar ─────────────────────────────────────── */
-[data-sidebar="menu-button"][data-active="true"] {
-  position: relative;
-}
-[data-sidebar="menu-button"][data-active="true"]::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 4px;
-  bottom: 4px;
-  width: 3px;
-  border-radius: 0 2px 2px 0;
-  background-color: hsl(var(--sidebar-primary));
-}
+@layer utilities {
+  /* Shimmer animation for skeletons */
+  @keyframes shimmer {
+    0% { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
+  }
+  .shimmer {
+    background: linear-gradient(
+      90deg,
+      hsl(var(--muted)) 0%,
+      hsl(var(--muted-foreground) / 0.08) 50%,
+      hsl(var(--muted)) 100%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 1.6s var(--ease-out-quint) infinite;
+  }
 
-/* ── Primary button: subtle top-light gradient for depth ─────────────────── */
-[data-slot="button"][class*="bg-primary"]:not(:disabled),
-button[class*="bg-primary"]:not(:disabled) {
-  background-image: linear-gradient(180deg, rgba(255,255,255,0.08) 0%, transparent 60%);
-  transition: box-shadow 0.15s ease, opacity 0.15s ease, transform 0.1s ease;
-  box-shadow: 0 1px 3px -1px hsl(var(--primary) / 0.5), 0 1px 2px -1px hsl(var(--primary) / 0.3);
-}
-[data-slot="button"][class*="bg-primary"]:active:not(:disabled),
-button[class*="bg-primary"]:active:not(:disabled) {
-  transform: translateY(0.5px);
-  box-shadow: 0 0 0 1px hsl(var(--primary) / 0.2);
-}
+  /* Subtle lift on interactive surfaces */
+  .lift-on-hover {
+    transition: transform var(--motion-base) var(--ease-out-quint),
+                box-shadow var(--motion-base) var(--ease-out-quint);
+  }
+  .lift-on-hover:hover {
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-md);
+  }
 
-/* ── Smooth transitions on all interactive elements ─────────────────────── */
-button, a, input, select, textarea, [role="button"] {
-  transition-property: color, background-color, border-color, box-shadow, opacity;
-  transition-duration: 0.12s;
-  transition-timing-function: ease;
-}
+  /* Fade-in for content as it loads */
+  @keyframes fade-in-up {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .animate-fade-in-up {
+    animation: fade-in-up var(--motion-slow) var(--ease-out-quint) both;
+  }
 
-/* ── Card: crisp border, clear separation from page background ───────────── */
-.card, [data-slot="card"] {
-  box-shadow: var(--shadow-sm);
-}
+  /* Glassy top surface — for sticky headers */
+  .surface-glass {
+    backdrop-filter: saturate(180%) blur(12px);
+    -webkit-backdrop-filter: saturate(180%) blur(12px);
+  }
 
-/* ── Government-style section labels (kept for compat) ───────────────────── */
+  /* ── Sidebar active-item accent bar ─────────────────────────────────────── */
+  [data-sidebar="menu-button"][data-active="true"] {
+    position: relative;
+  }
+  [data-sidebar="menu-button"][data-active="true"]::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 4px;
+    bottom: 4px;
+    width: 3px;
+    border-radius: 0 2px 2px 0;
+    background-color: hsl(var(--sidebar-primary));
+  }
+
+  /* ── Primary button: subtle top-light gradient for depth ─────────────────── */
+  [data-slot="button"][class*="bg-primary"]:not(:disabled),
+  button[class*="bg-primary"]:not(:disabled) {
+    background-image: linear-gradient(180deg, rgba(255,255,255,0.08) 0%, transparent 60%);
+    transition: box-shadow 0.15s ease, opacity 0.15s ease, transform 0.1s ease;
+    box-shadow: 0 1px 3px -1px hsl(var(--primary) / 0.5), 0 1px 2px -1px hsl(var(--primary) / 0.3);
+  }
+  [data-slot="button"][class*="bg-primary"]:active:not(:disabled),
+  button[class*="bg-primary"]:active:not(:disabled) {
+    transform: translateY(0.5px);
+    box-shadow: 0 0 0 1px hsl(var(--primary) / 0.2);
+  }
+
+  /* ── Card: crisp border, clear separation from page background ───────────── */
+  .card, [data-slot="card"] {
+    box-shadow: var(--shadow-sm);
+  }
+}
 @layer utilities {
   .gov-section-label {
     @apply text-xs font-bold uppercase tracking-widest text-muted-foreground mb-1;
