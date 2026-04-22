@@ -8,6 +8,23 @@ export * from "./models/auth";
 export * from "./models/chat";
 import { users, type User } from "./models/auth";
 
+// Certification entry type — used by both user_profiles and team_inspectors
+export type CertEntry = {
+  name: string;
+  expiresAt: string | null;  // ISO date string "YYYY-MM-DD" or null
+  certNumber?: string;
+};
+
+// Helper: normalize raw certifications JSON (handles legacy plain-string entries)
+export function normalizeCerts(raw: unknown): CertEntry[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.map((item) => {
+    if (typeof item === "string") return { name: item, expiresAt: null };
+    if (item && typeof item === "object" && "name" in item) return item as CertEntry;
+    return { name: String(item), expiresAt: null };
+  });
+}
+
 // Enums
 export const userRoleEnum = pgEnum("user_role", ["inspector", "admin", "owner", "system_owner"]);
 export const weatherTypeEnum = pgEnum("weather_type", ["clear", "cloudy", "rain", "wind", "heat", "cold"]);
@@ -107,7 +124,7 @@ export const teamInspectors = pgTable("team_inspectors", {
   county: varchar("county"),
   licenseNumber: varchar("license_number"),
   licenseState: varchar("license_state"),
-  certifications: json("certifications").$type<string[]>().default([]),
+  certifications: json("certifications").$type<CertEntry[]>().default([]),
   // Work history - links to projects they've worked on
   projectHistory: json("project_history").$type<{projectId: string; projectName: string; role?: string; startDate?: string; endDate?: string}[]>().default([]),
   // Additional profile info
@@ -143,7 +160,7 @@ export const userProfiles = pgTable("user_profiles", {
   title: varchar("title"),
   licenseNumber: varchar("license_number"),
   licenseState: varchar("license_state"),
-  certifications: json("certifications").$type<string[]>().default([]),
+  certifications: json("certifications").$type<CertEntry[]>().default([]),
   profilePhotoPath: varchar("profile_photo_path"),
   bio: text("bio"),
   education: json("education").$type<{degree: string; school: string; status?: string}[]>().default([]),
@@ -166,6 +183,8 @@ export const userProfiles = pgTable("user_profiles", {
   preferAdminMode: boolean("prefer_admin_mode").default(true),
   // Theme preference (light/dark)
   themePreference: varchar("theme_preference").default("light"),
+  // Inspector availability date (used in workload dashboard)
+  availabilityDate: varchar("availability_date"), // ISO date string "YYYY-MM-DD"
 });
 
 // Projects table
@@ -192,6 +211,7 @@ export const projects = pgTable("projects", {
   inheritBillingRates: boolean("inherit_billing_rates").default(true), // true = inherit from contract option, false = use project-specific rates
   scopeOfWork: text("scope_of_work"),
   projectValue: text("project_value"),
+  dsaFileNo: varchar("dsa_file_no"), // DSA File Number for school/state projects
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -249,9 +269,26 @@ export const manpowerRowSchema = z.object({
 
 // Work Activity row type - combines trade/contractor, manpower, and work description
 export const workActivityRowSchema = z.object({
+  trade: z.string().optional(), // Trade name (e.g., "Iron Workers", "Electricians")
   contractor: z.string(), // Subcontractor name or "GC" for general contractor
   headcount: z.number().min(0),
   workDescription: z.string(),
+});
+
+// Equipment row type for structured equipment tracking
+export const equipmentRowSchema = z.object({
+  equipment: z.string(),
+  hours: z.string().optional(),
+  status: z.string().optional(), // ACTIVE, STANDBY, IDLE
+  usage: z.string().optional(),
+});
+
+// Material row type for structured material delivery tracking
+export const materialRowSchema = z.object({
+  material: z.string(),
+  quantity: z.string().optional(),
+  status: z.string().optional(), // DELIVERED, DELAYED, ORDERED
+  supplierNotes: z.string().optional(),
 });
 
 // Visitor row type
@@ -277,12 +314,25 @@ export const dailyReports = pgTable("daily_reports", {
   workActivities: json("work_activities").$type<z.infer<typeof workActivityRowSchema>[]>().default([]),
   visitors: json("visitors").$type<z.infer<typeof visitorRowSchema>[]>().default([]),
   equipment: text("equipment"),
+  equipmentRows: json("equipment_rows").$type<z.infer<typeof equipmentRowSchema>[]>().default([]),
   inspections: text("inspections"),
   materialsDelivered: text("materials_delivered"),
+  materialRows: json("material_rows").$type<z.infer<typeof materialRowSchema>[]>().default([]),
   issuesFlag: boolean("issues_flag").default(false),
   issuesDetails: text("issues_details"),
   safetyFlag: boolean("safety_flag").default(false),
   safetyDetails: text("safety_details"),
+  // Structured safety fields
+  safetyIncidents: integer("safety_incidents").default(0),
+  safetyNearMisses: integer("safety_near_misses").default(0),
+  safetyAttendees: integer("safety_attendees"),
+  safetySiteConditions: text("safety_site_conditions"),
+  toolboxTalkTopic: text("toolbox_talk_topic"),
+  // Split weather conditions
+  weatherAM: text("weather_am"),
+  weatherPM: text("weather_pm"),
+  precipitation: text("precipitation"),
+  siteConditions: text("site_conditions"),
   notes: text("notes"),
   // Time tracking fields
   timeIn: varchar("time_in"), // Format: "HH:MM" (24-hour)
@@ -357,6 +407,7 @@ export const invites = pgTable("invites", {
   inviteCode: varchar("invite_code", { length: 8 }).unique(),
   isClientPortal: boolean("is_client_portal").default(false),
   clientId: varchar("client_id"),
+  allProjectsAccess: boolean("all_projects_access").default(false),
   expiresAt: timestamp("expires_at").notNull(),
   createdAt: timestamp("created_at").defaultNow(),
   acceptedAt: timestamp("accepted_at"),
@@ -454,6 +505,9 @@ export const contracts = pgTable("contracts", {
   agency: text("agency"),
   serviceType: text("service_type"),
   questionDeadline: timestamp("question_deadline"),
+  hasJobWalk: boolean("has_job_walk").default(false),
+  jobWalkDateTime: timestamp("job_walk_date_time"),
+  dsaClass: varchar("dsa_class"), // "1" | "2" | "3" | "non_dsa"
   addendumCount: integer("addendum_count").default(0),
   lastAddendumDate: timestamp("last_addendum_date"),
   assignedToUserId: varchar("assigned_to_user_id").references(() => users.id, { onDelete: "set null" }),
@@ -547,6 +601,20 @@ export const projectBudgetNotifications = pgTable("project_budget_notifications"
   unique().on(table.projectId, table.milestonePercent),
 ]);
 
+// Cert expiry notifications — deduplication table to avoid re-sending the same alert
+export const certExpiryNotifications = pgTable("cert_expiry_notifications", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").references(() => companies.id, { onDelete: "cascade" }).notNull(),
+  inspectorId: varchar("inspector_id").notNull(),       // user ID or team inspector ID
+  inspectorType: varchar("inspector_type").notNull(),   // "user" or "team"
+  certName: varchar("cert_name").notNull(),
+  expiresAt: varchar("expires_at").notNull(),           // ISO date string "YYYY-MM-DD" — full precision
+  windowDays: integer("window_days").notNull(),          // 60, 30, 7, 0
+  sentAt: timestamp("sent_at").defaultNow().notNull(),
+}, (table) => [
+  unique().on(table.inspectorId, table.inspectorType, table.certName, table.expiresAt, table.windowDays),
+]);
+
 // Timesheet status enum
 export const timesheetStatusEnum = pgEnum("timesheet_status", ["draft", "submitted", "approved"]);
 
@@ -575,9 +643,12 @@ export const timesheets = pgTable("timesheets", {
   estPercentComplete: varchar("est_percent_complete"),
   estCompletionDate: timestamp("est_completion_date"),
   remarks: text("remarks"),
+  adminNote: text("admin_note"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => [
+  unique("timesheets_project_inspector_month_year_unique").on(table.projectId, table.inspectorId, table.month, table.year),
+]);
 
 // Invoice status enum
 export const invoiceStatusEnum = pgEnum("invoice_status", ["draft", "sent", "paid", "overdue", "cancelled"]);
@@ -635,6 +706,7 @@ export const clientPortalUsers = pgTable("client_portal_users", {
   companyId: varchar("company_id").references(() => companies.id, { onDelete: "cascade" }).notNull(),
   clientId: varchar("client_id").references(() => clients.id, { onDelete: "set null" }),
   isActive: boolean("is_active").default(true).notNull(),
+  allProjectsAccess: boolean("all_projects_access").default(false).notNull(),
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => [
   unique().on(table.userId, table.companyId),
@@ -849,6 +921,7 @@ export const updateUserProfileSchema = createInsertSchema(userProfiles)
     contractorAddress: true,
     contractorPhone: true,
     contractorEmail: true,
+    availabilityDate: true,
   })
   .partial();
 
@@ -873,6 +946,7 @@ export const insertContractOptionInspectorSchema = createInsertSchema(contractOp
 export const insertContractNotificationSchema = createInsertSchema(contractNotifications).omit({ id: true, sentAt: true });
 export const insertBudgetNotificationSchema = createInsertSchema(budgetNotifications).omit({ id: true, sentAt: true });
 export const insertProjectBudgetNotificationSchema = createInsertSchema(projectBudgetNotifications).omit({ id: true, sentAt: true });
+export const insertCertExpiryNotificationSchema = createInsertSchema(certExpiryNotifications).omit({ id: true, sentAt: true });
 export const insertTimesheetSchema = createInsertSchema(timesheets).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertInvoiceSchema = createInsertSchema(invoices).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertMonthlyReportBundleSchema = createInsertSchema(monthlyReportBundles).omit({ id: true, createdAt: true });
@@ -930,6 +1004,8 @@ export type BudgetNotification = typeof budgetNotifications.$inferSelect;
 export type InsertBudgetNotification = z.infer<typeof insertBudgetNotificationSchema>;
 export type ProjectBudgetNotification = typeof projectBudgetNotifications.$inferSelect;
 export type InsertProjectBudgetNotification = z.infer<typeof insertProjectBudgetNotificationSchema>;
+export type CertExpiryNotification = typeof certExpiryNotifications.$inferSelect;
+export type InsertCertExpiryNotification = z.infer<typeof insertCertExpiryNotificationSchema>;
 export type Timesheet = typeof timesheets.$inferSelect;
 export type InsertTimesheet = z.infer<typeof insertTimesheetSchema>;
 export type Invoice = typeof invoices.$inferSelect;
@@ -982,6 +1058,8 @@ export type InvoiceWithDetails = Invoice & {
 export type TradeRow = z.infer<typeof tradeRowSchema>;
 export type ManpowerRow = z.infer<typeof manpowerRowSchema>;
 export type WorkActivityRow = z.infer<typeof workActivityRowSchema>;
+export type EquipmentRow = z.infer<typeof equipmentRowSchema>;
+export type MaterialRow = z.infer<typeof materialRowSchema>;
 export type VisitorRow = z.infer<typeof visitorRowSchema>;
 
 export type DailyReportWithDetails = DailyReport & {
@@ -1402,3 +1480,86 @@ export const insertInspectorCandidateNoteSchema = createInsertSchema(inspectorCa
 export type InspectorCandidateNote = typeof inspectorCandidateNotes.$inferSelect;
 export type InsertInspectorCandidateNote = z.infer<typeof insertInspectorCandidateNoteSchema>;
 
+// Inspector Document Vault
+export const INSPECTOR_DOCUMENT_TYPES = [
+  "W9",
+  "Insurance Certificate",
+  "Background Check",
+  "Signed IOR",
+  "Certification Copy",
+  "Other",
+] as const;
+export type InspectorDocumentType = typeof INSPECTOR_DOCUMENT_TYPES[number];
+
+export const inspectorDocumentTypeEnum = pgEnum("inspector_document_type", INSPECTOR_DOCUMENT_TYPES);
+
+export const inspectorDocuments = pgTable("inspector_documents", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull(),
+  inspectorId: varchar("inspector_id").notNull(),
+  documentType: inspectorDocumentTypeEnum("document_type").notNull(),
+  fileName: varchar("file_name").notNull(),
+  fileUrl: varchar("file_url").notNull(),
+  uploadedAt: timestamp("uploaded_at").defaultNow(),
+  uploadedById: varchar("uploaded_by_id").notNull(),
+});
+
+export const insertInspectorDocumentSchema = createInsertSchema(inspectorDocuments).omit({ id: true, uploadedAt: true });
+export type InspectorDocument = typeof inspectorDocuments.$inferSelect;
+export type InsertInspectorDocument = z.infer<typeof insertInspectorDocumentSchema>;
+
+
+// ─── Inspector Broadcast Announcements ──────────────────────────────────────
+
+export type AnnouncementRecipientFilter =
+  | { type: "all" }
+  | { type: "project"; projectId: string; projectName?: string }
+  | { type: "dsa_class"; dsaClass: 1 | 2 | 3 }
+  | { type: "specific_users"; userIds: string[] };
+
+export const inspectorAnnouncements = pgTable("inspector_announcements", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
+  sentById: varchar("sent_by_id").notNull(),
+  title: text("title").notNull(),
+  body: text("body").notNull(),
+  recipientFilter: json("recipient_filter").$type<AnnouncementRecipientFilter>().default({ type: "all" }),
+  recipientUserIds: json("recipient_user_ids").$type<string[]>().default([]),
+  recipientCount: integer("recipient_count").default(0),
+  emailSent: boolean("email_sent").default(false),
+  sentAt: timestamp("sent_at").defaultNow(),
+});
+
+export const announcementReads = pgTable("announcement_reads", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  announcementId: varchar("announcement_id").notNull().references(() => inspectorAnnouncements.id, { onDelete: "cascade" }),
+  userId: varchar("user_id").notNull(),
+  readAt: timestamp("read_at").defaultNow(),
+}, (table) => [
+  unique().on(table.announcementId, table.userId),
+]);
+
+export const insertAnnouncementSchema = createInsertSchema(inspectorAnnouncements).omit({
+  id: true,
+  sentAt: true,
+});
+export type InspectorAnnouncement = typeof inspectorAnnouncements.$inferSelect;
+export type InsertAnnouncement = z.infer<typeof insertAnnouncementSchema>;
+
+// ─── Admin Notifications ─────────────────────────────────────────────────────
+// General-purpose in-app notifications for company admins (e.g. timesheet submitted)
+
+export const adminNotifications = pgTable("admin_notifications", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  recipientUserId: varchar("recipient_user_id").notNull(),
+  companyId: varchar("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
+  title: text("title").notNull(),
+  message: text("message").notNull(),
+  link: text("link").notNull(),
+  isRead: boolean("is_read").default(false).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertAdminNotificationSchema = createInsertSchema(adminNotifications).omit({ id: true, createdAt: true });
+export type AdminNotification = typeof adminNotifications.$inferSelect;
+export type InsertAdminNotification = z.infer<typeof insertAdminNotificationSchema>;

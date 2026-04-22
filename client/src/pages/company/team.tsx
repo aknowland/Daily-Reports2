@@ -49,6 +49,7 @@ import {
   Users,
   ArrowLeft,
   AlertCircle,
+  AlertTriangle,
   Mail,
   Shield,
   Trash2,
@@ -69,11 +70,21 @@ import {
   FileDown,
   Upload,
   Pencil,
+  BarChart2,
+  ArrowUpDown,
+  ShieldAlert,
+  Columns2,
+  Calendar,
+  Briefcase,
+  Clock,
+  DollarSign,
+  Award,
 } from "lucide-react";
 import { Link } from "wouter";
-import { useState, useMemo, useEffect, useRef } from "react";
+import { useState, useMemo, useEffect, useRef, type ReactNode } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import type { CompanyMember, User, Project, Invite, JoinRequest, IorAgreement, IorAgreementWithDetails, TeamInspector } from "@shared/schema";
+import type { CompanyMember, User, Project, Invite, JoinRequest, IorAgreement, IorAgreementWithDetails, TeamInspector, CertEntry, InspectorDocument } from "@shared/schema";
+import { normalizeCerts, INSPECTOR_DOCUMENT_TYPES } from "@shared/schema";
 
 const KNOWLAND_COMPANY_NAME = "Knowland Construction Services";
 
@@ -111,6 +122,8 @@ export default function CompanyTeamPage() {
   const resumeInputRef = useRef<HTMLInputElement>(null);
   const [editingMemberName, setEditingMemberName] = useState<{userId: string; firstName: string; lastName: string} | null>(null);
   const [recruitingPrefill, setRecruitingPrefill] = useState<TeamInspector | null>(null);
+  const [compareSelected, setCompareSelected] = useState<Set<string>>(new Set());
+  const [showCompareModal, setShowCompareModal] = useState(false);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -128,7 +141,7 @@ export default function CompanyTeamPage() {
         licenseState: "CA",
         email: "",
         title: "DSA Certified Inspector",
-        certifications: ["DSA Certified"] as string[],
+        certifications: [{ name: "DSA Certified", expiresAt: null }] as CertEntry[],
         notes: "Recruited from DSA registry.",
         bio: "",
         profilePhotoUrl: "",
@@ -179,6 +192,110 @@ export default function CompanyTeamPage() {
 
   const { data: teamInspectors = [], isLoading: isTeamInspectorsLoading } = useQuery<TeamInspector[]>({
     queryKey: ["/api/companies", activeCompany?.id, "team-inspectors"],
+    enabled: !!activeCompany?.id && isEffectiveCompanyAdmin,
+  });
+
+  // Inspector workload data (current month hours + project breakdown)
+  const { data: workloadData = [], isLoading: isWorkloadLoading } = useQuery<Array<{
+    inspectorId: string;
+    name: string;
+    title: string | null;
+    email: string | null;
+    role: string;
+    availabilityDate: string | null;
+    activeProjectCount: number;
+    totalHoursThisMonth: number;
+    utilizationPct: number;
+    projects: Array<{ projectId: string; projectName: string; hoursThisMonth: number }>;
+  }>>({
+    queryKey: ["/api/company/inspector-workload", activeCompany?.id],
+    queryFn: async () => {
+      const res = await fetch("/api/company/inspector-workload", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load workload data");
+      return res.json();
+    },
+    enabled: !!activeCompany?.id && isEffectiveCompanyAdmin,
+  });
+
+  const [expandedInspectorIds, setExpandedInspectorIds] = useState<Set<string>>(new Set());
+  const [workloadSearchQuery, setWorkloadSearchQuery] = useState("");
+
+  // Performance scorecard state
+  const [performanceDays, setPerformanceDays] = useState(90);
+  const [performanceSortKey, setPerformanceSortKey] = useState<"totalReports" | "submissionRate" | "avgDailyHours" | "safetyIncidents" | "distinctProjects">("totalReports");
+  const [performanceSortDir, setPerformanceSortDir] = useState<"asc" | "desc">("desc");
+  const [expandedPerformanceIds, setExpandedPerformanceIds] = useState<Set<string>>(new Set());
+  const [performanceSearchQuery, setPerformanceSearchQuery] = useState("");
+
+  type PerformanceRow = {
+    inspectorId: string;
+    name: string;
+    title: string | null;
+    email: string | null;
+    totalReports: number;
+    totalHours: number;
+    avgDailyHours: number;
+    safetyIncidents: number;
+    safetyNearMisses: number;
+    safetyFlagCount: number;
+    distinctProjects: number;
+    submissionRate: number;
+    reportsByMonth: Array<{ month: string; reportCount: number }>;
+  };
+
+  const { data: performanceData = [], isLoading: isPerformanceLoading } = useQuery<PerformanceRow[]>({
+    queryKey: ["/api/company/inspector-performance", activeCompany?.id, performanceDays],
+    queryFn: async () => {
+      const res = await fetch(`/api/company/inspector-performance?days=${performanceDays}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load performance data");
+      return res.json();
+    },
+    enabled: !!activeCompany?.id && isEffectiveCompanyAdmin,
+  });
+
+  const filteredPerformance = useMemo(() => {
+    let data = [...performanceData];
+    if (performanceSearchQuery.trim()) {
+      const q = performanceSearchQuery.toLowerCase();
+      data = data.filter(i =>
+        i.name.toLowerCase().includes(q) ||
+        (i.title || "").toLowerCase().includes(q) ||
+        (i.email || "").toLowerCase().includes(q)
+      );
+    }
+    data.sort((a, b) => {
+      const aVal = a[performanceSortKey];
+      const bVal = b[performanceSortKey];
+      return performanceSortDir === "desc" ? (bVal as number) - (aVal as number) : (aVal as number) - (bVal as number);
+    });
+    return data;
+  }, [performanceData, performanceSearchQuery, performanceSortKey, performanceSortDir]);
+
+  function togglePerformanceSort(key: typeof performanceSortKey) {
+    if (performanceSortKey === key) {
+      setPerformanceSortDir(d => d === "desc" ? "asc" : "desc");
+    } else {
+      setPerformanceSortKey(key);
+      setPerformanceSortDir("desc");
+    }
+  }
+
+  const filteredWorkload = useMemo(() => {
+    if (!workloadSearchQuery.trim()) return workloadData;
+    const q = workloadSearchQuery.toLowerCase();
+    return workloadData.filter(i =>
+      i.name.toLowerCase().includes(q) ||
+      (i.title || "").toLowerCase().includes(q) ||
+      (i.email || "").toLowerCase().includes(q)
+    );
+  }, [workloadData, workloadSearchQuery]);
+
+  // Cert expiry data covers BOTH user inspectors and team inspectors
+  const { data: certExpiryData = [] } = useQuery<Array<{
+    id: string; name: string; type: "user" | "team";
+    certifications: Array<{ name: string; expiresAt: string | null; certNumber?: string; daysUntilExpiry: number | null }>;
+  }>>({
+    queryKey: ["/api/cert-expiry"],
     enabled: !!activeCompany?.id && isEffectiveCompanyAdmin,
   });
 
@@ -491,7 +608,7 @@ export default function CompanyTeamPage() {
       title?: string;
       licenseNumber?: string;
       licenseState?: string;
-      certifications?: string[];
+      certifications?: CertEntry[];
       notes?: string;
     }) => {
       return apiRequest("POST", `/api/companies/${activeCompany?.id}/team-inspectors`, data);
@@ -864,6 +981,30 @@ export default function CompanyTeamPage() {
           </Dialog>
         </PageHeader>
 
+        {/* Compare bar — shown above tabs when any inspectors selected */}
+        {isEffectiveCompanyAdmin && compareSelected.size >= 2 && (
+          <div className="flex items-center justify-between gap-3 p-3 mb-4 border rounded bg-muted/40" data-testid="compare-bar">
+            <span className="text-sm font-medium">{compareSelected.size} inspector{compareSelected.size > 1 ? "s" : ""} selected for comparison</span>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCompareSelected(new Set())}
+                data-testid="button-clear-compare"
+              >
+                <X className="w-3 h-3 mr-1" /> Clear
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => setShowCompareModal(true)}
+                data-testid="button-open-compare-modal"
+              >
+                <Columns2 className="w-4 h-4 mr-1" /> Compare Selected
+              </Button>
+            </div>
+          </div>
+        )}
+
         <Tabs defaultValue="members" className="w-full">
           <TabsList className="mb-4">
             <TabsTrigger value="members" className="flex items-center gap-2" data-testid="tab-members">
@@ -895,6 +1036,14 @@ export default function CompanyTeamPage() {
               <Badge variant="secondary" className="ml-1 no-default-hover-elevate no-default-active-elevate">
                 {teamInspectors.length}
               </Badge>
+            </TabsTrigger>
+            <TabsTrigger value="workload" className="flex items-center gap-2" data-testid="tab-workload">
+              <ClipboardList className="w-4 h-4" />
+              Workload
+            </TabsTrigger>
+            <TabsTrigger value="performance" className="flex items-center gap-2" data-testid="tab-performance">
+              <BarChart2 className="w-4 h-4" />
+              Performance
             </TabsTrigger>
           </TabsList>
 
@@ -944,11 +1093,33 @@ export default function CompanyTeamPage() {
                     : member.user?.email || "Unknown User";
                   const isExpanded = expandedMembers.has(member.id);
 
+                  const isInspectorRole = member.role === "inspector";
+                  const isCompareChecked = compareSelected.has(member.userId);
+                  const canAddToCompare = isCompareChecked || compareSelected.size < 3;
+
                   return (
                     <Card key={member.id} data-testid={`card-member-${member.id}`}>
                       <CardContent className="p-4">
                         <div className="flex items-center justify-between gap-4">
                           <div className="flex items-center gap-2 flex-1 min-w-0">
+                            {isEffectiveCompanyAdmin && isInspectorRole && (
+                              <Checkbox
+                                checked={isCompareChecked}
+                                onCheckedChange={(checked) => {
+                                  const next = new Set(compareSelected);
+                                  if (checked && canAddToCompare) {
+                                    next.add(member.userId);
+                                  } else {
+                                    next.delete(member.userId);
+                                  }
+                                  setCompareSelected(next);
+                                }}
+                                disabled={!canAddToCompare}
+                                className="shrink-0"
+                                data-testid={`checkbox-compare-${member.userId}`}
+                                title={!canAddToCompare ? "Max 3 inspectors" : "Select for comparison"}
+                              />
+                            )}
                             <Button
                               variant="ghost"
                               size="icon"
@@ -1062,10 +1233,15 @@ export default function CompanyTeamPage() {
                           </div>
                         </div>
                         {isExpanded && (
-                          <MemberProjectsList 
-                            member={member} 
-                            projects={projects} 
-                          />
+                          <>
+                            <MemberProjectsList 
+                              member={member} 
+                              projects={projects} 
+                            />
+                            {isEffectiveCompanyAdmin && (
+                              <MemberDocumentVault member={member} />
+                            )}
+                          </>
                         )}
                       </CardContent>
                     </Card>
@@ -1345,6 +1521,47 @@ export default function CompanyTeamPage() {
           </TabsContent>
 
           <TabsContent value="team-inspectors" className="space-y-4">
+            {/* Certifications expiring soon — inline summary (both user inspectors and team inspectors) */}
+            {(() => {
+              const expiring: Array<{ inspectorName: string; certName: string; daysUntil: number; expiresAt: string }> = [];
+              for (const insp of certExpiryData) {
+                for (const cert of insp.certifications) {
+                  if (!cert.expiresAt || cert.daysUntilExpiry === null) continue;
+                  if (cert.daysUntilExpiry <= 60) expiring.push({ inspectorName: insp.name, certName: cert.name, daysUntil: cert.daysUntilExpiry, expiresAt: cert.expiresAt });
+                }
+              }
+              if (expiring.length === 0) return null;
+              expiring.sort((a, b) => a.daysUntil - b.daysUntil);
+              return (
+                <div className="rounded border border-amber-300 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-700 p-3" data-testid="cert-expiry-summary">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-amber-800 dark:text-amber-300">
+                      <AlertTriangle className="w-4 h-4" />
+                      {expiring.length} certification{expiring.length !== 1 ? "s" : ""} expiring within 60 days
+                    </div>
+                    <Link href="/company/cert-expiry" className="text-xs text-amber-700 dark:text-amber-400 underline underline-offset-2" data-testid="link-cert-tracker">
+                      View all →
+                    </Link>
+                  </div>
+                  <div className="space-y-1">
+                    {expiring.slice(0, 5).map((e, i) => (
+                      <div key={i} className="flex items-center justify-between text-xs text-amber-800 dark:text-amber-300" data-testid={`cert-expiry-item-${i}`}>
+                        <span><strong>{e.inspectorName}</strong> — {e.certName}</span>
+                        <Badge
+                          variant="outline"
+                          className={`text-[10px] ${e.daysUntil <= 0 ? "border-red-500 text-red-600" : e.daysUntil <= 7 ? "border-red-400 text-red-600" : "border-amber-500 text-amber-700 dark:text-amber-400"}`}
+                        >
+                          {e.daysUntil <= 0 ? "EXPIRED" : `${e.daysUntil}d`}
+                        </Badge>
+                      </div>
+                    ))}
+                    {expiring.length > 5 && (
+                      <p className="text-xs text-amber-700 dark:text-amber-400">+ {expiring.length - 5} more</p>
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
             <div className="flex justify-between items-center gap-4 mb-4">
               {teamInspectors.length > 0 && (
                 <div className="relative flex-1">
@@ -1395,11 +1612,28 @@ export default function CompanyTeamPage() {
               </Card>
             ) : (
               <div className="grid gap-4">
-                {filteredTeamInspectors.map((inspector) => (
+                {filteredTeamInspectors.map((inspector) => {
+                  const tiKey = `ti:${inspector.id}`;
+                  const tiChecked = compareSelected.has(tiKey);
+                  const tiCanAdd = tiChecked || compareSelected.size < 3;
+                  return (
                   <Card key={inspector.id} className="hover-elevate" data-testid={`card-team-inspector-${inspector.id}`}>
                     <CardContent className="p-4">
                       <div className="flex items-start justify-between gap-4">
-                        <div className="flex-1 min-w-0">
+                        <div className="flex items-start gap-2 flex-1 min-w-0">
+                          <Checkbox
+                            checked={tiChecked}
+                            onCheckedChange={(checked) => {
+                              const next = new Set(compareSelected);
+                              if (checked && tiCanAdd) { next.add(tiKey); } else { next.delete(tiKey); }
+                              setCompareSelected(next);
+                            }}
+                            disabled={!tiCanAdd}
+                            className="mt-1 shrink-0"
+                            data-testid={`checkbox-compare-ti-${inspector.id}`}
+                            title={!tiCanAdd ? "Max 3 inspectors" : "Select for comparison"}
+                          />
+                          <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
                             <h3 className="font-medium">
                               {inspector.firstName} {inspector.lastName}
@@ -1429,16 +1663,33 @@ export default function CompanyTeamPage() {
                           </div>
                           {inspector.certifications && inspector.certifications.length > 0 && (
                             <div className="flex flex-wrap gap-1 mt-2">
-                              {inspector.certifications.map((cert, idx) => (
-                                <Badge key={idx} variant="outline" className="text-xs no-default-hover-elevate no-default-active-elevate">
-                                  {cert}
-                                </Badge>
-                              ))}
+                              {normalizeCerts(inspector.certifications).map((cert, idx) => {
+                                const daysUntil = cert.expiresAt
+                                  ? Math.ceil((new Date(cert.expiresAt).getTime() - Date.now()) / 86400000)
+                                  : null;
+                                const isExpired = daysUntil !== null && daysUntil <= 0;
+                                const isExpiringSoon = daysUntil !== null && daysUntil > 0 && daysUntil <= 60;
+                                const isValid = daysUntil !== null && daysUntil > 60;
+                                return (
+                                  <Badge
+                                    key={idx}
+                                    variant={isExpired ? "destructive" : "outline"}
+                                    className={`text-xs no-default-hover-elevate no-default-active-elevate ${
+                                      isExpiringSoon ? "border-amber-500 text-amber-700 dark:text-amber-400" :
+                                      isValid ? "border-green-500 text-green-700 dark:text-green-400" : ""
+                                    }`}
+                                  >
+                                    {cert.name}
+                                    {cert.expiresAt && ` · ${isExpired ? "EXP" : isExpiringSoon ? "⚠" : ""} ${cert.expiresAt}`}
+                                  </Badge>
+                                );
+                              })}
                             </div>
                           )}
                           {inspector.notes && (
                             <p className="text-sm text-muted-foreground mt-2 line-clamp-2">{inspector.notes}</p>
                           )}
+                        </div>
                         </div>
                         <div className="flex items-center gap-1">
                           <Button
@@ -1486,7 +1737,262 @@ export default function CompanyTeamPage() {
                       </div>
                     </CardContent>
                   </Card>
-                ))}
+                  );
+                })}
+              </div>
+            )}
+          </TabsContent>
+
+          {/* ─── Workload Tab ─────────────────────────────────────────────────────── */}
+          <TabsContent value="workload" className="space-y-4">
+            <div className="flex items-center justify-between gap-4 mb-2">
+              <p className="text-sm text-muted-foreground">
+                Current month hours for all team members. Standard month = 160 hrs.
+              </p>
+              <div className="relative w-64">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search inspectors..."
+                  value={workloadSearchQuery}
+                  onChange={e => setWorkloadSearchQuery(e.target.value)}
+                  className="pl-9"
+                  data-testid="input-workload-search"
+                />
+              </div>
+            </div>
+
+            {isWorkloadLoading ? (
+              <div className="space-y-2">
+                {[1,2,3].map(i => <Skeleton key={i} className="h-14 w-full" />)}
+              </div>
+            ) : filteredWorkload.length === 0 ? (
+              <div className="text-center py-12 text-muted-foreground text-sm" data-testid="workload-empty">
+                No inspectors found.
+              </div>
+            ) : (
+              <div className="border rounded overflow-hidden">
+                {/* Header row */}
+                <div className="grid grid-cols-[2fr_1fr_1fr_2fr_1fr] gap-2 px-4 py-2 bg-muted/50 border-b text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  <span>Inspector</span>
+                  <span className="text-center">Projects</span>
+                  <span className="text-center">Hrs / Mo</span>
+                  <span>Utilization</span>
+                  <span className="text-center">Available</span>
+                </div>
+                {filteredWorkload.map(inspector => {
+                  const isExpanded = expandedInspectorIds.has(inspector.inspectorId);
+                  const pct = inspector.utilizationPct;
+                  const barColor = pct >= 90 ? "bg-red-500" : pct >= 70 ? "bg-amber-500" : "bg-green-500";
+                  return (
+                    <div key={inspector.inspectorId} data-testid={`workload-row-${inspector.inspectorId}`}>
+                      <button
+                        type="button"
+                        className="w-full grid grid-cols-[2fr_1fr_1fr_2fr_1fr] gap-2 px-4 py-3 text-left hover:bg-muted/30 transition-colors border-b last:border-b-0 items-center"
+                        onClick={() => {
+                          const next = new Set(expandedInspectorIds);
+                          if (next.has(inspector.inspectorId)) next.delete(inspector.inspectorId);
+                          else next.add(inspector.inspectorId);
+                          setExpandedInspectorIds(next);
+                        }}
+                        data-testid={`button-expand-workload-${inspector.inspectorId}`}
+                      >
+                        <div className="flex items-center gap-2">
+                          {isExpanded ? <ChevronDown className="w-4 h-4 text-muted-foreground flex-shrink-0" /> : <ChevronRight className="w-4 h-4 text-muted-foreground flex-shrink-0" />}
+                          <div>
+                            <p className="font-medium text-sm" data-testid={`workload-name-${inspector.inspectorId}`}>{inspector.name}</p>
+                            {inspector.title && <p className="text-xs text-muted-foreground">{inspector.title}</p>}
+                          </div>
+                        </div>
+                        <div className="text-center">
+                          <span className="text-sm font-medium" data-testid={`workload-projects-${inspector.inspectorId}`}>{inspector.activeProjectCount}</span>
+                        </div>
+                        <div className="text-center">
+                          <span className="text-sm font-semibold" data-testid={`workload-hours-${inspector.inspectorId}`}>{inspector.totalHoursThisMonth.toFixed(1)}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
+                            <div
+                              className={`h-full rounded-full ${barColor}`}
+                              style={{ width: `${pct}%` }}
+                              data-testid={`workload-bar-${inspector.inspectorId}`}
+                            />
+                          </div>
+                          <span className="text-xs text-muted-foreground w-8 text-right">{pct}%</span>
+                        </div>
+                        <div className="text-center">
+                          <span className="text-xs text-muted-foreground" data-testid={`workload-availability-${inspector.inspectorId}`}>
+                            {inspector.availabilityDate || "—"}
+                          </span>
+                        </div>
+                      </button>
+
+                      {isExpanded && (
+                        <div className="px-6 py-3 bg-muted/20 border-b space-y-2" data-testid={`workload-detail-${inspector.inspectorId}`}>
+                          {inspector.projects.length === 0 ? (
+                            <p className="text-xs text-muted-foreground">No project activity this month.</p>
+                          ) : (
+                            <div className="space-y-1">
+                              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Project Breakdown — This Month</p>
+                              {inspector.projects.map(proj => (
+                                <div key={proj.projectId} className="flex items-center justify-between text-sm" data-testid={`workload-project-${inspector.inspectorId}-${proj.projectId}`}>
+                                  <span className="text-muted-foreground">{proj.projectName}</span>
+                                  <span className="font-medium">{proj.hoursThisMonth.toFixed(1)} hrs</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </TabsContent>
+
+          {/* ─── Performance Tab ──────────────────────────────────────────────────── */}
+          <TabsContent value="performance" className="space-y-4">
+            <div className="flex items-center justify-between gap-4 mb-2 flex-wrap">
+              <div className="flex items-center gap-3">
+                <p className="text-sm text-muted-foreground">Inspector performance scorecard — read-only.</p>
+                <Select value={String(performanceDays)} onValueChange={v => setPerformanceDays(Number(v))}>
+                  <SelectTrigger className="w-36 h-8 text-xs" data-testid="select-performance-days">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="30">Last 30 days</SelectItem>
+                    <SelectItem value="90">Last 90 days</SelectItem>
+                    <SelectItem value="180">Last 180 days</SelectItem>
+                    <SelectItem value="365">Last 365 days</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="relative w-64">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search inspectors..."
+                  value={performanceSearchQuery}
+                  onChange={e => setPerformanceSearchQuery(e.target.value)}
+                  className="pl-9"
+                  data-testid="input-performance-search"
+                />
+              </div>
+            </div>
+
+            {isPerformanceLoading ? (
+              <div className="space-y-2">
+                {[1,2,3].map(i => <Skeleton key={i} className="h-14 w-full" />)}
+              </div>
+            ) : filteredPerformance.length === 0 ? (
+              <div className="text-center py-12 text-muted-foreground text-sm" data-testid="performance-empty">
+                No inspectors found.
+              </div>
+            ) : (
+              <div className="border rounded overflow-hidden">
+                {/* Header row */}
+                <div className="grid grid-cols-[2fr_1fr_1fr_1fr_1fr_1fr] gap-2 px-4 py-2 bg-muted/50 border-b text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  <span>Inspector</span>
+                  <button type="button" className="flex items-center gap-1 hover:text-foreground transition-colors text-left" onClick={() => togglePerformanceSort("totalReports")} data-testid="sort-total-reports">
+                    Reports <ArrowUpDown className="w-3 h-3" />
+                  </button>
+                  <button type="button" className="flex items-center gap-1 hover:text-foreground transition-colors text-left" onClick={() => togglePerformanceSort("avgDailyHours")} data-testid="sort-avg-hours">
+                    Avg Hrs/Day <ArrowUpDown className="w-3 h-3" />
+                  </button>
+                  <button type="button" className="flex items-center gap-1 hover:text-foreground transition-colors text-left" onClick={() => togglePerformanceSort("safetyIncidents")} data-testid="sort-safety">
+                    Safety <ArrowUpDown className="w-3 h-3" />
+                  </button>
+                  <button type="button" className="flex items-center gap-1 hover:text-foreground transition-colors text-left" onClick={() => togglePerformanceSort("distinctProjects")} data-testid="sort-projects">
+                    Projects <ArrowUpDown className="w-3 h-3" />
+                  </button>
+                  <button type="button" className="flex items-center gap-1 hover:text-foreground transition-colors text-left" onClick={() => togglePerformanceSort("submissionRate")} data-testid="sort-submission-rate">
+                    Submit% <ArrowUpDown className="w-3 h-3" />
+                  </button>
+                </div>
+                {filteredPerformance.map(inspector => {
+                  const isExpanded = expandedPerformanceIds.has(inspector.inspectorId);
+                  const maxMonthly = Math.max(1, ...inspector.reportsByMonth.map(m => m.reportCount));
+                  const safetyTotal = inspector.safetyIncidents + inspector.safetyNearMisses;
+                  const submissionColor = inspector.submissionRate >= 80 ? "text-green-600 dark:text-green-400" : inspector.submissionRate >= 50 ? "text-amber-600 dark:text-amber-400" : "text-red-600 dark:text-red-400";
+                  return (
+                    <div key={inspector.inspectorId} data-testid={`performance-row-${inspector.inspectorId}`}>
+                      <button
+                        type="button"
+                        className="w-full grid grid-cols-[2fr_1fr_1fr_1fr_1fr_1fr] gap-2 px-4 py-3 text-left hover:bg-muted/30 transition-colors border-b last:border-b-0 items-center"
+                        onClick={() => {
+                          const next = new Set(expandedPerformanceIds);
+                          if (next.has(inspector.inspectorId)) next.delete(inspector.inspectorId);
+                          else next.add(inspector.inspectorId);
+                          setExpandedPerformanceIds(next);
+                        }}
+                        data-testid={`btn-performance-expand-${inspector.inspectorId}`}
+                      >
+                        <div className="flex items-center gap-2">
+                          {isExpanded ? <ChevronDown className="w-3 h-3 text-muted-foreground flex-shrink-0" /> : <ChevronRight className="w-3 h-3 text-muted-foreground flex-shrink-0" />}
+                          <div className="min-w-0">
+                            <p className="font-medium text-sm truncate" data-testid={`text-performance-name-${inspector.inspectorId}`}>{inspector.name}</p>
+                            {inspector.title && <p className="text-xs text-muted-foreground truncate">{inspector.title}</p>}
+                          </div>
+                        </div>
+                        <span className="text-sm font-medium" data-testid={`text-performance-reports-${inspector.inspectorId}`}>{inspector.totalReports}</span>
+                        <span className="text-sm" data-testid={`text-performance-avghours-${inspector.inspectorId}`}>{inspector.avgDailyHours.toFixed(1)} hrs</span>
+                        <div className="flex items-center gap-1" data-testid={`text-performance-safety-${inspector.inspectorId}`}>
+                          {safetyTotal > 0 && <ShieldAlert className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />}
+                          <span className={`text-sm ${safetyTotal > 0 ? "text-amber-600 dark:text-amber-400 font-medium" : "text-muted-foreground"}`}>
+                            {safetyTotal > 0 ? `${inspector.safetyIncidents}I / ${inspector.safetyNearMisses}NM` : "—"}
+                          </span>
+                        </div>
+                        <span className="text-sm" data-testid={`text-performance-projects-${inspector.inspectorId}`}>{inspector.distinctProjects}</span>
+                        <span className={`text-sm font-medium ${submissionColor}`} data-testid={`text-performance-submission-${inspector.inspectorId}`}>
+                          {inspector.submissionRate.toFixed(0)}%
+                        </span>
+                      </button>
+                      {isExpanded && (
+                        <div className="px-4 pb-4 pt-2 bg-muted/20 border-b space-y-4">
+                          {/* Monthly trend */}
+                          <div>
+                            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-3">Monthly Report Trend (Last 6 Months)</p>
+                            {inspector.reportsByMonth.length === 0 ? (
+                              <p className="text-xs text-muted-foreground">No reports in this period.</p>
+                            ) : (
+                              <div className="space-y-1.5">
+                                {inspector.reportsByMonth.map(m => (
+                                  <div key={m.month} className="flex items-center gap-3" data-testid={`text-performance-month-${inspector.inspectorId}-${m.month}`}>
+                                    <span className="text-xs text-muted-foreground w-16 flex-shrink-0">{m.month}</span>
+                                    <div className="flex-1 bg-muted rounded-full h-2 overflow-hidden">
+                                      <div
+                                        className="h-2 bg-blue-500 rounded-full transition-all"
+                                        style={{ width: `${Math.round((m.reportCount / maxMonthly) * 100)}%` }}
+                                      />
+                                    </div>
+                                    <span className="text-xs font-medium w-6 text-right">{m.reportCount}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                          {/* Safety breakdown */}
+                          <div>
+                            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Safety Breakdown</p>
+                            <div className="grid grid-cols-3 gap-4">
+                              <div className="text-center" data-testid={`text-performance-safety-incidents-${inspector.inspectorId}`}>
+                                <p className="text-lg font-bold text-red-600 dark:text-red-400">{inspector.safetyIncidents}</p>
+                                <p className="text-xs text-muted-foreground">Incidents</p>
+                              </div>
+                              <div className="text-center" data-testid={`text-performance-safety-nearmisses-${inspector.inspectorId}`}>
+                                <p className="text-lg font-bold text-amber-600 dark:text-amber-400">{inspector.safetyNearMisses}</p>
+                                <p className="text-xs text-muted-foreground">Near Misses</p>
+                              </div>
+                              <div className="text-center" data-testid={`text-performance-safety-flags-${inspector.inspectorId}`}>
+                                <p className="text-lg font-bold text-orange-600 dark:text-orange-400">{inspector.safetyFlagCount}</p>
+                                <p className="text-xs text-muted-foreground">Flagged Reports</p>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
           </TabsContent>
@@ -1695,8 +2201,8 @@ export default function CompanyTeamPage() {
                   <div>
                     <p className="font-medium text-muted-foreground mb-1">Certifications ({resumeData.certifications.length})</p>
                     <div className="flex flex-wrap gap-1">
-                      {resumeData.certifications.map((cert: string, i: number) => (
-                        <Badge key={i} variant="secondary">{cert}</Badge>
+                      {normalizeCerts(resumeData.certifications).map((cert, i) => (
+                        <Badge key={i} variant="secondary">{cert.name}</Badge>
                       ))}
                     </div>
                   </div>
@@ -1763,7 +2269,199 @@ export default function CompanyTeamPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Inspector Comparison Modal */}
+      {showCompareModal && (
+        <InspectorCompareModal
+          inspectorIds={Array.from(compareSelected)}
+          onClose={() => setShowCompareModal(false)}
+          onAssignToProject={(inspectorId) => {
+            setShowCompareModal(false);
+            if (inspectorId.startsWith("ti:")) {
+              // Team inspector — navigate to Team Inspectors tab so admin can invite
+              const el = document.querySelector('[data-testid="tab-team-inspectors"]') as HTMLElement | null;
+              if (el) el.click();
+            } else {
+              const found = members.find(m => m.userId === inspectorId);
+              if (found) setMemberToAssignProjects(found);
+            }
+          }}
+        />
+      )}
     </PageLayout>
+  );
+}
+
+// Member Document Vault Component - Admin-only document upload/download per inspector
+function MemberDocumentVault({ member }: { member: MemberWithUser }) {
+  const { toast } = useToast();
+  const [uploading, setUploading] = useState(false);
+  const [docType, setDocType] = useState<string>(INSPECTOR_DOCUMENT_TYPES[0]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const docsQuery = useQuery<InspectorDocument[]>({
+    queryKey: ["/api/inspector-documents", member.userId],
+    queryFn: async () => {
+      const res = await fetch(`/api/inspector-documents/${member.userId}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load documents");
+      return res.json();
+    },
+    staleTime: 30000,
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await apiRequest("DELETE", `/api/inspector-documents/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/inspector-documents", member.userId] });
+      toast({ title: "Document removed" });
+    },
+    onError: () => toast({ title: "Failed to delete", variant: "destructive" }),
+  });
+
+  const handleUpload = async (file: File) => {
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("inspectorId", member.userId);
+      formData.append("documentType", docType);
+      const res = await fetch("/api/inspector-documents", {
+        method: "POST",
+        body: formData,
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.message || "Upload failed");
+      }
+      queryClient.invalidateQueries({ queryKey: ["/api/inspector-documents", member.userId] });
+      toast({ title: "Document uploaded" });
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    } catch (err: any) {
+      toast({ title: err.message || "Upload failed", variant: "destructive" });
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const docs = docsQuery.data ?? [];
+
+  const docsByType: Record<string, InspectorDocument[]> = {};
+  docs.forEach(d => {
+    if (!docsByType[d.documentType]) docsByType[d.documentType] = [];
+    docsByType[d.documentType].push(d);
+  });
+
+  return (
+    <div className="mt-4 pt-4 border-t">
+      <div className="flex items-center gap-2 mb-3">
+        <FileText className="w-4 h-4 text-muted-foreground" />
+        <span className="text-sm font-medium uppercase tracking-wide">Document Vault</span>
+        {docs.length > 0 && (
+          <Badge variant="secondary" className="text-xs no-default-hover-elevate no-default-active-elevate">
+            {docs.length}
+          </Badge>
+        )}
+      </div>
+
+      {/* Upload Controls */}
+      <div className="flex gap-2 flex-wrap mb-3">
+        <Select value={docType} onValueChange={setDocType}>
+          <SelectTrigger className="w-48 h-8 text-xs" data-testid={`select-doc-type-${member.userId}`}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {INSPECTOR_DOCUMENT_TYPES.map(t => (
+              <SelectItem key={t} value={t}>{t}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-8 text-xs gap-1"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={uploading}
+          data-testid={`button-upload-doc-${member.userId}`}
+        >
+          {uploading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Upload className="w-3 h-3" />}
+          Upload
+        </Button>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
+          className="hidden"
+          onChange={e => {
+            const file = e.target.files?.[0];
+            if (file) handleUpload(file);
+          }}
+          data-testid={`input-doc-file-${member.userId}`}
+        />
+      </div>
+
+      {/* Documents List */}
+      {docsQuery.isLoading ? (
+        <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
+          <Loader2 className="w-3 h-3 animate-spin" /> Loading documents...
+        </div>
+      ) : docs.length === 0 ? (
+        <p className="text-xs text-muted-foreground py-1">No documents uploaded yet.</p>
+      ) : (
+        <div className="space-y-1">
+          {Object.entries(docsByType).map(([type, typeDocs]) => (
+            <div key={type}>
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mt-2 mb-1">{type}</p>
+              {typeDocs.map(doc => (
+                <div key={doc.id} className="flex items-center justify-between gap-2 py-1 border-b last:border-0" data-testid={`row-doc-${doc.id}`}>
+                  <div className="flex items-center gap-2 min-w-0">
+                    <FileText className="w-3 h-3 text-muted-foreground flex-shrink-0" />
+                    <span className="text-xs truncate" title={doc.fileName}>{doc.fileName}</span>
+                    <span className="text-xs text-muted-foreground flex-shrink-0">
+                      {doc.uploadedAt ? new Date(doc.uploadedAt).toLocaleDateString() : ""}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1 flex-shrink-0">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6"
+                      onClick={async () => {
+                        try {
+                          const res = await fetch(`/api/inspector-documents/${doc.id}/download`, { credentials: "include" });
+                          if (!res.ok) throw new Error("Failed to get download link");
+                          const { url } = await res.json();
+                          window.open(url, "_blank");
+                        } catch {
+                          toast({ title: "Download failed", variant: "destructive" });
+                        }
+                      }}
+                      title="Download"
+                      data-testid={`button-download-doc-${doc.id}`}
+                    >
+                      <Download className="w-3 h-3" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6 text-destructive hover:text-destructive"
+                      onClick={() => deleteMutation.mutate(doc.id)}
+                      disabled={deleteMutation.isPending}
+                      title="Delete"
+                      data-testid={`button-delete-doc-${doc.id}`}
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -1996,7 +2694,7 @@ function TeamInspectorDialog({
     county?: string;
     licenseNumber?: string;
     licenseState?: string;
-    certifications?: string[];
+    certifications?: CertEntry[];
     notes?: string;
   }) => void;
   isLoading: boolean;
@@ -2010,9 +2708,12 @@ function TeamInspectorDialog({
     county: "",
     licenseNumber: "",
     licenseState: "",
-    certifications: "",
     notes: "",
   });
+  const [certsList, setCertsList] = useState<CertEntry[]>([]);
+  const [newCertName, setNewCertName] = useState("");
+  const [newCertNumber, setNewCertNumber] = useState("");
+  const [newCertExpiry, setNewCertExpiry] = useState("");
 
   // Reset form when dialog opens or inspector changes
   useEffect(() => {
@@ -2027,9 +2728,9 @@ function TeamInspectorDialog({
           county: inspector.county || "",
           licenseNumber: inspector.licenseNumber || "",
           licenseState: inspector.licenseState || "",
-          certifications: inspector.certifications?.join(", ") || "",
           notes: inspector.notes || "",
         });
+        setCertsList(normalizeCerts(inspector.certifications));
       } else {
         setFormData({
           firstName: "",
@@ -2040,12 +2741,25 @@ function TeamInspectorDialog({
           county: "",
           licenseNumber: "",
           licenseState: "",
-          certifications: "",
           notes: "",
         });
+        setCertsList([]);
       }
+      setNewCertName("");
+      setNewCertNumber("");
+      setNewCertExpiry("");
     }
   }, [open, inspector]);
+
+  const handleAddCert = () => {
+    const name = newCertName.trim();
+    if (name && !certsList.some(c => c.name === name)) {
+      setCertsList([...certsList, { name, expiresAt: newCertExpiry || null, certNumber: newCertNumber.trim() || undefined }]);
+      setNewCertName("");
+      setNewCertNumber("");
+      setNewCertExpiry("");
+    }
+  };
 
   // Pass through onOpenChange - useEffect handles form data now
   const handleOpenChange = (isOpen: boolean) => {
@@ -2054,11 +2768,6 @@ function TeamInspectorDialog({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const certArray = formData.certifications
-      .split(",")
-      .map((c) => c.trim())
-      .filter(Boolean);
-    
     onSave({
       firstName: formData.firstName,
       lastName: formData.lastName,
@@ -2068,7 +2777,7 @@ function TeamInspectorDialog({
       county: formData.county || undefined,
       licenseNumber: formData.licenseNumber || undefined,
       licenseState: formData.licenseState || undefined,
-      certifications: certArray.length > 0 ? certArray : undefined,
+      certifications: certsList,
       notes: formData.notes || undefined,
     });
   };
@@ -2183,17 +2892,50 @@ function TeamInspectorDialog({
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="certifications">Certifications</Label>
-            <Input
-              id="certifications"
-              value={formData.certifications}
-              onChange={(e) => setFormData({ ...formData, certifications: e.target.value })}
-              placeholder="ICC Structural Steel, AWS CWI (comma-separated)"
-              data-testid="input-inspector-certifications"
-            />
-            <p className="text-xs text-muted-foreground">
-              Enter certifications separated by commas
-            </p>
+            <Label>Certifications &amp; Licenses</Label>
+            <div className="grid grid-cols-3 gap-2">
+              <Input
+                placeholder="Name (e.g., DSA Cert)"
+                value={newCertName}
+                onChange={(e) => setNewCertName(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleAddCert(); } }}
+                data-testid="input-inspector-cert-name"
+              />
+              <Input
+                placeholder="Cert # (opt.)"
+                value={newCertNumber}
+                onChange={(e) => setNewCertNumber(e.target.value)}
+                data-testid="input-inspector-cert-number"
+              />
+              <div className="flex gap-1">
+                <Input
+                  type="date"
+                  title="Expiry date"
+                  value={newCertExpiry}
+                  onChange={(e) => setNewCertExpiry(e.target.value)}
+                  data-testid="input-inspector-cert-expiry"
+                />
+                <Button type="button" size="icon" variant="secondary" onClick={handleAddCert} disabled={!newCertName.trim()} data-testid="button-add-inspector-cert">
+                  <Plus className="w-4 h-4" />
+                </Button>
+              </div>
+            </div>
+            {certsList.length > 0 && (
+              <div className="space-y-1 mt-2">
+                {certsList.map((cert, idx) => (
+                  <div key={idx} className="flex items-center justify-between text-sm border rounded px-2 py-1">
+                    <span className="font-medium">{cert.name}</span>
+                    <div className="flex items-center gap-2">
+                      {cert.certNumber && <span className="text-muted-foreground text-xs">#{cert.certNumber}</span>}
+                      {cert.expiresAt && <span className="text-muted-foreground text-xs">{cert.expiresAt}</span>}
+                      <Button type="button" variant="ghost" size="icon" className="h-5 w-5" onClick={() => setCertsList(certsList.filter((_, i) => i !== idx))}>
+                        <X className="w-3 h-3" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="space-y-2">
@@ -2224,5 +2966,299 @@ function TeamInspectorDialog({
         </form>
       </DialogContent>
     </Dialog>
+  );
+}
+
+// ─── Inspector Comparison Modal ────────────────────────────────────────────────
+
+type InspectorCompareData = {
+  inspectorId: string;
+  name: string;
+  title: string | null;
+  licenseNumber: string | null;
+  licenseState: string | null;
+  certifications: CertEntry[];
+  availabilityDate: string | null;
+  activeProjectCount: number | null;
+  totalHoursThisMonth: number | null;
+  regularRate: string | null;
+  overtimeRate: string | null;
+  premiumRate: string | null;
+  role: string | null;
+  isTeamInspector?: boolean;
+};
+
+function InspectorCompareModal({
+  inspectorIds,
+  onClose,
+  onAssignToProject,
+}: {
+  inspectorIds: string[];
+  onClose: () => void;
+  onAssignToProject: (inspectorId: string) => void;
+}) {
+  const idsKey = inspectorIds.join(",");
+
+  const { data: inspectors = [], isLoading, error } = useQuery<InspectorCompareData[]>({
+    queryKey: ["/api/company/inspector-compare", idsKey],
+    queryFn: async () => {
+      const res = await fetch(`/api/company/inspector-compare?ids=${encodeURIComponent(idsKey)}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load comparison data");
+      return res.json();
+    },
+    enabled: inspectorIds.length >= 1,
+    staleTime: 60000,
+  });
+
+  // Helper: determine if a field "differs" across columns (highlight it)
+  const differs = (values: (string | number | null | undefined)[]): boolean => {
+    const unique = new Set(values.map(v => v ?? null));
+    return unique.size > 1;
+  };
+
+  const projectCounts = inspectors.map(i => i.activeProjectCount);
+  const hourValues = inspectors.map(i => i.totalHoursThisMonth);
+  const regularRates = inspectors.map(i => i.regularRate ? parseFloat(i.regularRate) : null);
+
+  const nonNullProjects = projectCounts.filter((v): v is number => v !== null);
+  const nonNullHours = hourValues.filter((v): v is number => v !== null);
+  const maxProjects = nonNullProjects.length > 0 ? Math.max(...nonNullProjects) : 0;
+  const maxHours = nonNullHours.length > 0 ? Math.max(...nonNullHours) : 0;
+  const maxRate = Math.max(...regularRates.filter((r): r is number => r !== null), 0);
+
+  return (
+    <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent className="max-w-5xl w-full overflow-hidden">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Columns2 className="w-5 h-5" />
+            Inspector Comparison
+          </DialogTitle>
+          <DialogDescription>
+            Side-by-side comparison of {inspectorIds.length} inspector{inspectorIds.length > 1 ? "s" : ""}. Highlighted fields differ between inspectors.
+          </DialogDescription>
+        </DialogHeader>
+
+        {isLoading ? (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="w-6 h-6 animate-spin mr-2" />
+            Loading comparison data...
+          </div>
+        ) : error ? (
+          <div className="flex items-center gap-2 text-destructive py-8">
+            <AlertCircle className="w-5 h-5" />
+            Failed to load comparison data
+          </div>
+        ) : (
+          <ScrollArea className="max-h-[70vh]">
+            <div className="grid gap-4" style={{ gridTemplateColumns: `180px repeat(${inspectors.length}, 1fr)` }}>
+              
+              {/* Header row */}
+              <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground pt-2">Field</div>
+              {inspectors.map(ins => (
+                <div key={ins.inspectorId} className="border rounded p-3 bg-muted/20" data-testid={`compare-col-${ins.inspectorId}`}>
+                  <p className="font-semibold truncate" title={ins.name}>{ins.name}</p>
+                  {ins.isTeamInspector && (
+                    <span className="text-[10px] bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 px-1.5 py-0.5 rounded font-medium uppercase tracking-wide">Roster Only</span>
+                  )}
+                  {ins.title && <p className="text-sm text-muted-foreground truncate mt-0.5">{ins.title}</p>}
+                  {ins.isTeamInspector ? (
+                    <button
+                      className="text-xs text-primary underline-offset-2 hover:underline mt-1 block"
+                      onClick={() => onAssignToProject(ins.inspectorId)}
+                      data-testid={`button-invite-inspector-${ins.inspectorId}`}
+                    >
+                      Invite to Join →
+                    </button>
+                  ) : (
+                    <button
+                      className="text-xs text-primary underline-offset-2 hover:underline mt-1 block"
+                      onClick={() => onAssignToProject(ins.inspectorId)}
+                      data-testid={`button-assign-inspector-${ins.inspectorId}`}
+                    >
+                      Assign to Project →
+                    </button>
+                  )}
+                </div>
+              ))}
+
+              {/* License Row */}
+              <CompareFieldLabel icon={<Shield className="w-3 h-3" />} label="License" />
+              {inspectors.map(ins => {
+                const val = ins.licenseNumber ? `${ins.licenseState || ""} ${ins.licenseNumber}`.trim() : "—";
+                const diff = differs(inspectors.map(i => i.licenseNumber));
+                return (
+                  <CompareCell key={ins.inspectorId} highlight={diff && !!ins.licenseNumber}>
+                    {val}
+                  </CompareCell>
+                );
+              })}
+
+              {/* Certifications */}
+              <CompareFieldLabel icon={<Award className="w-3 h-3" />} label="Certifications" />
+              {inspectors.map(ins => {
+                const now = new Date();
+                const certs = ins.certifications || [];
+                return (
+                  <CompareCell key={ins.inspectorId}>
+                    {certs.length === 0 ? (
+                      <span className="text-muted-foreground text-xs">None on file</span>
+                    ) : (
+                      <div className="space-y-1">
+                        {certs.map((c, ci) => {
+                          const isExpired = c.expiresAt ? new Date(c.expiresAt) < now : false;
+                          const expiringSoon = c.expiresAt
+                            ? new Date(c.expiresAt) < new Date(now.getTime() + 30 * 86400000)
+                            : false;
+                          return (
+                            <div key={ci} className="flex items-center gap-1 flex-wrap">
+                              <span className="text-xs">{c.name}</span>
+                              {c.expiresAt && (
+                                <Badge
+                                  variant={isExpired ? "destructive" : expiringSoon ? "outline" : "secondary"}
+                                  className="text-[10px] px-1 py-0 no-default-hover-elevate no-default-active-elevate"
+                                >
+                                  {isExpired ? "Expired" : expiringSoon ? "Soon" : ""}
+                                  {!isExpired && !expiringSoon ? new Date(c.expiresAt).toLocaleDateString() : ""}
+                                </Badge>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </CompareCell>
+                );
+              })}
+
+              {/* Availability Date */}
+              <CompareFieldLabel icon={<Calendar className="w-3 h-3" />} label="Available" />
+              {inspectors.map(ins => {
+                const diff = differs(inspectors.map(i => i.availabilityDate));
+                return (
+                  <CompareCell key={ins.inspectorId} highlight={diff && !!ins.availabilityDate}>
+                    {ins.availabilityDate
+                      ? new Date(ins.availabilityDate + "T00:00:00").toLocaleDateString()
+                      : <span className="text-muted-foreground text-xs">Not set</span>}
+                  </CompareCell>
+                );
+              })}
+
+              {/* Active Project Count */}
+              <CompareFieldLabel icon={<Briefcase className="w-3 h-3" />} label="Active Projects" />
+              {inspectors.map(ins => {
+                const diff = differs(nonNullProjects);
+                const isMax = ins.activeProjectCount === maxProjects && maxProjects > 0;
+                return (
+                  <CompareCell key={ins.inspectorId} highlight={diff && isMax}>
+                    {ins.activeProjectCount === null ? (
+                      <span className="text-muted-foreground text-xs">N/A</span>
+                    ) : (
+                      <>
+                        <span className={diff && isMax ? "font-semibold text-amber-600" : ""}>{ins.activeProjectCount}</span>
+                        {diff && ins.activeProjectCount === Math.min(...nonNullProjects) && ins.activeProjectCount < maxProjects && (
+                          <span className="text-xs text-muted-foreground ml-1">(fewest)</span>
+                        )}
+                      </>
+                    )}
+                  </CompareCell>
+                );
+              })}
+
+              {/* Hours This Month */}
+              <CompareFieldLabel icon={<Clock className="w-3 h-3" />} label="Hours (this month)" />
+              {inspectors.map(ins => {
+                const diff = differs(nonNullHours);
+                const isTop = ins.totalHoursThisMonth !== null && ins.totalHoursThisMonth === maxHours && maxHours > 0;
+                return (
+                  <CompareCell key={ins.inspectorId} highlight={diff && isTop}>
+                    {ins.totalHoursThisMonth === null ? (
+                      <span className="text-muted-foreground text-xs">N/A</span>
+                    ) : (
+                      <span className={diff && isTop ? "font-semibold text-amber-600" : ""}>{ins.totalHoursThisMonth}h</span>
+                    )}
+                  </CompareCell>
+                );
+              })}
+
+              {/* Regular Rate */}
+              <CompareFieldLabel icon={<DollarSign className="w-3 h-3" />} label="Regular Rate" />
+              {inspectors.map(ins => {
+                const rateNum = ins.regularRate ? parseFloat(ins.regularRate) : null;
+                const diff = differs(regularRates);
+                const isTop = rateNum !== null && rateNum === maxRate && maxRate > 0;
+                return (
+                  <CompareCell key={ins.inspectorId} highlight={diff && isTop}>
+                    {ins.isTeamInspector ? (
+                      <span className="text-muted-foreground text-xs">N/A</span>
+                    ) : ins.regularRate ? (
+                      <span className={diff && isTop ? "font-semibold text-amber-600" : ""}>${ins.regularRate}/hr</span>
+                    ) : (
+                      <span className="text-muted-foreground text-xs">Not set</span>
+                    )}
+                  </CompareCell>
+                );
+              })}
+
+              {/* Overtime Rate */}
+              <CompareFieldLabel icon={<DollarSign className="w-3 h-3" />} label="OT Rate" />
+              {inspectors.map(ins => {
+                const diff = differs(inspectors.filter(i => !i.isTeamInspector).map(i => i.overtimeRate));
+                return (
+                  <CompareCell key={ins.inspectorId} highlight={!ins.isTeamInspector && diff && !!ins.overtimeRate}>
+                    {ins.isTeamInspector ? (
+                      <span className="text-muted-foreground text-xs">N/A</span>
+                    ) : ins.overtimeRate ? (
+                      `$${ins.overtimeRate}/hr`
+                    ) : (
+                      <span className="text-muted-foreground text-xs">Not set</span>
+                    )}
+                  </CompareCell>
+                );
+              })}
+
+              {/* Premium / Weekend Rate */}
+              <CompareFieldLabel icon={<DollarSign className="w-3 h-3" />} label="Premium Rate" />
+              {inspectors.map(ins => {
+                const diff = differs(inspectors.filter(i => !i.isTeamInspector).map(i => i.premiumRate));
+                return (
+                  <CompareCell key={ins.inspectorId} highlight={!ins.isTeamInspector && diff && !!ins.premiumRate}>
+                    {ins.isTeamInspector ? (
+                      <span className="text-muted-foreground text-xs">N/A</span>
+                    ) : ins.premiumRate ? (
+                      `$${ins.premiumRate}/hr`
+                    ) : (
+                      <span className="text-muted-foreground text-xs">Not set</span>
+                    )}
+                  </CompareCell>
+                );
+              })}
+            </div>
+          </ScrollArea>
+        )}
+
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} data-testid="button-close-compare">
+            Close
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function CompareFieldLabel({ icon, label }: { icon: ReactNode; label: string }) {
+  return (
+    <div className="flex items-center gap-1 text-xs font-medium text-muted-foreground uppercase tracking-wide pt-3 border-t">
+      {icon} {label}
+    </div>
+  );
+}
+
+function CompareCell({ children, highlight = false }: { children: ReactNode; highlight?: boolean }) {
+  return (
+    <div className={`text-sm pt-3 border-t px-1 ${highlight ? "bg-amber-50 dark:bg-amber-950/20 rounded" : ""}`}>
+      {children}
+    </div>
   );
 }

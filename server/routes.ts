@@ -1,9 +1,9 @@
 import type { Express, RequestHandler } from "express";
 import { createServer, type Server } from "http";
-import { storage, db, projectComments, projectMembers, users, companyNotes, clientPortalUsers } from "./storage";
-import { sql, eq, and, desc } from "drizzle-orm";
+import { storage, db, projectComments, projectMembers, users, companyNotes, clientPortalUsers, projects } from "./storage";
+import { sql, eq, and, desc, inArray, count, sum, countDistinct } from "drizzle-orm";
 import { setupAuth, isAuthenticated, registerAuthRoutes } from "./replit_integrations/auth";
-import { insertProjectSchema, insertDailyReportSchema, updateUserProfileSchema, WorkActivityRow, VisitorRow, insertContractSchema, insertClientSchema, InsertInspectorCandidate } from "@shared/schema";
+import { insertProjectSchema, insertDailyReportSchema, updateUserProfileSchema, WorkActivityRow, VisitorRow, EquipmentRow, MaterialRow, insertContractSchema, insertClientSchema, InsertInspectorCandidate, companyMembers, userProfiles, dailyReports as dailyReportsTable, normalizeCerts, manualTimeEntries, inspectorDocuments, INSPECTOR_DOCUMENT_TYPES, type InspectorDocument } from "@shared/schema";
 import { ObjectStorageService, registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 import multer from "multer";
 import path from "path";
@@ -173,6 +173,26 @@ const resumeUpload = multer({
   },
 });
 
+// Multer config for inspector vault documents (PDF, JPG, PNG, DOCX)
+const documentUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 20 * 1024 * 1024 }, // 20MB
+  fileFilter: (_req, file, cb) => {
+    const allowed = [
+      'application/pdf',
+      'image/jpeg',
+      'image/png',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/msword',
+    ];
+    if (allowed.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error("Only PDF, JPG, PNG, and DOCX files are allowed"));
+    }
+  },
+});
+
 // Multer config for audio files
 const audioUpload = multer({
   storage: multer.memoryStorage(),
@@ -220,6 +240,8 @@ const createProjectSchema = z.object({
   budgetTrackingMode: z.enum(["daily_reports", "scheduled", "hybrid"]).nullable().optional(),
   inheritBillingRates: z.boolean().optional().default(true),
   scopeOfWork: z.string().nullable().optional(),
+  projectValue: z.string().nullable().optional(),
+  dsaFileNo: z.string().nullable().optional(),
 });
 
 const updateProjectSchema = createProjectSchema.partial();
@@ -234,23 +256,45 @@ const createReportSchema = z.object({
   }),
   weatherType: z.enum(["clear", "cloudy", "rain", "wind", "heat", "cold"]).optional(),
   weatherNotes: z.string().optional(),
+  weatherAM: z.string().optional(),
+  weatherPM: z.string().optional(),
+  precipitation: z.string().optional(),
+  siteConditions: z.string().optional(),
   typeOfWork: z.array(z.string()).optional().default([]),
   workPerformed: z.string().optional(),
   trades: z.array(z.object({ trade: z.string(), headcount: z.number() })).optional().default([]),
   manpower: z.array(z.object({ description: z.string(), count: z.number() })).optional().default([]),
   workActivities: z.array(z.object({ 
+    trade: z.string().optional(),
     contractor: z.string(), 
     headcount: z.number(), 
     workDescription: z.string() 
   })).optional().default([]),
   visitors: z.array(z.object({ name: z.string(), company: z.string(), notes: z.string().optional() })).optional().default([]),
   equipment: z.string().optional(),
+  equipmentRows: z.array(z.object({
+    equipment: z.string(),
+    hours: z.string().optional(),
+    status: z.string().optional(),
+    usage: z.string().optional(),
+  })).optional().default([]),
   inspections: z.string().optional(),
   materialsDelivered: z.string().optional(),
+  materialRows: z.array(z.object({
+    material: z.string(),
+    quantity: z.string().optional(),
+    status: z.string().optional(),
+    supplierNotes: z.string().optional(),
+  })).optional().default([]),
   issuesFlag: z.boolean().optional(),
   issuesDetails: z.string().optional(),
   safetyFlag: z.boolean().optional(),
   safetyDetails: z.string().optional(),
+  safetyIncidents: z.number().optional(),
+  safetyNearMisses: z.number().optional(),
+  safetyAttendees: z.number().nullable().optional(),
+  safetySiteConditions: z.string().optional(),
+  toolboxTalkTopic: z.string().optional(),
   notes: z.string().optional(),
   status: z.enum(["draft", "submitted"]).optional(),
   // Time tracking fields
@@ -5156,137 +5200,6 @@ export async function registerRoutes(
     }
   });
 
-  // ===== Inspector Workload with Time Filter =====
-  app.get("/api/company/inspector-workload", isAuthenticated, async (req: any, res) => {
-    try {
-      const userId = req.user?.claims?.sub;
-      const profile = await storage.getUserProfile(userId);
-      if (!profile?.activeCompanyId) {
-        return res.status(400).json({ message: "No active company" });
-      }
-      const companyId = profile.activeCompanyId;
-      const isAdmin = await isEffectiveCompanyAdmin(userId, companyId, profile);
-      if (!isAdmin) {
-        return res.status(403).json({ message: "Admin access required" });
-      }
-
-      const period = (req.query.period as string) || 'month';
-      const now = new Date();
-      let startDate: Date;
-
-      switch (period) {
-        case 'day':
-          startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-          break;
-        case 'week':
-          startDate = new Date(now);
-          startDate.setDate(now.getDate() - now.getDay());
-          startDate.setHours(0, 0, 0, 0);
-          break;
-        case 'year':
-          startDate = new Date(now.getFullYear(), 0, 1);
-          break;
-        case 'month':
-        default:
-          startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-          break;
-      }
-
-      const allReports = await storage.getReports({ companyId });
-      const projects = await storage.getProjectsByCompany(companyId);
-      const projectMap: Record<string, string> = {};
-      for (const p of projects) {
-        projectMap[p.id] = p.name;
-      }
-
-      const filteredReports = allReports.filter(report => {
-        if (!report.date) return false;
-        const reportDate = new Date(report.date);
-        return reportDate >= startDate;
-      });
-
-      const inspectorData: Record<string, {
-        userId: string;
-        name: string;
-        regularHours: number;
-        overtimeHours: number;
-        reportCount: number;
-        projectIds: Set<string>;
-        projectBreakdown: Record<string, { projectId: string; projectName: string; regularHours: number; overtimeHours: number; reportCount: number }>;
-      }> = {};
-
-      for (const report of filteredReports) {
-        const inspectorId = report.inspectorId;
-        if (!inspectorData[inspectorId]) {
-          inspectorData[inspectorId] = {
-            userId: inspectorId,
-            name: '',
-            regularHours: 0,
-            overtimeHours: 0,
-            reportCount: 0,
-            projectIds: new Set(),
-            projectBreakdown: {},
-          };
-        }
-        const regHours = parseFloat(report.regularHours || '0');
-        const otHours = parseFloat(report.otHours || '0');
-        inspectorData[inspectorId].regularHours += regHours;
-        inspectorData[inspectorId].overtimeHours += otHours;
-        inspectorData[inspectorId].reportCount += 1;
-        if (report.projectId) {
-          inspectorData[inspectorId].projectIds.add(report.projectId);
-          if (!inspectorData[inspectorId].projectBreakdown[report.projectId]) {
-            inspectorData[inspectorId].projectBreakdown[report.projectId] = {
-              projectId: report.projectId,
-              projectName: projectMap[report.projectId] || 'Unknown Project',
-              regularHours: 0,
-              overtimeHours: 0,
-              reportCount: 0,
-            };
-          }
-          inspectorData[inspectorId].projectBreakdown[report.projectId].regularHours += regHours;
-          inspectorData[inspectorId].projectBreakdown[report.projectId].overtimeHours += otHours;
-          inspectorData[inspectorId].projectBreakdown[report.projectId].reportCount += 1;
-        }
-      }
-
-      const inspectorIds = Object.keys(inspectorData);
-      const inspectorProfiles = await Promise.all(inspectorIds.map(id => storage.getUserProfile(id)));
-      for (const p of inspectorProfiles) {
-        if (p && inspectorData[p.userId]) {
-          inspectorData[p.userId].name = `${p.firstName || ''} ${p.lastName || ''}`.trim() || 'Inspector';
-        }
-      }
-
-      const result = Object.values(inspectorData)
-        .map(i => ({
-          userId: i.userId,
-          name: i.name || 'Unknown',
-          regularHours: Math.round(i.regularHours * 10) / 10,
-          overtimeHours: Math.round(i.overtimeHours * 10) / 10,
-          totalHours: Math.round((i.regularHours + i.overtimeHours) * 10) / 10,
-          reportCount: i.reportCount,
-          projectCount: i.projectIds.size,
-          projectBreakdown: Object.values(i.projectBreakdown)
-            .map(pb => ({
-              projectId: pb.projectId,
-              projectName: pb.projectName,
-              regularHours: Math.round(pb.regularHours * 10) / 10,
-              overtimeHours: Math.round(pb.overtimeHours * 10) / 10,
-              totalHours: Math.round((pb.regularHours + pb.overtimeHours) * 10) / 10,
-              reportCount: pb.reportCount,
-            }))
-            .sort((a, b) => b.totalHours - a.totalHours),
-        }))
-        .sort((a, b) => b.totalHours - a.totalHours);
-
-      res.json(result);
-    } catch (error) {
-      console.error("Error fetching inspector workload:", error);
-      res.status(500).json({ message: "Failed to fetch inspector workload" });
-    }
-  });
-
   // Get single contract
   app.get("/api/contracts/:id", isAuthenticated, async (req: any, res) => {
     try {
@@ -8159,6 +8072,50 @@ export async function registerRoutes(
     }
   });
 
+  // Get outstanding invoices (sent + overdue) for active company, grouped by project/contract
+  app.get("/api/invoices/outstanding", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+
+      if (!profile?.activeCompanyId) {
+        return res.json([]);
+      }
+
+      const isMember = await storage.isUserMemberOfCompany(profile.activeCompanyId, userId);
+      if (!isMember) {
+        return res.json([]);
+      }
+
+      const invoiceList = await storage.getInvoices(profile.activeCompanyId);
+      const outstanding = invoiceList
+        .filter(i => i.status === 'sent' || i.status === 'overdue')
+        .sort((a, b) => {
+          const aDate = a.dueDate ? new Date(a.dueDate).getTime() : Infinity;
+          const bDate = b.dueDate ? new Date(b.dueDate).getTime() : Infinity;
+          return aDate - bDate;
+        })
+        .map(i => ({
+          id: i.id,
+          invoiceNumber: i.invoiceNumber,
+          status: i.status,
+          totalAmount: i.totalAmount,
+          dueDate: i.dueDate,
+          month: i.month,
+          year: i.year,
+          projectId: i.projectId,
+          projectName: i.project?.name || null,
+          contractId: i.contractId || null,
+          contractName: i.contract?.name || null,
+        }));
+
+      res.json(outstanding);
+    } catch (error) {
+      console.error("Error fetching outstanding invoices:", error);
+      res.status(500).json({ message: "Failed to fetch outstanding invoices" });
+    }
+  });
+
   // Get invoices for active company
   app.get("/api/invoices", isAuthenticated, async (req: any, res) => {
     try {
@@ -9765,12 +9722,48 @@ export async function registerRoutes(
       
       // Assign sequential report number when submitting (status changing from draft to submitted)
       const updateData: any = { ...validated };
-      if (validated.status === 'submitted' && existing.status === 'draft' && !existing.reportNumber) {
+      const isBeingSubmitted = validated.status === 'submitted' && existing.status === 'draft';
+      if (isBeingSubmitted && !existing.reportNumber) {
         updateData.reportNumber = await storage.getNextReportNumber();
       }
       
       const report = await storage.updateReport(req.params.id, updateData);
       res.json(report);
+
+      // After responding, send client portal email notifications if report was just submitted
+      if (isBeingSubmitted && report?.projectId) {
+        try {
+          const allPortalUsers = await storage.getClientPortalUsersForProject(report.projectId);
+          const portalUsers = allPortalUsers.filter(pu => pu.isActive !== false);
+          if (portalUsers.length > 0) {
+            const proj = await storage.getProject(report.projectId);
+            const reportDate = report.date
+              ? new Date(report.date).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric", timeZone: "America/Los_Angeles" })
+              : "Unknown date";
+            const inspectorName = report?.inspectorName || "Inspector";
+            const projectName = proj?.name || "your project";
+            const portalLink = `${req.protocol}://${req.get("host")}/client-portal/project/${report.projectId}`;
+            for (const pu of portalUsers) {
+              const recipientEmail = pu.user?.email;
+              if (!recipientEmail) continue;
+              await sendEmail({
+                to: recipientEmail,
+                subject: `New Report Submitted — ${projectName}`,
+                html: `<p>Hello,</p>
+<p>A new daily report has been submitted for <strong>${projectName}</strong>.</p>
+<ul>
+  <li><strong>Date:</strong> ${reportDate}</li>
+  <li><strong>Inspector:</strong> ${inspectorName}</li>
+</ul>
+<p><a href="${portalLink}">View project in the client portal</a></p>
+<p style="color:#888;font-size:12px;">You are receiving this email because you have client portal access to this project.</p>`,
+              }).catch(err => console.error("Error sending portal notification email:", err));
+            }
+          }
+        } catch (notifErr) {
+          console.error("Error sending client portal notifications:", notifErr);
+        }
+      }
     } catch (error) {
       if (error instanceof z.ZodError) {
         return res.status(400).json({ message: "Validation error", errors: error.errors });
@@ -9888,6 +9881,9 @@ export async function registerRoutes(
         createdPhotos.push(photo);
       }
 
+      // Invalidate cached PDF — photos have changed so any stored PDF is stale
+      await storage.updateReport(req.params.id, { pdfPath: null } as any);
+
       res.status(201).json(createdPhotos);
     } catch (error) {
       console.error("Error uploading photos:", error);
@@ -9927,6 +9923,8 @@ export async function registerRoutes(
       }
       
       await storage.deletePhoto(req.params.id);
+      // Invalidate cached PDF — photo removed so any stored PDF is stale
+      await storage.updateReport(photo.reportId, { pdfPath: null } as any);
       res.status(204).send();
     } catch (error) {
       console.error("Error deleting photo:", error);
@@ -9971,6 +9969,8 @@ export async function registerRoutes(
       }
       
       const updatedPhoto = await storage.updatePhotoCaption(req.params.id, caption);
+      // Invalidate cached PDF — caption appears in photo page of the PDF
+      await storage.updateReport(photo.reportId, { pdfPath: null } as any);
       res.json(updatedPhoto);
     } catch (error) {
       console.error("Error updating photo caption:", error);
@@ -10059,10 +10059,16 @@ export async function registerRoutes(
         return res.status(403).json({ message: "Access denied" });
       }
 
-      // Generate PDF using pdfkit - Koury Engineering format
+      // Fetch photos separately — getReport() does not join photos
+      const reportPhotos = await storage.getPhotosByReport(req.params.id);
+      if (reportPhotos.length > 0) {
+        (report as any).photos = reportPhotos;
+      }
+
+      // Generate PDF using pdfkit - DSA/Government format
       const filename = `${req.params.id}.pdf`;
 
-      const doc = new PDFDocument({ margin: 25, bufferPages: true });
+      const doc = new PDFDocument({ size: 'LETTER', margin: 36, bufferPages: true });
       
       const pdfChunks: Buffer[] = [];
       doc.on('data', (chunk: Buffer) => pdfChunks.push(chunk));
@@ -10072,9 +10078,17 @@ export async function registerRoutes(
         doc.on('error', reject);
       });
 
-      const pageWidth = doc.page.width - 50;
-      const startX = 25;
+      const PW = 612; // Letter width in points
+      const PH = 792; // Letter height in points
+      const ML = 36;  // Left margin
+      const MR = 36;  // Right margin
+      const MT = 36;  // Top margin
+      const MB = 36;  // Bottom margin
+      const CW = PW - ML - MR; // Content width = 540
+      const FOOTER_H = 20;
+      const HEADER_H = 54;
       const checkSize = 7;
+      const startX = ML;
 
       // Helper to load images - handles both old /storage/uploads/ and new /objects/ paths
       const loadImageBuffer = async (imagePath: string): Promise<Buffer | null> => {
@@ -10119,556 +10133,707 @@ export async function registerRoutes(
       // Get inspector profile for license info
       const inspectorProfile = await storage.getUserProfile(report.inspectorId);
 
-      // ===== HEADER - Logo left, Company name right =====
-      // Company name and contact info - upper right
-      const companyName = (company?.name || 'FIELD DAILY REPORTS').toUpperCase();
-      const contactLine = [company?.address, company?.phone, company?.email].filter(Boolean).join('  |  ');
-      const headerTextY = 12;
-      doc.fontSize(11).font('Helvetica-Bold').text(companyName, 280, headerTextY, { width: 290, align: 'right' });
-      if (contactLine) {
-        doc.fontSize(7.5).font('Helvetica').text(contactLine, 280, headerTextY + 14, { width: 290, align: 'right' });
-      }
-
-      // Logo - constrained to header row height, top-aligned with company name
-      if (company?.logoPath) {
-        try {
-          const logoBuffer = await loadImageBuffer(company.logoPath);
-          if (logoBuffer) {
-            doc.image(logoBuffer, startX, headerTextY, { fit: [500, 45], valign: 'top', align: 'left' });
-          }
-        } catch (err) {
-          console.error('Error adding company logo:', err);
-        }
-      }
-
-      // Form grid boxes - right side
-      const gridX = 380;
-      const gridTop = 72;
-      let dateStr = '--';
-      if (report.date instanceof Date) {
-        const m = String(report.date.getUTCMonth() + 1).padStart(2, '0');
-        const d = String(report.date.getUTCDate()).padStart(2, '0');
-        const y = String(report.date.getUTCFullYear()).slice(-2);
-        dateStr = `${m}/${d}/${y}`;
-      } else if (typeof report.date === 'string') {
-        const match = report.date.match(/^(\d{4})-(\d{2})-(\d{2})/);
-        if (match) {
-          dateStr = `${match[2]}/${match[3]}/${match[1].slice(-2)}`;
-        }
-      }
-      // Time cell shows when report was submitted (signedAt); if not signed, show "--"
-      const timeStr = report.signedAt 
-        ? new Date(report.signedAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'America/Los_Angeles' })
-        : '--';
-      
-      doc.strokeColor('#000').lineWidth(0.5);
-
-      // Row 1: Project #, Report No., Status
-      doc.rect(gridX, gridTop, 60, 18).stroke();
-      doc.fontSize(7).font('Helvetica').text('Project #', gridX + 2, gridTop + 2);
-      doc.fontSize(9).font('Helvetica-Bold').text(report.project?.projectNumber || 'N/A', gridX + 2, gridTop + 9);
-
-      doc.rect(gridX + 60, gridTop, 50, 18).stroke();
-      doc.fontSize(7).font('Helvetica').text('Report No.', gridX + 62, gridTop + 2);
-      doc.fontSize(9).font('Helvetica-Bold').text(report.reportNumber ? String(report.reportNumber) : '--', gridX + 62, gridTop + 9);
-
-      doc.rect(gridX + 110, gridTop, 55, 18).stroke();
-      doc.fontSize(7).font('Helvetica').text('Status', gridX + 112, gridTop + 2);
-      doc.fontSize(9).font('Helvetica-Bold').text((report.status || 'draft').toUpperCase(), gridX + 112, gridTop + 9);
-
-      // Row 2: DSA File No., Date, Time
-      doc.rect(gridX, gridTop + 18, 60, 18).stroke();
-      doc.fontSize(7).font('Helvetica').text('DSA File No.', gridX + 2, gridTop + 20);
-      doc.fontSize(9).font('Helvetica-Bold').text('--', gridX + 2, gridTop + 27);
-
-      doc.rect(gridX + 60, gridTop + 18, 50, 18).stroke();
-      doc.fontSize(7).font('Helvetica').text('Date', gridX + 62, gridTop + 20);
-      doc.fontSize(9).font('Helvetica-Bold').text(dateStr, gridX + 62, gridTop + 27);
-
-      doc.rect(gridX + 110, gridTop + 18, 55, 18).stroke();
-      doc.fontSize(7).font('Helvetica').text('Time', gridX + 112, gridTop + 20);
-      doc.fontSize(9).font('Helvetica-Bold').text(timeStr, gridX + 112, gridTop + 27);
-
-      // Title - aligned with the 2x3 grid cells
-      doc.fontSize(14).font('Helvetica-Bold').text('DAILY FIELD REPORT', startX, gridTop + 10);
-
-      // Weather row with drawn icon
-      doc.y = gridTop + 44;
-      const weatherType = (report.weatherType || 'clear').toLowerCase();
-      const weatherText = `${report.weatherNotes || ''}`.trim();
-      const weatherLabel = (report.weatherType || 'Clear').charAt(0).toUpperCase() + (report.weatherType || 'clear').slice(1);
-      
-      const weatherY = doc.y;
-      doc.fontSize(8).font('Helvetica-Bold').text('WEATHER:', startX, weatherY);
-      
-      // Draw weather icon based on type - aligned with text baseline
-      const iconX = startX + 55;
-      const iconY = weatherY + 4;
-      const iconSize = 6;
-      
-      if (weatherType === 'clear' || weatherType === 'sunny' || weatherType === 'hot') {
-        // Sun icon - circle with rays
-        doc.circle(iconX, iconY, iconSize - 1).fill('#f59e0b');
-        doc.lineWidth(0.5).strokeColor('#f59e0b');
-        for (let i = 0; i < 8; i++) {
-          const angle = (i * Math.PI) / 4;
-          const x1 = iconX + Math.cos(angle) * (iconSize + 1);
-          const y1 = iconY + Math.sin(angle) * (iconSize + 1);
-          const x2 = iconX + Math.cos(angle) * (iconSize + 3);
-          const y2 = iconY + Math.sin(angle) * (iconSize + 3);
-          doc.moveTo(x1, y1).lineTo(x2, y2).stroke();
-        }
-        doc.strokeColor('#000');
-      } else if (weatherType === 'cloudy' || weatherType === 'overcast') {
-        // Cloud icon - overlapping circles
-        doc.circle(iconX - 2, iconY, 3).fill('#9ca3af');
-        doc.circle(iconX + 2, iconY - 1, 3.5).fill('#9ca3af');
-        doc.circle(iconX + 5, iconY, 2.5).fill('#9ca3af');
-      } else if (weatherType === 'partly-cloudy') {
-        // Sun behind cloud
-        doc.circle(iconX - 3, iconY - 2, 3).fill('#f59e0b');
-        doc.circle(iconX, iconY + 1, 2.5).fill('#9ca3af');
-        doc.circle(iconX + 3, iconY, 3).fill('#9ca3af');
-      } else if (weatherType === 'rainy' || weatherType === 'rain') {
-        // Cloud with rain drops
-        doc.circle(iconX - 2, iconY - 2, 2.5).fill('#6b7280');
-        doc.circle(iconX + 2, iconY - 2, 3).fill('#6b7280');
-        doc.lineWidth(0.8).strokeColor('#3b82f6');
-        doc.moveTo(iconX - 2, iconY + 2).lineTo(iconX - 3, iconY + 5).stroke();
-        doc.moveTo(iconX + 2, iconY + 2).lineTo(iconX + 1, iconY + 5).stroke();
-        doc.strokeColor('#000');
-      } else if (weatherType === 'stormy') {
-        // Cloud with lightning
-        doc.circle(iconX - 2, iconY - 2, 2.5).fill('#4b5563');
-        doc.circle(iconX + 2, iconY - 2, 3).fill('#4b5563');
-        doc.moveTo(iconX, iconY + 1).lineTo(iconX - 2, iconY + 4).lineTo(iconX + 1, iconY + 4).lineTo(iconX - 1, iconY + 7).fill('#fbbf24');
-      } else if (weatherType === 'snowy' || weatherType === 'snow' || weatherType === 'cold') {
-        // Snowflake - star pattern
-        doc.lineWidth(0.8).strokeColor('#3b82f6');
-        for (let i = 0; i < 6; i++) {
-          const angle = (i * Math.PI) / 3;
-          doc.moveTo(iconX, iconY).lineTo(iconX + Math.cos(angle) * 5, iconY + Math.sin(angle) * 5).stroke();
-        }
-        doc.strokeColor('#000');
-      } else if (weatherType === 'windy') {
-        // Wind lines
-        doc.lineWidth(0.8).strokeColor('#6b7280');
-        doc.moveTo(iconX - 4, iconY - 2).quadraticCurveTo(iconX, iconY - 3, iconX + 5, iconY - 2).stroke();
-        doc.moveTo(iconX - 4, iconY + 1).quadraticCurveTo(iconX + 2, iconY, iconX + 6, iconY + 1).stroke();
-        doc.moveTo(iconX - 3, iconY + 4).quadraticCurveTo(iconX, iconY + 3, iconX + 4, iconY + 4).stroke();
-        doc.strokeColor('#000');
-      } else if (weatherType === 'foggy' || weatherType === 'fog') {
-        // Fog lines
-        doc.lineWidth(1).strokeColor('#9ca3af');
-        doc.moveTo(iconX - 5, iconY - 2).lineTo(iconX + 5, iconY - 2).stroke();
-        doc.moveTo(iconX - 4, iconY + 1).lineTo(iconX + 6, iconY + 1).stroke();
-        doc.moveTo(iconX - 5, iconY + 4).lineTo(iconX + 5, iconY + 4).stroke();
-        doc.strokeColor('#000');
-      } else {
-        // Default: simple sun
-        doc.circle(iconX, iconY, iconSize - 1).fill('#f59e0b');
-      }
-      
-      // Reset all colors and line width back to defaults
-      doc.fillColor('#000').strokeColor('#000').lineWidth(1);
-      doc.fontSize(8).font('Helvetica').text(`${weatherLabel}${weatherText ? ' - ' + weatherText : ''}`, startX + 70, weatherY);
-
-      // ===== TYPE OF WORK - Checkboxes =====
-      doc.y += 16;
-      const typeY = doc.y;
-      doc.fontSize(8).font('Helvetica-Bold').text('TYPE OF WORK', startX, typeY);
-      
-      // Mapping from form values to PDF labels
-      const inspectionTypeMapping: { value: string; label: string }[] = [
-        { value: 'reinf_concrete', label: 'Reinf. Concrete' },
-        { value: 'structural_steel', label: 'Structural Steel' },
-        { value: 'reinf_masonry', label: 'Reinf. Masonry' },
-        { value: 'fire_proofing', label: 'Fire Proofing' },
-        { value: 'shotcrete', label: 'Shotcrete' },
-        { value: 'anchors', label: 'Anchors' },
-        { value: 'other', label: 'Other' },
-      ];
-      const selectedTypes = (report.typeOfWork as string[]) || [];
-      let typeX = startX + 95;
-      inspectionTypeMapping.forEach((typeItem) => {
-        const isChecked = selectedTypes.includes(typeItem.value);
-        doc.rect(typeX, typeY - 1, checkSize, checkSize).stroke();
-        if (isChecked) {
-          // Draw checkmark inside the checkbox
-          doc.lineWidth(1.2);
-          doc.moveTo(typeX + 2, typeY + 2).lineTo(typeX + 4, typeY + 5).lineTo(typeX + 7, typeY - 1).stroke();
-          doc.lineWidth(1);
-        }
-        doc.fontSize(7).font('Helvetica').text(typeItem.label, typeX + 9, typeY);
-        typeX += 68;
-      });
-
-      // ===== PROJECT INFO SECTION =====
-      doc.y = typeY + 18;
-      const projY = doc.y;
-      const col1W = pageWidth * 0.55;
-      const col2W = pageWidth * 0.45;
-
-      const projectName = report.project?.name || report.customProjectName || 'Unassigned Report';
-      const projectAddress = report.project?.address || 'N/A';
-      const inspectorName = report.inspectorName || 'Unknown';
-      const clientName = report.project?.client || 'N/A';
-
-      // Project Name row
-      doc.rect(startX, projY, 75, 18).fillAndStroke('#000', '#000');
-      doc.fillColor('#fff').fontSize(8).font('Helvetica-Bold').text('Project Name', startX + 3, projY + 5);
-      doc.fillColor('#000');
-      doc.rect(startX + 75, projY, col1W - 75, 18).stroke();
-      doc.fontSize(9).font('Helvetica-Bold').text(projectName, startX + 78, projY + 5, { width: col1W - 85 });
-
-      doc.rect(startX + col1W, projY, 55, 18).fillAndStroke('#000', '#000');
-      doc.fillColor('#fff').fontSize(8).font('Helvetica-Bold').text('Inspector', startX + col1W + 3, projY + 5);
-      doc.fillColor('#000');
-      doc.rect(startX + col1W + 55, projY, col2W - 55, 18).stroke();
-      doc.fontSize(9).font('Helvetica-Bold').text(inspectorName, startX + col1W + 58, projY + 5, { width: col2W - 65 });
-
-      // Project Address row
-      doc.rect(startX, projY + 18, 75, 18).fillAndStroke('#000', '#000');
-      doc.fillColor('#fff').fontSize(8).font('Helvetica-Bold').text('Project Address', startX + 3, projY + 23);
-      doc.fillColor('#000');
-      doc.rect(startX + 75, projY + 18, col1W - 75, 18).stroke();
-      doc.fontSize(9).font('Helvetica-Bold').text(projectAddress, startX + 78, projY + 23, { width: col1W - 85 });
-
-      doc.rect(startX + col1W, projY + 18, 55, 18).fillAndStroke('#000', '#000');
-      doc.fillColor('#fff').fontSize(8).font('Helvetica-Bold').text('Client', startX + col1W + 3, projY + 23);
-      doc.fillColor('#000');
-      doc.rect(startX + col1W + 55, projY + 18, col2W - 55, 18).stroke();
-      doc.fontSize(9).font('Helvetica-Bold').text(clientName, startX + col1W + 58, projY + 23, { width: col2W - 65 });
-
-      // ===== WORK ACTIVITIES TABLE =====
-      doc.y = projY + 42;
-      doc.fontSize(9).font('Helvetica-Bold').text('WORK ACTIVITIES', startX, doc.y);
-      doc.y += 14;
-
-      const waY = doc.y;
-      const waCols = [130, 50, pageWidth - 180];
-      
-      // Header row
-      doc.rect(startX, waY, waCols[0], 16).fillAndStroke('#e0e0e0', '#000');
-      doc.rect(startX + waCols[0], waY, waCols[1], 16).fillAndStroke('#e0e0e0', '#000');
-      doc.rect(startX + waCols[0] + waCols[1], waY, waCols[2], 16).fillAndStroke('#e0e0e0', '#000');
-      doc.fillColor('#000').fontSize(8).font('Helvetica-Bold');
-      doc.text('CONTRACTOR / TRADE', startX + 3, waY + 4);
-      doc.text('COUNT', startX + waCols[0] + 3, waY + 4);
-      doc.text('WORK DESCRIPTION', startX + waCols[0] + waCols[1] + 3, waY + 4);
-
-      const workActivities = (report.workActivities as WorkActivityRow[]) || [];
-      let currentWaY = waY + 16;
-      const maxDisplayRows = 6; // Maximum rows to display to prevent page overflow
-      const rowCount = Math.min(Math.max(workActivities.length, 2), maxDisplayRows);
-      const minRowHeight = 16;
-      const maxRowHeight = 32; // Limit row height to prevent overflow
-      
-      for (let i = 0; i < rowCount; i++) {
-        const activity = workActivities[i];
-        
-        // Calculate row height based on content, with maximum limit
-        let rowHeight = minRowHeight;
-        if (activity) {
-          doc.fontSize(8).font('Helvetica');
-          const contractorHeight = doc.heightOfString(activity.contractor || '', { width: waCols[0] - 6 });
-          const descHeight = doc.heightOfString(activity.workDescription || '', { width: waCols[2] - 6 });
-          rowHeight = Math.min(maxRowHeight, Math.max(minRowHeight, contractorHeight + 8, descHeight + 8));
-        }
-        
-        doc.rect(startX, currentWaY, waCols[0], rowHeight).stroke();
-        doc.rect(startX + waCols[0], currentWaY, waCols[1], rowHeight).stroke();
-        doc.rect(startX + waCols[0] + waCols[1], currentWaY, waCols[2], rowHeight).stroke();
-        if (activity) {
-          doc.fontSize(8).font('Helvetica');
-          doc.text(activity.contractor || '', startX + 3, currentWaY + 4, { width: waCols[0] - 6, height: rowHeight - 6, ellipsis: true });
-          doc.text(String(activity.headcount || ''), startX + waCols[0] + 18, currentWaY + 4);
-          doc.text(activity.workDescription || '', startX + waCols[0] + waCols[1] + 3, currentWaY + 4, { width: waCols[2] - 6, height: rowHeight - 6, ellipsis: true });
-        }
-        currentWaY += rowHeight;
-      }
-
-      // ===== DAILY SUMMARY =====
-      doc.y = currentWaY + 8;
-      doc.fontSize(9).font('Helvetica-Bold').text('DAILY SUMMARY', startX, doc.y);
-      doc.y += 14;
-
-      const sumY = doc.y;
-      const summaryParts: string[] = [];
-      if (report.inspections) summaryParts.push(report.inspections);
-      if (report.workPerformed) summaryParts.push(report.workPerformed);
-      if (report.notes) summaryParts.push(report.notes);
-      const summaryText = summaryParts.join('\n\n') || 'No inspection details recorded.';
-      
-      // Calculate dynamic height based on content, with maximum limit
-      doc.fontSize(9).font('Helvetica');
-      const summaryTextHeight = doc.heightOfString(summaryText, { width: pageWidth - 8 });
-      const maxSumH = 80; // Maximum height to prevent overflow
-      const sumH = Math.min(maxSumH, Math.max(50, summaryTextHeight + 12));
-      doc.rect(startX, sumY, pageWidth, sumH).stroke();
-      
-      doc.text(summaryText, startX + 4, sumY + 4, { width: pageWidth - 8, height: sumH - 8, ellipsis: true });
-
-      // ===== QC CHECKLIST ROW =====
-      doc.y = sumY + sumH + 8;
-      const qcY = doc.y;
-      doc.fontSize(8).font('Helvetica-Bold').text('QC CHECKLIST:', startX, qcY);
-      
-      const qcItems = ['FSA-5', 'On Time', 'File # Checked', 'Plan Reviewed', 'Specs Reviewed', 'Prev Reports', 'Tests per Spec'];
-      let qcX = startX + 75;
-      qcItems.forEach((item) => {
-        doc.rect(qcX, qcY - 1, checkSize, checkSize).stroke();
-        doc.fontSize(7).font('Helvetica').text(item, qcX + 9, qcY);
-        qcX += 60;
-      });
-
-      // ===== EQUIPMENT & MATERIALS =====
-      doc.y = qcY + 16;
-      const maxEqMatH = 24; // Maximum height for equipment/materials text
-      
-      if (report.equipment || report.materialsDelivered) {
-        const eqMatY = doc.y;
-        const halfWidth = (pageWidth - 8) / 2;
-        
-        // Equipment section
-        doc.fontSize(8).font('Helvetica-Bold').text('EQUIPMENT:', startX, eqMatY);
-        const equipmentText = report.equipment || 'None';
-        doc.fontSize(8).font('Helvetica');
-        const equipH = Math.min(maxEqMatH, doc.heightOfString(equipmentText, { width: halfWidth - 60 }));
-        doc.text(equipmentText, startX + 60, eqMatY, { width: halfWidth - 60, height: equipH, ellipsis: true });
-        
-        // Materials section
-        doc.fontSize(8).font('Helvetica-Bold').text('MATERIALS:', startX + halfWidth + 4, eqMatY);
-        const materialsText = report.materialsDelivered || 'None';
-        doc.fontSize(8).font('Helvetica');
-        const matH = Math.min(maxEqMatH, doc.heightOfString(materialsText, { width: halfWidth - 60 }));
-        doc.text(materialsText, startX + halfWidth + 64, eqMatY, { width: halfWidth - 60, height: matH, ellipsis: true });
-        
-        doc.y = eqMatY + Math.max(equipH, matH, 12) + 8;
-      }
-
-      // ===== FLAGS ROW: Issues / Safety =====
-      const flagY = doc.y;
-
-      doc.fontSize(8).font('Helvetica-Bold').text('ISSUES/DELAYS:', startX, flagY);
-      doc.rect(startX + 70, flagY - 1, checkSize, checkSize).stroke();
-      if (report.issuesFlag) doc.rect(startX + 71, flagY, 5, 5).fill('#000');
-      doc.fontSize(7).font('Helvetica').text('Yes', startX + 79, flagY);
-      doc.rect(startX + 98, flagY - 1, checkSize, checkSize).stroke();
-      if (!report.issuesFlag) doc.rect(startX + 99, flagY, 5, 5).fill('#000');
-      doc.text('No', startX + 107, flagY);
-
-      doc.fontSize(8).font('Helvetica-Bold').text('SAFETY INCIDENTS:', startX + 135, flagY);
-      doc.rect(startX + 215, flagY - 1, checkSize, checkSize).stroke();
-      if (report.safetyFlag) doc.rect(startX + 216, flagY, 5, 5).fill('#000');
-      doc.fontSize(7).font('Helvetica').text('Yes', startX + 224, flagY);
-      doc.rect(startX + 245, flagY - 1, checkSize, checkSize).stroke();
-      if (!report.safetyFlag) doc.rect(startX + 246, flagY, 5, 5).fill('#000');
-      doc.text('No', startX + 254, flagY);
-
-      doc.y = flagY + 12;
-      const maxDetailsH = 20; // Maximum height for issues/safety details
-      
-      // Show issues details if flagged
-      if (report.issuesFlag && report.issuesDetails) {
-        const issueDetailsY = doc.y;
-        doc.fontSize(8).font('Helvetica-Oblique').fillColor('#333');
-        const issueDetailsH = Math.min(maxDetailsH, doc.heightOfString(report.issuesDetails, { width: pageWidth - 10 }));
-        doc.text(`Issues: ${report.issuesDetails}`, startX + 5, issueDetailsY, { width: pageWidth - 10, height: issueDetailsH, ellipsis: true });
-        doc.fillColor('#000');
-        doc.y = issueDetailsY + issueDetailsH + 4;
-      }
-      
-      // Show safety details if flagged
-      if (report.safetyFlag && report.safetyDetails) {
-        const safetyDetailsY = doc.y;
-        doc.fontSize(8).font('Helvetica-Oblique').fillColor('#333');
-        const safetyDetailsH = Math.min(maxDetailsH, doc.heightOfString(report.safetyDetails, { width: pageWidth - 10 }));
-        doc.text(`Safety: ${report.safetyDetails}`, startX + 5, safetyDetailsY, { width: pageWidth - 10, height: safetyDetailsH, ellipsis: true });
-        doc.fillColor('#000');
-        doc.y = safetyDetailsY + safetyDetailsH + 4;
-      }
-
-      // ===== VISITORS SECTION =====
-      doc.y += 4;
-      const visitorsY = doc.y;
-      const visitors = (report.visitors as VisitorRow[]) || [];
-      const visitorsText = visitors.length > 0 
-        ? visitors.map(v => {
-            let text = v.name;
-            if (v.company) text += ` (${v.company})`;
-            if (v.notes) text += ` - ${v.notes}`;
-            return text;
-          }).join('; ')
-        : 'None';
-      doc.fontSize(8).font('Helvetica-Bold').text('VISITORS:', startX, visitorsY);
-      doc.fontSize(8).font('Helvetica');
-      const maxVisitorsH = 20; // Maximum height for visitors text
-      const visitorsH = Math.min(maxVisitorsH, doc.heightOfString(visitorsText, { width: pageWidth - 55 }));
-      doc.text(visitorsText, startX + 50, visitorsY, { width: pageWidth - 55, height: visitorsH, ellipsis: true });
-      doc.y = visitorsY + Math.max(visitorsH, 10) + 8;
-
-      // ===== PHOTOS ATTACHED =====
-      const photos = report.photos || [];
-      doc.fontSize(8).font('Helvetica-Bold').text('PHOTOS ATTACHED:', startX, doc.y, { lineBreak: false });
-      doc.font('Helvetica').text(`${photos.length} photo(s) - See attached sheet`, startX + 95, doc.y, { lineBreak: false });
-
-      // ===== SIGNATURE SECTION =====
-      // DEBUG: Log Y position and page info before signature
-      const preSignaturePages = doc.bufferedPageRange().count;
-      console.log(`PDF Debug: Before signature - doc.y=${doc.y.toFixed(0)}, page.height=${doc.page.height.toFixed(0)}, pages=${preSignaturePages}`);
-      
-      // Ensure signature fits on page 1 by clamping Y position
-      const maxSignatureStartY = doc.page.height - 130; // Leave room for signature + footer
-      doc.y = Math.min(doc.y + 20, maxSignatureStartY);
-      const sigY = doc.y;
-
-      doc.fontSize(7).font('Helvetica').text('SIGNATURE OF INSPECTOR', startX, sigY, { lineBreak: false });
-      
-      if (report.signaturePath) {
-        const sigBuffer = await loadImageBuffer(report.signaturePath);
-        if (sigBuffer) {
-          try {
-            doc.image(sigBuffer, startX, sigY + 8, { width: 140, height: 35, fit: [140, 35] });
-          } catch (err) {
-            console.error('Error adding signature:', err);
-          }
-        }
-      }
-      
-      doc.moveTo(startX, sigY + 48).lineTo(startX + 200, sigY + 48).stroke();
-
-      doc.fontSize(7).text('INSPECTOR NAME', startX, sigY + 52, { lineBreak: false });
-      doc.font('Helvetica-Bold').text(inspectorName, startX + 75, sigY + 52, { lineBreak: false });
-      
-      doc.fontSize(7).font('Helvetica').text('LICENSE NO.', startX, sigY + 64, { lineBreak: false });
-      doc.font('Helvetica-Bold').text(inspectorProfile?.licenseNumber || 'N/A', startX + 60, sigY + 64, { lineBreak: false });
-
-      // Time tracking boxes - right side
-      const timeX = 320;
-      
-      // Format time from 24h HH:MM to 12h format
+      // ===== HELPERS =====
       const formatTimeDisplay = (time: string | null | undefined): string => {
         if (!time) return '--';
         const [h, m] = time.split(':').map(Number);
         if (isNaN(h) || isNaN(m)) return '--';
         const ampm = h >= 12 ? 'PM' : 'AM';
         const h12 = h % 12 || 12;
-        return `${h12}:${m.toString().padStart(2, '0')}${ampm}`;
+        return `${h12}:${m.toString().padStart(2, '0')} ${ampm}`;
       };
-      
-      const timeInStr = formatTimeDisplay(report.timeIn);
-      const timeOutStr = formatTimeDisplay(report.timeOut);
-      const regHrsStr = report.regularHours || '--';
-      const otHrsStr = report.otHours || '--';
-      
-      doc.rect(timeX, sigY, 45, 28).stroke();
-      doc.fontSize(7).font('Helvetica').text('TIME IN', timeX + 2, sigY + 2, { lineBreak: false });
-      doc.fontSize(9).font('Helvetica-Bold').text(timeInStr, timeX + 2, sigY + 12, { lineBreak: false });
 
-      doc.rect(timeX + 45, sigY, 45, 28).stroke();
-      doc.fontSize(7).font('Helvetica').text('TIME OUT', timeX + 47, sigY + 2, { lineBreak: false });
-      doc.fontSize(9).font('Helvetica-Bold').text(timeOutStr, timeX + 47, sigY + 12, { lineBreak: false });
+      const drawCell = (x: number, y: number, w: number, h: number, label: string, value: string, labelFontSize = 6, valueFontSize = 8.5) => {
+        doc.rect(x, y, w, h).stroke();
+        doc.fontSize(labelFontSize).font('Helvetica').fillColor('#555').text(label.toUpperCase(), x + 3, y + 3, { width: w - 6, lineBreak: false });
+        doc.fontSize(valueFontSize).font('Helvetica-Bold').fillColor('#000').text(value || '--', x + 3, y + 3 + labelFontSize + 2, { width: w - 6, lineBreak: false, ellipsis: true });
+      };
 
-      doc.rect(timeX + 90, sigY, 40, 28).stroke();
-      doc.fontSize(7).font('Helvetica').text('REG HRS', timeX + 92, sigY + 2, { lineBreak: false });
-      doc.fontSize(10).font('Helvetica-Bold').text(regHrsStr, timeX + 102, sigY + 12, { lineBreak: false });
+      const drawSectionHeader = (x: number, y: number, w: number, label: string) => {
+        doc.rect(x, y, w, 14).fillAndStroke('#1a2e4a', '#1a2e4a');
+        doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#ffffff').text(label, x + 4, y + 3.5, { width: w - 8, lineBreak: false });
+        doc.fillColor('#000');
+      };
 
-      doc.rect(timeX + 130, sigY, 40, 28).stroke();
-      doc.fontSize(7).font('Helvetica').text('OT HRS', timeX + 132, sigY + 2, { lineBreak: false });
-      doc.fontSize(10).font('Helvetica-Bold').text(otHrsStr, timeX + 142, sigY + 12, { lineBreak: false });
+      let dateStr = '--';
+      if (report.date instanceof Date) {
+        const m = String(report.date.getUTCMonth() + 1).padStart(2, '0');
+        const d = String(report.date.getUTCDate()).padStart(2, '0');
+        const y = String(report.date.getUTCFullYear());
+        dateStr = `${m}/${d}/${y}`;
+      } else if (typeof report.date === 'string') {
+        const match = report.date.match(/^(\d{4})-(\d{2})-(\d{2})/);
+        if (match) {
+          dateStr = `${match[2]}/${match[3]}/${match[1]}`;
+        }
+      }
 
-      // Approval line
-      doc.fontSize(7).font('Helvetica').text('Approved By: ______________________________________', timeX, sigY + 36, { lineBreak: false });
+      const companyName = (company?.name || 'FIELD DAILY REPORTS').toUpperCase();
+      const contactLine = [company?.address, company?.phone, company?.email].filter(Boolean).join('   |   ');
+      const projectName = report.project?.name || report.customProjectName || 'Unassigned Report';
+      const projectAddress = report.project?.address || '';
+      const inspectorName = report.inspectorName || 'Unknown';
+      const clientName = report.project?.client || '';
+      const dsaFileNo = report.project?.dsaFileNo || '';
+      const projectNumber = report.project?.projectNumber || '';
+      const reportNumber = report.reportNumber ? `${report.reportNumber}` : '--';
 
-      // ===== PHOTOS ON PAGE 2 =====
-      // DEBUG: Log page count after signature section
-      const postSignaturePages = doc.bufferedPageRange().count;
-      console.log(`PDF Debug: After signature section - pages=${postSignaturePages}`);
-      
-      if (photos.length > 0) {
-        const photoGap = 12;
-        const photoWidth = (pageWidth - photoGap) / 2;
-        const photoHeight = 160;
-        const captionHeight = 18;
-        const rowHeight = photoHeight + captionHeight + 8;
-        const headerHeight = 55; // Space for header on each photo page
-        
-        // Helper to add photo page header
-        const addPhotoPageHeader = () => {
-          doc.fontSize(12).font('Helvetica-Bold').text('PHOTO DOCUMENTATION', startX, 25, { lineBreak: false });
-          doc.fontSize(9).font('Helvetica').text(`${projectName} - ${dateStr}`, startX, 42, { lineBreak: false });
-        };
-        
-        // Start first photo page
+      const photos = report.photos || [];
+      const workActivities = (report.workActivities as WorkActivityRow[]) || [];
+      const equipmentRows = (report.equipmentRows as EquipmentRow[] | null) || [];
+      const materialRows = (report.materialRows as MaterialRow[] | null) || [];
+      const visitors = (report.visitors as VisitorRow[]) || [];
+
+      // ===== PDF REDESIGN — matches reference PDF layout =====
+
+      // ─── Color / dimension constants ────────────────────────────────────
+      const NAVY    = '#1a2e4a';
+      const ROWCOLS = ['#ffffff', '#e8f4fc'] as const;
+      const getRowBg = (i: number) => ROWCOLS[i % 2];
+
+      // ─── Helpers ────────────────────────────────────────────────────────
+
+      /** Navy bar with white bold text */
+      const drawSectionHdr = (y: number, label: string) => {
+        doc.rect(ML, y, CW, 13).fill(NAVY);
+        doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#fff')
+          .text(label, ML + 4, y + 2.5, { lineBreak: false });
+        doc.fillColor('#000');
+      };
+
+      /** Navy bar with white small-caps column labels */
+      const drawColHeaders = (y: number, hdrH: number, cols: Array<{ x: number; w: number; label: string }>) => {
+        doc.rect(ML, y, CW, hdrH).fill(NAVY);
+        doc.fontSize(6.5).font('Helvetica-Bold').fillColor('#fff');
+        for (const c of cols) {
+          doc.text(c.label, c.x + 4, y + (hdrH - 6.5) / 2, { width: c.w - 8, lineBreak: false });
+        }
+        doc.fillColor('#000');
+      };
+
+      /** Small label on top, bold value below */
+      const drawInfoCell = (x: number, y: number, w: number, h: number, label: string, value: string) => {
+        doc.rect(x, y, w, h).stroke('#cccccc');
+        doc.fontSize(6).font('Helvetica').fillColor('#666')
+          .text(label.toUpperCase(), x + 4, y + 3, { width: w - 8, lineBreak: false });
+        doc.fontSize(8.5).font('Helvetica-Bold').fillColor(NAVY)
+          .text(value || '--', x + 4, y + 12, { width: w - 8, lineBreak: false, ellipsis: true });
+        doc.fillColor('#000');
+      };
+
+      /** Coloured pill badge for equipment / material status */
+      const drawStatusBadge = (x: number, y: number, colW: number, rowH: number, status: string) => {
+        const s = (status || '').toUpperCase();
+        let bg = '#6b7280';
+        if (['ACTIVE', 'DELIVERED', 'COMPLETE', 'APPROVED', 'FINAL'].includes(s)) bg = '#16a34a';
+        else if (['STANDBY', 'ORDERED', 'PENDING', 'SUBMITTED'].includes(s)) bg = '#d97706';
+        else if (['DELAYED', 'REJECTED', 'FAILED', 'ON HOLD'].includes(s)) bg = '#dc2626';
+        const bw = Math.min(colW - 10, 58), bh = 10;
+        const bx = x + (colW - bw) / 2, by = y + (rowH - bh) / 2;
+        doc.rect(bx, by, bw, bh).fill(bg);
+        doc.fontSize(6).font('Helvetica-Bold').fillColor('#fff')
+          .text(s || '--', bx, by + 2, { width: bw, align: 'center', lineBreak: false });
+        doc.fillColor('#000');
+      };
+
+      // ─── Derived values ──────────────────────────────────────────────────
+      const knowlandLogoPath = 'attached_assets/trans_logo_1774663108517.png';
+      let headerLogoBuffer: Buffer | null = null;
+      try {
+        const localLogoPath = path.join(process.cwd(), knowlandLogoPath);
+        if (fs.existsSync(localLogoPath)) {
+          headerLogoBuffer = fs.readFileSync(localLogoPath);
+        }
+      } catch (err) {
+        console.error('Error loading Knowland logo:', err);
+      }
+      if (!headerLogoBuffer && company?.logoPath) {
+        headerLogoBuffer = await loadImageBuffer(company.logoPath);
+      }
+
+      // ─── Long-form report date (e.g. "Thursday, February 20, 2025") ─────
+      const reportLongDate = (() => {
+        let d: Date | null = null;
+        if (report.date instanceof Date) d = report.date;
+        else if (typeof report.date === 'string') d = new Date((report.date as string) + 'T12:00:00Z');
+        if (!d) return dateStr;
+        return d.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' });
+      })();
+
+      const typeOfWork: string[] = Array.isArray(report.typeOfWork) ? (report.typeOfWork as string[]) : [];
+      const workPerformedText = (report.workPerformed as string) || '';
+      const inspectionsText   = (report.inspections   as string) || '';
+
+      let curY = MT;
+
+      // ══════════════════════════════════════════════════════════════════
+      // PAGE 1
+      // ══════════════════════════════════════════════════════════════════
+
+      // ─── HEADER ──────────────────────────────────────────────────────
+      // Logo (left, 60 px tall)
+      if (headerLogoBuffer) {
+        doc.image(headerLogoBuffer, ML, MT, { fit: [130, 45], valign: 'center', align: 'left' });
+      }
+
+      // Centre block: "DAILY REPORT" title + report ID
+      const ctrX = ML + 185;
+      const ctrW = CW - 185 - 165;
+      const rptIdLabel = report.reportNumber ? `DR-${report.reportNumber}` : '--';
+      doc.fontSize(18).font('Helvetica-Bold').fillColor(NAVY)
+        .text('DAILY REPORT', ctrX, MT + 4, { width: ctrW, align: 'center', lineBreak: false });
+      doc.fontSize(9.5).font('Helvetica-Bold').fillColor(NAVY)
+        .text(rptIdLabel, ctrX, MT + 27, { width: ctrW, align: 'center', lineBreak: false });
+
+      // Right block: company name + address + contact
+      const rblkX = PW - MR - 160;
+      const orgName = company?.name || 'KNOWLAND CONSTRUCTION SERVICES';
+      const orgPhone = (company as any)?.phone || '';
+      const orgEmail = (company as any)?.email || '';
+      const orgAddr  = (company as any)?.address || '';
+      doc.fontSize(9).font('Helvetica-Bold').fillColor(NAVY)
+        .text(orgName, rblkX, MT + 4, { width: 160, align: 'right', lineBreak: false });
+      if (orgAddr) {
+        doc.fontSize(7.5).font('Helvetica').fillColor('#555')
+          .text(orgAddr, rblkX, MT + 18, { width: 160, align: 'right', lineBreak: false });
+      }
+      if (orgPhone || orgEmail) {
+        doc.fontSize(7.5).font('Helvetica').fillColor('#555')
+          .text([orgPhone, orgEmail].filter(Boolean).join('  •  '), rblkX, MT + 30, { width: 160, align: 'right', lineBreak: false });
+      }
+      doc.fillColor('#000');
+
+      // Thin navy separator below header
+      curY = MT + 65;
+      doc.rect(ML, curY, CW, 1).fill(NAVY);
+      curY += 4;
+
+      // ─── REPORT DETAILS (wraps project info + report line + inspector row) ─
+      drawSectionHdr(curY, 'REPORT DETAILS');
+      curY += 13;
+
+      // Project info row
+      const piH = 30;
+      const piW = [CW * 0.40, CW * 0.18, CW * 0.18, 0];
+      piW[3] = CW - piW[0] - piW[1] - piW[2];
+      const piX = [ML, ML + piW[0], ML + piW[0] + piW[1], ML + piW[0] + piW[1] + piW[2]];
+      drawInfoCell(piX[0], curY, piW[0], piH, 'PROJECT', projectName);
+      drawInfoCell(piX[1], curY, piW[1], piH, 'PROJECT NO.', projectNumber);
+      drawInfoCell(piX[2], curY, piW[2], piH, 'DSA FILE NO.', dsaFileNo);
+      drawInfoCell(piX[3], curY, piW[3], piH, 'REPORT DATE', reportLongDate);
+      curY += piH;
+
+      // Report line + status badge
+      const rlH = 18;
+      doc.rect(ML, curY, CW, rlH).fill('#f1f5f9');
+      doc.fontSize(8.5).font('Helvetica-Bold').fillColor(NAVY)
+        .text(`Daily Construction Report — Report #${report.reportNumber || '--'}`, ML + 6, curY + (rlH - 8.5) / 2, { lineBreak: false });
+      const stText = (report.status || 'DRAFT').toUpperCase();
+      const stColors: Record<string, string> = { SUBMITTED: NAVY, APPROVED: '#16a34a', FINAL: '#16a34a', DRAFT: '#6b7280' };
+      const stBg = stColors[stText] || '#6b7280';
+      const stW = 60, stH = 12, stX = ML + CW - stW - 6, stY = curY + (rlH - stH) / 2;
+      doc.rect(stX, stY, stW, stH).fill(stBg);
+      doc.fontSize(6.5).font('Helvetica-Bold').fillColor('#fff')
+        .text(stText, stX, stY + 2.5, { width: stW, align: 'center', lineBreak: false });
+      doc.fillColor('#000');
+      curY += rlH + 4;
+      const rdH = 28;
+      const rdW = [CW * 0.34, CW * 0.24, CW * 0.21, 0];
+      rdW[3] = CW - rdW[0] - rdW[1] - rdW[2];
+      const rdX = [ML, ML + rdW[0], ML + rdW[0] + rdW[1], ML + rdW[0] + rdW[1] + rdW[2]];
+      const inspTitle = (inspectorProfile as any)?.title || '';
+      drawInfoCell(rdX[0], curY, rdW[0], rdH, 'PREPARED BY', inspectorName + (inspTitle ? ', ' + inspTitle : ''));
+      drawInfoCell(rdX[1], curY, rdW[1], rdH, 'ORGANIZATION', company?.name || '--');
+      drawInfoCell(rdX[2], curY, rdW[2], rdH, 'WORK START', formatTimeDisplay(report.timeIn  as string));
+      drawInfoCell(rdX[3], curY, rdW[3], rdH, 'WORK END',   formatTimeDisplay(report.timeOut as string));
+      curY += rdH + 8;
+
+      // ─── WEATHER CONDITIONS ───────────────────────────────────────────
+      drawSectionHdr(curY, 'WEATHER CONDITIONS');
+      curY += 13;
+      const wH = 28;
+      const wW = [CW * 0.28, CW * 0.28, CW * 0.16, 0];
+      wW[3] = CW - wW[0] - wW[1] - wW[2];
+      const wX = [ML, ML + wW[0], ML + wW[0] + wW[1], ML + wW[0] + wW[1] + wW[2]];
+      drawInfoCell(wX[0], curY, wW[0], wH, 'MORNING (AM)',    (report.weatherAM       as string) || '--');
+      drawInfoCell(wX[1], curY, wW[1], wH, 'AFTERNOON (PM)',  (report.weatherPM       as string) || '--');
+      drawInfoCell(wX[2], curY, wW[2], wH, 'PRECIPITATION',   (report.precipitation   as string) || '--');
+      drawInfoCell(wX[3], curY, wW[3], wH, 'SITE CONDITIONS', (report.siteConditions  as string) || '--');
+      curY += wH + 8;
+
+      // ─── TYPE OF WORK ─────────────────────────────────────────────────
+      const TOW_LABELS: Record<string, string> = {
+        reinf_concrete:  'Reinf. Concrete',
+        structural_steel: 'Structural Steel',
+        reinf_masonry:   'Reinf. Masonry',
+        fire_proofing:   'Fire Proofing',
+        shotcrete:       'Shotcrete',
+        anchors:         'Anchors',
+        other:           'Other',
+      };
+      const TOW_ORDER = ['reinf_concrete', 'structural_steel', 'reinf_masonry', 'fire_proofing', 'shotcrete', 'anchors', 'other'];
+      drawSectionHdr(curY, 'TYPE OF WORK');
+      curY += 13;
+      const towRowH = 20;
+      const towItemW = CW / TOW_ORDER.length;
+      // Background row
+      doc.rect(ML, curY, CW, towRowH).fillAndStroke('#f8fafc', '#cccccc');
+      TOW_ORDER.forEach((key, i) => {
+        const checked = typeOfWork.includes(key);
+        const ix = ML + i * towItemW;
+        const boxSize = 8;
+        const boxX = ix + 5;
+        const boxY = curY + (towRowH - boxSize) / 2;
+        if (checked) {
+          // Solid navy filled square
+          doc.rect(boxX, boxY, boxSize, boxSize).fill(NAVY);
+          // Draw white checkmark as vector path
+          doc.save()
+            .moveTo(boxX + 1.5, boxY + boxSize * 0.55)
+            .lineTo(boxX + boxSize * 0.38, boxY + boxSize - 2)
+            .lineTo(boxX + boxSize - 1.5, boxY + 1.5)
+            .lineWidth(1.5)
+            .strokeColor('#ffffff')
+            .stroke()
+            .restore();
+        } else {
+          // Empty outlined square
+          doc.rect(boxX, boxY, boxSize, boxSize).fillAndStroke('#ffffff', '#999999');
+        }
+        // Reset fill color before text
+        doc.fillColor(checked ? NAVY : '#555555');
+        doc.fontSize(6.5).font(checked ? 'Helvetica-Bold' : 'Helvetica')
+          .text(TOW_LABELS[key] || key, ix + 16, curY + (towRowH - 7) / 2, { width: towItemW - 18, lineBreak: false });
+      });
+      doc.fillColor('#000000');
+      curY += towRowH + 8;
+
+      // ─── WORKFORCE ────────────────────────────────────────────────────
+      const totalWorkers = workActivities.reduce((s, r) => s + (Number(r.headcount) || 0), 0);
+      drawSectionHdr(curY, `WORKFORCE${totalWorkers > 0 ? ` (${totalWorkers} WORKERS ON-SITE)` : ''}`);
+      curY += 13;
+
+      const waMinRowH = 16, waHdrH = 12;
+      const waW = [CW * 0.24, CW * 0.08, CW * 0.22, 0];
+      waW[3] = CW - waW[0] - waW[1] - waW[2];
+      const waX = [ML, ML + waW[0], ML + waW[0] + waW[1], ML + waW[0] + waW[1] + waW[2]];
+      drawColHeaders(curY, waHdrH, [
+        { x: waX[0], w: waW[0], label: 'TRADE' },
+        { x: waX[1], w: waW[1], label: 'COUNT' },
+        { x: waX[2], w: waW[2], label: 'CONTRACTOR' },
+        { x: waX[3], w: waW[3], label: 'WORK DESCRIPTION' },
+      ]);
+      curY += waHdrH;
+
+      // Allow workforce table to use all available page space before Safety
+      const safetyBlockH = 13 + 26 + 26 + 4;
+      const waAvailH = PH - MB - FOOTER_H - curY - safetyBlockH - 20;
+
+      // Pre-calculate dynamic row heights (description column wraps; others truncate)
+      const waDescW = waW[3] - 8;
+      const waRowHeights: number[] = [];
+      let waTotalH = 0;
+      for (const row of workActivities) {
+        const desc = row.workDescription || '';
+        const measuredH = desc ? doc.fontSize(8).heightOfString(desc, { width: waDescW }) : 8;
+        const rowH = Math.max(waMinRowH, measuredH + 8);
+        if (waTotalH + rowH > waAvailH && waRowHeights.length > 0) break;
+        waRowHeights.push(rowH);
+        waTotalH += rowH;
+      }
+
+      workActivities.slice(0, waRowHeights.length).forEach((row, idx) => {
+        const rowH = waRowHeights[idx];
+        doc.rect(ML, curY, CW, rowH).fill(getRowBg(idx));
+        doc.rect(ML, curY, CW, rowH).stroke('#cccccc');
+        const ty = curY + (rowH - 8) / 2;
+        doc.fontSize(8).font('Helvetica').fillColor(NAVY);
+        doc.text(row.trade       || '--', waX[0] + 4, ty, { width: waW[0] - 8, lineBreak: false, ellipsis: true });
+        doc.text(String(row.headcount || ''), waX[1] + 4, ty, { width: waW[1] - 8, lineBreak: false });
+        doc.text(row.contractor  || '--', waX[2] + 4, ty, { width: waW[2] - 8, lineBreak: false, ellipsis: true });
+        // Description wraps to as many lines as needed
+        doc.text(row.workDescription || '--', waX[3] + 4, curY + 4, { width: waDescW, lineBreak: true });
+        curY += rowH;
+      });
+
+      // TOTAL ON-SITE row (navy)
+      if (workActivities.length > 0) {
+        doc.rect(ML, curY, CW, waMinRowH).fill(NAVY);
+        const ty = curY + (waMinRowH - 8) / 2;
+        doc.fontSize(8).font('Helvetica-Bold').fillColor('#fff');
+        doc.text('TOTAL ON-SITE', waX[0] + 4, ty, { width: waW[0] - 8, lineBreak: false });
+        doc.text(String(totalWorkers), waX[1] + 4, ty, { width: waW[1] - 8, lineBreak: false });
+        doc.fillColor('#000');
+        curY += waMinRowH;
+      }
+      curY += 8;
+
+      // ─── WORK PERFORMED & INSPECTIONS ─────────────────────────────────
+      // Measure natural heights — no artificial caps
+      const measureSection = (text: string) =>
+        text?.trim()
+          ? Math.max(20, doc.fontSize(8).heightOfString(text, { width: CW - 12 }) + 10)
+          : 20;
+
+      const wpNaturalH   = measureSection(workPerformedText);
+      const inspNaturalH = measureSection(inspectionsText);
+
+      const PAGE_BOTTOM = PH - MB - FOOTER_H;
+
+      // Compact continuation header for overflow pages
+      const drawContHeader = (suffix: string) => {
+        const chH = 20;
+        doc.rect(ML, curY, CW, chH).fill('#f1f5f9');
+        doc.rect(ML, curY, CW, chH).stroke('#cccccc');
+        doc.fontSize(7.5).font('Helvetica-Bold').fillColor(NAVY)
+          .text(
+            [company?.name || 'KNOWLAND CONSTRUCTION SERVICES', '—', projectName, rptIdLabel, suffix].join('   '),
+            ML + 6, curY + (chH - 7.5) / 2, { width: CW - 12, lineBreak: false, ellipsis: true }
+          );
+        doc.fillColor('#000');
+        curY += chH + 4;
+      };
+
+      // Render a text section at its natural height with no clipping.
+      // If the full block won't fit on the current page, start a new page first.
+      const drawTextSection = (label: string, text: string, contentH: number) => {
+        const blockH = 13 + contentH + 8; // header + box + gap
+        if (curY + blockH > PAGE_BOTTOM) {
+          doc.addPage();
+          curY = MT;
+          drawContHeader(`— ${label}`);
+        }
+        drawSectionHdr(curY, label);
+        curY += 13;
+        const hasText = text && text.trim().length > 0;
+        doc.rect(ML, curY, CW, contentH).fill('#fff');
+        doc.rect(ML, curY, CW, contentH).stroke('#cccccc');
+        doc.fontSize(8).font('Helvetica').fillColor(hasText ? NAVY : '#aaaaaa')
+          .text(hasText ? text : '--', ML + 6, curY + 4, { width: CW - 12 });
+        curY += contentH + 8;
+      };
+
+      drawTextSection('WORK PERFORMED', workPerformedText, wpNaturalH);
+      drawTextSection('INSPECTIONS',    inspectionsText,   inspNaturalH);
+
+      // ─── SAFETY ───────────────────────────────────────────────────────
+      // If Safety no longer fits on this page, start a fresh page for it
+      if (curY + safetyBlockH > PAGE_BOTTOM) {
         doc.addPage();
-        console.log(`PDF Debug: Added page 2 for photos, now pages=${doc.bufferedPageRange().count}`);
-        addPhotoPageHeader();
-        
-        let currentPhotoY = headerHeight;
-        let currentPhotoX = startX;
-        
-        for (let i = 0; i < photos.length; i++) {
-          // Check if we need a new page BEFORE starting a new row (not mid-row)
-          // Only check when starting a new row (left column position)
-          if (currentPhotoX === startX && currentPhotoY + rowHeight > doc.page.height - 35) {
-            doc.addPage();
-            console.log(`PDF Debug: Added additional page for photos, now pages=${doc.bufferedPageRange().count}`);
-            addPhotoPageHeader();
-            currentPhotoY = headerHeight;
+        curY = MT;
+        drawContHeader('— Safety');
+      }
+      drawSectionHdr(curY, 'SAFETY');
+      curY += 13;
+      const sfH = 26;
+      // Row 1: INCIDENTS | NEAR MISSES | TOOLBOX TALK TOPIC (wide)
+      const sfW1 = [CW * 0.16, CW * 0.16, 0];
+      sfW1[2] = CW - sfW1[0] - sfW1[1];
+      const sfX1 = [ML, ML + sfW1[0], ML + sfW1[0] + sfW1[1]];
+      drawInfoCell(sfX1[0], curY, sfW1[0], sfH, 'INCIDENTS',    String(report.safetyIncidents  ?? '0'));
+      drawInfoCell(sfX1[1], curY, sfW1[1], sfH, 'NEAR MISSES',  String(report.safetyNearMisses ?? '0'));
+      drawInfoCell(sfX1[2], curY, sfW1[2], sfH, 'TOOLBOX TALK TOPIC', (report.toolboxTalkTopic as string) || '--');
+      curY += sfH;
+      // Row 2: ATTENDEES | SITE SAFETY CONDITIONS
+      const sfW2 = [CW * 0.16, 0];
+      sfW2[1] = CW - sfW2[0];
+      const sfX2 = [ML, ML + sfW2[0]];
+      drawInfoCell(sfX2[0], curY, sfW2[0], sfH, 'ATTENDEES',           String(report.safetyAttendees ?? '--'));
+      drawInfoCell(sfX2[1], curY, sfW2[1], sfH, 'SITE SAFETY CONDITIONS', (report.safetySiteConditions as string) || '--');
+      curY += sfH;
+      curY += 12;
+
+      // ─── EQUIPMENT ON SITE ────────────────────────────────────────────
+      const eqRowH = 15, eqHdrH = 12;
+      const eqW = [CW * 0.37, CW * 0.12, CW * 0.16, 0];
+      eqW[3] = CW - eqW[0] - eqW[1] - eqW[2];
+      const eqX = [ML, ML + eqW[0], ML + eqW[0] + eqW[1], ML + eqW[0] + eqW[1] + eqW[2]];
+      // Page break: need room for section header + column header + at least one row
+      if (curY + 13 + eqHdrH + eqRowH > PAGE_BOTTOM) {
+        doc.addPage(); curY = MT; drawContHeader('— Equipment');
+      }
+      drawSectionHdr(curY, 'EQUIPMENT ON SITE');
+      curY += 13;
+      drawColHeaders(curY, eqHdrH, [
+        { x: eqX[0], w: eqW[0], label: 'EQUIPMENT' },
+        { x: eqX[1], w: eqW[1], label: 'HOURS' },
+        { x: eqX[2], w: eqW[2], label: 'STATUS' },
+        { x: eqX[3], w: eqW[3], label: 'USAGE' },
+      ]);
+      curY += eqHdrH;
+      if (equipmentRows.length === 0) {
+        if (curY + eqRowH > PAGE_BOTTOM) { doc.addPage(); curY = MT; drawContHeader('— Equipment'); }
+        doc.rect(ML, curY, CW, eqRowH).fill('#fff').stroke('#cccccc');
+        doc.fontSize(7.5).font('Helvetica').fillColor('#888')
+          .text('No equipment recorded.', ML + 6, curY + (eqRowH - 7.5) / 2, { lineBreak: false });
+        curY += eqRowH;
+      } else {
+        let eqColorIdx = 0;
+        equipmentRows.forEach((row) => {
+          if (curY + eqRowH > PAGE_BOTTOM) {
+            doc.addPage(); curY = MT; drawContHeader('— Equipment (cont.)');
+            drawColHeaders(curY, eqHdrH, [
+              { x: eqX[0], w: eqW[0], label: 'EQUIPMENT' },
+              { x: eqX[1], w: eqW[1], label: 'HOURS' },
+              { x: eqX[2], w: eqW[2], label: 'STATUS' },
+              { x: eqX[3], w: eqW[3], label: 'USAGE' },
+            ]);
+            curY += eqHdrH;
+            eqColorIdx = 0;
           }
-          
-          const photo = photos[i];
-          const photoBuffer = await loadImageBuffer(photo.filePath);
-          
-          if (photoBuffer) {
+          doc.rect(ML, curY, CW, eqRowH).fill(getRowBg(eqColorIdx)).stroke('#cccccc');
+          const ty = curY + (eqRowH - 8) / 2;
+          doc.fontSize(8).font('Helvetica').fillColor(NAVY);
+          doc.text(row.equipment || '--', eqX[0] + 4, ty, { width: eqW[0] - 8, lineBreak: false, ellipsis: true });
+          doc.text(row.hours || '--',     eqX[1] + 4, ty, { width: eqW[1] - 8, lineBreak: false });
+          drawStatusBadge(eqX[2], curY, eqW[2], eqRowH, row.status || '');
+          doc.fontSize(8).font('Helvetica').fillColor(NAVY);
+          doc.text(row.usage || '--',     eqX[3] + 4, ty, { width: eqW[3] - 8, lineBreak: false, ellipsis: true });
+          curY += eqRowH;
+          eqColorIdx++;
+        });
+      }
+      curY += 4;
+
+      // ─── MATERIAL DELIVERIES & ISSUES ─────────────────────────────────
+      const mtRowH = 15, mtHdrH = 12;
+      const mtW = [CW * 0.32, CW * 0.12, CW * 0.16, 0];
+      mtW[3] = CW - mtW[0] - mtW[1] - mtW[2];
+      const mtX = [ML, ML + mtW[0], ML + mtW[0] + mtW[1], ML + mtW[0] + mtW[1] + mtW[2]];
+      // Page break: need room for section header + column header + at least one row
+      if (curY + 13 + mtHdrH + mtRowH > PAGE_BOTTOM) {
+        doc.addPage(); curY = MT; drawContHeader('— Materials');
+      }
+      drawSectionHdr(curY, 'MATERIAL DELIVERIES & ISSUES');
+      curY += 13;
+      drawColHeaders(curY, mtHdrH, [
+        { x: mtX[0], w: mtW[0], label: 'MATERIAL' },
+        { x: mtX[1], w: mtW[1], label: 'QTY' },
+        { x: mtX[2], w: mtW[2], label: 'STATUS' },
+        { x: mtX[3], w: mtW[3], label: 'SUPPLIER / NOTES' },
+      ]);
+      curY += mtHdrH;
+      if (materialRows.length === 0) {
+        if (curY + mtRowH > PAGE_BOTTOM) { doc.addPage(); curY = MT; drawContHeader('— Materials'); }
+        doc.rect(ML, curY, CW, mtRowH).fill('#fff').stroke('#cccccc');
+        doc.fontSize(7.5).font('Helvetica').fillColor('#888')
+          .text('No material deliveries recorded.', ML + 6, curY + (mtRowH - 7.5) / 2, { lineBreak: false });
+        curY += mtRowH;
+      } else {
+        let mtColorIdx = 0;
+        materialRows.forEach((row) => {
+          if (curY + mtRowH > PAGE_BOTTOM) {
+            doc.addPage(); curY = MT; drawContHeader('— Materials (cont.)');
+            drawColHeaders(curY, mtHdrH, [
+              { x: mtX[0], w: mtW[0], label: 'MATERIAL' },
+              { x: mtX[1], w: mtW[1], label: 'QTY' },
+              { x: mtX[2], w: mtW[2], label: 'STATUS' },
+              { x: mtX[3], w: mtW[3], label: 'SUPPLIER / NOTES' },
+            ]);
+            curY += mtHdrH;
+            mtColorIdx = 0;
+          }
+          doc.rect(ML, curY, CW, mtRowH).fill(getRowBg(mtColorIdx)).stroke('#cccccc');
+          const ty = curY + (mtRowH - 8) / 2;
+          doc.fontSize(8).font('Helvetica').fillColor(NAVY);
+          doc.text(row.material     || '--', mtX[0] + 4, ty, { width: mtW[0] - 8, lineBreak: false, ellipsis: true });
+          doc.text(row.quantity     || '--', mtX[1] + 4, ty, { width: mtW[1] - 8, lineBreak: false });
+          drawStatusBadge(mtX[2], curY, mtW[2], mtRowH, row.status || '');
+          doc.fontSize(8).font('Helvetica').fillColor(NAVY);
+          doc.text(row.supplierNotes || '--', mtX[3] + 4, ty, { width: mtW[3] - 8, lineBreak: false, ellipsis: true });
+          curY += mtRowH;
+          mtColorIdx++;
+        });
+      }
+      curY += 4;
+
+      // ─── VISITORS ─────────────────────────────────────────────────────
+      const visLines: string[] = visitors.length > 0
+        ? visitors.map(v => {
+            let l = v.name;
+            if (v.company) l += ` (${v.company})`;
+            if (v.notes)   l += ` — ${v.notes}`;
+            return l;
+          })
+        : ['No visitors recorded.'];
+      const visH2 = Math.min(50, visLines.length * 13 + 10);
+      if (curY + 13 + visH2 + 4 > PAGE_BOTTOM) {
+        doc.addPage(); curY = MT; drawContHeader('— Visitors');
+      }
+      drawSectionHdr(curY, 'VISITORS');
+      curY += 13;
+      doc.rect(ML, curY, CW, visH2).fill('#fff').stroke('#cccccc');
+      doc.fontSize(8).font('Helvetica').fillColor(NAVY)
+        .text(visLines.join('\n'), ML + 6, curY + 5, { width: CW - 12, height: visH2 - 8 });
+      curY += visH2 + 4;
+
+      // ─── SUPERINTENDENT NOTES & REMARKS ───────────────────────────────
+      const notesText2 = (report.notes as string) || '--';
+      const notesEstH  = Math.min(90, Math.max(32, notesText2.split('\n').length * 13 + 12));
+      if (curY + 13 + notesEstH + 4 > PAGE_BOTTOM) {
+        doc.addPage(); curY = MT; drawContHeader('— Notes');
+      }
+      drawSectionHdr(curY, 'SUPERINTENDENT NOTES & REMARKS');
+      curY += 13;
+      doc.rect(ML, curY, CW, notesEstH).fill('#fff').stroke('#cccccc');
+      doc.fontSize(8).font('Helvetica').fillColor(NAVY)
+        .text(notesText2, ML + 6, curY + 5, { width: CW - 12, height: notesEstH - 8 });
+      curY += notesEstH + 4;
+
+      // ─── CERTIFICATION & SIGNATURE ────────────────────────────────────
+      // certSigH must be tall enough to contain label (y+4), name (y+15),
+      // title (y+27), and date (y+42) comfortably — so certBlockH ≥ 90.
+      const certBlockH = 90;
+      if (curY + certBlockH > PH - MB - FOOTER_H) {
+        // Not enough room — start a fresh page rather than clamping into
+        // the content above.
+        doc.addPage();
+        drawContHeader('(continued)');
+        curY = MT + 18;
+      }
+      drawSectionHdr(curY, 'CERTIFICATION & SIGNATURE');
+      curY += 13;
+      const certBodyH = certBlockH - 13;
+      const certColW  = CW / 2;
+      const certText2 = 'I certify that this report accurately reflects the work performed, workforce, materials, equipment, and conditions observed on-site for the date indicated above.';
+      const certTxtH2 = 22;
+      doc.rect(ML, curY, CW, certTxtH2).fill('#f8fafc').stroke('#cccccc');
+      doc.fontSize(6.5).font('Helvetica').fillColor('#444')
+        .text(certText2, ML + 6, curY + 6, { width: CW - 12, lineBreak: false, ellipsis: true });
+      curY += certTxtH2;
+      const certSigH = certBodyH - certTxtH2; // 90-13-22 = 55 px
+      // Prepared By box — name/title/date on left, signature image on right
+      doc.rect(ML, curY, certColW, certSigH).stroke('#cccccc');
+      doc.fontSize(6).font('Helvetica').fillColor('#666').text('PREPARED BY', ML + 4, curY + 4, { lineBreak: false });
+      const pbTextW = Math.floor(certColW * 0.44);  // left column for text
+      const pbSigX  = ML + pbTextW + 4;             // right column for signature
+      const pbSigW  = certColW - pbTextW - 8;
+      // Text: name (y+15), title (y+27), date (y+42) — all inside 55 px box
+      doc.fontSize(9).font('Helvetica-Bold').fillColor(NAVY)
+        .text(inspectorName, ML + 4, curY + 15, { width: pbTextW - 6, lineBreak: false, ellipsis: true });
+      if ((inspectorProfile as any)?.title) {
+        doc.fontSize(7.5).font('Helvetica').fillColor('#555')
+          .text((inspectorProfile as any).title, ML + 4, curY + 27, { width: pbTextW - 6, lineBreak: false, ellipsis: true });
+      }
+      doc.fontSize(7.5).font('Helvetica').fillColor('#555')
+        .text(`Date: ${dateStr}`, ML + 4, curY + 42, { width: pbTextW - 6, lineBreak: false });
+      // Signature image — right column, vertically centred
+      if (report.signaturePath) {
+        try {
+          const sigBuf2 = await loadImageBuffer(report.signaturePath as string);
+          if (sigBuf2) {
+            doc.image(sigBuf2, pbSigX, curY + 4, { fit: [pbSigW, certSigH - 8], align: 'center', valign: 'center' });
+          }
+        } catch (_se) {}
+      }
+      // Reviewed By box
+      const rvX3 = ML + certColW;
+      doc.rect(rvX3, curY, certColW, certSigH).stroke('#cccccc');
+      doc.fontSize(6).font('Helvetica').fillColor('#666').text('REVIEWED BY', rvX3 + 4, curY + 4, { lineBreak: false });
+      doc.moveTo(rvX3 + 8, curY + certSigH - 14).lineTo(rvX3 + certColW - 8, curY + certSigH - 14).stroke('#aaa');
+      doc.fontSize(7).font('Helvetica').fillColor('#aaa').text('Signature / Date', rvX3 + 8, curY + certSigH - 9, { lineBreak: false });
+      doc.fillColor('#000');
+
+      // ══════════════════════════════════════════════════════════════════
+      // PHOTOS PAGE(S) — rendered as actual images after main page
+      // ══════════════════════════════════════════════════════════════════
+      if (photos.length > 0) {
+        const phColCount = 2;
+        const phColGap = 10;
+        const phImgW = (CW - phColGap * (phColCount - 1)) / phColCount; // ~265
+        const phImgH = 185;
+        const phCaptionH = 20;
+        const phCellH = phImgH + phCaptionH;
+        const phRowGap = 10;
+        const phHdrH = 16;
+        const phContentTop = MT + phHdrH; // Y where photo grid starts on each page
+        const phContentBottom = PH - MB - FOOTER_H;
+        const phRowsPerPage = Math.floor((phContentBottom - phContentTop) / (phCellH + phRowGap));
+
+        let phPageRow = 0; // row index within the current page
+        let isFirstPhotoPage = true;
+
+        const startNewPhotoPage = (label: string) => {
+          doc.addPage();
+          drawSectionHdr(MT, label);
+          phPageRow = 0;
+          isFirstPhotoPage = false;
+        };
+
+        startNewPhotoPage(`PHOTOS — Report #${report.reportNumber || '--'} (${photos.length} attached)`);
+
+        for (let idx = 0; idx < photos.length; idx++) {
+          const col = idx % phColCount;
+
+          // When we start a new row-pair (col 0), check if it fits on the current page
+          if (col === 0 && phPageRow >= phRowsPerPage) {
+            startNewPhotoPage(`PHOTOS — Report #${report.reportNumber || '--'} (continued)`);
+          }
+
+          const cellX = ML + col * (phImgW + phColGap);
+          const cellY = phContentTop + phPageRow * (phCellH + phRowGap);
+
+          // Image border box
+          doc.rect(cellX, cellY, phImgW, phImgH).lineWidth(0.5).stroke('#cccccc');
+
+          // Load and render image
+          const photo = (photos as any[])[idx];
+          const imgBuf2 = await loadImageBuffer(photo.filePath || '');
+          if (imgBuf2) {
             try {
-              doc.strokeColor('#ccc').lineWidth(0.5)
-                .rect(currentPhotoX, currentPhotoY, photoWidth, photoHeight).stroke();
-              doc.strokeColor('#000');
-              
-              doc.image(photoBuffer, currentPhotoX + 2, currentPhotoY + 2, {
-                width: photoWidth - 4,
-                height: photoHeight - 4,
-                fit: [photoWidth - 4, photoHeight - 4],
-                align: 'center',
-                valign: 'center'
-              });
-              
-              if (photo.caption) {
-                doc.fontSize(8).font('Helvetica-Oblique').fillColor('#333')
-                  .text(photo.caption, currentPhotoX, currentPhotoY + photoHeight + 2, {
-                    width: photoWidth,
-                    height: captionHeight,
-                    align: 'center',
-                    ellipsis: true,
-                    lineBreak: false
-                  });
-                doc.fillColor('#000');
-              }
-            } catch (err) {
-              console.error('Error adding photo to PDF:', err);
+              doc.image(imgBuf2, cellX, cellY, { fit: [phImgW, phImgH], align: 'center', valign: 'center' });
+            } catch (_ie) {
+              doc.rect(cellX, cellY, phImgW, phImgH).fill('#f0f0f0');
+              doc.fontSize(7).font('Helvetica').fillColor('#999')
+                .text('Image unavailable', cellX + 4, cellY + phImgH / 2 - 4, { width: phImgW - 8, align: 'center', lineBreak: false });
             }
-          }
-          
-          // Move to next position in grid (2 photos per row)
-          if (currentPhotoX === startX) {
-            currentPhotoX = startX + photoWidth + photoGap;
           } else {
-            currentPhotoX = startX;
-            currentPhotoY += rowHeight;
+            doc.rect(cellX, cellY, phImgW, phImgH).fill('#f0f0f0').stroke('#cccccc');
+            doc.fontSize(7).font('Helvetica').fillColor('#999')
+              .text('Image unavailable', cellX + 4, cellY + phImgH / 2 - 4, { width: phImgW - 8, align: 'center', lineBreak: false });
+          }
+
+          // Caption bar
+          const photoId2 = `PH-${report.reportNumber || '000'}-${String(idx + 1).padStart(2, '0')}`;
+          const captionText2 = photo.caption ? `${photoId2}  •  ${photo.caption}` : photoId2;
+          doc.rect(cellX, cellY + phImgH, phImgW, phCaptionH).fill('#f8fafc').stroke('#cccccc');
+          doc.fontSize(7).font('Helvetica-Bold').fillColor(NAVY)
+            .text(captionText2, cellX + 4, cellY + phImgH + 5, { width: phImgW - 8, lineBreak: false, ellipsis: true });
+          doc.fillColor('#000');
+
+          // Advance row counter when we've filled both columns
+          if (col === phColCount - 1 || idx === photos.length - 1) {
+            phPageRow++;
           }
         }
       }
 
-      // ===== FOOTER ON ALL PAGES =====
-      const range = doc.bufferedPageRange();
-      const totalPages = range.count;
-      
-      // DEBUG: Log page count
-      console.log(`PDF Generation Debug: Total pages = ${totalPages} (page 1 = report, remaining = photos)`);
-      
-      
+      // ══════════════════════════════════════════════════════════════════
+      // FOOTER — applied to every page via bufferPages
+      // ══════════════════════════════════════════════════════════════════
+      const range2 = doc.bufferedPageRange();
+      const totalPages2 = range2.count;
+      const footerLeft2 = [
+        report.reportNumber ? `DR-${report.reportNumber}` : '--',
+        projectName,
+        company?.name || 'KNOWLAND CONSTRUCTION SERVICES',
+        'DAILY REPORT',
+      ].join('  |  ');
+      const generatedBy2 = 'Generated by Knowland Construction Services Field Reporting System';
+
+      for (let pi = 0; pi < totalPages2; pi++) {
+        doc.switchToPage(range2.start + pi);
+        const footerY3 = PH - MB - FOOTER_H + 2;
+        doc.moveTo(ML, footerY3 - 2).lineTo(ML + CW, footerY3 - 2).lineWidth(0.5).stroke('#cccccc');
+        doc.fontSize(6.5).font('Helvetica').fillColor('#555')
+          .text(footerLeft2, ML, footerY3 + 2, { width: CW - 60, lineBreak: false, ellipsis: true });
+        doc.text(`Page ${pi + 1} of ${totalPages2}`, ML, footerY3 + 2, { width: CW, align: 'right', lineBreak: false });
+        doc.fontSize(6).font('Helvetica').fillColor('#999')
+          .text(generatedBy2, ML, footerY3 + 11, { width: CW, lineBreak: false });
+        doc.fillColor('#000');
+      }
+
+
       doc.end();
 
       // Wait for PDF generation to complete
@@ -11025,6 +11190,108 @@ export async function registerRoutes(
     }
   });
 
+  // ========== TIMESHEET RECORDS ==========
+
+  // GET /api/timesheets/my - list the current inspector's own timesheets for a project
+  app.get("/api/timesheets/my", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const { projectId } = req.query;
+      if (!projectId || typeof projectId !== "string") {
+        return res.status(400).json({ message: "projectId is required" });
+      }
+      const records = await storage.getTimesheetsByInspectorAndProject(userId, projectId);
+      res.json(records);
+    } catch (error: any) {
+      console.error("Error fetching inspector timesheets:", error);
+      res.status(500).json({ message: "Failed to fetch timesheets" });
+    }
+  });
+
+  // GET /api/timesheets - list all timesheet records for the active company
+  app.get("/api/timesheets", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      const companyId = profile?.activeCompanyId;
+      if (!companyId) {
+        return res.status(400).json({ message: "No active company" });
+      }
+      if (!isEffectiveSystemAdmin(profile) && !await isEffectiveCompanyAdmin(userId, companyId, profile)) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      const records = await storage.getTimesheets(companyId);
+      res.json(records);
+    } catch (error: any) {
+      console.error("Error fetching timesheets:", error);
+      res.status(500).json({ message: "Failed to fetch timesheets" });
+    }
+  });
+
+  // PATCH /api/timesheets/:id - update timesheet status (approve/reject back to draft)
+  // Admins can set any status; the owning inspector can only move draft -> submitted
+  app.patch("/api/timesheets/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      const { status, adminNote } = req.body;
+
+      if (!status || !["draft", "submitted", "approved"].includes(status)) {
+        return res.status(400).json({ message: "Invalid status" });
+      }
+
+      const timesheet = await storage.getTimesheet(req.params.id);
+      if (!timesheet) {
+        return res.status(404).json({ message: "Timesheet not found" });
+      }
+
+      const isAdmin = isEffectiveSystemAdmin(profile) ||
+        await isEffectiveCompanyAdmin(userId, timesheet.companyId, profile);
+      const isOwner = timesheet.inspectorId === userId;
+
+      if (!isAdmin && !isOwner) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      // Inspectors can only submit their own draft timesheets; admins can set any status
+      if (!isAdmin && isOwner) {
+        if (timesheet.status !== "draft" || status !== "submitted") {
+          return res.status(403).json({ message: "Inspectors can only submit their own draft timesheets" });
+        }
+      }
+
+      const noteToSave = isAdmin && status === "draft" ? (adminNote ?? null) : null;
+      const updated = await storage.updateTimesheetStatus(req.params.id, status, noteToSave ?? undefined);
+
+      // Notify all company admins when an inspector submits a timesheet for review
+      if (!isAdmin && isOwner && status === "submitted") {
+        try {
+          const adminUserIds = await storage.getCompanyAdminUserIds(timesheet.companyId);
+          const inspectorName = profile
+            ? `${profile.firstName ?? ""} ${profile.lastName ?? ""}`.trim() || "An inspector"
+            : "An inspector";
+          for (const adminId of adminUserIds) {
+            await storage.createAdminNotification({
+              recipientUserId: adminId,
+              companyId: timesheet.companyId,
+              title: "Timesheet Submitted for Review",
+              message: `${inspectorName} has submitted a timesheet for review.`,
+              link: "/company/billing-management",
+              isRead: false,
+            });
+          }
+        } catch (notifError) {
+          console.error("Error creating admin notifications for timesheet submission:", notifError);
+        }
+      }
+
+      res.json(updated);
+    } catch (error: any) {
+      console.error("Error updating timesheet:", error);
+      res.status(500).json({ message: "Failed to update timesheet" });
+    }
+  });
+
   // ========== BILLING & TIMESHEETS ==========
 
   // Generate timesheet PDF for a project/month
@@ -11116,7 +11383,52 @@ export async function registerRoutes(
 
       // Generate PDF
       const pdfBuffer = await generateTimesheetPdf(timesheetData);
-      
+
+      // Compute totals from timesheetData to persist the record
+      if (project.companyId) {
+        let totalReg = 0, totalOT = 0, totalPrm = 0;
+        let p1Reg = 0, p1OT = 0, p1Prm = 0;
+        let p2Reg = 0, p2OT = 0, p2Prm = 0;
+        for (const proj of timesheetData.projects) {
+          for (const [dayStr, hrs] of Object.entries(proj.dailyHours)) {
+            const day = parseInt(dayStr, 10);
+            totalReg += hrs.reg;
+            totalOT += hrs.ot;
+            totalPrm += hrs.prm;
+            if (day <= 15) {
+              p1Reg += hrs.reg;
+              p1OT += hrs.ot;
+              p1Prm += hrs.prm;
+            } else {
+              p2Reg += hrs.reg;
+              p2OT += hrs.ot;
+              p2Prm += hrs.prm;
+            }
+          }
+        }
+        try {
+          await storage.upsertTimesheet({
+            companyId: project.companyId,
+            projectId,
+            inspectorId: targetInspectorId,
+            month: parseInt(String(month), 10),
+            year: parseInt(String(year), 10),
+            status: "submitted",
+            totalRegularHours: String(totalReg),
+            totalOvertimeHours: String(totalOT),
+            totalPremiumHours: String(totalPrm),
+            period1RegularHours: String(p1Reg),
+            period1OvertimeHours: String(p1OT),
+            period1PremiumHours: String(p1Prm),
+            period2RegularHours: String(p2Reg),
+            period2OvertimeHours: String(p2OT),
+            period2PremiumHours: String(p2Prm),
+          });
+        } catch (upsertErr) {
+          console.error("Error upserting timesheet record:", upsertErr);
+        }
+      }
+
       const monthName = format(startDate, 'MMMM-yyyy');
       const filename = `Timesheet_${project.name || project.projectNumber}_${monthName}.pdf`;
       
@@ -11185,6 +11497,57 @@ export async function registerRoutes(
       }
 
       const pdfBuffer = await generateTimesheetPdf(timesheetData);
+
+      // Upsert a timesheet record for each project included in the PDF
+      for (const project of allProjects) {
+        if (!project.companyId) continue;
+        const projectReports = allReports.filter(r => r.projectId === project.id);
+        const projectTimesheetData = aggregateReportsToTimesheetData(
+          projectReports, [project], contracts, company, inspectorProfile, month, year
+        );
+        let totalReg = 0, totalOT = 0, totalPrm = 0;
+        let p1Reg = 0, p1OT = 0, p1Prm = 0;
+        let p2Reg = 0, p2OT = 0, p2Prm = 0;
+        for (const proj of projectTimesheetData.projects) {
+          for (const [dayStr, hrs] of Object.entries(proj.dailyHours as Record<string, { reg: number; ot: number; prm: number }>)) {
+            const day = parseInt(dayStr, 10);
+            totalReg += hrs.reg;
+            totalOT += hrs.ot;
+            totalPrm += hrs.prm;
+            if (day <= 15) {
+              p1Reg += hrs.reg;
+              p1OT += hrs.ot;
+              p1Prm += hrs.prm;
+            } else {
+              p2Reg += hrs.reg;
+              p2OT += hrs.ot;
+              p2Prm += hrs.prm;
+            }
+          }
+        }
+        try {
+          await storage.upsertTimesheet({
+            companyId: project.companyId,
+            projectId: project.id,
+            inspectorId: userId,
+            month: parseInt(String(month), 10),
+            year: parseInt(String(year), 10),
+            status: "submitted",
+            totalRegularHours: String(totalReg),
+            totalOvertimeHours: String(totalOT),
+            totalPremiumHours: String(totalPrm),
+            period1RegularHours: String(p1Reg),
+            period1OvertimeHours: String(p1OT),
+            period1PremiumHours: String(p1Prm),
+            period2RegularHours: String(p2Reg),
+            period2OvertimeHours: String(p2OT),
+            period2PremiumHours: String(p2Prm),
+          });
+        } catch (upsertErr) {
+          console.error(`Error upserting timesheet record for project ${project.id}:`, upsertErr);
+        }
+      }
+
       const startDate = new Date(year, month - 1, 1);
       const monthName = format(startDate, 'MMMM-yyyy');
       const filename = `Timesheet_MultiProject_${monthName}.pdf`;
@@ -12687,11 +13050,14 @@ export async function registerRoutes(
           companyId: invite.companyId!,
           clientId: invite.clientId || null,
           isActive: true,
+          allProjectsAccess: invite.allProjectsAccess === true,
         });
 
-        // Grant access to specified projects
-        for (const projectId of projectIds) {
-          await storage.addClientPortalProjectAccess(portalUser.id, projectId);
+        // Grant access to specified projects (only if not all-projects access)
+        if (!invite.allProjectsAccess) {
+          for (const projectId of projectIds) {
+            await storage.addClientPortalProjectAccess(portalUser.id, projectId);
+          }
         }
 
         // Create minimal profile if needed
@@ -14038,6 +14404,7 @@ export async function registerRoutes(
         contractorPhone: normalize(data.contractorPhone),
         contractorEmail: normalize(data.contractorEmail),
         jobHistory: data.jobHistory || [],
+        availabilityDate: normalize(data.availabilityDate),
       };
       const profile = await storage.createOrUpdateUserProfile(profileData);
       
@@ -14101,7 +14468,7 @@ export async function registerRoutes(
       const allProjects = await storage.getAllProjectsForUser(userId);
       const projectNames = allProjects.map(p => p.name).filter(Boolean);
 
-      const certifications = (profile.certifications as string[]) || [];
+      const certEntries = normalizeCerts(profile.certifications);
       const education = (profile.education as any[]) || [];
       const references = (profile.references as any[]) || [];
 
@@ -14110,7 +14477,7 @@ export async function registerRoutes(
       if (fullName) contextParts.push(`Name: ${fullName}`);
       if (profile.title) contextParts.push(`Title: ${profile.title}`);
       if (profile.licenseNumber) contextParts.push(`License: ${profile.licenseNumber}${profile.licenseState ? ` (${profile.licenseState})` : ""}`);
-      if (certifications.length > 0) contextParts.push(`Certifications: ${certifications.join(", ")}`);
+      if (certEntries.length > 0) contextParts.push(`Certifications: ${certEntries.map(c => c.name).join(", ")}`);
       if (education.length > 0) {
         const eduStr = education.map((e: any) => `${e.degree} from ${e.school}${e.status ? ` (${e.status})` : ""}`).join("; ");
         contextParts.push(`Education: ${eduStr}`);
@@ -14380,7 +14747,7 @@ Return ONLY valid JSON, no markdown, no explanation. Use null for missing top-le
       if (data.email) updateData.email = data.email;
       if (data.licenseNumber) updateData.licenseNumber = data.licenseNumber;
       if (data.licenseState) updateData.licenseState = data.licenseState;
-      if (data.certifications) updateData.certifications = data.certifications;
+      if (data.certifications !== undefined) updateData.certifications = data.certifications;
       if (data.notes) updateData.notes = data.notes;
       if (data.bio) updateData.bio = data.bio;
       if (data.education) updateData.education = data.education;
@@ -15638,6 +16005,11 @@ Transcript: "${transcript}"`;
       const userId = req.user?.claims?.sub;
       const portalUsers = await storage.getClientPortalUsersByUserId(userId);
       if (portalUsers.length === 0) {
+        // If user has company memberships (inspector/admin role), reject access explicitly
+        const memberships = await storage.getCompaniesForUser(userId);
+        if (memberships.length > 0) {
+          return res.status(403).json({ message: "Access denied: client portal is for external clients only" });
+        }
         return res.json({ isClientPortalUser: false, portals: [] });
       }
       res.json({
@@ -15645,8 +16017,8 @@ Transcript: "${transcript}"`;
         portals: portalUsers.map(pu => ({
           id: pu.id,
           companyId: pu.companyId,
-          companyName: (pu as any).company?.name || "Unknown",
-          clientName: (pu as any).client?.name || null,
+          companyName: pu.company?.name || "Unknown",
+          clientName: pu.client?.name || null,
           isActive: pu.isActive,
         })),
       });
@@ -15665,10 +16037,22 @@ Transcript: "${transcript}"`;
         return res.status(403).json({ message: "Not a client portal user" });
       }
       const portalUser = portalUsers[0];
-      const projectAccess = await storage.getClientPortalProjectAccess(portalUser.id);
+
+      // Determine which projects to show
+      let projectList: Project[];
+      if (portalUser.allProjectsAccess) {
+        // All-projects mode: fetch all projects for this client (or all company projects if no client)
+        const allCompanyProjects = await storage.getProjectsByCompany(portalUser.companyId);
+        projectList = portalUser.clientId
+          ? allCompanyProjects.filter(p => p.clientId === portalUser.clientId)
+          : allCompanyProjects;
+      } else {
+        const projectAccess = await storage.getClientPortalProjectAccess(portalUser.id);
+        projectList = projectAccess.map(pa => pa.project).filter(Boolean) as Project[];
+      }
+
       const projectsWithData = await Promise.all(
-        projectAccess.map(async (pa) => {
-          const project = pa.project || await storage.getProject(pa.projectId);
+        projectList.map(async (project) => {
           if (!project) return null;
           const reports = await storage.getReportsByProject(project.id);
           const submittedReports = reports.filter(r => r.status === "submitted");
@@ -15718,8 +16102,20 @@ Transcript: "${transcript}"`;
         return res.status(403).json({ message: "Not a client portal user" });
       }
       const portalUser = portalUsers[0];
-      const projectAccess = await storage.getClientPortalProjectAccess(portalUser.id);
-      if (!projectAccess.find(pa => pa.projectId === req.params.projectId)) {
+
+      // Check project access: explicit per-project OR all-projects access
+      let hasAccess = false;
+      if (portalUser.allProjectsAccess) {
+        // Verify the project belongs to the portal user's company (and client if set)
+        const targetProject = await storage.getProject(req.params.projectId);
+        if (targetProject && targetProject.companyId === portalUser.companyId) {
+          hasAccess = !portalUser.clientId || targetProject.clientId === portalUser.clientId;
+        }
+      } else {
+        const projectAccess = await storage.getClientPortalProjectAccess(portalUser.id);
+        hasAccess = !!projectAccess.find(pa => pa.projectId === req.params.projectId);
+      }
+      if (!hasAccess) {
         return res.status(403).json({ message: "No access to this project" });
       }
       const project = await storage.getProject(req.params.projectId);
@@ -15773,6 +16169,24 @@ Transcript: "${transcript}"`;
         weather: r.weather,
         temperature: r.temperature,
       }));
+      // Hours summary
+      const hoursUsed = reports.reduce((sum, r) => {
+        return sum + parseFloat(r.regularHours || '0') + parseFloat(r.otHours || '0');
+      }, 0);
+      const budgetedHours = project.budgetedHours ? parseFloat(String(project.budgetedHours)) : null;
+
+      // Meeting minutes for this project
+      const projectMeetings = await storage.getMeetings(portalUser.companyId, { projectId: req.params.projectId });
+      const meetingMinutes = projectMeetings
+        .filter(m => m.meetingStatus === 'approved' || m.meetingStatus === 'distributed' || m.pdfPath)
+        .map(m => ({
+          id: m.id,
+          title: `${m.meetingType.replace(/_/g, ' ')} — ${m.meetingDate}`,
+          meetingDate: m.meetingDate,
+          meetingType: m.meetingType,
+          pdfPath: m.pdfPath || null,
+        }));
+
       res.json({
         project: {
           id: project.id,
@@ -15800,12 +16214,16 @@ Transcript: "${transcript}"`;
           temperature: r.temperature,
           inspectorName: r.inspectorName,
           status: r.status,
+          pdfPath: r.pdfPath || null,
         })),
         totalReports: reports.length,
         photos: allPhotos.slice(0, 24),
         issues: issues.slice(0, 20),
         safetyIncidents: safetyIncidents.slice(0, 20),
         weatherSummary,
+        hoursUsed: Math.round(hoursUsed * 10) / 10,
+        budgetedHours,
+        meetingMinutes,
       });
     } catch (error) {
       console.error("Error fetching client portal project data:", error);
@@ -15851,8 +16269,8 @@ Transcript: "${transcript}"`;
       );
 
       res.json({
-        companyName: (portalUser as any).company?.name || "Unknown",
-        companyLogo: (portalUser as any).company?.logoPath || null,
+        companyName: portalUser.company?.name || "Unknown",
+        companyLogo: portalUser.company?.logoPath || null,
         projects: projectsWithData.filter(Boolean),
       });
     } catch (error) {
@@ -15941,6 +16359,24 @@ Transcript: "${transcript}"`;
         temperature: r.temperature,
       }));
 
+      // Hours summary
+      const hoursUsedV2 = reports.reduce((sum, r) => {
+        return sum + parseFloat(r.regularHours || '0') + parseFloat(r.otHours || '0');
+      }, 0);
+      const budgetedHoursV2 = project.budgetedHours ? parseFloat(String(project.budgetedHours)) : null;
+
+      // Meeting minutes for this project
+      const projectMeetingsV2 = await storage.getMeetings(portalUser.companyId, { projectId });
+      const meetingMinutesV2 = projectMeetingsV2
+        .filter(m => m.meetingStatus === 'approved' || m.meetingStatus === 'distributed' || m.pdfPath)
+        .map(m => ({
+          id: m.id,
+          title: `${m.meetingType.replace(/_/g, ' ')} — ${m.meetingDate}`,
+          meetingDate: m.meetingDate,
+          meetingType: m.meetingType,
+          pdfPath: m.pdfPath || null,
+        }));
+
       res.json({
         project: {
           id: project.id,
@@ -15968,12 +16404,16 @@ Transcript: "${transcript}"`;
           temperature: r.temperature,
           inspectorName: r.inspectorName,
           status: r.status,
+          pdfPath: r.pdfPath || null,
         })),
         totalReports: reports.length,
         photos: allPhotos.slice(0, 24),
         issues: issues.slice(0, 20),
         safetyIncidents: safetyIncidents.slice(0, 20),
         weatherSummary,
+        hoursUsed: Math.round(hoursUsedV2 * 10) / 10,
+        budgetedHours: budgetedHoursV2,
+        meetingMinutes: meetingMinutesV2,
       });
     } catch (error) {
       console.error("Error fetching client portal project data:", error);
@@ -15986,10 +16426,13 @@ Transcript: "${transcript}"`;
     try {
       const userId = req.user?.claims?.sub;
       const profile = await storage.getUserProfile(userId);
-      const { email, firstName, lastName, companyId, clientId, projectIds } = req.body;
+      const { email, firstName, lastName, companyId, clientId, projectIds, allProjectsAccess } = req.body;
 
-      if (!email || !companyId || !projectIds || projectIds.length === 0) {
-        return res.status(400).json({ message: "Email, company, and at least one project are required" });
+      if (!email || !companyId) {
+        return res.status(400).json({ message: "Email and company are required" });
+      }
+      if (!allProjectsAccess && (!projectIds || projectIds.length === 0)) {
+        return res.status(400).json({ message: "Select at least one project, or enable all-projects access" });
       }
 
       const isAdmin = await isEffectiveCompanyAdmin(userId, companyId, profile);
@@ -15997,11 +16440,14 @@ Transcript: "${transcript}"`;
         return res.status(403).json({ message: "Only admins can invite clients" });
       }
 
-      const companyProjects = await storage.getProjectsByCompany(companyId);
-      const companyProjectIds = new Set(companyProjects.map(p => p.id));
-      const invalidProjects = projectIds.filter((pid: string) => !companyProjectIds.has(pid));
-      if (invalidProjects.length > 0) {
-        return res.status(400).json({ message: "One or more selected projects do not belong to this company" });
+      // Validate project IDs only when not granting all-projects access
+      if (!allProjectsAccess && projectIds?.length > 0) {
+        const companyProjects = await storage.getProjectsByCompany(companyId);
+        const companyProjectIds = new Set(companyProjects.map(p => p.id));
+        const invalidProjects = (projectIds as string[]).filter(pid => !companyProjectIds.has(pid));
+        if (invalidProjects.length > 0) {
+          return res.status(400).json({ message: "One or more selected projects do not belong to this company" });
+        }
       }
 
       const crypto = await import("crypto");
@@ -16019,8 +16465,9 @@ Transcript: "${transcript}"`;
         isCompanyAdmin: false,
         isClientPortal: true,
         clientId: clientId || null,
+        allProjectsAccess: allProjectsAccess === true,
         companyId,
-        projectIds,
+        projectIds: allProjectsAccess ? [] : (projectIds || []),
         token,
         inviteCode,
         invitedBy: userId,
@@ -16145,6 +16592,34 @@ Transcript: "${transcript}"`;
     } catch (error) {
       console.error("Error removing project access:", error);
       res.status(500).json({ message: "Failed to remove project access" });
+    }
+  });
+
+  // Admin: Update access level for a portal user (toggle allProjectsAccess)
+  app.patch("/api/client-portal/:portalUserId/access-level", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      const { portalUserId } = req.params;
+      const { allProjectsAccess } = req.body;
+
+      const portalUser = await db.query.clientPortalUsers.findFirst({
+        where: eq(clientPortalUsers.id, portalUserId),
+      });
+      if (!portalUser) {
+        return res.status(404).json({ message: "Portal user not found" });
+      }
+
+      const isAdmin = await isEffectiveCompanyAdmin(userId, portalUser.companyId, profile);
+      if (!isAdmin && !isEffectiveSystemAdmin(profile)) {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const updated = await storage.updateClientPortalUserAccessLevel(portalUserId, allProjectsAccess === true);
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating portal user access level:", error);
+      res.status(500).json({ message: "Failed to update access level" });
     }
   });
 
@@ -16420,6 +16895,926 @@ Transcript: "${transcript}"`;
     }
   });
 
+  // ── WRITE: Create a new contract / opportunity ──────────────────────────
+  app.post("/api/v1/contracts", apiKeyAuth, async (req: any, res) => {
+    try {
+      const { companyId } = req.apiKey;
+      const {
+        name, contract_number, contract_type, status, agency, service_type,
+        notes, original_value, bid_release_date, bid_due_date,
+        question_deadline, start_date, substantial_completion_date,
+        final_closeout_date, has_job_walk, job_walk_date_time, dsa_class,
+      } = req.body;
+
+      if (!name) return res.status(400).json({ message: "name is required" });
+
+      const validStatuses = ["bid_release","bid_received","under_review","awarded","not_awarded","cancelled","in_execution","substantial_completion","final_closeout"];
+      const validTypes = ["lump_sum","time_and_materials","unit_price","cost_plus","design_build","hourly_rate","other"];
+
+      if (status && !validStatuses.includes(status)) {
+        return res.status(400).json({ message: `Invalid status. Must be one of: ${validStatuses.join(", ")}` });
+      }
+      if (contract_type && !validTypes.includes(contract_type)) {
+        return res.status(400).json({ message: `Invalid contract_type. Must be one of: ${validTypes.join(", ")}` });
+      }
+
+      const parseDate = (v: any) => (v ? new Date(v) : null);
+
+      const contract = await storage.createContract({
+        companyId,
+        name,
+        contractNumber: contract_number || null,
+        contractType: contract_type || "lump_sum",
+        status: status || "bid_release",
+        agency: agency || null,
+        serviceType: service_type || null,
+        notes: notes || null,
+        originalValue: original_value != null ? String(original_value) : null,
+        bidReleaseDate: parseDate(bid_release_date),
+        bidDueDate: parseDate(bid_due_date),
+        questionDeadline: parseDate(question_deadline),
+        startDate: parseDate(start_date),
+        substantialCompletionDate: parseDate(substantial_completion_date),
+        finalCloseoutDate: parseDate(final_closeout_date),
+        hasJobWalk: has_job_walk ?? false,
+        jobWalkDateTime: parseDate(job_walk_date_time),
+        dsaClass: dsa_class || null,
+        clientId: null,
+        currentValue: null,
+        awardDate: null,
+        premiumRate: null,
+        budgetTrackingMode: "daily_reports",
+        addendumCount: 0,
+        lastAddendumDate: null,
+        assignedToUserId: null,
+        sharepointFolderUrl: null,
+      } as any);
+
+      const normalized = await normalizeContract({ ...contract, projects: [], client: null });
+      res.status(201).json({ contract: normalized, message: "Contract created successfully" });
+    } catch (error) {
+      console.error("Error creating v1 contract:", error);
+      res.status(500).json({ message: "Failed to create contract" });
+    }
+  });
+
+  // ── WRITE: Update an existing contract ───────────────────────────────────
+  app.patch("/api/v1/contracts/:id", apiKeyAuth, async (req: any, res) => {
+    try {
+      const { companyId } = req.apiKey;
+      const contract = await storage.getContract(req.params.id);
+      if (!contract || contract.companyId !== companyId) {
+        return res.status(404).json({ message: "Contract not found" });
+      }
+
+      const validStatuses = ["bid_release","bid_received","under_review","awarded","not_awarded","cancelled","in_execution","substantial_completion","final_closeout"];
+      const validTypes = ["lump_sum","time_and_materials","unit_price","cost_plus","design_build","hourly_rate","other"];
+
+      const {
+        name, contract_number, contract_type, status, agency, service_type,
+        notes, original_value, bid_release_date, bid_due_date,
+        question_deadline, start_date, substantial_completion_date,
+        final_closeout_date, has_job_walk, job_walk_date_time, dsa_class,
+        addendum_count, sharepoint_folder_url,
+      } = req.body;
+
+      if (status && !validStatuses.includes(status)) {
+        return res.status(400).json({ message: `Invalid status. Must be one of: ${validStatuses.join(", ")}` });
+      }
+      if (contract_type && !validTypes.includes(contract_type)) {
+        return res.status(400).json({ message: `Invalid contract_type. Must be one of: ${validTypes.join(", ")}` });
+      }
+
+      const parseDate = (v: any) => (v === null ? null : v !== undefined ? new Date(v) : undefined);
+
+      const updates: Record<string, any> = {};
+      if (name !== undefined) updates.name = name;
+      if (contract_number !== undefined) updates.contractNumber = contract_number;
+      if (contract_type !== undefined) updates.contractType = contract_type;
+      if (status !== undefined) updates.status = status;
+      if (agency !== undefined) updates.agency = agency;
+      if (service_type !== undefined) updates.serviceType = service_type;
+      if (notes !== undefined) updates.notes = notes;
+      if (original_value !== undefined) updates.originalValue = original_value != null ? String(original_value) : null;
+      if (bid_release_date !== undefined) updates.bidReleaseDate = parseDate(bid_release_date);
+      if (bid_due_date !== undefined) updates.bidDueDate = parseDate(bid_due_date);
+      if (question_deadline !== undefined) updates.questionDeadline = parseDate(question_deadline);
+      if (start_date !== undefined) updates.startDate = parseDate(start_date);
+      if (substantial_completion_date !== undefined) updates.substantialCompletionDate = parseDate(substantial_completion_date);
+      if (final_closeout_date !== undefined) updates.finalCloseoutDate = parseDate(final_closeout_date);
+      if (has_job_walk !== undefined) updates.hasJobWalk = has_job_walk;
+      if (job_walk_date_time !== undefined) updates.jobWalkDateTime = parseDate(job_walk_date_time);
+      if (dsa_class !== undefined) updates.dsaClass = dsa_class;
+      if (addendum_count !== undefined) updates.addendumCount = addendum_count;
+      if (sharepoint_folder_url !== undefined) updates.sharepointFolderUrl = sharepoint_folder_url;
+
+      if (Object.keys(updates).length === 0) {
+        return res.status(400).json({ message: "No fields provided to update" });
+      }
+
+      const updated = await storage.updateContract(req.params.id, updates);
+      if (!updated) return res.status(500).json({ message: "Update failed" });
+
+      const full = await storage.getContract(req.params.id);
+      const normalized = await normalizeContract(full || updated);
+      res.json({ contract: normalized, message: "Contract updated successfully" });
+    } catch (error) {
+      console.error("Error updating v1 contract:", error);
+      res.status(500).json({ message: "Failed to update contract" });
+    }
+  });
+
+  // ════════════════════════════════════════════════════════════════════════
+  // CLIENTS
+  // ════════════════════════════════════════════════════════════════════════
+
+  app.get("/api/v1/clients", apiKeyAuth, async (req: any, res) => {
+    try {
+      const { companyId } = req.apiKey;
+      const clients = await storage.getClients(companyId);
+      res.json({ clients, total: clients.length });
+    } catch (e) { res.status(500).json({ message: "Failed to fetch clients" }); }
+  });
+
+  app.post("/api/v1/clients", apiKeyAuth, async (req: any, res) => {
+    try {
+      const { companyId } = req.apiKey;
+      const { name, contact_name, email, phone, address, director_of_facilities, notes } = req.body;
+      if (!name) return res.status(400).json({ message: "name is required" });
+      const client = await storage.createClient({
+        companyId, name,
+        contactName: contact_name || null,
+        email: email || null,
+        phone: phone || null,
+        address: address || null,
+        directorOfFacilities: director_of_facilities || null,
+        notes: notes || null,
+      });
+      res.status(201).json({ client, message: "Client created successfully" });
+    } catch (e) { res.status(500).json({ message: "Failed to create client" }); }
+  });
+
+  app.patch("/api/v1/clients/:id", apiKeyAuth, async (req: any, res) => {
+    try {
+      const { companyId } = req.apiKey;
+      const existing = await storage.getClient(req.params.id);
+      if (!existing || existing.companyId !== companyId) return res.status(404).json({ message: "Client not found" });
+      const { name, contact_name, email, phone, address, director_of_facilities, notes } = req.body;
+      const updates: Record<string, any> = {};
+      if (name !== undefined) updates.name = name;
+      if (contact_name !== undefined) updates.contactName = contact_name;
+      if (email !== undefined) updates.email = email;
+      if (phone !== undefined) updates.phone = phone;
+      if (address !== undefined) updates.address = address;
+      if (director_of_facilities !== undefined) updates.directorOfFacilities = director_of_facilities;
+      if (notes !== undefined) updates.notes = notes;
+      if (!Object.keys(updates).length) return res.status(400).json({ message: "No fields to update" });
+      const client = await storage.updateClient(req.params.id, updates);
+      res.json({ client, message: "Client updated successfully" });
+    } catch (e) { res.status(500).json({ message: "Failed to update client" }); }
+  });
+
+  // ════════════════════════════════════════════════════════════════════════
+  // PROJECTS (create + update)
+  // ════════════════════════════════════════════════════════════════════════
+
+  app.post("/api/v1/projects", apiKeyAuth, async (req: any, res) => {
+    try {
+      const { companyId } = req.apiKey;
+      const {
+        name, project_number, client_id, contract_id, address,
+        start_date, substantial_completion_date, final_closeout_date,
+        budget_amount, budgeted_hours, scope_of_work, project_value,
+        dsa_file_no, distribution_emails,
+      } = req.body;
+
+      if (!name) return res.status(400).json({ message: "name is required" });
+
+      // Auto-generate project number if not provided
+      let projectNumber = project_number;
+      if (!projectNumber) {
+        const existing = await storage.getProjectsByCompany(companyId);
+        const nums = existing
+          .map((p: any) => { const m = p.projectNumber?.match(/(\d+)$/); return m ? parseInt(m[1]) : 0; })
+          .filter((n: number) => !isNaN(n));
+        const next = nums.length ? Math.max(...nums) + 1 : 1;
+        const y = new Date().getFullYear();
+        projectNumber = `PRJ-${y}-${String(next).padStart(4, "0")}`;
+      }
+
+      const parseDate = (v: any) => (v ? new Date(v) : null);
+      const project = await storage.createProject({
+        companyId,
+        name,
+        projectNumber,
+        clientId: client_id || null,
+        contractId: contract_id || null,
+        contractOptionId: null,
+        client: null,
+        address: address || null,
+        startDate: parseDate(start_date),
+        substantialCompletionDate: parseDate(substantial_completion_date),
+        finalCloseoutDate: parseDate(final_closeout_date),
+        budgetAmount: budget_amount != null ? String(budget_amount) : null,
+        budgetedHours: budgeted_hours != null ? String(budgeted_hours) : null,
+        baseBudget: null,
+        budgetTrackingMode: null,
+        inheritBillingRates: true,
+        scopeOfWork: scope_of_work || null,
+        projectValue: project_value ? String(project_value) : null,
+        dsaFileNo: dsa_file_no || null,
+        distributionEmails: distribution_emails || [],
+        defaultFolderPath: null,
+      } as any);
+      res.status(201).json({ project, message: "Project created successfully" });
+    } catch (e: any) {
+      if (e?.code === "23505") return res.status(409).json({ message: "Project number already exists — provide a unique project_number" });
+      console.error("Error creating v1 project:", e);
+      res.status(500).json({ message: "Failed to create project" });
+    }
+  });
+
+  app.patch("/api/v1/projects/:id", apiKeyAuth, async (req: any, res) => {
+    try {
+      const { companyId } = req.apiKey;
+      const existing = await storage.getProject(req.params.id);
+      if (!existing || existing.companyId !== companyId) return res.status(404).json({ message: "Project not found" });
+      const {
+        name, address, client_id, contract_id,
+        start_date, substantial_completion_date, final_closeout_date,
+        budget_amount, budgeted_hours, scope_of_work, project_value,
+        dsa_file_no, distribution_emails,
+      } = req.body;
+      const parseDate = (v: any) => (v === null ? null : v !== undefined ? new Date(v) : undefined);
+      const updates: Record<string, any> = {};
+      if (name !== undefined) updates.name = name;
+      if (address !== undefined) updates.address = address;
+      if (client_id !== undefined) updates.clientId = client_id;
+      if (contract_id !== undefined) updates.contractId = contract_id;
+      if (start_date !== undefined) updates.startDate = parseDate(start_date);
+      if (substantial_completion_date !== undefined) updates.substantialCompletionDate = parseDate(substantial_completion_date);
+      if (final_closeout_date !== undefined) updates.finalCloseoutDate = parseDate(final_closeout_date);
+      if (budget_amount !== undefined) updates.budgetAmount = budget_amount != null ? String(budget_amount) : null;
+      if (budgeted_hours !== undefined) updates.budgetedHours = budgeted_hours != null ? String(budgeted_hours) : null;
+      if (scope_of_work !== undefined) updates.scopeOfWork = scope_of_work;
+      if (project_value !== undefined) updates.projectValue = project_value != null ? String(project_value) : null;
+      if (dsa_file_no !== undefined) updates.dsaFileNo = dsa_file_no;
+      if (distribution_emails !== undefined) updates.distributionEmails = distribution_emails;
+      if (!Object.keys(updates).length) return res.status(400).json({ message: "No fields to update" });
+      const project = await storage.updateProject(req.params.id, updates);
+      res.json({ project, message: "Project updated successfully" });
+    } catch (e) {
+      console.error("Error updating v1 project:", e);
+      res.status(500).json({ message: "Failed to update project" });
+    }
+  });
+
+  // ════════════════════════════════════════════════════════════════════════
+  // TEAM — list members (so Claude can get inspector IDs for IOR agreements)
+  // ════════════════════════════════════════════════════════════════════════
+
+  app.get("/api/v1/team", apiKeyAuth, async (req: any, res) => {
+    try {
+      const { companyId } = req.apiKey;
+      const members = await storage.getCompanyMembers(companyId);
+      const team = await Promise.all(members.map(async (m: any) => {
+        const profile = await storage.getUserProfile(m.userId);
+        return {
+          user_id: m.userId,
+          role: m.role,
+          name: [profile?.firstName, profile?.lastName].filter(Boolean).join(" ") || null,
+          email: profile?.email || null,
+        };
+      }));
+      res.json({ team, total: team.length });
+    } catch (e) { res.status(500).json({ message: "Failed to fetch team" }); }
+  });
+
+  // ════════════════════════════════════════════════════════════════════════
+  // INVITES — send team member invitations
+  // ════════════════════════════════════════════════════════════════════════
+
+  app.post("/api/v1/invites", apiKeyAuth, async (req: any, res) => {
+    try {
+      const { companyId, createdByUserId } = req.apiKey;
+      const { email, first_name, last_name, role = "inspector", is_company_admin = false, project_ids = [], all_projects_access = false } = req.body;
+      if (!email) return res.status(400).json({ message: "email is required" });
+
+      const validRoles = ["inspector", "admin"];
+      if (!validRoles.includes(role)) return res.status(400).json({ message: `role must be one of: ${validRoles.join(", ")}` });
+
+      const crypto = await import("crypto");
+      const token = crypto.randomBytes(32).toString("hex");
+      const inviteCode = crypto.randomBytes(4).toString("hex").toUpperCase().slice(0, 8);
+      const expiresAt = new Date();
+      expiresAt.setDate(expiresAt.getDate() + 30);
+
+      const invite = await storage.createInvite({
+        email,
+        firstName: first_name || null,
+        lastName: last_name || null,
+        role: role as any,
+        isCompanyAdmin: is_company_admin,
+        isClientPortal: false,
+        clientId: null,
+        allProjectsAccess: all_projects_access,
+        companyId,
+        projectIds: all_projects_access ? [] : project_ids,
+        token,
+        inviteCode,
+        invitedBy: createdByUserId,
+        expiresAt,
+        status: "pending",
+      });
+
+      // Send invite email
+      try {
+        const { sendEmail } = await import("./replit_integrations/email/client");
+        const baseUrl = process.env.REPLIT_DOMAINS
+          ? `https://${process.env.REPLIT_DOMAINS.split(",")[0]}`
+          : `https://${process.env.REPLIT_DEV_DOMAIN || "localhost:5000"}`;
+        const company = await storage.getCompany(companyId);
+        await sendEmail({
+          to: email,
+          subject: `You've been invited to join ${company?.name || "Field Daily Reports"}`,
+          html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto">
+            <h2 style="color:#1a2e4a">Team Invitation</h2>
+            <p>You have been invited to join <strong>${company?.name || "Field Daily Reports"}</strong> as a team member.</p>
+            <div style="text-align:center;margin:30px 0">
+              <a href="${baseUrl}/accept-invite/${token}" style="background:#f59e0b;color:#1a2e4a;padding:12px 24px;text-decoration:none;border-radius:6px;font-weight:bold">Accept Invitation</a>
+            </div>
+            <p style="color:#666;font-size:14px">Or use invite code: <strong>${inviteCode}</strong></p>
+            <p style="color:#666;font-size:12px">This invitation expires in 30 days.</p>
+          </div>`,
+        });
+      } catch (emailErr) {
+        console.error("Invite email failed (invite still created):", emailErr);
+      }
+
+      res.status(201).json({
+        invite: { id: invite.id, email: invite.email, invite_code: inviteCode, expires_at: expiresAt },
+        message: "Invitation created and email sent",
+      });
+    } catch (e) {
+      console.error("Error creating v1 invite:", e);
+      res.status(500).json({ message: "Failed to create invite" });
+    }
+  });
+
+  // ════════════════════════════════════════════════════════════════════════
+  // IOR AGREEMENTS
+  // ════════════════════════════════════════════════════════════════════════
+
+  app.get("/api/v1/ior-agreements", apiKeyAuth, async (req: any, res) => {
+    try {
+      const { companyId } = req.apiKey;
+      const agreements = await storage.getIorAgreements(companyId);
+      res.json({ ior_agreements: agreements, total: agreements.length });
+    } catch (e) { res.status(500).json({ message: "Failed to fetch IOR agreements" }); }
+  });
+
+  app.post("/api/v1/ior-agreements", apiKeyAuth, async (req: any, res) => {
+    try {
+      const { companyId } = req.apiKey;
+      const {
+        project_id, inspector_id, contract_id,
+        agreement_date, client_name, consultant_name, agent_name,
+        project_location, dsa_app_number, rate, terms,
+      } = req.body;
+      if (!project_id) return res.status(400).json({ message: "project_id is required" });
+      if (!inspector_id) return res.status(400).json({ message: "inspector_id is required" });
+      const project = await storage.getProject(project_id);
+      if (!project || project.companyId !== companyId) return res.status(404).json({ message: "Project not found" });
+      const agreementNumber = await storage.getNextIorAgreementNumber(companyId);
+      const agreement = await storage.createIorAgreement({
+        companyId,
+        projectId: project_id,
+        inspectorId: inspector_id,
+        contractId: contract_id || null,
+        agreementNumber,
+        agreementDate: agreement_date || null,
+        clientName: client_name || null,
+        consultantName: consultant_name || null,
+        agentName: agent_name || null,
+        projectLocation: project_location || null,
+        dsaAppNumber: dsa_app_number || null,
+        rate: rate ? String(rate) : null,
+        terms: terms || null,
+        pdfPath: null,
+      });
+      res.status(201).json({ ior_agreement: agreement, message: "IOR agreement created successfully" });
+    } catch (e) {
+      console.error("Error creating v1 IOR agreement:", e);
+      res.status(500).json({ message: "Failed to create IOR agreement" });
+    }
+  });
+
+  app.patch("/api/v1/ior-agreements/:id", apiKeyAuth, async (req: any, res) => {
+    try {
+      const { companyId } = req.apiKey;
+      const existing = await storage.getIorAgreement(req.params.id);
+      if (!existing || existing.companyId !== companyId) return res.status(404).json({ message: "IOR agreement not found" });
+      const {
+        agreement_date, client_name, consultant_name, agent_name,
+        project_location, dsa_app_number, rate, terms,
+      } = req.body;
+      const updates: Record<string, any> = {};
+      if (agreement_date !== undefined) updates.agreementDate = agreement_date;
+      if (client_name !== undefined) updates.clientName = client_name;
+      if (consultant_name !== undefined) updates.consultantName = consultant_name;
+      if (agent_name !== undefined) updates.agentName = agent_name;
+      if (project_location !== undefined) updates.projectLocation = project_location;
+      if (dsa_app_number !== undefined) updates.dsaAppNumber = dsa_app_number;
+      if (rate !== undefined) updates.rate = rate != null ? String(rate) : null;
+      if (terms !== undefined) updates.terms = terms;
+      if (!Object.keys(updates).length) return res.status(400).json({ message: "No fields to update" });
+      const agreement = await storage.updateIorAgreement(req.params.id, updates);
+      res.json({ ior_agreement: agreement, message: "IOR agreement updated successfully" });
+    } catch (e) {
+      console.error("Error updating v1 IOR agreement:", e);
+      res.status(500).json({ message: "Failed to update IOR agreement" });
+    }
+  });
+
+  // ════════════════════════════════════════════════════════════════════════
+  // REPORTS (write)
+  // ════════════════════════════════════════════════════════════════════════
+
+  app.post("/api/v1/reports", apiKeyAuth, async (req: any, res) => {
+    try {
+      const { companyId, createdByUserId } = req.apiKey;
+      const {
+        project_id, date, inspector_id,
+        weather_type, weather_notes, weather_am, weather_pm, precipitation,
+        site_conditions, type_of_work, work_performed, trades, manpower,
+        work_activities, visitors, equipment, equipment_rows, inspections,
+        materials_delivered, material_rows, issues_flag, issues_details,
+        safety_flag, safety_details, safety_incidents, notes, status,
+        time_in, time_out, regular_hours, ot_hours,
+      } = req.body;
+      if (!date) return res.status(400).json({ message: "date is required (YYYY-MM-DD)" });
+      if (project_id) {
+        const project = await storage.getProject(project_id);
+        if (!project || project.companyId !== companyId) return res.status(404).json({ message: "Project not found" });
+      }
+      const inspectorId = inspector_id || createdByUserId;
+      const parsed = createReportSchema.safeParse({
+        projectId: project_id || null, date,
+        weatherType: weather_type, weatherNotes: weather_notes,
+        weatherAM: weather_am, weatherPM: weather_pm, precipitation,
+        siteConditions: site_conditions, typeOfWork: type_of_work,
+        workPerformed: work_performed, trades, manpower, workActivities: work_activities,
+        visitors, equipment, equipmentRows: equipment_rows, inspections,
+        materialsDelivered: materials_delivered, materialRows: material_rows,
+        issuesFlag: issues_flag, issuesDetails: issues_details,
+        safetyFlag: safety_flag, safetyDetails: safety_details,
+        safetyIncidents: safety_incidents, notes, status,
+        timeIn: time_in, timeOut: time_out, regularHours: regular_hours, otHours: ot_hours,
+      });
+      if (!parsed.success) return res.status(400).json({ message: "Validation error", errors: parsed.error.errors });
+      const report = await storage.createReport({ ...parsed.data, projectId: parsed.data.projectId || null, inspectorId });
+      res.status(201).json({ report, message: "Report created successfully" });
+    } catch (e) { console.error("Error creating v1 report:", e); res.status(500).json({ message: "Failed to create report" }); }
+  });
+
+  app.patch("/api/v1/reports/:id", apiKeyAuth, async (req: any, res) => {
+    try {
+      const { companyId } = req.apiKey;
+      const existing = await storage.getReport(req.params.id);
+      if (!existing) return res.status(404).json({ message: "Report not found" });
+      if (existing.projectId) {
+        const project = await storage.getProject(existing.projectId);
+        if (!project || project.companyId !== companyId) return res.status(403).json({ message: "Report belongs to a different company" });
+      }
+      const {
+        weather_type, weather_notes, weather_am, weather_pm, precipitation,
+        site_conditions, type_of_work, work_performed, trades, manpower,
+        work_activities, visitors, equipment, equipment_rows, inspections,
+        materials_delivered, material_rows, issues_flag, issues_details,
+        safety_flag, safety_details, safety_incidents, notes, status,
+        time_in, time_out, regular_hours, ot_hours,
+      } = req.body;
+      const updates: Record<string, any> = {};
+      if (weather_type !== undefined) updates.weatherType = weather_type;
+      if (weather_notes !== undefined) updates.weatherNotes = weather_notes;
+      if (weather_am !== undefined) updates.weatherAM = weather_am;
+      if (weather_pm !== undefined) updates.weatherPM = weather_pm;
+      if (precipitation !== undefined) updates.precipitation = precipitation;
+      if (site_conditions !== undefined) updates.siteConditions = site_conditions;
+      if (type_of_work !== undefined) updates.typeOfWork = type_of_work;
+      if (work_performed !== undefined) updates.workPerformed = work_performed;
+      if (trades !== undefined) updates.trades = trades;
+      if (manpower !== undefined) updates.manpower = manpower;
+      if (work_activities !== undefined) updates.workActivities = work_activities;
+      if (visitors !== undefined) updates.visitors = visitors;
+      if (equipment !== undefined) updates.equipment = equipment;
+      if (equipment_rows !== undefined) updates.equipmentRows = equipment_rows;
+      if (inspections !== undefined) updates.inspections = inspections;
+      if (materials_delivered !== undefined) updates.materialsDelivered = materials_delivered;
+      if (material_rows !== undefined) updates.materialRows = material_rows;
+      if (issues_flag !== undefined) updates.issuesFlag = issues_flag;
+      if (issues_details !== undefined) updates.issuesDetails = issues_details;
+      if (safety_flag !== undefined) updates.safetyFlag = safety_flag;
+      if (safety_details !== undefined) updates.safetyDetails = safety_details;
+      if (safety_incidents !== undefined) updates.safetyIncidents = safety_incidents;
+      if (notes !== undefined) updates.notes = notes;
+      if (status !== undefined) updates.status = status;
+      if (time_in !== undefined) updates.timeIn = time_in;
+      if (time_out !== undefined) updates.timeOut = time_out;
+      if (regular_hours !== undefined) updates.regularHours = regular_hours;
+      if (ot_hours !== undefined) updates.otHours = ot_hours;
+      if (!Object.keys(updates).length) return res.status(400).json({ message: "No fields to update" });
+      const report = await storage.updateReport(req.params.id, updates);
+      res.json({ report, message: "Report updated successfully" });
+    } catch (e) { console.error("Error updating v1 report:", e); res.status(500).json({ message: "Failed to update report" }); }
+  });
+
+  // ════════════════════════════════════════════════════════════════════════
+  // MANUAL TIME ENTRIES
+  // ════════════════════════════════════════════════════════════════════════
+
+  app.get("/api/v1/time-entries", apiKeyAuth, async (req: any, res) => {
+    try {
+      const { companyId } = req.apiKey;
+      const { project_id, month, year } = req.query as any;
+      if (!project_id) return res.status(400).json({ message: "project_id is required" });
+      const project = await storage.getProject(project_id);
+      if (!project || project.companyId !== companyId) return res.status(404).json({ message: "Project not found" });
+      const monthNum = month ? parseInt(month) : new Date().getMonth() + 1;
+      const yearNum = year ? parseInt(year) : new Date().getFullYear();
+      const startDate = new Date(yearNum, monthNum - 1, 1);
+      const endDate = new Date(yearNum, monthNum, 0);
+      endDate.setHours(23, 59, 59, 999);
+      // Fetch for all inspectors by passing an empty string (storage fetches all)
+      const members = await storage.getCompanyMembers(companyId);
+      const allEntries: any[] = [];
+      for (const m of members) {
+        const entries = await storage.getManualTimeEntries(project_id, m.userId, startDate, endDate);
+        allEntries.push(...entries);
+      }
+      res.json({ time_entries: allEntries, total: allEntries.length });
+    } catch (e) { res.status(500).json({ message: "Failed to fetch time entries" }); }
+  });
+
+  app.post("/api/v1/time-entries", apiKeyAuth, async (req: any, res) => {
+    try {
+      const { companyId, createdByUserId } = req.apiKey;
+      const { project_id, inspector_id, date, regular_hours, ot_hours, notes, inspector_name } = req.body;
+      if (!project_id) return res.status(400).json({ message: "project_id is required" });
+      if (!date) return res.status(400).json({ message: "date is required (YYYY-MM-DD)" });
+      const project = await storage.getProject(project_id);
+      if (!project || project.companyId !== companyId) return res.status(404).json({ message: "Project not found" });
+      const entry = await storage.createManualTimeEntry({
+        projectId: project_id,
+        inspectorId: inspector_id || createdByUserId,
+        inspectorName: inspector_name || null,
+        date: new Date(date + "T12:00:00"),
+        regularHours: regular_hours != null ? String(regular_hours) : "0",
+        otHours: ot_hours != null ? String(ot_hours) : "0",
+        notes: notes || null,
+      });
+      res.status(201).json({ time_entry: entry, message: "Time entry created successfully" });
+    } catch (e: any) {
+      if (e?.code === "23505") return res.status(409).json({ message: "A time entry already exists for this inspector on this date for this project" });
+      console.error("Error creating v1 time entry:", e);
+      res.status(500).json({ message: "Failed to create time entry" });
+    }
+  });
+
+  app.delete("/api/v1/time-entries/:id", apiKeyAuth, async (req: any, res) => {
+    try {
+      const { companyId } = req.apiKey;
+      const entry = await storage.getManualTimeEntry(req.params.id);
+      if (!entry) return res.status(404).json({ message: "Time entry not found" });
+      const project = await storage.getProject(entry.projectId);
+      if (!project || project.companyId !== companyId) return res.status(403).json({ message: "Time entry belongs to a different company" });
+      await storage.deleteManualTimeEntry(req.params.id);
+      res.json({ message: "Time entry deleted successfully" });
+    } catch (e) { res.status(500).json({ message: "Failed to delete time entry" }); }
+  });
+
+  // ════════════════════════════════════════════════════════════════════════
+  // PROJECT MEMBERS
+  // ════════════════════════════════════════════════════════════════════════
+
+  app.post("/api/v1/projects/:id/members", apiKeyAuth, async (req: any, res) => {
+    try {
+      const { companyId } = req.apiKey;
+      const project = await storage.getProject(req.params.id);
+      if (!project || project.companyId !== companyId) return res.status(404).json({ message: "Project not found" });
+      const { user_id, regular_rate, overtime_rate, premium_rate } = req.body;
+      if (!user_id) return res.status(400).json({ message: "user_id is required (get from GET /api/v1/team)" });
+      const member = await storage.addProjectMember(req.params.id, user_id, {
+        regularRate: regular_rate, overtimeRate: overtime_rate, premiumRate: premium_rate,
+      });
+      res.status(201).json({ member, message: "Member added to project" });
+    } catch (e: any) {
+      if (e?.code === "23505") return res.status(409).json({ message: "User is already a member of this project" });
+      console.error("Error adding v1 project member:", e);
+      res.status(500).json({ message: "Failed to add project member" });
+    }
+  });
+
+  app.delete("/api/v1/projects/:id/members/:userId", apiKeyAuth, async (req: any, res) => {
+    try {
+      const { companyId } = req.apiKey;
+      const project = await storage.getProject(req.params.id);
+      if (!project || project.companyId !== companyId) return res.status(404).json({ message: "Project not found" });
+      const removed = await storage.removeProjectMember(req.params.id, req.params.userId);
+      if (!removed) return res.status(404).json({ message: "Member not found on this project" });
+      res.json({ message: "Member removed from project" });
+    } catch (e) { res.status(500).json({ message: "Failed to remove project member" }); }
+  });
+
+  // ════════════════════════════════════════════════════════════════════════
+  // PROJECT BILLING RATES
+  // ════════════════════════════════════════════════════════════════════════
+
+  app.get("/api/v1/projects/:id/billing-rates", apiKeyAuth, async (req: any, res) => {
+    try {
+      const { companyId } = req.apiKey;
+      const project = await storage.getProject(req.params.id);
+      if (!project || project.companyId !== companyId) return res.status(404).json({ message: "Project not found" });
+      const rates = await storage.getProjectBillingRates(req.params.id);
+      res.json({ billing_rates: rates, total: rates.length });
+    } catch (e) { res.status(500).json({ message: "Failed to fetch billing rates" }); }
+  });
+
+  app.put("/api/v1/projects/:id/billing-rates", apiKeyAuth, async (req: any, res) => {
+    try {
+      const { companyId } = req.apiKey;
+      const project = await storage.getProject(req.params.id);
+      if (!project || project.companyId !== companyId) return res.status(404).json({ message: "Project not found" });
+      const { rates } = req.body;
+      if (!Array.isArray(rates)) return res.status(400).json({ message: "rates must be an array of { title, rate, hours, inspector_name?, schedule_type? }" });
+      const normalized = rates.map((r: any) => ({
+        projectId: req.params.id,
+        title: r.title,
+        inspectorName: r.inspector_name || null,
+        rate: String(r.rate),
+        hours: String(r.hours),
+        scheduleType: r.schedule_type || "fullTime",
+      }));
+      const saved = await storage.setProjectBillingRates(req.params.id, normalized);
+      res.json({ billing_rates: saved, message: "Billing rates updated" });
+    } catch (e) { console.error("Error setting v1 billing rates:", e); res.status(500).json({ message: "Failed to set billing rates" }); }
+  });
+
+  // ════════════════════════════════════════════════════════════════════════
+  // INVOICES
+  // ════════════════════════════════════════════════════════════════════════
+
+  app.get("/api/v1/invoices", apiKeyAuth, async (req: any, res) => {
+    try {
+      const { companyId } = req.apiKey;
+      const { project_id } = req.query as any;
+      const invoices = project_id
+        ? await storage.getInvoicesByProject(project_id)
+        : await storage.getInvoices(companyId);
+      res.json({ invoices, total: invoices.length });
+    } catch (e) { res.status(500).json({ message: "Failed to fetch invoices" }); }
+  });
+
+  app.post("/api/v1/invoices", apiKeyAuth, async (req: any, res) => {
+    try {
+      const { companyId } = req.apiKey;
+      const {
+        project_id, contract_id, client_id, purchase_order_id,
+        month, year, regular_hours, overtime_hours, premium_hours,
+        regular_rate, overtime_rate, premium_rate,
+        regular_amount, overtime_amount, premium_amount,
+        subtotal, total_amount, due_date, notes, status,
+      } = req.body;
+      if (!project_id || !month || !year) return res.status(400).json({ message: "project_id, month, and year are required" });
+      const project = await storage.getProject(project_id);
+      if (!project || project.companyId !== companyId) return res.status(404).json({ message: "Project not found" });
+      const invoiceNumber = await storage.getNextInvoiceNumber();
+      const invoice = await storage.createInvoice({
+        companyId, projectId: project_id,
+        contractId: contract_id || null, clientId: client_id || null, purchaseOrderId: purchase_order_id || null,
+        invoiceNumber, month: parseInt(month), year: parseInt(year),
+        regularHours: regular_hours != null ? String(regular_hours) : "0",
+        overtimeHours: overtime_hours != null ? String(overtime_hours) : "0",
+        premiumHours: premium_hours != null ? String(premium_hours) : "0",
+        regularRate: regular_rate ? String(regular_rate) : null,
+        overtimeRate: overtime_rate ? String(overtime_rate) : null,
+        premiumRate: premium_rate ? String(premium_rate) : null,
+        regularAmount: regular_amount != null ? String(regular_amount) : "0",
+        overtimeAmount: overtime_amount != null ? String(overtime_amount) : "0",
+        premiumAmount: premium_amount != null ? String(premium_amount) : "0",
+        subtotal: subtotal != null ? String(subtotal) : "0",
+        totalAmount: total_amount != null ? String(total_amount) : "0",
+        dueDate: due_date ? new Date(due_date) : null,
+        notes: notes || null,
+        status: status || "draft",
+        pdfPath: null,
+        taxRate: null, taxAmount: null,
+        paidDate: null,
+      });
+      res.status(201).json({ invoice, message: "Invoice created successfully" });
+    } catch (e) { console.error("Error creating v1 invoice:", e); res.status(500).json({ message: "Failed to create invoice" }); }
+  });
+
+  app.patch("/api/v1/invoices/:id", apiKeyAuth, async (req: any, res) => {
+    try {
+      const { companyId } = req.apiKey;
+      const existing = await storage.getInvoice(req.params.id);
+      if (!existing) return res.status(404).json({ message: "Invoice not found" });
+      const project = await storage.getProject(existing.projectId);
+      if (!project || project.companyId !== companyId) return res.status(403).json({ message: "Invoice belongs to a different company" });
+      const {
+        status, due_date, paid_date, notes,
+        regular_hours, overtime_hours, premium_hours,
+        regular_rate, overtime_rate, premium_rate,
+        regular_amount, overtime_amount, premium_amount,
+        subtotal, total_amount,
+      } = req.body;
+      const updates: Record<string, any> = {};
+      if (status !== undefined) updates.status = status;
+      if (due_date !== undefined) updates.dueDate = due_date ? new Date(due_date) : null;
+      if (paid_date !== undefined) updates.paidDate = paid_date ? new Date(paid_date) : null;
+      if (notes !== undefined) updates.notes = notes;
+      if (regular_hours !== undefined) updates.regularHours = String(regular_hours);
+      if (overtime_hours !== undefined) updates.overtimeHours = String(overtime_hours);
+      if (premium_hours !== undefined) updates.premiumHours = String(premium_hours);
+      if (regular_rate !== undefined) updates.regularRate = String(regular_rate);
+      if (overtime_rate !== undefined) updates.overtimeRate = String(overtime_rate);
+      if (premium_rate !== undefined) updates.premiumRate = String(premium_rate);
+      if (regular_amount !== undefined) updates.regularAmount = String(regular_amount);
+      if (overtime_amount !== undefined) updates.overtimeAmount = String(overtime_amount);
+      if (premium_amount !== undefined) updates.premiumAmount = String(premium_amount);
+      if (subtotal !== undefined) updates.subtotal = String(subtotal);
+      if (total_amount !== undefined) updates.totalAmount = String(total_amount);
+      if (!Object.keys(updates).length) return res.status(400).json({ message: "No fields to update" });
+      const invoice = await storage.updateInvoice(req.params.id, updates);
+      res.json({ invoice, message: "Invoice updated successfully" });
+    } catch (e) { res.status(500).json({ message: "Failed to update invoice" }); }
+  });
+
+  // ════════════════════════════════════════════════════════════════════════
+  // PROPOSALS
+  // ════════════════════════════════════════════════════════════════════════
+
+  app.get("/api/v1/proposals", apiKeyAuth, async (req: any, res) => {
+    try {
+      const { companyId } = req.apiKey;
+      const proposals = await storage.getProposals(companyId);
+      res.json({ proposals, total: proposals.length });
+    } catch (e) { res.status(500).json({ message: "Failed to fetch proposals" }); }
+  });
+
+  app.post("/api/v1/proposals", apiKeyAuth, async (req: any, res) => {
+    try {
+      const { companyId, createdByUserId } = req.apiKey;
+      const {
+        client_name, project_name, client_id, contract_id, project_id,
+        project_manager, start_date, end_date, total_hours, schedule_type,
+        rate_escalation_note, terms, status,
+      } = req.body;
+      if (!client_name) return res.status(400).json({ message: "client_name is required" });
+      if (!project_name) return res.status(400).json({ message: "project_name is required" });
+      const proposalNumber = await storage.getNextProposalNumber(companyId);
+      const proposal = await storage.createProposal({
+        companyId, proposalNumber, createdById: createdByUserId,
+        clientName: client_name, projectName: project_name,
+        clientId: client_id || null, contractId: contract_id || null, projectId: project_id || null,
+        projectManager: project_manager || null,
+        startDate: start_date ? new Date(start_date) : null,
+        endDate: end_date ? new Date(end_date) : null,
+        totalHours: total_hours != null ? String(total_hours) : null,
+        scheduleType: schedule_type || "fullTime",
+        rateEscalationNote: rate_escalation_note || null,
+        terms: terms || null,
+        status: status || "draft",
+        sentDate: null, acceptedDate: null, pdfPath: null,
+      });
+      res.status(201).json({ proposal, message: "Proposal created successfully" });
+    } catch (e) { console.error("Error creating v1 proposal:", e); res.status(500).json({ message: "Failed to create proposal" }); }
+  });
+
+  app.patch("/api/v1/proposals/:id", apiKeyAuth, async (req: any, res) => {
+    try {
+      const { companyId } = req.apiKey;
+      const existing = await storage.getProposal(req.params.id);
+      if (!existing || existing.companyId !== companyId) return res.status(404).json({ message: "Proposal not found" });
+      const {
+        client_name, project_name, client_id, contract_id, project_id,
+        project_manager, start_date, end_date, total_hours, schedule_type,
+        rate_escalation_note, terms, status,
+      } = req.body;
+      const updates: Record<string, any> = {};
+      if (client_name !== undefined) updates.clientName = client_name;
+      if (project_name !== undefined) updates.projectName = project_name;
+      if (client_id !== undefined) updates.clientId = client_id;
+      if (contract_id !== undefined) updates.contractId = contract_id;
+      if (project_id !== undefined) updates.projectId = project_id;
+      if (project_manager !== undefined) updates.projectManager = project_manager;
+      if (start_date !== undefined) updates.startDate = start_date ? new Date(start_date) : null;
+      if (end_date !== undefined) updates.endDate = end_date ? new Date(end_date) : null;
+      if (total_hours !== undefined) updates.totalHours = total_hours != null ? String(total_hours) : null;
+      if (schedule_type !== undefined) updates.scheduleType = schedule_type;
+      if (rate_escalation_note !== undefined) updates.rateEscalationNote = rate_escalation_note;
+      if (terms !== undefined) updates.terms = terms;
+      if (status !== undefined) updates.status = status;
+      if (!Object.keys(updates).length) return res.status(400).json({ message: "No fields to update" });
+      const proposal = await storage.updateProposal(req.params.id, updates);
+      res.json({ proposal, message: "Proposal updated successfully" });
+    } catch (e) { res.status(500).json({ message: "Failed to update proposal" }); }
+  });
+
+  // ════════════════════════════════════════════════════════════════════════
+  // PURCHASE ORDERS
+  // ════════════════════════════════════════════════════════════════════════
+
+  app.get("/api/v1/purchase-orders", apiKeyAuth, async (req: any, res) => {
+    try {
+      const { companyId } = req.apiKey;
+      const pos = await storage.getPurchaseOrders(companyId);
+      res.json({ purchase_orders: pos, total: pos.length });
+    } catch (e) { res.status(500).json({ message: "Failed to fetch purchase orders" }); }
+  });
+
+  app.post("/api/v1/purchase-orders", apiKeyAuth, async (req: any, res) => {
+    try {
+      const { companyId } = req.apiKey;
+      const { po_number, client_id, description, total_amount, remaining_amount, issue_date, expiration_date, status, notes } = req.body;
+      if (!po_number) return res.status(400).json({ message: "po_number is required" });
+      const po = await storage.createPurchaseOrder({
+        companyId, poNumber: po_number,
+        clientId: client_id || null,
+        description: description || null,
+        totalAmount: total_amount != null ? String(total_amount) : null,
+        remainingAmount: remaining_amount != null ? String(remaining_amount) : null,
+        issueDate: issue_date ? new Date(issue_date) : null,
+        expirationDate: expiration_date ? new Date(expiration_date) : null,
+        status: status || "active",
+        notes: notes || null,
+      });
+      res.status(201).json({ purchase_order: po, message: "Purchase order created successfully" });
+    } catch (e) { console.error("Error creating v1 PO:", e); res.status(500).json({ message: "Failed to create purchase order" }); }
+  });
+
+  app.patch("/api/v1/purchase-orders/:id", apiKeyAuth, async (req: any, res) => {
+    try {
+      const { companyId } = req.apiKey;
+      const existing = await storage.getPurchaseOrder(req.params.id);
+      if (!existing || existing.companyId !== companyId) return res.status(404).json({ message: "Purchase order not found" });
+      const { po_number, client_id, description, total_amount, remaining_amount, issue_date, expiration_date, status, notes } = req.body;
+      const updates: Record<string, any> = {};
+      if (po_number !== undefined) updates.poNumber = po_number;
+      if (client_id !== undefined) updates.clientId = client_id;
+      if (description !== undefined) updates.description = description;
+      if (total_amount !== undefined) updates.totalAmount = total_amount != null ? String(total_amount) : null;
+      if (remaining_amount !== undefined) updates.remainingAmount = remaining_amount != null ? String(remaining_amount) : null;
+      if (issue_date !== undefined) updates.issueDate = issue_date ? new Date(issue_date) : null;
+      if (expiration_date !== undefined) updates.expirationDate = expiration_date ? new Date(expiration_date) : null;
+      if (status !== undefined) updates.status = status;
+      if (notes !== undefined) updates.notes = notes;
+      if (!Object.keys(updates).length) return res.status(400).json({ message: "No fields to update" });
+      const po = await storage.updatePurchaseOrder(req.params.id, updates);
+      res.json({ purchase_order: po, message: "Purchase order updated successfully" });
+    } catch (e) { res.status(500).json({ message: "Failed to update purchase order" }); }
+  });
+
+  // ════════════════════════════════════════════════════════════════════════
+  // COMPANY NOTES
+  // ════════════════════════════════════════════════════════════════════════
+
+  app.get("/api/v1/notes", apiKeyAuth, async (req: any, res) => {
+    try {
+      const { companyId } = req.apiKey;
+      const notes = await db.query.companyNotes.findMany({
+        where: eq(companyNotes.companyId, companyId),
+        orderBy: [desc(companyNotes.createdAt)],
+      });
+      res.json({ notes, total: notes.length });
+    } catch (e) { res.status(500).json({ message: "Failed to fetch notes" }); }
+  });
+
+  app.post("/api/v1/notes", apiKeyAuth, async (req: any, res) => {
+    try {
+      const { companyId, createdByUserId } = req.apiKey;
+      const { content, mentions } = req.body;
+      if (!content) return res.status(400).json({ message: "content is required" });
+      const [note] = await db.insert(companyNotes).values({
+        companyId, authorId: createdByUserId,
+        content,
+        mentions: Array.isArray(mentions) ? mentions : [],
+      }).returning();
+      res.status(201).json({ note, message: "Note created successfully" });
+    } catch (e) { console.error("Error creating v1 note:", e); res.status(500).json({ message: "Failed to create note" }); }
+  });
+
+  app.delete("/api/v1/notes/:id", apiKeyAuth, async (req: any, res) => {
+    try {
+      const { companyId } = req.apiKey;
+      const note = await db.query.companyNotes.findFirst({ where: eq(companyNotes.id, req.params.id) });
+      if (!note || note.companyId !== companyId) return res.status(404).json({ message: "Note not found" });
+      await db.delete(companyNotes).where(eq(companyNotes.id, req.params.id));
+      res.json({ message: "Note deleted successfully" });
+    } catch (e) { res.status(500).json({ message: "Failed to delete note" }); }
+  });
+
   app.get("/api/v1/summary", apiKeyAuth, async (req: any, res) => {
     try {
       const { companyId } = req.apiKey;
@@ -16451,7 +17846,7 @@ Transcript: "${transcript}"`;
       openapi: "3.1.0",
       info: {
         title: "Field Daily Reports API",
-        description: "Read-only API to access construction project reports, projects, and contracts. Authenticate with an API key using the Authorization header as 'Bearer <your-api-key>'.",
+        description: "Full read/write API for construction project management. Supports creating and updating contracts, projects, clients, IOR agreements, and team invites — plus reading reports and summary data. Authenticate using the Authorization header: 'Bearer <your-api-key>'.",
         version: "1.0.0",
       },
       servers: [{ url: baseUrl }],
@@ -16491,6 +17886,39 @@ Transcript: "${transcript}"`;
               },
             },
           },
+          post: {
+            operationId: "createProject",
+            summary: "Create a new project",
+            description: "Creates a project. project_number is auto-generated if omitted. Link to a contract or client by passing contract_id or client_id.",
+            requestBody: {
+              required: true,
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    required: ["name"],
+                    properties: {
+                      name: { type: "string" },
+                      project_number: { type: "string", nullable: true, description: "Auto-generated (PRJ-YYYY-NNNN) if not provided" },
+                      client_id: { type: "string", nullable: true, description: "ID from GET /api/v1/clients" },
+                      contract_id: { type: "string", nullable: true, description: "ID from GET /api/v1/contracts" },
+                      address: { type: "string", nullable: true },
+                      start_date: { type: "string", format: "date", nullable: true },
+                      substantial_completion_date: { type: "string", format: "date", nullable: true },
+                      final_closeout_date: { type: "string", format: "date", nullable: true },
+                      budget_amount: { type: "number", nullable: true, description: "Total dollar budget" },
+                      budgeted_hours: { type: "number", nullable: true, description: "Total hours allocated" },
+                      scope_of_work: { type: "string", nullable: true },
+                      project_value: { type: "number", nullable: true },
+                      dsa_file_no: { type: "string", nullable: true, description: "DSA file number for school/state projects" },
+                      distribution_emails: { type: "array", items: { type: "string" }, description: "Email addresses to receive reports" },
+                    },
+                  },
+                },
+              },
+            },
+            responses: { "201": { description: "Project created" }, "409": { description: "Project number already exists" } },
+          },
         },
         "/api/v1/projects/{id}": {
           get: {
@@ -16503,6 +17931,37 @@ Transcript: "${transcript}"`;
                 content: { "application/json": { schema: { type: "object" } } },
               },
             },
+          },
+          patch: {
+            operationId: "updateProject",
+            summary: "Update a project — budget, schedule, scope, and more",
+            parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+            requestBody: {
+              required: true,
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    properties: {
+                      name: { type: "string" },
+                      address: { type: "string", nullable: true },
+                      client_id: { type: "string", nullable: true },
+                      contract_id: { type: "string", nullable: true },
+                      start_date: { type: "string", format: "date", nullable: true },
+                      substantial_completion_date: { type: "string", format: "date", nullable: true },
+                      final_closeout_date: { type: "string", format: "date", nullable: true },
+                      budget_amount: { type: "number", nullable: true },
+                      budgeted_hours: { type: "number", nullable: true },
+                      scope_of_work: { type: "string", nullable: true },
+                      project_value: { type: "number", nullable: true },
+                      dsa_file_no: { type: "string", nullable: true },
+                      distribution_emails: { type: "array", items: { type: "string" } },
+                    },
+                  },
+                },
+              },
+            },
+            responses: { "200": { description: "Updated project" }, "404": { description: "Not found" } },
           },
         },
         "/api/v1/reports": {
@@ -16590,6 +18049,45 @@ Transcript: "${transcript}"`;
               },
             },
           },
+          post: {
+            operationId: "createContract",
+            summary: "Create a new contract or opportunity",
+            description: "Creates a new contract record. The only required field is 'name'. Status defaults to 'bid_release'. All date fields accept ISO 8601 format (YYYY-MM-DD).",
+            requestBody: {
+              required: true,
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    required: ["name"],
+                    properties: {
+                      name: { type: "string", description: "Contract / project name (required)" },
+                      contract_number: { type: "string", description: "Bid or RFP number" },
+                      contract_type: { type: "string", enum: ["lump_sum","time_and_materials","unit_price","cost_plus","design_build","hourly_rate","other"], default: "lump_sum" },
+                      status: { type: "string", enum: ["bid_release","bid_received","under_review","awarded","not_awarded","cancelled","in_execution","substantial_completion","final_closeout"], default: "bid_release" },
+                      agency: { type: "string", nullable: true },
+                      service_type: { type: "string", nullable: true },
+                      notes: { type: "string", nullable: true },
+                      original_value: { type: "number", nullable: true },
+                      bid_release_date: { type: "string", format: "date", nullable: true },
+                      bid_due_date: { type: "string", format: "date", nullable: true },
+                      question_deadline: { type: "string", format: "date", nullable: true },
+                      start_date: { type: "string", format: "date", nullable: true },
+                      substantial_completion_date: { type: "string", format: "date", nullable: true },
+                      final_closeout_date: { type: "string", format: "date", nullable: true },
+                      has_job_walk: { type: "boolean", nullable: true },
+                      job_walk_date_time: { type: "string", format: "date-time", nullable: true },
+                      dsa_class: { type: "string", enum: ["1","2","3","non_dsa"], nullable: true },
+                    },
+                  },
+                },
+              },
+            },
+            responses: {
+              "201": { description: "Contract created", content: { "application/json": { schema: { type: "object" } } } },
+              "400": { description: "Validation error (e.g. missing name)" },
+            },
+          },
         },
         "/api/v1/contracts/{id}": {
           get: {
@@ -16604,7 +18102,644 @@ Transcript: "${transcript}"`;
               },
             },
           },
+          patch: {
+            operationId: "updateContract",
+            summary: "Update an existing contract",
+            description: "Partially update any fields on a contract. Only include the fields you want to change — omitted fields are left unchanged. All date fields accept ISO 8601 format (YYYY-MM-DD or YYYY-MM-DDTHH:mm:ss).",
+            parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+            requestBody: {
+              required: true,
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    properties: {
+                      name: { type: "string", description: "Contract / project name" },
+                      contract_number: { type: "string", description: "Bid or contract number" },
+                      contract_type: { type: "string", enum: ["lump_sum","time_and_materials","unit_price","cost_plus","design_build","hourly_rate","other"] },
+                      status: { type: "string", enum: ["bid_release","bid_received","under_review","awarded","not_awarded","cancelled","in_execution","substantial_completion","final_closeout"] },
+                      agency: { type: "string", nullable: true, description: "Issuing agency or school district" },
+                      service_type: { type: "string", nullable: true, description: "e.g. DSA Inspection, Special Inspection" },
+                      notes: { type: "string", nullable: true },
+                      original_value: { type: "number", nullable: true, description: "Contract dollar value" },
+                      bid_release_date: { type: "string", format: "date", nullable: true },
+                      bid_due_date: { type: "string", format: "date", nullable: true, description: "Proposal/bid submission deadline" },
+                      question_deadline: { type: "string", format: "date", nullable: true },
+                      start_date: { type: "string", format: "date", nullable: true },
+                      substantial_completion_date: { type: "string", format: "date", nullable: true },
+                      final_closeout_date: { type: "string", format: "date", nullable: true },
+                      has_job_walk: { type: "boolean", nullable: true },
+                      job_walk_date_time: { type: "string", format: "date-time", nullable: true },
+                      dsa_class: { type: "string", enum: ["1","2","3","non_dsa"], nullable: true },
+                      addendum_count: { type: "integer", nullable: true },
+                      sharepoint_folder_url: { type: "string", nullable: true },
+                    },
+                  },
+                },
+              },
+            },
+            responses: {
+              "200": { description: "Updated contract", content: { "application/json": { schema: { type: "object" } } } },
+              "400": { description: "Validation error" },
+              "404": { description: "Contract not found" },
+            },
+          },
         },
+        "/api/v1/clients": {
+          get: {
+            operationId: "listClients",
+            summary: "List all clients",
+            responses: { "200": { description: "List of clients", content: { "application/json": { schema: { type: "object" } } } } },
+          },
+          post: {
+            operationId: "createClient",
+            summary: "Create a new client",
+            requestBody: {
+              required: true,
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    required: ["name"],
+                    properties: {
+                      name: { type: "string", description: "Client / agency name (required)" },
+                      contact_name: { type: "string", nullable: true },
+                      email: { type: "string", nullable: true },
+                      phone: { type: "string", nullable: true },
+                      address: { type: "string", nullable: true },
+                      director_of_facilities: { type: "string", nullable: true },
+                      notes: { type: "string", nullable: true },
+                    },
+                  },
+                },
+              },
+            },
+            responses: { "201": { description: "Client created" } },
+          },
+        },
+        "/api/v1/clients/{id}": {
+          patch: {
+            operationId: "updateClient",
+            summary: "Update a client",
+            parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+            requestBody: {
+              required: true,
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    properties: {
+                      name: { type: "string" },
+                      contact_name: { type: "string", nullable: true },
+                      email: { type: "string", nullable: true },
+                      phone: { type: "string", nullable: true },
+                      address: { type: "string", nullable: true },
+                      director_of_facilities: { type: "string", nullable: true },
+                      notes: { type: "string", nullable: true },
+                    },
+                  },
+                },
+              },
+            },
+            responses: { "200": { description: "Updated client" }, "404": { description: "Not found" } },
+          },
+        },
+        "/api/v1/team": {
+          get: {
+            operationId: "listTeam",
+            summary: "List team members",
+            description: "Returns team members with their user_id, name, and role. Use user_id when creating IOR agreements (inspector_id field).",
+            responses: { "200": { description: "Team members", content: { "application/json": { schema: { type: "object" } } } } },
+          },
+        },
+        "/api/v1/invites": {
+          post: {
+            operationId: "sendInvite",
+            summary: "Invite a new team member by email",
+            description: "Sends an email invitation. The recipient must click the link to create their account and join the team.",
+            requestBody: {
+              required: true,
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    required: ["email"],
+                    properties: {
+                      email: { type: "string", format: "email" },
+                      first_name: { type: "string", nullable: true },
+                      last_name: { type: "string", nullable: true },
+                      role: { type: "string", enum: ["inspector", "admin"], default: "inspector" },
+                      is_company_admin: { type: "boolean", default: false },
+                      all_projects_access: { type: "boolean", default: false, description: "Grant access to all current and future projects" },
+                      project_ids: { type: "array", items: { type: "string" }, description: "Specific project IDs to grant access to (if all_projects_access is false)" },
+                    },
+                  },
+                },
+              },
+            },
+            responses: { "201": { description: "Invite created and email sent" }, "400": { description: "Validation error" } },
+          },
+        },
+        "/api/v1/ior-agreements": {
+          get: {
+            operationId: "listIorAgreements",
+            summary: "List all IOR agreements",
+            responses: { "200": { description: "IOR agreements", content: { "application/json": { schema: { type: "object" } } } } },
+          },
+          post: {
+            operationId: "createIorAgreement",
+            summary: "Create an IOR (Inspector of Record) agreement",
+            description: "Creates an IOR agreement. Get project_id from GET /api/v1/projects and inspector_id (user_id) from GET /api/v1/team.",
+            requestBody: {
+              required: true,
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    required: ["project_id", "inspector_id"],
+                    properties: {
+                      project_id: { type: "string", description: "ID from GET /api/v1/projects" },
+                      inspector_id: { type: "string", description: "user_id from GET /api/v1/team" },
+                      contract_id: { type: "string", nullable: true },
+                      agreement_date: { type: "string", nullable: true, description: "Date string e.g. 'April 21, 2026' or '2026-04-21'" },
+                      client_name: { type: "string", nullable: true },
+                      consultant_name: { type: "string", nullable: true },
+                      agent_name: { type: "string", nullable: true },
+                      project_location: { type: "string", nullable: true },
+                      dsa_app_number: { type: "string", nullable: true },
+                      rate: { type: "string", nullable: true, description: "Hourly rate e.g. '125.00'" },
+                      terms: { type: "string", nullable: true, description: "Agreement terms text" },
+                    },
+                  },
+                },
+              },
+            },
+            responses: { "201": { description: "IOR agreement created" } },
+          },
+        },
+        "/api/v1/ior-agreements/{id}": {
+          patch: {
+            operationId: "updateIorAgreement",
+            summary: "Update an IOR agreement",
+            parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+            requestBody: {
+              required: true,
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    properties: {
+                      agreement_date: { type: "string", nullable: true },
+                      client_name: { type: "string", nullable: true },
+                      consultant_name: { type: "string", nullable: true },
+                      agent_name: { type: "string", nullable: true },
+                      project_location: { type: "string", nullable: true },
+                      dsa_app_number: { type: "string", nullable: true },
+                      rate: { type: "string", nullable: true },
+                      terms: { type: "string", nullable: true },
+                    },
+                  },
+                },
+              },
+            },
+            responses: { "200": { description: "Updated IOR agreement" }, "404": { description: "Not found" } },
+          },
+        },
+        "/api/v1/reports": {
+          post: {
+            operationId: "createReport",
+            summary: "Create a daily field report",
+            description: "Creates a report for a project. inspector_id defaults to the API key owner if omitted.",
+            requestBody: {
+              required: true,
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    required: ["date"],
+                    properties: {
+                      project_id: { type: "string", nullable: true },
+                      inspector_id: { type: "string", nullable: true, description: "Defaults to API key owner" },
+                      date: { type: "string", format: "date", description: "YYYY-MM-DD" },
+                      status: { type: "string", enum: ["draft", "submitted"], default: "draft" },
+                      weather_type: { type: "string", enum: ["clear","cloudy","rain","wind","heat","cold"], nullable: true },
+                      weather_notes: { type: "string", nullable: true },
+                      work_performed: { type: "string", nullable: true },
+                      site_conditions: { type: "string", nullable: true },
+                      notes: { type: "string", nullable: true },
+                      issues_flag: { type: "boolean", nullable: true },
+                      issues_details: { type: "string", nullable: true },
+                      safety_flag: { type: "boolean", nullable: true },
+                      safety_details: { type: "string", nullable: true },
+                      regular_hours: { type: "string", nullable: true, description: "e.g. '8.00'" },
+                      ot_hours: { type: "string", nullable: true },
+                      time_in: { type: "string", nullable: true },
+                      time_out: { type: "string", nullable: true },
+                      trades: { type: "array", items: { type: "object" } },
+                      work_activities: { type: "array", items: { type: "object" } },
+                      visitors: { type: "array", items: { type: "object" } },
+                    },
+                  },
+                },
+              },
+            },
+            responses: { "201": { description: "Report created" }, "400": { description: "Validation error" } },
+          },
+        },
+        "/api/v1/reports/{id}": {
+          patch: {
+            operationId: "updateReport",
+            summary: "Update a daily report",
+            parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+            requestBody: {
+              required: true,
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    properties: {
+                      status: { type: "string", enum: ["draft","submitted"] },
+                      weather_type: { type: "string", nullable: true },
+                      weather_notes: { type: "string", nullable: true },
+                      work_performed: { type: "string", nullable: true },
+                      notes: { type: "string", nullable: true },
+                      issues_flag: { type: "boolean", nullable: true },
+                      issues_details: { type: "string", nullable: true },
+                      safety_flag: { type: "boolean", nullable: true },
+                      safety_details: { type: "string", nullable: true },
+                      regular_hours: { type: "string", nullable: true },
+                      ot_hours: { type: "string", nullable: true },
+                    },
+                  },
+                },
+              },
+            },
+            responses: { "200": { description: "Updated report" }, "404": { description: "Not found" } },
+          },
+        },
+        "/api/v1/time-entries": {
+          get: {
+            operationId: "listTimeEntries",
+            summary: "List manual time entries for a project/month",
+            parameters: [
+              { name: "project_id", in: "query", required: true, schema: { type: "string" } },
+              { name: "month", in: "query", required: false, schema: { type: "integer" }, description: "1–12, defaults to current month" },
+              { name: "year", in: "query", required: false, schema: { type: "integer" }, description: "e.g. 2026, defaults to current year" },
+            ],
+            responses: { "200": { description: "Time entries", content: { "application/json": { schema: { type: "object" } } } } },
+          },
+          post: {
+            operationId: "createTimeEntry",
+            summary: "Log manual hours for an inspector on a project",
+            requestBody: {
+              required: true,
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    required: ["project_id", "date"],
+                    properties: {
+                      project_id: { type: "string" },
+                      inspector_id: { type: "string", nullable: true, description: "user_id from /api/v1/team; defaults to API key owner" },
+                      inspector_name: { type: "string", nullable: true },
+                      date: { type: "string", format: "date" },
+                      regular_hours: { type: "number", description: "e.g. 8" },
+                      ot_hours: { type: "number", description: "Overtime hours" },
+                      notes: { type: "string", nullable: true },
+                    },
+                  },
+                },
+              },
+            },
+            responses: { "201": { description: "Time entry created" }, "409": { description: "Entry already exists for this date" } },
+          },
+        },
+        "/api/v1/time-entries/{id}": {
+          delete: {
+            operationId: "deleteTimeEntry",
+            summary: "Delete a manual time entry",
+            parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+            responses: { "200": { description: "Deleted" }, "404": { description: "Not found" } },
+          },
+        },
+        "/api/v1/projects/{id}/members": {
+          post: {
+            operationId: "addProjectMember",
+            summary: "Add a team member to a project",
+            parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" }, description: "Project ID" }],
+            requestBody: {
+              required: true,
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    required: ["user_id"],
+                    properties: {
+                      user_id: { type: "string", description: "user_id from GET /api/v1/team" },
+                      regular_rate: { type: "string", nullable: true },
+                      overtime_rate: { type: "string", nullable: true },
+                      premium_rate: { type: "string", nullable: true },
+                    },
+                  },
+                },
+              },
+            },
+            responses: { "201": { description: "Member added" }, "409": { description: "Already a member" } },
+          },
+        },
+        "/api/v1/projects/{id}/members/{userId}": {
+          delete: {
+            operationId: "removeProjectMember",
+            summary: "Remove a team member from a project",
+            parameters: [
+              { name: "id", in: "path", required: true, schema: { type: "string" }, description: "Project ID" },
+              { name: "userId", in: "path", required: true, schema: { type: "string" } },
+            ],
+            responses: { "200": { description: "Removed" }, "404": { description: "Not found" } },
+          },
+        },
+        "/api/v1/projects/{id}/billing-rates": {
+          get: {
+            operationId: "getProjectBillingRates",
+            summary: "Get billing rates for a project",
+            parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+            responses: { "200": { description: "Billing rates", content: { "application/json": { schema: { type: "object" } } } } },
+          },
+          put: {
+            operationId: "setProjectBillingRates",
+            summary: "Set (replace) billing rates for a project",
+            parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+            requestBody: {
+              required: true,
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    required: ["rates"],
+                    properties: {
+                      rates: {
+                        type: "array",
+                        items: {
+                          type: "object",
+                          required: ["title","rate","hours"],
+                          properties: {
+                            title: { type: "string", description: "Role/title e.g. 'DSA Class 1 Inspector'" },
+                            rate: { type: "number" },
+                            hours: { type: "number" },
+                            inspector_name: { type: "string", nullable: true },
+                            schedule_type: { type: "string", enum: ["fullTime","partTime"], default: "fullTime" },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+            responses: { "200": { description: "Rates updated" } },
+          },
+        },
+        "/api/v1/invoices": {
+          get: {
+            operationId: "listInvoices",
+            summary: "List invoices",
+            parameters: [{ name: "project_id", in: "query", required: false, schema: { type: "string" }, description: "Filter by project" }],
+            responses: { "200": { description: "Invoices", content: { "application/json": { schema: { type: "object" } } } } },
+          },
+          post: {
+            operationId: "createInvoice",
+            summary: "Create an invoice",
+            requestBody: {
+              required: true,
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    required: ["project_id","month","year"],
+                    properties: {
+                      project_id: { type: "string" },
+                      contract_id: { type: "string", nullable: true },
+                      client_id: { type: "string", nullable: true },
+                      purchase_order_id: { type: "string", nullable: true },
+                      month: { type: "integer", description: "1–12" },
+                      year: { type: "integer" },
+                      regular_hours: { type: "number" },
+                      overtime_hours: { type: "number" },
+                      premium_hours: { type: "number" },
+                      regular_rate: { type: "number" },
+                      overtime_rate: { type: "number" },
+                      premium_rate: { type: "number" },
+                      regular_amount: { type: "number" },
+                      overtime_amount: { type: "number" },
+                      premium_amount: { type: "number" },
+                      subtotal: { type: "number" },
+                      total_amount: { type: "number" },
+                      due_date: { type: "string", format: "date", nullable: true },
+                      notes: { type: "string", nullable: true },
+                      status: { type: "string", enum: ["draft","sent","paid","overdue","cancelled"], default: "draft" },
+                    },
+                  },
+                },
+              },
+            },
+            responses: { "201": { description: "Invoice created" } },
+          },
+        },
+        "/api/v1/invoices/{id}": {
+          patch: {
+            operationId: "updateInvoice",
+            summary: "Update an invoice",
+            parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+            requestBody: {
+              required: true,
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    properties: {
+                      status: { type: "string", enum: ["draft","sent","paid","overdue","cancelled"] },
+                      due_date: { type: "string", format: "date", nullable: true },
+                      paid_date: { type: "string", format: "date", nullable: true },
+                      total_amount: { type: "number", nullable: true },
+                      notes: { type: "string", nullable: true },
+                    },
+                  },
+                },
+              },
+            },
+            responses: { "200": { description: "Updated" }, "404": { description: "Not found" } },
+          },
+        },
+        "/api/v1/proposals": {
+          get: {
+            operationId: "listProposals",
+            summary: "List proposals",
+            responses: { "200": { description: "Proposals", content: { "application/json": { schema: { type: "object" } } } } },
+          },
+          post: {
+            operationId: "createProposal",
+            summary: "Create a proposal",
+            requestBody: {
+              required: true,
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    required: ["client_name","project_name"],
+                    properties: {
+                      client_name: { type: "string" },
+                      project_name: { type: "string" },
+                      client_id: { type: "string", nullable: true },
+                      contract_id: { type: "string", nullable: true },
+                      project_id: { type: "string", nullable: true },
+                      project_manager: { type: "string", nullable: true },
+                      start_date: { type: "string", format: "date", nullable: true },
+                      end_date: { type: "string", format: "date", nullable: true },
+                      total_hours: { type: "number", nullable: true },
+                      schedule_type: { type: "string", enum: ["fullTime","partTime"], default: "fullTime" },
+                      rate_escalation_note: { type: "string", nullable: true },
+                      terms: { type: "string", nullable: true },
+                      status: { type: "string", enum: ["draft","sent","accepted","rejected"], default: "draft" },
+                    },
+                  },
+                },
+              },
+            },
+            responses: { "201": { description: "Proposal created" } },
+          },
+        },
+        "/api/v1/proposals/{id}": {
+          patch: {
+            operationId: "updateProposal",
+            summary: "Update a proposal",
+            parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+            requestBody: {
+              required: true,
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    properties: {
+                      client_name: { type: "string" },
+                      project_name: { type: "string" },
+                      status: { type: "string", enum: ["draft","sent","accepted","rejected"] },
+                      project_manager: { type: "string", nullable: true },
+                      start_date: { type: "string", format: "date", nullable: true },
+                      end_date: { type: "string", format: "date", nullable: true },
+                      total_hours: { type: "number", nullable: true },
+                      terms: { type: "string", nullable: true },
+                    },
+                  },
+                },
+              },
+            },
+            responses: { "200": { description: "Updated" }, "404": { description: "Not found" } },
+          },
+        },
+        "/api/v1/purchase-orders": {
+          get: {
+            operationId: "listPurchaseOrders",
+            summary: "List purchase orders",
+            responses: { "200": { description: "Purchase orders", content: { "application/json": { schema: { type: "object" } } } } },
+          },
+          post: {
+            operationId: "createPurchaseOrder",
+            summary: "Create a purchase order",
+            requestBody: {
+              required: true,
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    required: ["po_number"],
+                    properties: {
+                      po_number: { type: "string" },
+                      client_id: { type: "string", nullable: true },
+                      description: { type: "string", nullable: true },
+                      total_amount: { type: "number", nullable: true },
+                      remaining_amount: { type: "number", nullable: true },
+                      issue_date: { type: "string", format: "date", nullable: true },
+                      expiration_date: { type: "string", format: "date", nullable: true },
+                      status: { type: "string", enum: ["active","closed","cancelled"], default: "active" },
+                      notes: { type: "string", nullable: true },
+                    },
+                  },
+                },
+              },
+            },
+            responses: { "201": { description: "Purchase order created" } },
+          },
+        },
+        "/api/v1/purchase-orders/{id}": {
+          patch: {
+            operationId: "updatePurchaseOrder",
+            summary: "Update a purchase order",
+            parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+            requestBody: {
+              required: true,
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    properties: {
+                      po_number: { type: "string" },
+                      description: { type: "string", nullable: true },
+                      total_amount: { type: "number", nullable: true },
+                      remaining_amount: { type: "number", nullable: true },
+                      issue_date: { type: "string", format: "date", nullable: true },
+                      expiration_date: { type: "string", format: "date", nullable: true },
+                      status: { type: "string", enum: ["active","closed","cancelled"] },
+                      notes: { type: "string", nullable: true },
+                    },
+                  },
+                },
+              },
+            },
+            responses: { "200": { description: "Updated" }, "404": { description: "Not found" } },
+          },
+        },
+        "/api/v1/notes": {
+          get: {
+            operationId: "listNotes",
+            summary: "List company notes",
+            responses: { "200": { description: "Notes", content: { "application/json": { schema: { type: "object" } } } } },
+          },
+          post: {
+            operationId: "createNote",
+            summary: "Add a company note",
+            requestBody: {
+              required: true,
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    required: ["content"],
+                    properties: {
+                      content: { type: "string" },
+                      mentions: { type: "array", items: { type: "string" }, description: "Array of user IDs to mention" },
+                    },
+                  },
+                },
+              },
+            },
+            responses: { "201": { description: "Note created" } },
+          },
+        },
+        "/api/v1/notes/{id}": {
+          delete: {
+            operationId: "deleteNote",
+            summary: "Delete a company note",
+            parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+            responses: { "200": { description: "Deleted" }, "404": { description: "Not found" } },
+          },
+        },
+      },
+      "x-field-notes": {
+        statuses: "bid_release → bid_received → under_review → awarded/not_awarded → in_execution → substantial_completion → final_closeout",
+        invoice_statuses: "draft → sent → paid | overdue | cancelled",
+        proposal_statuses: "draft → sent → accepted | rejected",
+        dates: "All dates ISO 8601: YYYY-MM-DD for dates, YYYY-MM-DDTHH:mm for datetimes",
+        workflow: "Typical flow: 1) list clients/team → 2) create project → 3) add members → 4) set billing rates → 5) create reports/time entries → 6) create invoices",
       },
     };
     res.json(spec);
@@ -17052,6 +19187,1115 @@ Transcript: "${transcript}"`;
     } catch (error) {
       console.error("Error importing availability list:", error);
       res.status(500).json({ message: "Failed to import availability list" });
+    }
+  });
+
+  // ── TEMP: One-time account consolidation (Buckman Outlook → Gmail) ──────
+  // DELETE THIS ENDPOINT after running once in production.
+  app.post("/api/admin/consolidate-buckman-accounts", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      if (!isEffectiveSystemAdmin(profile)) {
+        return res.status(403).json({ message: "System admin access required" });
+      }
+
+      const OUTLOOK_ID = '55030529'; // tbuckmaninspectionservices@outlook.com (old)
+      const GMAIL_ID   = '55631269'; // tebuckman@gmail.com (new primary)
+
+      // 1. Reassign all reports from Outlook → Gmail
+      const reportsUpdated = await db
+        .update(dailyReportsTable)
+        .set({ inspectorId: GMAIL_ID })
+        .where(eq(dailyReportsTable.inspectorId, OUTLOOK_ID))
+        .returning({ id: dailyReportsTable.id });
+
+      // 2. Check if Gmail already has a company membership
+      const existingMembership = await db
+        .select()
+        .from(companyMembers)
+        .where(eq(companyMembers.userId, GMAIL_ID));
+
+      // 3. Get Outlook's company membership and profile
+      const [outlookMembership] = await db
+        .select()
+        .from(companyMembers)
+        .where(eq(companyMembers.userId, OUTLOOK_ID));
+
+      const [outlookProfile] = await db
+        .select()
+        .from(userProfiles)
+        .where(eq(userProfiles.userId, OUTLOOK_ID));
+
+      // 4. Copy membership to Gmail if not already a member
+      let membershipResult = 'skipped (already has membership)';
+      if (existingMembership.length === 0 && outlookMembership) {
+        await db.insert(companyMembers).values({
+          userId: GMAIL_ID,
+          companyId: outlookMembership.companyId,
+          role: outlookMembership.role,
+        });
+        membershipResult = `added as ${outlookMembership.role} in company ${outlookMembership.companyId}`;
+      }
+
+      // 5. Copy profile to Gmail if no profile exists
+      const [existingGmailProfile] = await db
+        .select()
+        .from(userProfiles)
+        .where(eq(userProfiles.userId, GMAIL_ID));
+
+      let profileResult = 'skipped (already has profile)';
+      if (!existingGmailProfile && outlookProfile) {
+        const { userId: _uid, ...profileData } = outlookProfile;
+        await db.insert(userProfiles).values({ ...profileData, userId: GMAIL_ID });
+        profileResult = `copied: ${outlookProfile.firstName} ${outlookProfile.lastName}`;
+      }
+
+      // 6. Remove Outlook's company membership (it's no longer the active account)
+      await db
+        .delete(companyMembers)
+        .where(eq(companyMembers.userId, OUTLOOK_ID));
+
+      res.json({
+        success: true,
+        reportsReassigned: reportsUpdated.length,
+        membership: membershipResult,
+        profile: profileResult,
+        note: 'Outlook account membership removed. Delete this endpoint after confirming.'
+      });
+    } catch (error: any) {
+      console.error("Consolidation error:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ── Cert Expiry Tracker ─────────────────────────────────────────────────────
+  // GET /api/company/inspector-workload — returns workload data for all company inspectors
+  app.get("/api/company/inspector-workload", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      const companyId = profile?.activeCompanyId;
+      if (!companyId) return res.status(403).json({ message: "No active company" });
+      if (!(await isEffectiveCompanyAdmin(userId, companyId, profile))) {
+        return res.status(403).json({ message: "Company admin access required" });
+      }
+
+      // Current month boundaries (UTC)
+      const now = new Date();
+      const monthStart = new Date(Date.UTC(now.getFullYear(), now.getMonth(), 1));
+      const monthEnd = new Date(Date.UTC(now.getFullYear(), now.getMonth() + 1, 1));
+
+      // Get all company inspectors (role='inspector')
+      // leftJoin ensures inspectors without a profile row are still included
+      const memberRows = await db
+        .select({
+          userId: companyMembers.userId,
+          role: companyMembers.role,
+          firstName: userProfiles.firstName,
+          lastName: userProfiles.lastName,
+          title: userProfiles.title,
+          email: users.email,
+          availabilityDate: userProfiles.availabilityDate,
+        })
+        .from(companyMembers)
+        .leftJoin(userProfiles, eq(userProfiles.userId, companyMembers.userId))
+        .innerJoin(users, eq(users.id, companyMembers.userId))
+        .where(
+          and(
+            eq(companyMembers.companyId, companyId),
+            eq(companyMembers.role, "inspector")
+          )
+        );
+
+      // Get only this company's projects (strict tenant isolation)
+      const companyProjects = await storage.getProjectsByCompany(companyId);
+      const projectMap = new Map(companyProjects.map(p => [p.id, p]));
+      const companyProjectIds = companyProjects.map(p => p.id);
+
+      // Build workload per inspector
+      const workload = await Promise.all(memberRows.map(async (member) => {
+        const inspectorId = member.userId;
+        const name = [member.firstName, member.lastName].filter(Boolean).join(" ") || member.email || inspectorId;
+
+        // Step 1: Get assigned projects from project_members (the canonical "active project" list)
+        const assignedProjectIds = new Set<string>();
+        if (companyProjectIds.length > 0) {
+          const pmRows = await db
+            .select({ projectId: projectMembers.projectId })
+            .from(projectMembers)
+            .where(
+              and(
+                eq(projectMembers.userId, inspectorId),
+                inArray(projectMembers.projectId, companyProjectIds)
+              )
+            );
+          for (const pm of pmRows) assignedProjectIds.add(pm.projectId);
+        }
+
+        // Step 2: Build hours map from DR + MTE (both sources; cover projects with/without PM record)
+        const projectHoursMap = new Map<string, number>();
+        if (companyProjectIds.length > 0) {
+          const [drRows, mteRows] = await Promise.all([
+            db.select({
+              projectId: dailyReportsTable.projectId,
+              regularHours: dailyReportsTable.regularHours,
+              otHours: dailyReportsTable.otHours,
+            }).from(dailyReportsTable).where(
+              and(
+                eq(dailyReportsTable.inspectorId, inspectorId),
+                sql`${dailyReportsTable.date} >= ${monthStart}`,
+                sql`${dailyReportsTable.date} < ${monthEnd}`,
+                inArray(dailyReportsTable.projectId, companyProjectIds)
+              )
+            ),
+            db.select({
+              projectId: manualTimeEntries.projectId,
+              regularHours: manualTimeEntries.regularHours,
+              otHours: manualTimeEntries.otHours,
+            }).from(manualTimeEntries).where(
+              and(
+                eq(manualTimeEntries.inspectorId, inspectorId),
+                sql`${manualTimeEntries.date} >= ${monthStart}`,
+                sql`${manualTimeEntries.date} < ${monthEnd}`,
+                inArray(manualTimeEntries.projectId, companyProjectIds)
+              )
+            ),
+          ]);
+
+          for (const dr of drRows) {
+            if (!dr.projectId || !projectMap.has(dr.projectId)) continue;
+            projectHoursMap.set(dr.projectId, (projectHoursMap.get(dr.projectId) ?? 0) + parseFloat(dr.regularHours || "0") + parseFloat(dr.otHours || "0"));
+          }
+          for (const mte of mteRows) {
+            if (!mte.projectId || !projectMap.has(mte.projectId)) continue;
+            projectHoursMap.set(mte.projectId, (projectHoursMap.get(mte.projectId) ?? 0) + parseFloat(mte.regularHours || "0") + parseFloat(mte.otHours || "0"));
+          }
+        }
+
+        // Step 3: Merge assigned projects (with 0 hours if no activity) + unassigned but active projects
+        const allRelevantProjectIds = new Set([...assignedProjectIds, ...projectHoursMap.keys()]);
+        const activeProjects = Array.from(allRelevantProjectIds)
+          .map(projectId => {
+            const p = projectMap.get(projectId);
+            if (!p) return null;
+            return {
+              projectId,
+              projectName: p.name || p.projectNumber || projectId,
+              hoursThisMonth: Math.round((projectHoursMap.get(projectId) ?? 0) * 100) / 100,
+              isAssigned: assignedProjectIds.has(projectId),
+            };
+          })
+          .filter((p): p is NonNullable<typeof p> => p !== null)
+          .sort((a, b) => b.hoursThisMonth - a.hoursThisMonth);
+
+        const totalHoursThisMonth = Math.round(activeProjects.reduce((sum, ap) => sum + ap.hoursThisMonth, 0) * 100) / 100;
+
+        return {
+          inspectorId,
+          name,
+          title: member.title || null,
+          email: member.email || null,
+          role: member.role,
+          availabilityDate: member.availabilityDate || null,
+          activeProjectCount: assignedProjectIds.size,
+          totalHoursThisMonth,
+          utilizationPct: Math.min(Math.round((totalHoursThisMonth / 160) * 100), 100),
+          projects: activeProjects,
+        };
+      }));
+
+      res.json(workload.sort((a, b) => b.totalHoursThisMonth - a.totalHoursThisMonth));
+    } catch (error: any) {
+      console.error("Error fetching inspector workload:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // GET /api/company/inspector-compare?ids=a,b,c — returns comparison data for up to 3 inspectors
+  app.get("/api/company/inspector-compare", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      const companyId = profile?.activeCompanyId;
+      if (!companyId) return res.status(403).json({ message: "No active company" });
+      if (!(await isEffectiveCompanyAdmin(userId, companyId, profile))) {
+        return res.status(403).json({ message: "Company admin access required" });
+      }
+
+      const idsParam = req.query.ids as string || "";
+      const rawIds = idsParam.split(",").map(s => s.trim()).filter(Boolean).slice(0, 3);
+      if (rawIds.length < 1) return res.status(400).json({ message: "At least one inspector ID required" });
+
+      // Separate team-inspector IDs (prefixed "ti:") from company-member user IDs
+      const tiIds = rawIds.filter(id => id.startsWith("ti:")).map(id => id.slice(3));
+      const memberIds = rawIds.filter(id => !id.startsWith("ti:"));
+
+      // Validate member IDs belong to this company and are inspector-role
+      const members = await storage.getCompanyMembers(companyId);
+      const memberMap = new Map(members.map(m => [m.userId, m]));
+      for (const mid of memberIds) {
+        const m = memberMap.get(mid);
+        if (!m) return res.status(403).json({ message: `Inspector ${mid} does not belong to this company` });
+        if (m.role !== "inspector") return res.status(400).json({ message: `User ${mid} is not an inspector` });
+      }
+
+      // Validate team inspector IDs belong to this company
+      for (const tid of tiIds) {
+        const ti = await storage.getTeamInspector(tid);
+        if (!ti || ti.companyId !== companyId) {
+          return res.status(403).json({ message: `Team inspector ${tid} does not belong to this company` });
+        }
+      }
+
+      // Get company projects
+      const companyProjects = await storage.getProjectsByCompany(companyId);
+      const activeCompanyProjects = companyProjects.filter(p =>
+        !p.finalCloseoutDate || new Date(p.finalCloseoutDate) > new Date()
+      );
+      const activeProjectIds = activeCompanyProjects.map(p => p.id);
+      const allProjectIds = companyProjects.map(p => p.id);
+
+      // Current month boundaries
+      const now = new Date();
+      const monthStart = new Date(Date.UTC(now.getFullYear(), now.getMonth(), 1));
+      const monthEnd = new Date(Date.UTC(now.getFullYear(), now.getMonth() + 1, 1));
+
+      const results = await Promise.all(rawIds.map(async (rawId) => {
+        const isTeamInspector = rawId.startsWith("ti:");
+        const entityId = isTeamInspector ? rawId.slice(3) : rawId;
+
+        if (isTeamInspector) {
+          // Team Inspector path — no project/hours data (not a system user)
+          const ti = await storage.getTeamInspector(entityId);
+          if (!ti) return null;
+          return {
+            id: rawId,
+            inspectorId: rawId,
+            name: `${ti.firstName} ${ti.lastName}`.trim(),
+            title: ti.title || null,
+            licenseNumber: ti.licenseNumber || null,
+            licenseState: ti.licenseState || null,
+            certifications: ti.certifications || [],
+            availabilityDate: null,
+            activeProjectCount: null as number | null,
+            totalHoursThisMonth: null as number | null,
+            regularRate: null as string | null,
+            overtimeRate: null as string | null,
+            premiumRate: null as string | null,
+            isTeamInspector: true,
+            role: "inspector" as string | null,
+          };
+        }
+
+        // Company member path
+        const inspectorProfile = await storage.getUserProfile(entityId);
+        const member = memberMap.get(entityId);
+        const firstName = inspectorProfile?.firstName || member?.user?.firstName || null;
+        const lastName = inspectorProfile?.lastName || member?.user?.lastName || null;
+        const email = member?.user?.email ?? null;
+        const name = [firstName, lastName].filter(Boolean).join(" ") || email || entityId;
+
+        let activeProjectCount = 0;
+        let projectAssignments: Array<{ projectId: string; regularRate: string | null; overtimeRate: string | null; premiumRate: string | null }> = [];
+        if (activeProjectIds.length > 0) {
+          const pmRows = await db
+            .select({
+              projectId: projectMembers.projectId,
+              regularRate: projectMembers.regularRate,
+              overtimeRate: projectMembers.overtimeRate,
+              premiumRate: projectMembers.premiumRate,
+            })
+            .from(projectMembers)
+            .where(and(eq(projectMembers.userId, entityId), inArray(projectMembers.projectId, activeProjectIds)));
+          activeProjectCount = pmRows.length;
+          projectAssignments = pmRows;
+        }
+
+        const regularRate = projectAssignments.find(p => p.regularRate)?.regularRate || null;
+        const overtimeRate = projectAssignments.find(p => p.overtimeRate)?.overtimeRate || null;
+        const premiumRate = projectAssignments.find(p => p.premiumRate)?.premiumRate || null;
+
+        let totalHoursThisMonth = 0;
+        if (allProjectIds.length > 0) {
+          const [drRows, mteRows] = await Promise.all([
+            db.select({ regularHours: dailyReportsTable.regularHours, otHours: dailyReportsTable.otHours })
+              .from(dailyReportsTable)
+              .where(and(eq(dailyReportsTable.inspectorId, entityId), sql`${dailyReportsTable.date} >= ${monthStart}`, sql`${dailyReportsTable.date} < ${monthEnd}`, inArray(dailyReportsTable.projectId, allProjectIds))),
+            db.select({ regularHours: manualTimeEntries.regularHours, otHours: manualTimeEntries.otHours })
+              .from(manualTimeEntries)
+              .where(and(eq(manualTimeEntries.inspectorId, entityId), sql`${manualTimeEntries.date} >= ${monthStart}`, sql`${manualTimeEntries.date} < ${monthEnd}`, inArray(manualTimeEntries.projectId, allProjectIds))),
+          ]);
+          for (const dr of drRows) totalHoursThisMonth += parseFloat(dr.regularHours || "0") + parseFloat(dr.otHours || "0");
+          for (const mte of mteRows) totalHoursThisMonth += parseFloat(mte.regularHours || "0") + parseFloat(mte.otHours || "0");
+        }
+
+        return {
+          id: rawId,
+          inspectorId: rawId,
+          name,
+          title: inspectorProfile?.title || null,
+          licenseNumber: inspectorProfile?.licenseNumber || null,
+          licenseState: inspectorProfile?.licenseState || null,
+          certifications: inspectorProfile?.certifications || [],
+          availabilityDate: inspectorProfile?.availabilityDate || null,
+          activeProjectCount,
+          totalHoursThisMonth: Math.round(totalHoursThisMonth * 100) / 100,
+          regularRate,
+          overtimeRate,
+          premiumRate,
+          isTeamInspector: false,
+          role: member?.role || null,
+        };
+      }));
+
+      res.json(results.filter(Boolean));
+    } catch (error: any) {
+      console.error("Error fetching inspector comparison:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // GET /api/company/inspector-performance — returns performance scorecard for all company inspectors
+  app.get("/api/company/inspector-performance", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      const companyId = profile?.activeCompanyId;
+      if (!companyId) return res.status(403).json({ message: "No active company" });
+      if (!(await isEffectiveCompanyAdmin(userId, companyId, profile))) {
+        return res.status(403).json({ message: "Company admin access required" });
+      }
+
+      const days = Math.min(Math.max(parseInt(req.query.days as string) || 90, 1), 730);
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() - days);
+      cutoff.setHours(0, 0, 0, 0);
+      const cutoffStr = cutoff.toISOString().slice(0, 10);
+
+      // Get all company inspectors (leftJoin so inspectors without profile row are included)
+      const memberRows = await db
+        .select({
+          userId: companyMembers.userId,
+          role: companyMembers.role,
+          firstName: userProfiles.firstName,
+          lastName: userProfiles.lastName,
+          title: userProfiles.title,
+          email: users.email,
+        })
+        .from(companyMembers)
+        .leftJoin(userProfiles, eq(userProfiles.userId, companyMembers.userId))
+        .innerJoin(users, eq(users.id, companyMembers.userId))
+        .where(
+          and(
+            eq(companyMembers.companyId, companyId),
+            eq(companyMembers.role, "inspector")
+          )
+        );
+
+      if (memberRows.length === 0) return res.json([]);
+
+      // Get company project IDs for scoping
+      const companyProjects = await storage.getProjectsByCompany(companyId);
+      const companyProjectIds = companyProjects.map(p => p.id);
+      const inspectorIds = memberRows.map(m => m.userId);
+
+      // Aggregate stats per inspector from daily_reports (single grouped query via drizzle)
+      const statsRows = companyProjectIds.length > 0 ? await db
+        .select({
+          inspectorId: dailyReportsTable.inspectorId,
+          totalReports: count(),
+          totalHours: sql<string>`COALESCE(SUM(CAST(${dailyReportsTable.regularHours} AS NUMERIC) + CAST(COALESCE(${dailyReportsTable.otHours}, '0') AS NUMERIC)), 0)`,
+          safetyIncidents: sql<number>`COALESCE(SUM(${dailyReportsTable.safetyIncidents}), 0)::int`,
+          safetyNearMisses: sql<number>`COALESCE(SUM(${dailyReportsTable.safetyNearMisses}), 0)::int`,
+          safetyFlagCount: sql<number>`COUNT(*) FILTER (WHERE ${dailyReportsTable.safetyFlag} = true)`,
+          distinctProjects: countDistinct(dailyReportsTable.projectId),
+        })
+        .from(dailyReportsTable)
+        .where(
+          and(
+            inArray(dailyReportsTable.inspectorId, inspectorIds),
+            inArray(dailyReportsTable.projectId, companyProjectIds),
+            sql`${dailyReportsTable.date} >= ${cutoffStr}`
+          )
+        )
+        .groupBy(dailyReportsTable.inspectorId) : [];
+
+      // MTE hours per inspector (same date range) — hours only, no safety data in MTE
+      const mteHoursRows = companyProjectIds.length > 0 ? await db
+        .select({
+          inspectorId: manualTimeEntries.inspectorId,
+          mteHours: sql<string>`COALESCE(SUM(CAST(${manualTimeEntries.regularHours} AS NUMERIC) + CAST(COALESCE(${manualTimeEntries.otHours}, '0') AS NUMERIC)), 0)`,
+        })
+        .from(manualTimeEntries)
+        .where(
+          and(
+            inArray(manualTimeEntries.inspectorId, inspectorIds),
+            inArray(manualTimeEntries.projectId, companyProjectIds),
+            sql`${manualTimeEntries.date} >= ${cutoffStr}`
+          )
+        )
+        .groupBy(manualTimeEntries.inspectorId) : [];
+
+      const mteHoursMap = new Map<string, number>();
+      for (const row of mteHoursRows) {
+        mteHoursMap.set(row.inspectorId, parseFloat(row.mteHours));
+      }
+
+      // Monthly breakdown: last 6 months, reports per inspector per month
+      const sixMonthsAgo = new Date();
+      sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 5);
+      sixMonthsAgo.setDate(1);
+      sixMonthsAgo.setHours(0, 0, 0, 0);
+      const sixMonthsAgoStr = sixMonthsAgo.toISOString().slice(0, 10);
+
+      const monthlyRows = companyProjectIds.length > 0 ? await db
+        .select({
+          inspectorId: dailyReportsTable.inspectorId,
+          month: sql<string>`TO_CHAR(${dailyReportsTable.date}::date, 'YYYY-MM')`,
+          reportCount: count(),
+        })
+        .from(dailyReportsTable)
+        .where(
+          and(
+            inArray(dailyReportsTable.inspectorId, inspectorIds),
+            inArray(dailyReportsTable.projectId, companyProjectIds),
+            sql`${dailyReportsTable.date} >= ${sixMonthsAgoStr}`
+          )
+        )
+        .groupBy(dailyReportsTable.inspectorId, sql`TO_CHAR(${dailyReportsTable.date}::date, 'YYYY-MM')`)
+        .orderBy(sql`TO_CHAR(${dailyReportsTable.date}::date, 'YYYY-MM')`) : [];
+
+      // Build stats map
+      const statsMap = new Map<string, any>();
+      for (const row of statsRows) {
+        statsMap.set(row.inspectorId, {
+          totalReports: Number(row.totalReports),
+          totalHours: parseFloat(row.totalHours as string),
+          safetyIncidents: Number(row.safetyIncidents),
+          safetyNearMisses: Number(row.safetyNearMisses),
+          safetyFlagCount: Number(row.safetyFlagCount),
+          distinctProjects: Number(row.distinctProjects),
+        });
+      }
+
+      // Build monthly map: inspectorId -> [{month, reportCount}]
+      const monthlyMap = new Map<string, Array<{month: string; reportCount: number}>>();
+      for (const row of monthlyRows) {
+        const arr = monthlyMap.get(row.inspectorId) ?? [];
+        arr.push({ month: row.month, reportCount: Number(row.reportCount) });
+        monthlyMap.set(row.inspectorId, arr);
+      }
+
+      // Compute expected working days (Mon-Fri) in the range
+      let expectedWorkdays = 0;
+      const d = new Date(cutoff);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      while (d <= today) {
+        const dow = d.getDay();
+        if (dow !== 0 && dow !== 6) expectedWorkdays++;
+        d.setDate(d.getDate() + 1);
+      }
+
+      const result = memberRows.map(member => {
+        const name = [member.firstName, member.lastName].filter(Boolean).join(" ") || member.email || member.userId;
+        const stats = statsMap.get(member.userId) ?? {
+          totalReports: 0, totalHours: 0, safetyIncidents: 0,
+          safetyNearMisses: 0, safetyFlagCount: 0, distinctProjects: 0,
+        };
+        const mteHours = mteHoursMap.get(member.userId) ?? 0;
+        const combinedHours = stats.totalHours + mteHours;
+        const avgDailyHours = stats.totalReports > 0
+          ? Math.round((combinedHours / stats.totalReports) * 100) / 100
+          : 0;
+        const submissionRate = expectedWorkdays > 0
+          ? Math.min(Math.round((stats.totalReports / expectedWorkdays) * 1000) / 10, 100)
+          : 0;
+        return {
+          inspectorId: member.userId,
+          name,
+          title: member.title || null,
+          email: member.email || null,
+          totalReports: stats.totalReports,
+          totalHours: Math.round(combinedHours * 100) / 100,
+          avgDailyHours,
+          safetyIncidents: stats.safetyIncidents,
+          safetyNearMisses: stats.safetyNearMisses,
+          safetyFlagCount: stats.safetyFlagCount,
+          distinctProjects: stats.distinctProjects,
+          submissionRate,
+          reportsByMonth: monthlyMap.get(member.userId) ?? [],
+        };
+      });
+
+      res.json(result.sort((a, b) => b.totalReports - a.totalReports));
+    } catch (error: any) {
+      console.error("Error fetching inspector performance:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // GET /api/cert-expiry  — returns all inspectors with cert expiry info for this company
+  app.get("/api/cert-expiry", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      const companyId = profile?.activeCompanyId;
+      if (!companyId) return res.status(403).json({ message: "No active company" });
+      if (!(await isEffectiveCompanyAdmin(userId, companyId, profile))) {
+        return res.status(403).json({ message: "Company admin access required" });
+      }
+
+      const { users: userRows, teamInspectors: teamRows } = await storage.getAllInspectorsWithCerts();
+
+      const now = new Date();
+      now.setHours(0, 0, 0, 0);
+
+      const toEntry = (inspector: { id: string; companyId: string; name: string; certifications: any[] }, type: "user" | "team") => {
+        if (inspector.companyId !== companyId) return null;
+        const certs = normalizeCerts(inspector.certifications).map((cert) => {
+          const daysUntilExpiry = cert.expiresAt
+            ? Math.ceil((new Date(cert.expiresAt).setHours(0,0,0,0) - now.getTime()) / 86400000)
+            : null;
+          return { ...cert, daysUntilExpiry };
+        });
+        return { id: inspector.id, name: inspector.name, type, certifications: certs };
+      };
+
+      const entries = [
+        ...userRows.map(i => toEntry(i, "user")),
+        ...teamRows.map(i => toEntry(i, "team")),
+      ].filter(Boolean);
+
+      res.json(entries);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ─── Inspector Document Vault Routes ──────────────────────────────────────
+
+  // GET /api/inspector-documents/:inspectorId — list documents for an inspector
+  app.get("/api/inspector-documents/:inspectorId", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      const companyId = profile?.activeCompanyId;
+      if (!companyId) return res.status(403).json({ message: "No active company" });
+      if (!(await isEffectiveCompanyAdmin(userId, companyId, profile))) {
+        return res.status(403).json({ message: "Company admin access required" });
+      }
+      const { inspectorId } = req.params;
+      const docs = await storage.getInspectorDocuments(companyId, inspectorId);
+      res.json(docs);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // POST /api/inspector-documents — upload a document (multipart/form-data)
+  app.post("/api/inspector-documents", isAuthenticated, documentUpload.single("file"), async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      const companyId = profile?.activeCompanyId;
+      if (!companyId) return res.status(403).json({ message: "No active company" });
+      if (!(await isEffectiveCompanyAdmin(userId, companyId, profile))) {
+        return res.status(403).json({ message: "Company admin access required" });
+      }
+      if (!req.file) return res.status(400).json({ message: "No file uploaded" });
+
+      const { inspectorId, documentType } = req.body;
+      if (!inspectorId) return res.status(400).json({ message: "inspectorId is required" });
+      if (!documentType || !INSPECTOR_DOCUMENT_TYPES.includes(documentType)) {
+        return res.status(400).json({ message: "Invalid document type" });
+      }
+
+      // Verify the inspector belongs to this company (as a company member or team inspector)
+      const members = await storage.getCompanyMembers(companyId);
+      const isMember = members.some(m => m.userId === inspectorId);
+      if (!isMember) {
+        const teamInspectors = await storage.getTeamInspectors(companyId);
+        const isTeamInspector = teamInspectors.some(t => t.userId === inspectorId);
+        if (!isTeamInspector) {
+          return res.status(400).json({ message: "Inspector is not a member of this company" });
+        }
+      }
+
+      // Upload file to private object storage under inspector-docs/
+      const ext = path.extname(req.file.originalname) || "";
+      const safeFileName = `${Date.now()}-${Math.random().toString(36).slice(2)}${ext}`;
+      const fileUrl = await objectStorage.uploadBuffer({
+        buffer: req.file.buffer,
+        filename: safeFileName,
+        contentType: req.file.mimetype,
+        folder: `inspector-docs/${companyId}/${inspectorId}`,
+      });
+
+      const doc = await storage.createInspectorDocument({
+        companyId,
+        inspectorId,
+        documentType,
+        fileName: req.file.originalname,
+        fileUrl,
+        uploadedById: userId,
+      });
+
+      res.json(doc);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // GET /api/inspector-documents/:id/download — returns a short-lived signed URL
+  app.get("/api/inspector-documents/:id/download", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      const companyId = profile?.activeCompanyId;
+      if (!companyId) return res.status(403).json({ message: "No active company" });
+      if (!(await isEffectiveCompanyAdmin(userId, companyId, profile))) {
+        return res.status(403).json({ message: "Company admin access required" });
+      }
+
+      const doc = await storage.getInspectorDocument(req.params.id);
+      if (!doc) return res.status(404).json({ message: "Document not found" });
+      if (doc.companyId !== companyId) return res.status(403).json({ message: "Access denied" });
+
+      // Issue a 5-minute signed URL — avoid streaming bytes through the API server
+      const url = await objectStorage.getSignedDownloadUrl(doc.fileUrl, 300);
+      res.json({ url, fileName: doc.fileName });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // DELETE /api/inspector-documents/:id — delete a document
+  app.delete("/api/inspector-documents/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      const companyId = profile?.activeCompanyId;
+      if (!companyId) return res.status(403).json({ message: "No active company" });
+      if (!(await isEffectiveCompanyAdmin(userId, companyId, profile))) {
+        return res.status(403).json({ message: "Company admin access required" });
+      }
+
+      const doc = await storage.getInspectorDocument(req.params.id);
+      if (!doc) return res.status(404).json({ message: "Document not found" });
+      if (doc.companyId !== companyId) return res.status(403).json({ message: "Access denied" });
+
+      // Delete DB record first, then remove the file from object storage
+      await storage.deleteInspectorDocument(req.params.id);
+      try {
+        await objectStorage.deleteObject(doc.fileUrl);
+      } catch (_err) {
+        // Best-effort blob cleanup — DB record already removed
+      }
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ─── Outlook Email Import Routes ───────────────────────────────────────────
+
+  // Check if Outlook is connected
+  app.get("/api/outlook/status", isAuthenticated, async (req: any, res) => {
+    try {
+      const { checkOutlookConnection } = await import("./outlook-client");
+      const connected = await checkOutlookConnection();
+      res.json({ connected });
+    } catch (error: any) {
+      res.json({ connected: false });
+    }
+  });
+
+  // List recent emails from Outlook inbox
+  app.get("/api/outlook/emails", isAuthenticated, async (req: any, res) => {
+    try {
+      const { getRecentEmails } = await import("./outlook-client");
+      const count = Math.min(parseInt(String(req.query.count || "20")), 50);
+      const emails = await getRecentEmails(count);
+      res.json(emails);
+    } catch (error: any) {
+      if (error.message === "OUTLOOK_NOT_CONNECTED") {
+        return res.status(401).json({ message: "Outlook not connected", code: "OUTLOOK_NOT_CONNECTED" });
+      }
+      console.error("Error fetching Outlook emails:", error);
+      res.status(500).json({ message: "Failed to fetch emails" });
+    }
+  });
+
+  // Get full email detail by ID
+  app.get("/api/outlook/emails/:emailId", isAuthenticated, async (req: any, res) => {
+    try {
+      const { getEmailDetail } = await import("./outlook-client");
+      const email = await getEmailDetail(req.params.emailId);
+      res.json(email);
+    } catch (error: any) {
+      if (error.message === "OUTLOOK_NOT_CONNECTED") {
+        return res.status(401).json({ message: "Outlook not connected", code: "OUTLOOK_NOT_CONNECTED" });
+      }
+      console.error("Error fetching email detail:", error);
+      res.status(500).json({ message: "Failed to fetch email" });
+    }
+  });
+
+  // Extract contract data from email text using AI
+  app.post("/api/outlook/extract-contract", isAuthenticated, async (req: any, res) => {
+    try {
+      const { emailText, subject, sender } = req.body;
+      if (!emailText) {
+        return res.status(400).json({ message: "emailText is required" });
+      }
+
+      const systemPrompt = `You are an expert at extracting contract information from emails. 
+Extract all relevant contract fields from the provided email text and return structured JSON.
+If a field is not clearly mentioned, return null for that field.
+Do not guess or invent data — only extract what is explicitly mentioned.`;
+
+      const userPrompt = `Extract contract information from this email and return a JSON object with these fields:
+- contractNumber: string | null (contract or bid number, RFP number, etc.)
+- name: string | null (project or contract name/title)
+- description: string | null (brief description of the scope)
+- clientName: string | null (client, agency, or organization name — this is not necessarily who sent the email)
+- contractType: "lump_sum" | "time_and_materials" | "unit_price" | "cost_plus" | "design_build" | "hourly_rate" | "other" | null
+- status: "bid_release" | "bid_received" | "under_review" | "awarded" | "not_awarded" | "cancelled" | "in_execution" | "substantial_completion" | "final_closeout" | null
+- originalValue: string | null (budget or contract value as a number string, no currency symbols)
+- bidDueDate: string | null (ISO date YYYY-MM-DD format)
+- bidReleaseDate: string | null (ISO date YYYY-MM-DD format)
+- awardDate: string | null (ISO date YYYY-MM-DD format)
+- startDate: string | null (ISO date YYYY-MM-DD format)
+- substantialCompletionDate: string | null (ISO date YYYY-MM-DD format)
+- finalCloseoutDate: string | null (ISO date YYYY-MM-DD format)
+- notes: string | null (any other relevant notes or details)
+- agency: string | null (government agency or issuing organization if applicable)
+- serviceType: string | null (type of service e.g. "DSA Inspection", "Special Inspection", etc.)
+- questionDeadline: string | null (ISO date YYYY-MM-DD format, deadline for questions/RFIs)
+- hasJobWalk: boolean | null (true if a mandatory or optional job walk, site walk, pre-bid walk, or site visit is mentioned; false if explicitly stated there is none; null if not mentioned)
+- jobWalkDateTime: string | null (ISO datetime YYYY-MM-DDTHH:mm format if a specific date/time for the job walk is given, otherwise null)
+- dsaClass: "1" | "2" | "3" | "non_dsa" | null (DSA inspector class required: 1=Class 1, 2=Class 2, 3=Class 3; use "non_dsa" if the work is explicitly non-DSA or not DSA-related; null if not mentioned. Look for phrases like "DSA Class 1", "Class II inspector", "DSA certified", "non-DSA", "not DSA", etc.)
+
+Email Subject: ${subject || ""}
+From: ${sender || ""}
+
+Email Body:
+${emailText.substring(0, 8000)}
+
+Return ONLY a valid JSON object with the fields above. No explanation, no markdown, just JSON.`;
+
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt },
+        ],
+        temperature: 0.1,
+        max_tokens: 1000,
+        response_format: { type: "json_object" },
+      });
+
+      const content = completion.choices[0]?.message?.content || "{}";
+      let extracted: Record<string, any> = {};
+      try {
+        extracted = JSON.parse(content);
+      } catch {
+        extracted = {};
+      }
+
+      res.json({ extracted });
+    } catch (error: any) {
+      console.error("Error extracting contract from email:", error);
+      res.status(500).json({ message: "Failed to extract contract data" });
+    }
+  });
+
+  // ─── Inspector Broadcast Announcements ──────────────────────────────────────
+
+  // POST /api/announcements — create and send an announcement (admin only)
+  app.post("/api/announcements", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      const companyId = profile?.activeCompanyId;
+      if (!companyId) return res.status(403).json({ message: "No active company" });
+      if (!(await isEffectiveCompanyAdmin(userId, companyId, profile))) {
+        return res.status(403).json({ message: "Company admin access required" });
+      }
+
+      const recipientFilterSchema = z.discriminatedUnion("type", [
+        z.object({ type: z.literal("all") }),
+        z.object({ type: z.literal("project"), projectId: z.string().min(1) }),
+        z.object({ type: z.literal("dsa_class"), dsaClass: z.union([z.literal(1), z.literal(2), z.literal(3)]) }),
+        z.object({ type: z.literal("specific_users"), userIds: z.array(z.string()).min(1) }),
+      ]);
+      const bodyParse = z.object({
+        title: z.string().min(1),
+        body: z.string().min(1),
+        recipientFilter: recipientFilterSchema.optional(),
+        sendEmail: z.boolean().optional(),
+      }).safeParse(req.body);
+      if (!bodyParse.success) {
+        return res.status(400).json({ message: "Invalid request", errors: bodyParse.error.flatten() });
+      }
+      const { title, body, recipientFilter, sendEmail: shouldEmail } = bodyParse.data;
+      const filter = recipientFilter ?? ({ type: "all" } as const);
+
+      // Resolve recipient user IDs from filter
+      const allMembers = await storage.getCompanyMembers(companyId);
+      const inspectorMembers = allMembers.filter(m => m.role === "inspector");
+
+      let recipientIds: string[] = [];
+      if (filter.type === "all") {
+        recipientIds = inspectorMembers.map(m => m.userId);
+      } else if (filter.type === "project" && filter.projectId) {
+        // Only inspectors assigned to the given project
+        const projectMembersRows = await db
+          .select({ userId: projectMembers.userId })
+          .from(projectMembers)
+          .where(eq(projectMembers.projectId, filter.projectId));
+        const projectUserIds = new Set(projectMembersRows.map((r: { userId: string }) => r.userId));
+        recipientIds = inspectorMembers.filter(m => projectUserIds.has(m.userId)).map(m => m.userId);
+      } else if (filter.type === "dsa_class") {
+        const dsaClass = filter.dsaClass;
+        // Filter inspectors who have DSA Class N certification (check cert names)
+        const recipientPromises = inspectorMembers.map(async (m) => {
+          const p = await storage.getUserProfile(m.userId);
+          const certs = (p?.certifications as Array<{ name: string }> | null) || [];
+          const hasClass = certs.some((c: { name: string }) => {
+            const name = c.name?.toLowerCase() || "";
+            return name.includes(`class ${dsaClass}`) || name.includes(`dsa class ${dsaClass}`) || name.includes(`dsa-class-${dsaClass}`);
+          });
+          return hasClass ? m.userId : null;
+        });
+        const resolved = await Promise.all(recipientPromises);
+        recipientIds = resolved.filter((id): id is string => id !== null);
+      } else if (filter.type === "specific_users") {
+        // Only include the explicitly selected user IDs that are inspector members of this company
+        const inspectorUserIdSet = new Set(inspectorMembers.map(m => m.userId));
+        recipientIds = filter.userIds.filter(id => inspectorUserIdSet.has(id));
+      }
+
+      // Create announcement record
+      const announcement = await storage.createAnnouncement({
+        companyId,
+        sentById: userId,
+        title: title.trim(),
+        body: body.trim(),
+        recipientFilter: filter,
+        recipientUserIds: recipientIds,
+        recipientCount: recipientIds.length,
+        emailSent: shouldEmail === true,
+      });
+
+      // Optionally send email to each recipient
+      if (shouldEmail && recipientIds.length > 0) {
+        try {
+          // Use already-loaded member data to get emails (user.email from companyMembers join)
+          const memberEmailMap = new Map(
+            allMembers
+              .filter((m) => !!m.user?.email)
+              .map((m) => [m.userId, m.user!.email as string])
+          );
+          const emailList = recipientIds.map(rid => memberEmailMap.get(rid)).filter((e): e is string => !!e);
+
+          if (emailList.length > 0) {
+            const company = await storage.getCompany(companyId);
+            const senderProfile = await storage.getUserProfile(userId);
+            const senderUser = await storage.getUserById(userId);
+            const senderName = [senderProfile?.firstName, senderProfile?.lastName].filter(Boolean).join(" ") || "Your Company Admin";
+            const senderEmail = senderUser?.email;
+            await sendEmail({
+              to: emailList,
+              cc: senderEmail || undefined,
+              subject: `[${company?.name || "Company"}] ${title.trim()}`,
+              html: `
+                <div style="font-family:sans-serif;max-width:600px;margin:0 auto">
+                  <div style="background:#1a2e4a;padding:16px;color:white">
+                    <h2 style="margin:0;font-size:18px">${company?.name || "Field Daily Reports"}</h2>
+                    <p style="margin:4px 0 0;font-size:12px;opacity:0.7">Company Announcement</p>
+                  </div>
+                  <div style="padding:24px;background:#fff;border:1px solid #e5e7eb">
+                    <h3 style="margin:0 0 12px;color:#1a2e4a">${title.trim()}</h3>
+                    <div style="white-space:pre-wrap;color:#374151;line-height:1.6">${body.trim()}</div>
+                    <hr style="margin:24px 0;border:none;border-top:1px solid #e5e7eb">
+                    <p style="font-size:12px;color:#9ca3af">Sent by ${senderName} · ${new Date().toLocaleDateString("en-US", { timeZone: "America/Los_Angeles" })}</p>
+                  </div>
+                </div>
+              `,
+            });
+          }
+        } catch (emailErr) {
+          console.error("Announcement email send error:", emailErr);
+          // Don't fail the request if email fails
+        }
+      }
+
+      res.json(announcement);
+    } catch (error: any) {
+      console.error("Error creating announcement:", error);
+      res.status(500).json({ message: "Failed to create announcement" });
+    }
+  });
+
+  // GET /api/announcements — list company announcements (admin)
+  app.get("/api/announcements", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      const companyId = profile?.activeCompanyId;
+      if (!companyId) return res.status(403).json({ message: "No active company" });
+      if (!(await isEffectiveCompanyAdmin(userId, companyId, profile))) {
+        return res.status(403).json({ message: "Company admin access required" });
+      }
+      const announcements = await storage.getCompanyAnnouncements(companyId);
+      res.json(announcements);
+    } catch (error: any) {
+      console.error("Error fetching announcements:", error);
+      res.status(500).json({ message: "Failed to fetch announcements" });
+    }
+  });
+
+  // GET /api/announcements/feed — announcements visible to current user (inspector)
+  app.get("/api/announcements/feed", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      // Get all companies the user belongs to
+      const memberships = await storage.getCompaniesForUser(userId);
+      // Fast-return empty for users with no inspector memberships
+      const inspectorMemberships = memberships.filter((m) => m.role === "inspector");
+      if (inspectorMemberships.length === 0) return res.json([]);
+      const companyIds = inspectorMemberships.map((m) => m.companyId);
+      const announcements = await storage.getInspectorAnnouncements(userId, companyIds);
+      // Enrich with read status
+      const readStatuses = await Promise.all(
+        announcements.map(a => storage.isAnnouncementRead(a.id, userId))
+      );
+      const enriched = announcements.map((a, i) => ({ ...a, isRead: readStatuses[i] }));
+      res.json(enriched);
+    } catch (error: any) {
+      console.error("Error fetching announcement feed:", error);
+      res.status(500).json({ message: "Failed to fetch announcements" });
+    }
+  });
+
+  // GET /api/announcements/unread-count — badge count for inspector
+  app.get("/api/announcements/unread-count", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const memberships = await storage.getCompaniesForUser(userId);
+      // Fast-return zero for users with no inspector memberships
+      const inspectorMemberships = memberships.filter((m) => m.role === "inspector");
+      if (inspectorMemberships.length === 0) return res.json({ count: 0 });
+      const companyIds = inspectorMemberships.map((m) => m.companyId);
+      const count = await storage.getUnreadAnnouncementCount(userId, companyIds);
+      res.json({ count });
+    } catch (error: any) {
+      console.error("Error fetching unread count:", error);
+      res.json({ count: 0 });
+    }
+  });
+
+  // POST /api/announcements/:id/read — mark as read (only if announcement is visible to caller)
+  app.post("/api/announcements/:id/read", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      // Verify the announcement is visible to this user (membership + recipient inclusion)
+      const memberships = await storage.getCompaniesForUser(userId);
+      const inspectorMemberships = memberships.filter((m) => m.role === "inspector");
+      if (inspectorMemberships.length === 0) return res.status(403).json({ message: "Announcement not accessible" });
+      const companyIds = inspectorMemberships.map((m) => m.companyId);
+      const visibleAnnouncements = await storage.getInspectorAnnouncements(userId, companyIds);
+      const isVisible = visibleAnnouncements.some((a) => a.id === req.params.id);
+      if (!isVisible) {
+        return res.status(403).json({ message: "Announcement not accessible" });
+      }
+      await storage.markAnnouncementRead(req.params.id, userId);
+      res.json({ ok: true });
+    } catch (error: any) {
+      console.error("Error marking announcement read:", error);
+      res.status(500).json({ message: "Failed to mark as read" });
+    }
+  });
+
+  // ========== ADMIN NOTIFICATIONS ==========
+
+  // GET /api/admin-notifications - get in-app notifications for current company admin
+  app.get("/api/admin-notifications", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      const companyId = req.query.companyId as string;
+      if (!companyId) return res.status(400).json({ message: "companyId required" });
+      const isAdmin = isEffectiveSystemAdmin(profile) ||
+        await isEffectiveCompanyAdmin(userId, companyId, profile);
+      if (!isAdmin) return res.status(403).json({ message: "Access denied" });
+      const notifications = await storage.getAdminNotifications(userId, companyId);
+      res.json(notifications);
+    } catch (error: any) {
+      console.error("Error fetching admin notifications:", error);
+      res.status(500).json({ message: "Failed to fetch notifications" });
+    }
+  });
+
+  // GET /api/admin-notifications/unread-count - unread badge count
+  app.get("/api/admin-notifications/unread-count", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      const companyId = req.query.companyId as string;
+      if (!companyId) return res.json({ count: 0 });
+      const isAdmin = isEffectiveSystemAdmin(profile) ||
+        await isEffectiveCompanyAdmin(userId, companyId, profile);
+      if (!isAdmin) return res.json({ count: 0 });
+      const count = await storage.getAdminNotificationUnreadCount(userId, companyId);
+      res.json({ count });
+    } catch (error: any) {
+      console.error("Error fetching admin notification count:", error);
+      res.json({ count: 0 });
+    }
+  });
+
+  // PATCH /api/admin-notifications/:id/read - mark a single notification read
+  // Only the recipient admin may mark their own notification read
+  app.patch("/api/admin-notifications/:id/read", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      const notif = await storage.getAdminNotification(req.params.id);
+      if (!notif) return res.status(404).json({ message: "Notification not found" });
+      if (notif.recipientUserId !== userId) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      // Also verify caller is still an effective admin for that company
+      const isAdmin = isEffectiveSystemAdmin(profile) ||
+        await isEffectiveCompanyAdmin(userId, notif.companyId, profile);
+      if (!isAdmin) return res.status(403).json({ message: "Access denied" });
+      await storage.markAdminNotificationRead(req.params.id, userId);
+      res.json({ ok: true });
+    } catch (error: any) {
+      console.error("Error marking admin notification read:", error);
+      res.status(500).json({ message: "Failed to mark notification as read" });
+    }
+  });
+
+  // POST /api/admin-notifications/read-all - mark all notifications read for current user/company
+  app.post("/api/admin-notifications/read-all", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const profile = await storage.getUserProfile(userId);
+      const { companyId } = req.body;
+      if (!companyId) return res.status(400).json({ message: "companyId required" });
+      const isAdmin = isEffectiveSystemAdmin(profile) ||
+        await isEffectiveCompanyAdmin(userId, companyId, profile);
+      if (!isAdmin) return res.status(403).json({ message: "Access denied" });
+      await storage.markAllAdminNotificationsRead(userId, companyId);
+      res.json({ ok: true });
+    } catch (error: any) {
+      console.error("Error marking all admin notifications read:", error);
+      res.status(500).json({ message: "Failed to mark notifications as read" });
     }
   });
 

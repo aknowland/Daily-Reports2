@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useParams, Link } from "wouter";
-import { PageHeader, SectionHeader } from "@/components/layout/page-header";
+import { useParams, Link, useLocation } from "wouter";
+import { useAuth } from "@/hooks/use-auth";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -19,7 +19,19 @@ import {
   MapPin,
   Clock,
   FolderKanban,
+  Download,
+  ClipboardList,
+  HardHat,
+  LogOut,
 } from "lucide-react";
+
+interface MeetingMinute {
+  id: string;
+  title: string;
+  meetingDate: string;
+  meetingType: string;
+  pdfPath: string | null;
+}
 
 interface ProjectDetail {
   project: {
@@ -48,6 +60,7 @@ interface ProjectDetail {
     temperature: string | null;
     inspectorName: string | null;
     status: string;
+    pdfPath: string | null;
   }>;
   totalReports: number;
   photos: Array<{
@@ -72,45 +85,34 @@ interface ProjectDetail {
     weather: string | null;
     temperature: string | null;
   }>;
+  hoursUsed: number;
+  budgetedHours: number | null;
+  meetingMinutes: MeetingMinute[];
 }
 
-function getStatusBadgeClasses(status: string) {
-  switch (status) {
-    case "active":
-      return "bg-green-600/15 text-green-700 border-green-600/30";
-    case "completed":
-      return "bg-blue-600/15 text-blue-700 border-blue-600/30";
-    case "on-hold":
-      return "bg-amber-600/15 text-amber-700 border-amber-600/30";
-    default:
-      return "bg-muted text-muted-foreground";
-  }
-}
-
-function getReportStatusClasses(status: string) {
+function getReportStatusVariant(status: string): "success" | "warning" | "muted" {
   switch (status) {
     case "submitted":
     case "signed":
-      return "bg-green-600/15 text-green-700 border-green-600/30";
+      return "success";
     case "draft":
-      return "bg-muted text-muted-foreground";
     default:
-      return "bg-muted text-muted-foreground";
+      return "warning";
   }
 }
 
-function getIssueStatusClasses(status: string) {
+function getIssueStatusVariant(status: string): "destructive" | "success" | "warning" | "muted" {
   switch (status?.toLowerCase()) {
     case "open":
-      return "bg-red-600/15 text-red-700 border-red-600/30";
+      return "destructive";
     case "resolved":
     case "closed":
-      return "bg-green-600/15 text-green-700 border-green-600/30";
+      return "success";
     case "in_progress":
     case "in progress":
-      return "bg-amber-600/15 text-amber-700 border-amber-600/30";
+      return "warning";
     default:
-      return "bg-muted text-muted-foreground";
+      return "muted";
   }
 }
 
@@ -139,11 +141,89 @@ function getWeatherLabel(condition: string | null) {
     .replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+function SectionHeader({ title, children, className = "" }: { title: string; children?: React.ReactNode; className?: string }) {
+  return (
+    <div className={`flex items-center justify-between mb-3 ${className}`}>
+      <h3 className="text-base font-semibold uppercase tracking-wider text-[hsl(220,55%,16%)] dark:text-foreground border-l-4 border-[hsl(38,92%,50%)] pl-3">
+        {title}
+      </h3>
+      {children}
+    </div>
+  );
+}
+
+function PortalHeader({ companyName, companyLogo, clientName }: { companyName: string; companyLogo: string | null; clientName: string }) {
+  return (
+    <header className="sticky top-0 z-40 w-full bg-[hsl(220,55%,16%)] text-white border-b-4 border-[hsl(38,92%,50%)]">
+      <div className="flex h-14 items-center justify-between gap-4 px-4 max-w-7xl mx-auto">
+        <div className="flex items-center gap-3">
+          {companyLogo ? (
+            <img src={companyLogo} alt={companyName} className="h-8 w-8 object-contain" />
+          ) : (
+            <div className="w-8 h-8 bg-[hsl(38,92%,50%)] flex items-center justify-center flex-shrink-0">
+              <HardHat className="w-5 h-5 text-[hsl(220,55%,10%)]" />
+            </div>
+          )}
+          <span className="font-bold text-sm tracking-widest uppercase hidden sm:inline">{companyName || "Client Portal"}</span>
+        </div>
+        <div className="flex items-center gap-4">
+          {clientName && (
+            <span className="text-sm text-white/70 hidden md:inline">Welcome, {clientName}</span>
+          )}
+          <Link href="/client-portal">
+            <Button variant="ghost" size="sm" className="text-white/80 hover:text-white hover:bg-white/10" data-testid="button-back-portal">
+              <ArrowLeft className="w-4 h-4 mr-1" />
+              <span className="hidden sm:inline">Portal</span>
+            </Button>
+          </Link>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-white/80 hover:text-white hover:bg-white/10"
+            onClick={() => { window.location.href = "/api/logout"; }}
+            data-testid="button-logout"
+          >
+            <LogOut className="w-4 h-4 mr-1" />
+            <span className="hidden sm:inline">Sign out</span>
+          </Button>
+        </div>
+      </div>
+    </header>
+  );
+}
+
+interface PortalStatus {
+  isClientPortalUser: boolean;
+}
+
 export default function PortalProjectPage() {
   const { id: projectId } = useParams<{ id: string }>();
   const [showAllPhotos, setShowAllPhotos] = useState(false);
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState(0);
+  const { user, isLoading: isAuthLoading } = useAuth();
+  const [, setLocation] = useLocation();
+
+  const { data: status, isLoading: isStatusLoading, isError: isStatusError } = useQuery<PortalStatus>({
+    queryKey: ["/api/client-portal/status"],
+    enabled: !!user,
+    queryFn: async () => {
+      const res = await fetch("/api/client-portal/status", { credentials: "include" });
+      // 403 = inspector/admin user — treat as non-portal user, don't throw
+      if (res.status === 403) return { isClientPortalUser: false, portals: [] } as PortalStatus;
+      if (!res.ok) throw new Error(`${res.status}: ${res.statusText}`);
+      return res.json() as Promise<PortalStatus>;
+    },
+  });
+
+  useEffect(() => {
+    if (!isAuthLoading && !isStatusLoading && user) {
+      // Redirect if: status says not portal user, OR status query errored out
+      if ((status && !status.isClientPortalUser) || isStatusError) {
+        setLocation("/");
+      }
+    }
+  }, [isAuthLoading, isStatusLoading, user, status, isStatusError, setLocation]);
 
   const { data, isLoading } = useQuery<ProjectDetail>({
     queryKey: ["/api/client-portal/projects", projectId],
@@ -163,22 +243,14 @@ export default function PortalProjectPage() {
   }));
 
   const last7Weather = (data?.weatherSummary || []).slice(0, 7);
+  const companyName = data?.company?.name || "";
+  const companyLogo = data?.company?.logoPath || null;
+  const clientName = user?.firstName || user?.email?.split("@")[0] || "";
 
   if (isLoading) {
     return (
       <div className="min-h-screen bg-background" data-testid="portal-project-loading">
-        <PageHeader icon={FolderKanban} title="Loading...">
-          <Link href="/client-portal">
-            <Button
-              variant="outline"
-              className="border-white/30 text-white"
-              data-testid="button-back"
-            >
-              <ArrowLeft className="w-4 h-4 mr-2" />
-              Back
-            </Button>
-          </Link>
-        </PageHeader>
+        <PortalHeader companyName={companyName} companyLogo={companyLogo} clientName={clientName} />
         <div className="max-w-7xl mx-auto px-4 md:px-6 lg:px-8 py-6 space-y-6">
           <Card className="rounded-none shadow-sm">
             <CardContent className="p-5 space-y-4">
@@ -208,18 +280,7 @@ export default function PortalProjectPage() {
   if (!data) {
     return (
       <div className="min-h-screen bg-background" data-testid="portal-project-error">
-        <PageHeader icon={FolderKanban} title="Project Not Found">
-          <Link href="/client-portal">
-            <Button
-              variant="outline"
-              className="border-white/30 text-white"
-              data-testid="button-back"
-            >
-              <ArrowLeft className="w-4 h-4 mr-2" />
-              Back
-            </Button>
-          </Link>
-        </PageHeader>
+        <PortalHeader companyName={companyName} companyLogo={companyLogo} clientName={clientName} />
         <div className="max-w-7xl mx-auto px-4 md:px-6 lg:px-8 py-6">
           <Card className="rounded-none shadow-sm">
             <CardContent className="p-8 text-center">
@@ -234,21 +295,14 @@ export default function PortalProjectPage() {
   }
 
   const { project, schedule, reports, photos, issues, safetyIncidents, weatherSummary } = data;
+  const hoursUsed = data.hoursUsed ?? 0;
+  const budgetedHours = data.budgetedHours ?? null;
+  const hoursPercent = budgetedHours && budgetedHours > 0 ? Math.min(100, Math.round((hoursUsed / budgetedHours) * 100)) : null;
+  const meetingMinutes = data.meetingMinutes ?? [];
 
   return (
     <div className="min-h-screen bg-background" data-testid="portal-project">
-      <PageHeader icon={FolderKanban} title={project.name}>
-        <Link href="/client-portal">
-          <Button
-            variant="outline"
-            className="border-white/30 text-white"
-            data-testid="button-back"
-          >
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            Back to Portal
-          </Button>
-        </Link>
-      </PageHeader>
+      <PortalHeader companyName={companyName} companyLogo={companyLogo} clientName={clientName} />
 
       <div className="max-w-7xl mx-auto px-4 md:px-6 lg:px-8 py-6 space-y-8">
         <Card className="rounded-none shadow-sm" data-testid="card-project-overview">
@@ -298,12 +352,49 @@ export default function PortalProjectPage() {
                   data-testid="progress-bar-schedule"
                 />
               </div>
+              <div className="flex justify-between text-xs text-muted-foreground">
+                <span>{formatDateSafe(schedule.startDate)}</span>
+                <span>{formatDateSafe(schedule.endDate)}</span>
+              </div>
             </div>
           </CardContent>
         </Card>
 
+        {/* Hours Summary Card */}
+        {(budgetedHours !== null || hoursUsed > 0) && (
+          <Card className="rounded-none shadow-sm" data-testid="card-hours-summary">
+            <CardContent className="p-5 space-y-3">
+              <div className="flex items-center gap-2 mb-1">
+                <Clock className="w-4 h-4 text-muted-foreground" />
+                <h3 className="font-semibold text-sm uppercase tracking-wide text-muted-foreground">Hours Summary</h3>
+              </div>
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-muted-foreground">Hours Used</span>
+                <span className="font-semibold" data-testid="text-hours-used">
+                  {hoursUsed.toFixed(1)} hrs
+                  {budgetedHours !== null && ` / ${budgetedHours.toFixed(0)} budgeted`}
+                </span>
+              </div>
+              {hoursPercent !== null && (
+                <>
+                  <div className="w-full h-2.5 bg-muted rounded-full overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all ${hoursPercent >= 90 ? "bg-red-500" : hoursPercent >= 75 ? "bg-amber-500" : "bg-[hsl(36,90%,50%)]"}`}
+                      style={{ width: `${hoursPercent}%` }}
+                      data-testid="progress-bar-hours"
+                    />
+                  </div>
+                  <p className="text-xs text-muted-foreground text-right" data-testid="text-hours-percent">
+                    {hoursPercent}% of budget used
+                  </p>
+                </>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
         <div>
-          <SectionHeader title="Recent Reports" className="mb-3">
+          <SectionHeader title="Recent Reports">
             <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
               <FileText className="w-4 h-4" />
               <span data-testid="text-report-count">{data.totalReports} reports</span>
@@ -338,8 +429,8 @@ export default function PortalProjectPage() {
                               {formatDateSafe(report.date)}
                             </span>
                             <Badge
-                              variant="outline"
-                              className={`${getReportStatusClasses(report.status)} capitalize text-xs no-default-hover-elevate no-default-active-elevate`}
+                              variant={getReportStatusVariant(report.status)}
+                              className="capitalize text-xs"
                               data-testid={`badge-report-status-${report.id}`}
                             >
                               {report.status}
@@ -359,6 +450,20 @@ export default function PortalProjectPage() {
                           </div>
                         </div>
                       </div>
+                      {report.pdfPath && (
+                        <a
+                          href={report.pdfPath}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex-shrink-0"
+                          data-testid={`link-report-pdf-${report.id}`}
+                        >
+                          <Button variant="outline" size="sm" className="gap-1.5 text-xs">
+                            <Download className="w-3.5 h-3.5" />
+                            PDF
+                          </Button>
+                        </a>
+                      )}
                     </div>
                   </CardContent>
                 </Card>
@@ -368,7 +473,7 @@ export default function PortalProjectPage() {
         </div>
 
         <div>
-          <SectionHeader title="Photos" className="mb-3">
+          <SectionHeader title="Photos">
             <div className="flex items-center gap-2">
               <Camera className="w-4 h-4 text-muted-foreground" />
               <span className="text-sm text-muted-foreground" data-testid="text-photo-count">
@@ -433,8 +538,63 @@ export default function PortalProjectPage() {
           )}
         </div>
 
+        {/* Meeting Minutes */}
         <div>
-          <SectionHeader title="Issues" className="mb-3">
+          <SectionHeader title="Meeting Minutes">
+            <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+              <ClipboardList className="w-4 h-4" />
+              <span data-testid="text-meetings-count">{meetingMinutes.length} {meetingMinutes.length === 1 ? "meeting" : "meetings"}</span>
+            </div>
+          </SectionHeader>
+          {meetingMinutes.length === 0 ? (
+            <Card className="rounded-none shadow-sm">
+              <CardContent className="p-6 text-center text-muted-foreground" data-testid="empty-meetings">
+                No meeting minutes available.
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="space-y-2">
+              {meetingMinutes.map((meeting) => (
+                <Card key={meeting.id} className="rounded-none shadow-sm" data-testid={`card-meeting-${meeting.id}`}>
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-8 h-8 rounded bg-blue-500/10 flex items-center justify-center flex-shrink-0">
+                          <ClipboardList className="w-4 h-4 text-blue-600" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="font-medium text-sm capitalize" data-testid={`text-meeting-title-${meeting.id}`}>
+                            {meeting.meetingType.replace(/_/g, " ")}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {formatDateSafe(meeting.meetingDate)}
+                          </p>
+                        </div>
+                      </div>
+                      {meeting.pdfPath && (
+                        <a
+                          href={meeting.pdfPath}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex-shrink-0"
+                          data-testid={`link-meeting-pdf-${meeting.id}`}
+                        >
+                          <Button variant="outline" size="sm" className="gap-1.5 text-xs">
+                            <Download className="w-3.5 h-3.5" />
+                            PDF
+                          </Button>
+                        </a>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div>
+          <SectionHeader title="Issues">
             <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
               <AlertTriangle className="w-4 h-4" />
               <span data-testid="text-issue-count">{issues.length} issues</span>
@@ -475,8 +635,8 @@ export default function PortalProjectPage() {
                         </div>
                       </div>
                       <Badge
-                        variant="outline"
-                        className={`${getIssueStatusClasses(issue.status || "")} capitalize text-xs flex-shrink-0 no-default-hover-elevate no-default-active-elevate`}
+                        variant={getIssueStatusVariant(issue.status || "")}
+                        className="capitalize text-xs flex-shrink-0"
                         data-testid={`badge-issue-status-${index}`}
                       >
                         {issue.status?.replace(/_/g, " ") || "Unknown"}
@@ -490,7 +650,7 @@ export default function PortalProjectPage() {
         </div>
 
         <div>
-          <SectionHeader title="Safety Incidents" className="mb-3">
+          <SectionHeader title="Safety Incidents">
             <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
               <Shield className="w-4 h-4" />
               <span data-testid="text-safety-count">{safetyIncidents.length} incidents</span>
@@ -536,7 +696,7 @@ export default function PortalProjectPage() {
         </div>
 
         <div>
-          <SectionHeader title="Weather Summary" className="mb-3">
+          <SectionHeader title="Weather Summary">
             <span className="text-sm text-muted-foreground">Last 7 days</span>
           </SectionHeader>
           {last7Weather.length === 0 ? (

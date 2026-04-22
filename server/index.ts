@@ -5,7 +5,9 @@ import { createServer } from "http";
 import { runMigrations } from 'stripe-replit-sync';
 import { getStripeSync } from './stripeClient';
 import { WebhookHandlers } from './webhookHandlers';
-import { initDatabaseSequences } from './storage';
+import { initDatabaseSequences, db } from './storage';
+import { eq } from 'drizzle-orm';
+import { companyMembers, userProfiles, dailyReports as dailyReportsTable } from '@shared/schema';
 
 const app = express();
 const httpServer = createServer(app);
@@ -187,6 +189,9 @@ app.use((req, res, next) => {
         
         // Start daily notification scheduler
         startNotificationScheduler();
+
+        // One-time account consolidation: Buckman Outlook → Gmail
+        runBuckmanConsolidation();
       },
     );
   } catch (error) {
@@ -194,6 +199,57 @@ app.use((req, res, next) => {
     process.exit(1);
   }
 })();
+
+// One-time migration: consolidate Tony Buckman's two accounts
+// Outlook (55030529) → Gmail (55631269) as primary
+// Safe to run multiple times — skips automatically when there's nothing left to migrate.
+async function runBuckmanConsolidation() {
+  const OUTLOOK_ID = '55030529';
+  const GMAIL_ID   = '55631269';
+
+  try {
+    // Check if the Outlook account still has any reports or membership
+    const [outlookMember] = await db.select().from(companyMembers).where(eq(companyMembers.userId, OUTLOOK_ID));
+    const outlookReports  = await db.select({ id: dailyReportsTable.id }).from(dailyReportsTable).where(eq(dailyReportsTable.inspectorId, OUTLOOK_ID));
+
+    if (!outlookMember && outlookReports.length === 0) {
+      console.log('[Buckman Migration] Nothing to migrate — already consolidated or accounts not present.');
+      return;
+    }
+
+    // 1. Reassign all reports from Outlook → Gmail
+    if (outlookReports.length > 0) {
+      await db.update(dailyReportsTable).set({ inspectorId: GMAIL_ID }).where(eq(dailyReportsTable.inspectorId, OUTLOOK_ID));
+      console.log(`[Buckman Migration] Reassigned ${outlookReports.length} reports to Gmail account.`);
+    }
+
+    // 2. Copy membership to Gmail if not already a member
+    const [existingGmailMember] = await db.select().from(companyMembers).where(eq(companyMembers.userId, GMAIL_ID));
+    if (!existingGmailMember && outlookMember) {
+      await db.insert(companyMembers).values({ userId: GMAIL_ID, companyId: outlookMember.companyId, role: outlookMember.role });
+      console.log(`[Buckman Migration] Added Gmail account as ${outlookMember.role} in company.`);
+    }
+
+    // 3. Copy profile from Outlook → Gmail if Gmail has none
+    const [outlookProfile]    = await db.select().from(userProfiles).where(eq(userProfiles.userId, OUTLOOK_ID));
+    const [existingGmailProfile] = await db.select().from(userProfiles).where(eq(userProfiles.userId, GMAIL_ID));
+    if (!existingGmailProfile && outlookProfile) {
+      const { userId: _uid, ...profileData } = outlookProfile;
+      await db.insert(userProfiles).values({ ...profileData, userId: GMAIL_ID });
+      console.log(`[Buckman Migration] Copied profile (${outlookProfile.firstName} ${outlookProfile.lastName}) to Gmail account.`);
+    }
+
+    // 4. Remove Outlook membership so it no longer appears as a team member
+    if (outlookMember) {
+      await db.delete(companyMembers).where(eq(companyMembers.userId, OUTLOOK_ID));
+      console.log('[Buckman Migration] Removed Outlook account from company members.');
+    }
+
+    console.log('[Buckman Migration] ✓ Consolidation complete.');
+  } catch (err) {
+    console.error('[Buckman Migration] Error during consolidation:', err);
+  }
+}
 
 // Daily notification scheduler for contract date reminders and budget milestones
 function startNotificationScheduler() {
@@ -211,7 +267,7 @@ function startNotificationScheduler() {
       
       // Import required modules
       const { Resend } = await import('resend');
-      const { processContractNotifications } = await import('./notification-processor');
+      const { processContractNotifications, processCertExpiryNotifications } = await import('./notification-processor');
       
       const resend = new Resend(process.env.RESEND_API_KEY);
       
@@ -221,7 +277,13 @@ function startNotificationScheduler() {
         sendEmails: true,
       });
       
-      log(`Notification check complete: ${results.statusUpdates.length} status updates, ${results.notificationsSent.length + results.budgetAlerts.length} emails sent, ${results.errors.length} errors`, "scheduler");
+      // Process cert expiry notifications
+      const certResults = await processCertExpiryNotifications(resend, {
+        companyIdFilter: null,
+        sendEmails: true,
+      });
+      
+      log(`Notification check complete: ${results.statusUpdates.length} status updates, ${results.notificationsSent.length + results.budgetAlerts.length} emails sent, ${certResults.alertsSent.length} cert expiry alerts, ${results.errors.length + certResults.errors.length} errors`, "scheduler");
     } catch (error: any) {
       log(`Notification scheduler error: ${error.message}`, "scheduler");
     }

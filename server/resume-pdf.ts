@@ -1,5 +1,5 @@
 import PDFDocument from "pdfkit";
-import { UserProfile, Project, Company, Client } from "@shared/schema";
+import { UserProfile, Project, Company, Client, normalizeCerts } from "@shared/schema";
 
 interface ResumeData {
   profile: UserProfile;
@@ -14,7 +14,7 @@ interface ResumeData {
 
 function determineInspectorClass(profile: UserProfile): string | null {
   const title = (profile.title || "");
-  const certs = (profile.certifications as string[] || []);
+  const certs = normalizeCerts(profile.certifications).map(c => c.name);
   const allText = [title, ...certs].join(" ");
 
   const explicitMatch = allText.match(/DSA\s*Class\s*(4|3|2|1)/i);
@@ -323,13 +323,13 @@ export async function generateResumePDF(data: ResumeData): Promise<Buffer> {
         return true;
       };
 
-      const certifications = data.profile.certifications as string[] | null;
+      const certifications = normalizeCerts(data.profile.certifications);
       if (certifications && certifications.length > 0) {
         if (drawSidebarSection("Certifications")) {
           for (const cert of certifications) {
             if (sidebarY > doc.page.height - 60) break;
             doc.fillColor(textColor).font("Helvetica").fontSize(8.5);
-            doc.text(`\u2022  ${cert}`, sidebarX + 4, sidebarY, { width: sidebarWidth - 4 });
+            doc.text(`\u2022  ${cert.name}`, sidebarX + 4, sidebarY, { width: sidebarWidth - 4 });
             sidebarY = doc.y + 5;
           }
           sidebarY += 10;

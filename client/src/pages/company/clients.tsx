@@ -51,6 +51,8 @@ import {
   Building2,
   ExternalLink,
   Send,
+  Layers,
+  FolderKanban,
 } from "lucide-react";
 import { useState } from "react";
 import { useLocation, Link } from "wouter";
@@ -84,11 +86,14 @@ export default function ClientsPage() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [isPortalInviteOpen, setIsPortalInviteOpen] = useState(false);
+  const [isPortalManageOpen, setIsPortalManageOpen] = useState(false);
+  const [portalManageClient, setPortalManageClient] = useState<Client | null>(null);
   const [portalInviteClient, setPortalInviteClient] = useState<Client | null>(null);
   const [portalInviteEmail, setPortalInviteEmail] = useState("");
   const [portalInviteFirstName, setPortalInviteFirstName] = useState("");
   const [portalInviteLastName, setPortalInviteLastName] = useState("");
   const [portalSelectedProjects, setPortalSelectedProjects] = useState<string[]>([]);
+  const [portalAllProjectsAccess, setPortalAllProjectsAccess] = useState(false);
   const [editingClient, setEditingClient] = useState<Client | null>(null);
   const [clientToDelete, setClientToDelete] = useState<Client | null>(null);
   const [formData, setFormData] = useState<ClientFormData>(emptyFormData);
@@ -110,7 +115,7 @@ export default function ClientsPage() {
   });
 
   const portalInviteMutation = useMutation({
-    mutationFn: async (data: { email: string; firstName: string; lastName: string; clientId: string; projectIds: string[]; companyId: string }) => {
+    mutationFn: async (data: { email: string; firstName: string; lastName: string; clientId: string; projectIds: string[]; companyId: string; allProjectsAccess: boolean }) => {
       const response = await apiRequest("POST", "/api/client-portal/invite", data);
       return response.json();
     },
@@ -122,6 +127,7 @@ export default function ClientsPage() {
       setPortalInviteFirstName("");
       setPortalInviteLastName("");
       setPortalSelectedProjects([]);
+      setPortalAllProjectsAccess(false);
     },
     onError: (error: Error) => {
       toast({
@@ -129,6 +135,48 @@ export default function ClientsPage() {
         description: error.message,
         variant: "destructive",
       });
+    },
+  });
+
+  const { data: allPortalUsers = [], refetch: refetchPortalUsers } = useQuery<any[]>({
+    queryKey: ["/api/client-portal/company", activeCompany?.id, "users"],
+    queryFn: async () => {
+      const res = await fetch(`/api/client-portal/company/${activeCompany?.id}/users`, { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!activeCompany?.id && isEffectiveCompanyAdmin,
+  });
+
+  const portalManageUsers = portalManageClient
+    ? allPortalUsers.filter((u: any) => u.clientId === portalManageClient.id)
+    : [];
+
+  const updateAccessLevelMutation = useMutation({
+    mutationFn: async ({ portalUserId, allProjectsAccess }: { portalUserId: string; allProjectsAccess: boolean }) => {
+      const response = await apiRequest("PATCH", `/api/client-portal/${portalUserId}/access-level`, { allProjectsAccess });
+      return response.json();
+    },
+    onSuccess: () => {
+      refetchPortalUsers();
+      toast({ title: "Access level updated" });
+    },
+    onError: () => {
+      toast({ title: "Failed to update access level", variant: "destructive" });
+    },
+  });
+
+  const deletePortalUserMutation = useMutation({
+    mutationFn: async (portalUserId: string) => {
+      const response = await apiRequest("DELETE", `/api/client-portal/${portalUserId}`, {});
+      return response.json();
+    },
+    onSuccess: () => {
+      refetchPortalUsers();
+      toast({ title: "Portal access removed" });
+    },
+    onError: () => {
+      toast({ title: "Failed to remove portal access", variant: "destructive" });
     },
   });
 
@@ -393,29 +441,51 @@ export default function ClientsPage() {
                         )}
                       </div>
 
-                      <div className="mt-3 pt-3 border-t flex items-center justify-between">
-                        <div className="flex items-center gap-2 text-sm text-primary">
-                          <FolderOpen className="h-4 w-4" />
-                          <span>View Projects</span>
+                      <div className="mt-3 pt-3 border-t">
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-2 text-sm text-primary">
+                            <FolderOpen className="h-4 w-4" />
+                            <span>View Projects</span>
+                          </div>
+                          <div className="flex gap-1">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-7 text-xs gap-1"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setPortalManageClient(client);
+                                setIsPortalManageOpen(true);
+                              }}
+                              data-testid={`button-portal-manage-${client.id}`}
+                            >
+                              <User className="h-3 w-3" />
+                              {(() => {
+                                const cnt = allPortalUsers.filter((u: any) => u.clientId === client.id).length;
+                                return cnt > 0 ? `${cnt} User${cnt !== 1 ? "s" : ""}` : "Users";
+                              })()}
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 text-xs gap-1"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setPortalInviteClient(client);
+                                setPortalInviteEmail(client.email || "");
+                                setPortalInviteFirstName(client.contactName?.split(" ")[0] || "");
+                                setPortalInviteLastName(client.contactName?.split(" ").slice(1).join(" ") || "");
+                                setPortalSelectedProjects([]);
+                                setPortalAllProjectsAccess(false);
+                                setIsPortalInviteOpen(true);
+                              }}
+                              data-testid={`button-portal-invite-${client.id}`}
+                            >
+                              <ExternalLink className="h-3 w-3" />
+                              Invite
+                            </Button>
+                          </div>
                         </div>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-7 text-xs gap-1"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setPortalInviteClient(client);
-                            setPortalInviteEmail(client.email || "");
-                            setPortalInviteFirstName(client.contactName?.split(" ")[0] || "");
-                            setPortalInviteLastName(client.contactName?.split(" ").slice(1).join(" ") || "");
-                            setPortalSelectedProjects([]);
-                            setIsPortalInviteOpen(true);
-                          }}
-                          data-testid={`button-portal-invite-${client.id}`}
-                        >
-                          <ExternalLink className="h-3 w-3" />
-                          Portal Invite
-                        </Button>
                       </div>
                     </CardContent>
                   </Card>
@@ -631,48 +701,77 @@ export default function ClientsPage() {
               />
             </div>
             <div className="space-y-2">
-              <Label>
-                Projects to Share <span className="text-destructive">*</span>
-              </Label>
-              <p className="text-xs text-muted-foreground">
-                Select which projects this client can view
-              </p>
-              <div className="border rounded-none max-h-48 overflow-y-auto p-2 space-y-1">
-                {projects.length === 0 ? (
-                  <p className="text-sm text-muted-foreground py-2 text-center">No projects available</p>
-                ) : (
-                  projects.map((project) => (
-                    <label
-                      key={project.id}
-                      className="flex items-center gap-2 p-2 hover:bg-muted/50 cursor-pointer rounded"
-                    >
-                      <Checkbox
-                        checked={portalSelectedProjects.includes(project.id)}
-                        onCheckedChange={(checked) => {
-                          if (checked) {
-                            setPortalSelectedProjects([...portalSelectedProjects, project.id]);
-                          } else {
-                            setPortalSelectedProjects(portalSelectedProjects.filter(id => id !== project.id));
-                          }
-                        }}
-                        data-testid={`checkbox-portal-project-${project.id}`}
-                      />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate">{project.name}</p>
-                        {project.address && (
-                          <p className="text-xs text-muted-foreground truncate">{project.address}</p>
-                        )}
-                      </div>
-                    </label>
-                  ))
+              <Label>Project Access Level <span className="text-destructive">*</span></Label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setPortalAllProjectsAccess(false)}
+                  className={`flex flex-col items-start gap-1 p-3 border text-left transition-colors ${!portalAllProjectsAccess ? "border-[hsl(36,90%,50%)] bg-[hsl(36,90%,50%)]/5" : "border-border hover:bg-muted/50"}`}
+                  data-testid="button-access-specific-projects"
+                >
+                  <div className="flex items-center gap-2">
+                    <FolderKanban className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-sm font-medium">Specific Projects</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">Project Manager — select individual projects</p>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPortalAllProjectsAccess(true)}
+                  className={`flex flex-col items-start gap-1 p-3 border text-left transition-colors ${portalAllProjectsAccess ? "border-[hsl(36,90%,50%)] bg-[hsl(36,90%,50%)]/5" : "border-border hover:bg-muted/50"}`}
+                  data-testid="button-access-all-projects"
+                >
+                  <div className="flex items-center gap-2">
+                    <Layers className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-sm font-medium">All Projects</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">Director — access all current & future projects</p>
+                </button>
+              </div>
+            </div>
+
+            {!portalAllProjectsAccess && (
+              <div className="space-y-2">
+                <Label>
+                  Select Projects <span className="text-destructive">*</span>
+                </Label>
+                <div className="border rounded-none max-h-44 overflow-y-auto p-2 space-y-1">
+                  {projects.length === 0 ? (
+                    <p className="text-sm text-muted-foreground py-2 text-center">No projects available</p>
+                  ) : (
+                    projects.map((project) => (
+                      <label
+                        key={project.id}
+                        className="flex items-center gap-2 p-2 hover:bg-muted/50 cursor-pointer rounded"
+                      >
+                        <Checkbox
+                          checked={portalSelectedProjects.includes(project.id)}
+                          onCheckedChange={(checked) => {
+                            if (checked) {
+                              setPortalSelectedProjects([...portalSelectedProjects, project.id]);
+                            } else {
+                              setPortalSelectedProjects(portalSelectedProjects.filter(id => id !== project.id));
+                            }
+                          }}
+                          data-testid={`checkbox-portal-project-${project.id}`}
+                        />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate">{project.name}</p>
+                          {project.address && (
+                            <p className="text-xs text-muted-foreground truncate">{project.address}</p>
+                          )}
+                        </div>
+                      </label>
+                    ))
+                  )}
+                </div>
+                {portalSelectedProjects.length > 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    {portalSelectedProjects.length} project{portalSelectedProjects.length !== 1 ? "s" : ""} selected
+                  </p>
                 )}
               </div>
-              {portalSelectedProjects.length > 0 && (
-                <p className="text-xs text-muted-foreground">
-                  {portalSelectedProjects.length} project{portalSelectedProjects.length !== 1 ? "s" : ""} selected
-                </p>
-              )}
-            </div>
+            )}
           </div>
           <DialogFooter>
             <Button
@@ -689,7 +788,7 @@ export default function ClientsPage() {
                   toast({ title: "Email is required", variant: "destructive" });
                   return;
                 }
-                if (portalSelectedProjects.length === 0) {
+                if (!portalAllProjectsAccess && portalSelectedProjects.length === 0) {
                   toast({ title: "Select at least one project", variant: "destructive" });
                   return;
                 }
@@ -698,8 +797,9 @@ export default function ClientsPage() {
                   firstName: portalInviteFirstName,
                   lastName: portalInviteLastName,
                   clientId: portalInviteClient?.id || "",
-                  projectIds: portalSelectedProjects,
+                  projectIds: portalAllProjectsAccess ? [] : portalSelectedProjects,
                   companyId: activeCompany?.id || "",
+                  allProjectsAccess: portalAllProjectsAccess,
                 });
               }}
               disabled={portalInviteMutation.isPending}
@@ -708,6 +808,116 @@ export default function ClientsPage() {
             >
               <Send className="h-4 w-4" />
               {portalInviteMutation.isPending ? "Sending..." : "Send Invite"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Portal Users Management Dialog */}
+      <Dialog open={isPortalManageOpen} onOpenChange={(open) => { setIsPortalManageOpen(open); if (!open) setPortalManageClient(null); }}>
+        <DialogContent className="sm:max-w-[540px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <User className="h-5 w-5" />
+              Portal Users — {portalManageClient?.name}
+            </DialogTitle>
+            <DialogDescription>
+              Manage portal access for this client's contacts.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="py-2">
+            {portalManageUsers.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                <ExternalLink className="h-8 w-8 mx-auto mb-2 opacity-30" />
+                <p className="text-sm">No portal users for this client yet.</p>
+                <p className="text-xs mt-1">Use the Invite button on the client card to grant portal access.</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {portalManageUsers.map((pu: any) => {
+                  const displayName = pu.user
+                    ? `${pu.user.firstName || ""} ${pu.user.lastName || ""}`.trim() || pu.user.email || "Unknown"
+                    : "Invited";
+                  const email = pu.user?.email || "";
+                  return (
+                    <div key={pu.id} className="flex items-center gap-3 p-3 border rounded-none bg-muted/20" data-testid={`row-portal-user-${pu.id}`}>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate" data-testid={`text-portal-user-name-${pu.id}`}>{displayName}</p>
+                        {email && <p className="text-xs text-muted-foreground truncate">{email}</p>}
+                        <div className="flex items-center gap-2 mt-1">
+                          {pu.allProjectsAccess ? (
+                            <span className="inline-flex items-center gap-1 text-xs px-1.5 py-0.5 bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 border border-amber-300 dark:border-amber-700">
+                              <Layers className="h-3 w-3" /> All Projects
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-xs px-1.5 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 border border-blue-300 dark:border-blue-700">
+                              <FolderKanban className="h-3 w-3" /> Specific Projects
+                              {pu.projectAccess && pu.projectAccess.length > 0 && (
+                                <span className="ml-1 opacity-75">({pu.projectAccess.length})</span>
+                              )}
+                            </span>
+                          )}
+                          {pu.isActive === false && (
+                            <span className="text-xs text-muted-foreground">(Inactive)</span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex gap-1 flex-shrink-0">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 text-xs"
+                          onClick={() => updateAccessLevelMutation.mutate({ portalUserId: pu.id, allProjectsAccess: !pu.allProjectsAccess })}
+                          disabled={updateAccessLevelMutation.isPending}
+                          data-testid={`button-toggle-access-${pu.id}`}
+                          title={pu.allProjectsAccess ? "Switch to Specific Projects" : "Switch to All Projects"}
+                        >
+                          {pu.allProjectsAccess ? <FolderKanban className="h-3 w-3" /> : <Layers className="h-3 w-3" />}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 text-xs text-destructive hover:text-destructive"
+                          onClick={() => deletePortalUserMutation.mutate(pu.id)}
+                          disabled={deletePortalUserMutation.isPending}
+                          data-testid={`button-delete-portal-user-${pu.id}`}
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setIsPortalManageOpen(false)}
+            >
+              Close
+            </Button>
+            <Button
+              onClick={() => {
+                setIsPortalManageOpen(false);
+                if (portalManageClient) {
+                  setPortalInviteClient(portalManageClient);
+                  setPortalInviteEmail(portalManageClient.email || "");
+                  setPortalInviteFirstName(portalManageClient.contactName?.split(" ")[0] || "");
+                  setPortalInviteLastName(portalManageClient.contactName?.split(" ").slice(1).join(" ") || "");
+                  setPortalSelectedProjects([]);
+                  setPortalAllProjectsAccess(false);
+                  setIsPortalInviteOpen(true);
+                }
+              }}
+              className="gap-1"
+              data-testid="button-manage-add-portal-user"
+            >
+              <ExternalLink className="h-4 w-4" />
+              Invite New User
             </Button>
           </DialogFooter>
         </DialogContent>

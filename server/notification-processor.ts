@@ -495,6 +495,146 @@ export async function processContractNotifications(
   return results;
 }
 
+// Cert expiry window intervals in days before expiration
+export const CERT_EXPIRY_WINDOWS = [60, 30, 7, 0] as const;
+
+export interface CertExpiryResults {
+  alertsSent: { inspectorId: string; inspectorType: string; inspectorName: string; certName: string; daysUntilExpiry: number; windowDays: number; emails: string[] }[];
+  errors: { inspectorId: string; error: string }[];
+}
+
+export async function processCertExpiryNotifications(
+  resendInstance: any,
+  options: ProcessNotificationsOptions = {}
+): Promise<CertExpiryResults> {
+  const { companyIdFilter = null, sendEmails = true } = options;
+
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+
+  const results: CertExpiryResults = { alertsSent: [], errors: [] };
+
+  const { users: userInspectors, teamInspectors: teamInspList } = await storage.getAllInspectorsWithCerts();
+
+  const allInspectors = [
+    ...userInspectors.map(i => ({ ...i, inspectorType: 'user' as const })),
+    ...teamInspList.map(i => ({ ...i, inspectorType: 'team' as const })),
+  ];
+
+  const filtered = companyIdFilter
+    ? allInspectors.filter(i => i.companyId === companyIdFilter)
+    : allInspectors;
+
+  for (const inspector of filtered) {
+    try {
+      for (const cert of inspector.certifications) {
+        if (!cert.expiresAt) continue;
+
+        const expiryDate = new Date(cert.expiresAt);
+        expiryDate.setHours(0, 0, 0, 0);
+
+        const msUntilExpiry = expiryDate.getTime() - now.getTime();
+        const daysUntilExpiry = Math.round(msUntilExpiry / (1000 * 60 * 60 * 24));
+
+        // Fire on exact milestone days, plus catch-up: if we are AT or PAST the milestone
+        // but haven't yet recorded it (e.g. scheduler was offline for a day), we fire it.
+        // Windows: 60, 30, 7, 0 (0 means expiry day or any time after expiry)
+        for (const windowDays of CERT_EXPIRY_WINDOWS) {
+          // For the "0" window: fire when expiry has arrived (daysUntilExpiry <= 0)
+          // For other windows: fire when daysUntilExpiry is within [windowDays - nextLower, windowDays]
+          const nextLower = CERT_EXPIRY_WINDOWS[CERT_EXPIRY_WINDOWS.indexOf(windowDays) + 1] ?? -1;
+          const shouldFire = windowDays === 0
+            ? daysUntilExpiry <= 0
+            : daysUntilExpiry <= windowDays && daysUntilExpiry > nextLower;
+
+          if (!shouldFire) continue;
+
+          // Dedup with full expiresAt date string for precise identity
+          const alreadySent = await storage.hasCertExpiryNotificationBeenSent(
+            inspector.id, inspector.inspectorType, cert.name, cert.expiresAt, windowDays
+          );
+          if (alreadySent) continue;
+
+          const adminEmails = await storage.getCompanyAdminEmails(inspector.companyId);
+          // Also notify the inspector directly
+          const inspectorEmail: string | null = inspector.email;
+          const allRecipients = [
+            ...adminEmails,
+            ...(inspectorEmail && !adminEmails.includes(inspectorEmail) ? [inspectorEmail] : []),
+          ];
+          if (allRecipients.length === 0) continue;
+
+          const company = await storage.getCompany(inspector.companyId);
+
+          const statusLabel = daysUntilExpiry <= 0
+            ? 'EXPIRED'
+            : `Expires in ${daysUntilExpiry} day${daysUntilExpiry !== 1 ? 's' : ''}`;
+          const bgColor = daysUntilExpiry <= 0 ? '#fed7d7' : daysUntilExpiry <= 7 ? '#feebc8' : '#ebf8ff';
+          const borderColor = daysUntilExpiry <= 0 ? '#fc8181' : daysUntilExpiry <= 7 ? '#f6ad55' : '#63b3ed';
+
+          const formattedExpiry = expiryDate.toLocaleDateString('en-US', {
+            weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+          });
+
+          if (sendEmails && resendInstance) {
+            try {
+              await resendInstance.emails.send({
+                from: 'Field Daily Reports <noreply@mail.replit.app>',
+                to: allRecipients,
+                subject: `Cert Alert: ${inspector.name} — ${cert.name} ${statusLabel}`,
+                html: `
+                  <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                    <h2 style="color: #1a2e4a;">Certification Expiration Alert</h2>
+                    <p>The following certification requires attention:</p>
+                    <div style="background: ${bgColor}; padding: 20px; border-radius: 4px; margin: 20px 0; border-left: 4px solid ${borderColor};">
+                      <h3 style="margin: 0 0 10px 0; color: #2d3748;">${inspector.name}</h3>
+                      <p style="margin: 5px 0;"><strong>Certification:</strong> ${cert.name}</p>
+                      ${cert.certNumber ? `<p style="margin: 5px 0;"><strong>Cert #:</strong> ${cert.certNumber}</p>` : ''}
+                      <p style="margin: 5px 0;"><strong>Expiration Date:</strong> ${formattedExpiry}</p>
+                      <p style="margin: 5px 0; font-size: 16px; font-weight: bold; color: ${daysUntilExpiry <= 0 ? '#c53030' : daysUntilExpiry <= 7 ? '#c05621' : '#2b6cb0'};">
+                        Status: ${statusLabel}
+                      </p>
+                    </div>
+                    <p style="color: #718096; font-size: 14px;">
+                      This is an automated certification alert from ${company?.name || 'Field Daily Reports'}.
+                    </p>
+                  </div>
+                `,
+              });
+            } catch (emailError: any) {
+              results.errors.push({ inspectorId: inspector.id, error: `Email send failed: ${emailError.message}` });
+              continue;
+            }
+          }
+
+          await storage.createCertExpiryNotification({
+            companyId: inspector.companyId,
+            inspectorId: inspector.id,
+            inspectorType: inspector.inspectorType,
+            certName: cert.name,
+            expiresAt: cert.expiresAt,
+            windowDays,
+          });
+
+          results.alertsSent.push({
+            inspectorId: inspector.id,
+            inspectorType: inspector.inspectorType,
+            inspectorName: inspector.name,
+            certName: cert.name,
+            daysUntilExpiry,
+            windowDays,
+            emails: allRecipients,
+          });
+        }
+      }
+    } catch (err: any) {
+      results.errors.push({ inspectorId: inspector.id, error: err.message });
+    }
+  }
+
+  return results;
+}
+
 export async function sendBidCreatedNotification(
   resendInstance: any,
   params: {

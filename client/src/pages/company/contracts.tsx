@@ -61,9 +61,10 @@ import {
   Search,
   ChevronLeft,
   ChevronRight,
-  ChevronDown,
-  ChevronUp,
-  BarChart3,
+
+  Mail,
+  FolderPlus,
+  Loader2,
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import {
@@ -76,7 +77,8 @@ import {
 import { useState, useRef } from "react";
 import type { ContractWithProjects, Project, Client, ContractAttachment, ProposalWithDetails } from "@shared/schema";
 import { ProposalDialog } from "@/components/proposal-dialog";
-import { ContractGanttChart } from "@/components/contract-gantt-chart";
+import { ContractStatusLegend } from "@/components/contract-status-legend";
+import { ImportFromEmailDialog } from "@/components/import-from-email-dialog";
 import { ClientSelect } from "@/components/client-select";
 import { PurchaseOrderSelect } from "@/components/purchase-order-select";
 import { format, differenceInDays, startOfMonth, endOfMonth, eachDayOfInterval, startOfWeek, endOfWeek, isSameMonth, isSameDay, addMonths, subMonths } from "date-fns";
@@ -116,15 +118,15 @@ const emptyContractOption: ContractOptionEntry = {
 };
 
 const CONTRACT_STATUS_OPTIONS = [
-  { value: "bid_release", label: "Bid Release", color: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300" },
-  { value: "bid_received", label: "Bid Received", color: "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300" },
-  { value: "under_review", label: "Under Review", color: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300" },
-  { value: "awarded", label: "Awarded", color: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300" },
-  { value: "not_awarded", label: "Not Awarded", color: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300" },
-  { value: "cancelled", label: "Cancelled", color: "bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-300" },
-  { value: "in_execution", label: "In Execution", color: "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-300" },
-  { value: "substantial_completion", label: "Substantial Completion", color: "bg-teal-100 text-teal-800 dark:bg-teal-900 dark:text-teal-300" },
-  { value: "final_closeout", label: "Final Closeout", color: "bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300" },
+  { value: "bid_release", label: "Bid Release", variant: "info" as const },
+  { value: "bid_received", label: "Bid Received", variant: "info" as const },
+  { value: "under_review", label: "Under Review", variant: "warning" as const },
+  { value: "awarded", label: "Awarded", variant: "success" as const },
+  { value: "not_awarded", label: "Not Awarded", variant: "destructive" as const },
+  { value: "cancelled", label: "Cancelled", variant: "muted" as const },
+  { value: "in_execution", label: "In Execution", variant: "success" as const },
+  { value: "substantial_completion", label: "Substantial Completion", variant: "info" as const },
+  { value: "final_closeout", label: "Final Closeout", variant: "muted" as const },
 ];
 
 const CONTRACT_TYPE_OPTIONS = [
@@ -171,6 +173,9 @@ type ContractFormData = {
   agency: string;
   serviceType: string;
   questionDeadline: string;
+  hasJobWalk: boolean;
+  jobWalkDateTime: string;
+  dsaClass: string;
   addendumCount: string;
   lastAddendumDate: string;
   assignedToUserId: string;
@@ -202,6 +207,9 @@ const emptyFormData: ContractFormData = {
   agency: "",
   serviceType: "",
   questionDeadline: "",
+  hasJobWalk: false,
+  jobWalkDateTime: "",
+  dsaClass: "",
   addendumCount: "",
   lastAddendumDate: "",
   assignedToUserId: "",
@@ -213,11 +221,15 @@ export default function ContractsPage() {
   const { activeCompany, isCompanyAdmin, isEffectiveCompanyAdmin } = useAuth();
   const [, setLocation] = useLocation();
   const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [showImportFromEmailDialog, setShowImportFromEmailDialog] = useState(false);
   const [contractToDelete, setContractToDelete] = useState<ContractWithProjects | null>(null);
+  const [contractForNewProject, setContractForNewProject] = useState<ContractWithProjects | null>(null);
+  const [newProjectName, setNewProjectName] = useState("");
+  const [newProjectNumber, setNewProjectNumber] = useState("");
+  const [isCreatingProject, setIsCreatingProject] = useState(false);
   const [editingContract, setEditingContract] = useState<ContractWithProjects | null>(null);
   const [formData, setFormData] = useState<ContractFormData>(emptyFormData);
   const [activeTab, setActiveTab] = useState("list");
-  const [showGantt, setShowGantt] = useState(true);
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [serviceTypeFilter, setServiceTypeFilter] = useState<string>("");
   const [assignedUserFilter, setAssignedUserFilter] = useState<string>("all");
@@ -572,15 +584,17 @@ export default function ContractsPage() {
         ...data,
         clientId: data.clientId || null,
         purchaseOrderId: data.purchaseOrderId || null,
-        bidReleaseDate: data.bidReleaseDate || null, // Keep as YYYY-MM-DD string
+        bidReleaseDate: data.bidReleaseDate || null,
         bidDueDate: data.bidDueDate || null,
         awardDate: data.awardDate || null,
         startDate: data.startDate || null,
         substantialCompletionDate: data.substantialCompletionDate || null,
         finalCloseoutDate: data.finalCloseoutDate || null,
+        questionDeadline: data.questionDeadline || null,
+        jobWalkDateTime: data.jobWalkDateTime || null,
         options: data.options.map(opt => ({
           name: opt.name,
-          awardStatus: opt.awardStatus || "pending", // Include award status for partial awards
+          awardStatus: opt.awardStatus || "pending",
           inspectors: opt.inspectors.filter(ins => ins.title.trim() || ins.inspectorName.trim() || ins.rate.trim()),
         })),
       };
@@ -611,15 +625,17 @@ export default function ContractsPage() {
         ...data,
         clientId: data.clientId || null,
         purchaseOrderId: data.purchaseOrderId || null,
-        bidReleaseDate: data.bidReleaseDate || null, // Keep as YYYY-MM-DD string
+        bidReleaseDate: data.bidReleaseDate || null,
         bidDueDate: data.bidDueDate || null,
         awardDate: data.awardDate || null,
         startDate: data.startDate || null,
         substantialCompletionDate: data.substantialCompletionDate || null,
         finalCloseoutDate: data.finalCloseoutDate || null,
+        questionDeadline: data.questionDeadline || null,
+        jobWalkDateTime: data.jobWalkDateTime || null,
         options: data.options.map(opt => ({
           name: opt.name,
-          awardStatus: opt.awardStatus || "pending", // Include award status for partial awards
+          awardStatus: opt.awardStatus || "pending",
           inspectors: opt.inspectors.filter(ins => ins.title.trim() || ins.inspectorName.trim() || ins.rate.trim()),
         })),
       };
@@ -828,6 +844,8 @@ export default function ContractsPage() {
           startDate: formData.startDate || null,
           substantialCompletionDate: formData.substantialCompletionDate || null,
           finalCloseoutDate: formData.finalCloseoutDate || null,
+          questionDeadline: formData.questionDeadline || null,
+          jobWalkDateTime: formData.jobWalkDateTime || null,
           options: contractOptions.map(opt => ({
             name: opt.name,
             inspectors: opt.inspectors.filter(ins => ins.title.trim() || ins.inspectorName.trim() || ins.rate.trim()),
@@ -885,6 +903,9 @@ export default function ContractsPage() {
       agency: (contract as any).agency || "",
       serviceType: (contract as any).serviceType || "",
       questionDeadline: (contract as any).questionDeadline ? format(parseDateSafe((contract as any).questionDeadline), "yyyy-MM-dd") : "",
+      hasJobWalk: (contract as any).hasJobWalk ?? false,
+      jobWalkDateTime: (contract as any).jobWalkDateTime ? format(parseDateSafe((contract as any).jobWalkDateTime), "yyyy-MM-dd'T'HH:mm") : "",
+      dsaClass: (contract as any).dsaClass || "",
       addendumCount: (contract as any).addendumCount?.toString() || "",
       lastAddendumDate: (contract as any).lastAddendumDate ? format(parseDateSafe((contract as any).lastAddendumDate), "yyyy-MM-dd") : "",
       assignedToUserId: (contract as any).assignedToUserId || "",
@@ -911,10 +932,78 @@ export default function ContractsPage() {
     setEditingContract(contract);
   };
 
+  const handleOpenCreateProjectDialog = (contract: ContractWithProjects) => {
+    setContractForNewProject(contract);
+    setNewProjectName(contract.name);
+    setNewProjectNumber(`PRJ-${contract.contractNumber}`);
+  };
+
+  const handleCreateProjectFromContract = async () => {
+    if (!contractForNewProject || !activeCompany?.id) return;
+    setIsCreatingProject(true);
+    try {
+      await apiRequest("POST", "/api/projects", {
+        name: newProjectName,
+        projectNumber: newProjectNumber,
+        contractId: contractForNewProject.id,
+        clientId: contractForNewProject.clientId || null,
+        client: contractForNewProject.client?.name || "",
+        companyId: activeCompany.id,
+        startDate: contractForNewProject.startDate || null,
+        substantialCompletionDate: contractForNewProject.substantialCompletionDate || null,
+        finalCloseoutDate: contractForNewProject.finalCloseoutDate || null,
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/contracts"] });
+      setContractForNewProject(null);
+      toast({ title: "Project created", description: `"${newProjectName}" is now linked to this contract.` });
+    } catch (error: any) {
+      toast({ title: "Failed to create project", description: error.message || "Please try again.", variant: "destructive" });
+    } finally {
+      setIsCreatingProject(false);
+    }
+  };
+
+  const handleImportFromEmail = (data: any) => {
+    const newFormData: ContractFormData = {
+      ...emptyFormData,
+      contractNumber: data.contractNumber || "",
+      name: data.name || (data.sourceEmailSubject ? `Contract from: ${data.sourceEmailSubject}` : ""),
+      description: data.description || "",
+      contractType: (data.contractType || "lump_sum") as ContractFormData["contractType"],
+      status: (data.status || "bid_release") as ContractFormData["status"],
+      originalValue: data.originalValue || "",
+      bidDueDate: data.bidDueDate || "",
+      bidReleaseDate: data.bidReleaseDate || "",
+      awardDate: data.awardDate || "",
+      startDate: data.startDate || "",
+      substantialCompletionDate: data.substantialCompletionDate || "",
+      finalCloseoutDate: data.finalCloseoutDate || "",
+      notes: [
+        data.notes,
+        data.sourceEmailSubject ? `Imported from email: "${data.sourceEmailSubject}"` : null,
+        data.sourceEmailSender ? `From: ${data.sourceEmailSender}` : null,
+      ].filter(Boolean).join("\n\n"),
+      agency: data.agency || "",
+      serviceType: data.serviceType || "",
+      questionDeadline: data.questionDeadline || "",
+      hasJobWalk: data.hasJobWalk === true,
+      jobWalkDateTime: data.jobWalkDateTime || "",
+      dsaClass: (data as any).dsaClass || "",
+    };
+    setFormData(newFormData);
+    setContractOptions([{ ...emptyContractOption, inspectors: [{ ...emptyContractInspector }] }]);
+    setShowCreateDialog(true);
+    toast({
+      title: "Email Data Imported",
+      description: "The form has been pre-filled with data extracted from the email. Review and confirm before saving.",
+    });
+  };
+
   const getStatusBadge = (status: string) => {
     const option = CONTRACT_STATUS_OPTIONS.find(s => s.value === status);
     return option ? (
-      <Badge className={option.color}>{option.label}</Badge>
+      <Badge variant={option.variant}>{option.label}</Badge>
     ) : (
       <Badge variant="secondary">{status}</Badge>
     );
@@ -1396,6 +1485,15 @@ export default function ContractsPage() {
               Create Quick Proposal
             </Button>
             <Button 
+              variant="outline"
+              className="border-white/30 text-white hover:bg-white/10"
+              onClick={() => setShowImportFromEmailDialog(true)}
+              data-testid="button-import-from-email"
+            >
+              <Mail className="w-4 h-4 mr-2" />
+              Import from Email
+            </Button>
+            <Button 
               className="bg-[hsl(36,90%,50%)] text-[hsl(216,32%,10%)] hover:bg-[hsl(36,90%,45%)] font-semibold"
               onClick={() => {
                 setFormData(emptyFormData);
@@ -1410,20 +1508,6 @@ export default function ContractsPage() {
         )}
       </PageHeader>
 
-      {!isLoading && contracts.length > 0 && (
-        <div className="mb-4">
-          <button
-            onClick={() => setShowGantt(v => !v)}
-            className="flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors mb-2 w-full text-left"
-            data-testid="button-toggle-gantt"
-          >
-            <BarChart3 className="w-4 h-4" />
-            Schedule Timeline
-            {showGantt ? <ChevronUp className="w-4 h-4 ml-auto" /> : <ChevronDown className="w-4 h-4 ml-auto" />}
-          </button>
-          {showGantt && <ContractGanttChart contracts={contracts} />}
-        </div>
-      )}
 
       <Tabs value={activeTab} onValueChange={(tab) => {
         setActiveTab(tab);
@@ -1485,6 +1569,7 @@ export default function ContractsPage() {
                     ))}
                   </SelectContent>
                 </Select>
+                <ContractStatusLegend />
               </div>
               <div className="flex flex-col sm:flex-row gap-3">
                 <Input
@@ -1753,13 +1838,8 @@ export default function ContractsPage() {
                                 if (awarded > 0 || notAwarded > 0) {
                                   return (
                                     <Badge 
-                                      variant="outline" 
-                                      className={`text-xs ${awarded === total 
-                                        ? "border-green-500 text-green-700 dark:text-green-400" 
-                                        : awarded > 0 
-                                          ? "border-amber-500 text-amber-700 dark:text-amber-400"
-                                          : "border-muted text-muted-foreground"
-                                      }`}
+                                      variant={awarded === total ? "success" : awarded > 0 ? "warning" : "muted"}
+                                      className="text-xs"
                                       data-testid={`award-indicator-${contract.id}`}
                                     >
                                       {awarded === total 
@@ -1770,7 +1850,7 @@ export default function ContractsPage() {
                                   );
                                 } else if (contract.status === "awarded" && pending === total) {
                                   return (
-                                    <Badge variant="outline" className="text-xs border-amber-500 text-amber-700 dark:text-amber-400">
+                                    <Badge variant="warning" className="text-xs">
                                       {total} options pending award selection
                                     </Badge>
                                   );
@@ -1784,6 +1864,19 @@ export default function ContractsPage() {
                       <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
                         {isEffectiveCompanyAdmin && (
                           <>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => handleOpenCreateProjectDialog(contract)}
+                                  data-testid={`button-create-project-${contract.id}`}
+                                >
+                                  <FolderPlus className="w-4 h-4 text-primary" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>Create Project from Contract</TooltipContent>
+                            </Tooltip>
                             <Button
                               variant="ghost"
                               size="icon"
@@ -2043,9 +2136,10 @@ export default function ContractsPage() {
                           <div className="flex items-center gap-2 mb-1 flex-wrap">
                             <h3 className="font-semibold truncate">{proposal.projectName}</h3>
                             <Badge variant={
-                              proposal.status === 'accepted' ? 'default' :
-                              proposal.status === 'sent' ? 'secondary' :
-                              proposal.status === 'declined' ? 'destructive' : 'outline'
+                              proposal.status === 'accepted' ? 'success' :
+                              proposal.status === 'sent' ? 'info' :
+                              proposal.status === 'declined' ? 'destructive' :
+                              proposal.status === 'expired' ? 'muted' : 'warning'
                             }>
                               {proposal.status.charAt(0).toUpperCase() + proposal.status.slice(1)}
                             </Badge>
@@ -2248,6 +2342,7 @@ export default function ContractsPage() {
                   Contract Calendar
                 </CardTitle>
                 <div className="flex items-center gap-2">
+                  <ContractStatusLegend />
                   <Button 
                     variant="outline" 
                     size="icon"
@@ -2436,13 +2531,10 @@ export default function ContractsPage() {
                                     <div className="text-sm text-muted-foreground">{event.contract.contractNumber}</div>
                                   </div>
                                 </div>
-                                <Badge variant="outline" className={`shrink-0 ${
-                                  event.type === 'bid_due' 
-                                    ? 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300' 
-                                    : event.type === 'start' 
-                                      ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300'
-                                      : 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300'
-                                }`}>
+                                <Badge
+                                  variant={event.type === 'bid_due' ? 'warning' : event.type === 'start' ? 'success' : 'info'}
+                                  className="shrink-0"
+                                >
                                   {event.type === 'bid_due' ? 'Bid Due' : event.type === 'start' ? 'Start Date' : 'Completion'}
                                 </Badge>
                               </div>
@@ -2694,6 +2786,68 @@ export default function ContractsPage() {
                     data-testid="input-final-closeout-date"
                   />
                 </div>
+              </div>
+            </div>
+
+            <div className="border-t pt-4 space-y-3">
+              <h4 className="font-medium text-sm">Bid Details</h4>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="questionDeadline">Questions Due Date</Label>
+                  <Input
+                    id="questionDeadline"
+                    type="date"
+                    value={formData.questionDeadline}
+                    onChange={(e) => setFormData({ ...formData, questionDeadline: e.target.value })}
+                    data-testid="input-question-deadline"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">Job Walk</Label>
+                  <div className="flex items-center gap-3 h-10">
+                    <Checkbox
+                      id="hasJobWalk"
+                      checked={formData.hasJobWalk}
+                      onCheckedChange={(checked) =>
+                        setFormData({ ...formData, hasJobWalk: !!checked, jobWalkDateTime: checked ? formData.jobWalkDateTime : "" })
+                      }
+                      data-testid="checkbox-has-job-walk"
+                    />
+                    <label htmlFor="hasJobWalk" className="text-sm cursor-pointer select-none">
+                      {formData.hasJobWalk ? "Yes" : "No"}
+                    </label>
+                  </div>
+                </div>
+              </div>
+              {formData.hasJobWalk && (
+                <div className="space-y-2">
+                  <Label htmlFor="jobWalkDateTime">Job Walk Date &amp; Time</Label>
+                  <Input
+                    id="jobWalkDateTime"
+                    type="datetime-local"
+                    value={formData.jobWalkDateTime}
+                    onChange={(e) => setFormData({ ...formData, jobWalkDateTime: e.target.value })}
+                    data-testid="input-job-walk-datetime"
+                  />
+                </div>
+              )}
+              <div className="space-y-2">
+                <Label htmlFor="dsaClass">DSA Class</Label>
+                <Select
+                  value={formData.dsaClass || "none"}
+                  onValueChange={(value) => setFormData({ ...formData, dsaClass: value === "none" ? "" : value })}
+                >
+                  <SelectTrigger id="dsaClass" data-testid="select-dsa-class">
+                    <SelectValue placeholder="Select DSA class..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Not specified</SelectItem>
+                    <SelectItem value="1">Class 1</SelectItem>
+                    <SelectItem value="2">Class 2</SelectItem>
+                    <SelectItem value="3">Class 3</SelectItem>
+                    <SelectItem value="non_dsa">Non-DSA</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </div>
 
@@ -3142,6 +3296,59 @@ export default function ContractsPage() {
         </AlertDialogContent>
       </AlertDialog>
 
+      {/* Create Project from Contract Dialog */}
+      <Dialog open={!!contractForNewProject} onOpenChange={(open) => { if (!open) setContractForNewProject(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FolderPlus className="w-5 h-5 text-primary" />
+              Create Project from Contract
+            </DialogTitle>
+            <DialogDescription>
+              A new project will be created and linked to contract <strong>{contractForNewProject?.contractNumber}</strong>.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="new-project-name">Project Name</Label>
+              <Input
+                id="new-project-name"
+                value={newProjectName}
+                onChange={(e) => setNewProjectName(e.target.value)}
+                placeholder="Project name"
+                data-testid="input-new-project-name"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="new-project-number">Project Number</Label>
+              <Input
+                id="new-project-number"
+                value={newProjectNumber}
+                onChange={(e) => setNewProjectNumber(e.target.value)}
+                placeholder="e.g. PRJ-C001"
+                data-testid="input-new-project-number"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setContractForNewProject(null)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleCreateProjectFromContract}
+              disabled={isCreatingProject || !newProjectName.trim() || !newProjectNumber.trim()}
+              data-testid="button-confirm-create-project"
+            >
+              {isCreatingProject ? (
+                <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Creating...</>
+              ) : (
+                <><FolderPlus className="w-4 h-4 mr-2" />Create Project</>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <ProposalDialog
         open={showProposalDialog}
         onOpenChange={setShowProposalDialog}
@@ -3465,6 +3672,11 @@ export default function ContractsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <ImportFromEmailDialog
+        open={showImportFromEmailDialog}
+        onOpenChange={setShowImportFromEmailDialog}
+        onImport={handleImportFromEmail}
+      />
     </PageLayout>
   );
 }
