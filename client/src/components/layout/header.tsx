@@ -88,28 +88,31 @@ export function Header({ title = "Field Daily Reports" }: HeaderProps) {
   const renderNavItems = (items: typeof inspectorNavItems, sectionTitle?: string, keyPrefix = "") => (
     <>
       {sectionTitle && (
-        <div className="px-3 py-2 text-xs font-semibold text-white/70 uppercase tracking-wider">
+        <div className="px-3 pt-4 pb-1.5 text-[11px] font-semibold text-sidebar-foreground/50 uppercase tracking-[0.08em]">
           {sectionTitle}
         </div>
       )}
       {items.map((item) => {
-        const isActive = item.href === "/" 
-          ? location === "/" 
+        const isActive = item.href === "/"
+          ? location === "/"
           : location.startsWith(item.href);
         const Icon = item.icon;
         return (
           <Link key={`${keyPrefix}${item.href}`} href={item.href} onClick={() => setSheetOpen(false)}>
             <div
               className={cn(
-                "flex items-center gap-3 px-3 py-2 rounded transition-colors",
-                isActive 
-                  ? "bg-[hsl(36,90%,50%)] text-[hsl(216,32%,10%)] font-semibold" 
-                  : "text-white/80 hover:text-white hover:bg-white/10"
+                "group relative flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-all duration-[var(--motion-base)]",
+                isActive
+                  ? "bg-sidebar-accent text-sidebar-foreground font-medium"
+                  : "text-sidebar-foreground/75 hover:text-sidebar-foreground hover:bg-sidebar-accent/50"
               )}
               data-testid={`nav-${item.label.toLowerCase().replace(/\s+/g, '-')}`}
             >
-              <Icon className="w-5 h-5" />
-              <span className="font-medium">{item.label}</span>
+              {isActive && (
+                <span className="absolute left-0 top-1.5 bottom-1.5 w-0.5 rounded-r-full bg-accent" />
+              )}
+              <Icon className={cn("w-[18px] h-[18px] flex-shrink-0 transition-colors", isActive ? "text-accent" : "text-sidebar-foreground/60 group-hover:text-sidebar-foreground/90")} />
+              <span className="truncate">{item.label}</span>
             </div>
           </Link>
         );
@@ -118,69 +121,72 @@ export function Header({ title = "Field Daily Reports" }: HeaderProps) {
   );
 
   return (
-    <header className="sticky top-0 z-40 w-full bg-[hsl(216,32%,15%)] text-white border-b-2 border-[hsl(36,90%,50%)]">
+    <header className="sticky top-0 z-40 w-full bg-sidebar/95 surface-glass text-sidebar-foreground border-b border-sidebar-border shadow-sm">
       <div className="flex h-14 items-center justify-between gap-4 px-4">
         <div className="flex items-center gap-2">
           {user && (
             <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
               <SheetTrigger asChild>
-                <Button variant="ghost" size="icon" className="text-white/80 hover:text-white hover:bg-white/10" data-testid="button-nav-menu">
+                <Button variant="ghost" size="icon" className="text-sidebar-foreground/80 hover:text-sidebar-foreground hover:bg-sidebar-accent/60" data-testid="button-nav-menu">
                   <Menu className="w-5 h-5" />
                 </Button>
               </SheetTrigger>
-              <SheetContent side="left" className="w-64 overflow-y-auto bg-[hsl(216,32%,15%)] text-white border-r-2 border-[hsl(36,90%,50%)]">
-                <SheetHeader>
-                  <SheetTitle className="flex items-center gap-2 text-white">
-                    <div className="w-8 h-8 rounded bg-[hsl(36,90%,50%)] flex items-center justify-center">
-                      <HardHat className="w-5 h-5 text-[hsl(216,32%,10%)]" />
+              <SheetContent side="left" className="w-72 overflow-y-auto bg-sidebar text-sidebar-foreground border-r border-sidebar-border p-0">
+                <SheetHeader className="px-5 pt-6 pb-4 border-b border-sidebar-border">
+                  <SheetTitle className="flex items-center gap-2.5 text-sidebar-foreground">
+                    <div className="w-9 h-9 rounded-lg bg-accent flex items-center justify-center shadow-sm">
+                      <HardHat className="w-5 h-5 text-accent-foreground" />
                     </div>
-                    Field Daily Reports
+                    <span className="text-base font-semibold tracking-tight">Field Daily Reports</span>
                   </SheetTitle>
                 </SheetHeader>
-                <nav className="mt-6 space-y-1">
+                <nav className="mt-3 space-y-0.5 px-3 pb-4">
                   {renderNavItems(inspectorNavItems, undefined, "inspector-")}
                   
                   {isEffectiveCompanyAdmin && activeCompany && (
                     <>
-                      <Separator className="my-4 bg-white/15" />
+                      <Separator className="my-3 bg-sidebar-border" />
                       {renderNavItems(companyAdminNavItems, `${activeCompany.name}`, "company-admin-")}
                     </>
                   )}
-                  
+
                   {showSystemAdminFeatures && (
                     <>
-                      <Separator className="my-4 bg-white/15" />
+                      <Separator className="my-3 bg-sidebar-border" />
                       <Collapsible open={sysAdminOpen} onOpenChange={setSysAdminOpen}>
                         <CollapsibleTrigger className="w-full">
-                          <div className="flex items-center justify-between px-3 py-2 rounded hover:bg-white/10">
-                            <div className="flex items-center gap-2 text-xs font-semibold text-white/70 uppercase tracking-wider">
+                          <div className="flex items-center justify-between px-3 py-2 rounded-md hover:bg-sidebar-accent/50 transition-colors">
+                            <div className="flex items-center gap-2 text-[11px] font-semibold text-sidebar-foreground/60 uppercase tracking-[0.08em]">
                               <Shield className="w-3 h-3" />
                               System Admin
                             </div>
                             <ChevronDown className={cn(
-                              "w-4 h-4 text-white/40 transition-transform duration-200",
+                              "w-4 h-4 text-sidebar-foreground/40 transition-transform duration-200",
                               sysAdminOpen && "rotate-180"
                             )} />
                           </div>
                         </CollapsibleTrigger>
-                        <CollapsibleContent className="space-y-1 mt-1">
+                        <CollapsibleContent className="space-y-0.5 mt-0.5">
                           {systemAdminNavItems.map((item) => {
-                            const isActive = location === item.href || 
+                            const isActive = location === item.href ||
                               (item.href !== "/admin" && location.startsWith(item.href));
                             const Icon = item.icon;
                             return (
                               <Link key={item.href} href={item.href} onClick={() => setSheetOpen(false)}>
                                 <div
                                   className={cn(
-                                    "flex items-center gap-3 px-3 py-2 rounded transition-colors",
-                                    isActive 
-                                      ? "bg-[hsl(36,90%,50%)] text-[hsl(216,32%,10%)] font-semibold" 
-                                      : "text-white/80 hover:text-white hover:bg-white/10"
+                                    "group relative flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-all",
+                                    isActive
+                                      ? "bg-sidebar-accent text-sidebar-foreground font-medium"
+                                      : "text-sidebar-foreground/75 hover:text-sidebar-foreground hover:bg-sidebar-accent/50"
                                   )}
                                   data-testid={`nav-admin-${item.label.toLowerCase().replace(/\s+/g, '-')}`}
                                 >
-                                  <Icon className="w-5 h-5" />
-                                  <span className="font-medium">{item.label}</span>
+                                  {isActive && (
+                                    <span className="absolute left-0 top-1.5 bottom-1.5 w-0.5 rounded-r-full bg-accent" />
+                                  )}
+                                  <Icon className={cn("w-[18px] h-[18px] flex-shrink-0", isActive ? "text-accent" : "text-sidebar-foreground/60")} />
+                                  <span className="truncate">{item.label}</span>
                                 </div>
                               </Link>
                             );
@@ -190,46 +196,48 @@ export function Header({ title = "Field Daily Reports" }: HeaderProps) {
                     </>
                   )}
                 </nav>
-                
-                <Separator className="my-4 bg-white/15" />
-                <Button 
-                  variant="ghost" 
-                  className="w-full justify-start text-red-400 hover:text-red-300 hover:bg-white/10"
-                  onClick={() => {
-                    setSheetOpen(false);
-                    logout();
-                  }}
-                  data-testid="nav-logout"
-                >
-                  <LogOut className="w-5 h-5 mr-3" />
-                  Sign out
-                </Button>
+
+                <div className="px-3 pb-6">
+                  <Separator className="my-2 bg-sidebar-border" />
+                  <Button
+                    variant="ghost"
+                    className="w-full justify-start text-destructive/90 hover:text-destructive hover:bg-destructive/10 font-medium"
+                    onClick={() => {
+                      setSheetOpen(false);
+                      logout();
+                    }}
+                    data-testid="nav-logout"
+                  >
+                    <LogOut className="w-[18px] h-[18px] mr-3" />
+                    Sign out
+                  </Button>
+                </div>
               </SheetContent>
             </Sheet>
           )}
           <Link href="/">
-            <div className="flex items-center gap-2 cursor-pointer" data-testid="link-home">
-              <div className="w-8 h-8 rounded bg-[hsl(36,90%,50%)] flex items-center justify-center">
-                <HardHat className="w-5 h-5 text-[hsl(216,32%,10%)]" />
+            <div className="flex items-center gap-2.5 cursor-pointer group" data-testid="link-home">
+              <div className="w-8 h-8 rounded-lg bg-accent flex items-center justify-center shadow-sm transition-transform duration-[var(--motion-base)] group-hover:scale-105">
+                <HardHat className="w-[18px] h-[18px] text-accent-foreground" />
               </div>
-              <span className="font-semibold text-lg hidden sm:inline tracking-tight">{title}</span>
+              <span className="font-semibold text-[15px] hidden sm:inline tracking-tight">{title}</span>
             </div>
           </Link>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
           {(isAdmin || isCompanyAdmin) && <ModeToggle />}
           {user && <ProjectSwitcher activeProjectId={profile?.activeProjectId} />}
           {user && <ThemeToggle />}
           {isLoading ? (
-            <div className="w-9 h-9 rounded-full bg-muted animate-pulse" />
+            <div className="w-9 h-9 rounded-full shimmer" />
           ) : user ? (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="rounded-full text-white/80 hover:text-white hover:bg-white/10" data-testid="button-user-menu">
-                  <Avatar className="h-9 w-9">
+                <Button variant="ghost" size="icon" className="rounded-full text-sidebar-foreground/80 hover:text-sidebar-foreground hover:bg-sidebar-accent/60" data-testid="button-user-menu">
+                  <Avatar className="h-9 w-9 ring-1 ring-sidebar-border">
                     <AvatarImage src={user.profileImageUrl || undefined} alt={getDisplayName()} />
-                    <AvatarFallback className="bg-[hsl(36,90%,50%)] text-[hsl(216,32%,10%)] text-sm font-medium">
+                    <AvatarFallback className="bg-accent text-accent-foreground text-[13px] font-semibold">
                       {getInitials(user.firstName, user.lastName)}
                     </AvatarFallback>
                   </Avatar>
@@ -313,7 +321,7 @@ export function Header({ title = "Field Daily Reports" }: HeaderProps) {
               </DropdownMenuContent>
             </DropdownMenu>
           ) : (
-            <Button asChild className="bg-[hsl(36,90%,50%)] text-[hsl(216,32%,10%)] hover:bg-[hsl(36,90%,45%)] font-semibold" data-testid="button-login">
+            <Button asChild className="bg-accent text-accent-foreground hover:bg-accent/90 font-semibold shadow-sm" data-testid="button-login">
               <a href="/api/login">Sign in</a>
             </Button>
           )}
