@@ -11414,12 +11414,38 @@ export async function registerRoutes(
           }
         }
         try {
+          const monthInt = parseInt(String(month), 10);
+          const yearInt = parseInt(String(year), 10);
+
+          // Check if there's an existing approved timesheet with different hours
+          const existing = await storage.getTimesheetByKey(projectId, targetInspectorId, monthInt, yearInt);
+          const HOUR_EPSILON = 0.01;
+          if (
+            existing &&
+            existing.status === "approved" &&
+            (
+              Math.abs(parseFloat(existing.totalRegularHours ?? "0") - totalReg) > HOUR_EPSILON ||
+              Math.abs(parseFloat(existing.totalOvertimeHours ?? "0") - totalOT) > HOUR_EPSILON ||
+              Math.abs(parseFloat(existing.totalPremiumHours ?? "0") - totalPrm) > HOUR_EPSILON
+            )
+          ) {
+            const warning = {
+              oldReg: parseFloat(existing.totalRegularHours ?? "0"),
+              oldOT: parseFloat(existing.totalOvertimeHours ?? "0"),
+              oldPrm: parseFloat(existing.totalPremiumHours ?? "0"),
+              newReg: totalReg,
+              newOT: totalOT,
+              newPrm: totalPrm,
+            };
+            res.setHeader("X-Timesheet-Hours-Warning", JSON.stringify(warning));
+          }
+
           await storage.upsertTimesheet({
             companyId: project.companyId,
             projectId,
             inspectorId: targetInspectorId,
-            month: parseInt(String(month), 10),
-            year: parseInt(String(year), 10),
+            month: monthInt,
+            year: yearInt,
             status: "submitted",
             totalRegularHours: String(totalReg),
             totalOvertimeHours: String(totalOT),

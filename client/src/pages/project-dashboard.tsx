@@ -1022,6 +1022,7 @@ export default function ProjectDashboardPage() {
         throw new Error(error.message || 'Failed to generate timesheet');
       }
       
+      const warningHeader = response.headers.get("X-Timesheet-Hours-Warning");
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -1036,6 +1037,19 @@ export default function ProjectDashboardPage() {
         title: "Timesheet Generated",
         description: "Your timesheet PDF has been downloaded",
       });
+
+      if (warningHeader) {
+        try {
+          const w = JSON.parse(warningHeader);
+          toast({
+            title: "Hours Changed on Approved Timesheet",
+            description: `The approved record had ${w.oldReg}h reg / ${w.oldOT}h OT / ${w.oldPrm}h premium. The regenerated PDF now shows ${w.newReg}h reg / ${w.newOT}h OT / ${w.newPrm}h premium.`,
+            variant: "destructive",
+            duration: 10000,
+          });
+        } catch (_) {}
+      }
+
       setTimesheetDialogOpen(false);
     } catch (error: any) {
       toast({
