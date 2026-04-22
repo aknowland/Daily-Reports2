@@ -1288,7 +1288,7 @@ export default function BillingManagementPage() {
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="space-y-2">
                     <label className="text-sm font-medium">Project</label>
-                    <Select value={selectedProject} onValueChange={setSelectedProject}>
+                    <Select value={selectedProject} onValueChange={(val) => { setSelectedProject(val); setStatusFilter("all"); }}>
                       <SelectTrigger data-testid="select-project">
                         <SelectValue placeholder="Select project" />
                       </SelectTrigger>

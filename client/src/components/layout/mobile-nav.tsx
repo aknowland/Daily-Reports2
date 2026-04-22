@@ -30,27 +30,30 @@ export function MobileNav({ isAdmin }: MobileNavProps) {
   const items = isAdmin ? adminItems : inspectorItems;
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 bg-[hsl(216,32%,15%)] border-t-2 border-[hsl(36,90%,50%)] h-16 lg:hidden">
-      <div className="flex items-center justify-around h-full px-2">
+    <nav className="fixed bottom-0 left-0 right-0 z-50 bg-sidebar/95 surface-glass border-t border-sidebar-border h-[68px] lg:hidden safe-area-bottom">
+      <div className="flex items-center justify-around h-full px-2 pb-[env(safe-area-inset-bottom)]">
         {items.map((item) => {
-          const isActive = location === item.href || 
+          const isActive =
+            location === item.href ||
             (item.href !== "/" && item.href !== "/admin" && location.startsWith(item.href));
-          
+
           return (
             <Link key={item.href} href={item.href}>
               <div
                 className={cn(
-                  "flex flex-col items-center justify-center gap-1 px-4 py-2 rounded transition-colors min-w-[72px]",
-                  isActive 
-                    ? "text-[hsl(36,90%,50%)]" 
-                    : "text-white/75 hover:text-white"
+                  "relative flex flex-col items-center justify-center gap-0.5 px-4 py-2 rounded-lg transition-colors min-w-[72px]",
+                  isActive
+                    ? "text-accent"
+                    : "text-sidebar-foreground/70 hover:text-sidebar-foreground"
                 )}
                 data-testid={`nav-${item.label.toLowerCase().replace(/\s/g, "-")}`}
               >
-                {item.icon}
-                <span className="text-xs font-semibold tracking-wide">{item.label}</span>
+                <div className={cn("transition-transform", isActive && "scale-110")}>
+                  {item.icon}
+                </div>
+                <span className="text-[11px] font-medium tracking-wide">{item.label}</span>
                 {isActive && (
-                  <div className="absolute bottom-0 w-12 h-0.5 bg-[hsl(36,90%,50%)]" />
+                  <div className="absolute -bottom-[1px] left-1/2 -translate-x-1/2 w-8 h-0.5 rounded-full bg-accent" />
                 )}
               </div>
             </Link>

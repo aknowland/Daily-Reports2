@@ -12,7 +12,9 @@ import {
   ArrowRight,
   ClipboardList,
   Pause,
-  Lock
+  Lock,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 
 const CARD_STATES = [
@@ -103,6 +105,28 @@ export default function LandingPage() {
   }, [reducedMotion]);
 
   const state = CARD_STATES[cardStateIndex];
+
+  const transitioningRef = useRef(false);
+
+  const navigateState = (dir: 1 | -1, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (transitioningRef.current) return;
+    transitioningRef.current = true;
+    lockedPauseRef.current = true;
+    setLockedPause(true);
+    pausedRef.current = true;
+    setPaused(true);
+    if (innerTimerRef.current) {
+      clearTimeout(innerTimerRef.current);
+      innerTimerRef.current = null;
+    }
+    setVisible(false);
+    innerTimerRef.current = setTimeout(() => {
+      setCardStateIndex((i) => (i + dir + CARD_STATES.length) % CARD_STATES.length);
+      setVisible(true);
+      transitioningRef.current = false;
+    }, 350);
+  };
 
   const features = [
     {
@@ -262,8 +286,9 @@ export default function LandingPage() {
               <div className="relative hidden lg:flex items-center justify-center">
                 <div className="absolute inset-0 rounded-3xl blur-3xl" style={{ background: "radial-gradient(ellipse at center, hsla(38,92%,50%,0.10), hsla(220,72%,60%,0.10))" }} />
 
+                <div className="flex flex-col items-center gap-3 w-full max-w-sm">
                 <div
-                  className={`relative w-full max-w-sm rounded-2xl p-6 hover:-translate-y-0.5 transition-transform duration-300 ${entered ? "hero-card-enter" : "opacity-0"}`}
+                  className={`relative w-full rounded-2xl p-6 hover:-translate-y-0.5 transition-transform duration-300 ${entered ? "hero-card-enter" : "opacity-0"}`}
                   data-testid="hero-preview-card"
                   tabIndex={0}
                   style={{
@@ -417,21 +442,88 @@ export default function LandingPage() {
                         </div>
                       </div>
                     </div>
-
-                    <div className="flex justify-center gap-1.5 pt-1">
-                      {CARD_STATES.map((_, i) => (
-                        <div
-                          key={i}
-                          className="rounded-full transition-all duration-300"
-                          style={{
-                            width: i === cardStateIndex ? "16px" : "6px",
-                            height: "6px",
-                            background: i === cardStateIndex ? "hsla(38,92%,50%,0.90)" : "rgba(255,255,255,0.20)",
-                          }}
-                        />
-                      ))}
-                    </div>
                   </div>
+                </div>
+
+                  <div className="flex justify-center items-center gap-3 w-full px-1">
+                      <button
+                        data-testid="button-card-prev"
+                        aria-label="Previous state"
+                        onClick={(e) => navigateState(-1, e)}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          width: "24px",
+                          height: "24px",
+                          borderRadius: "9999px",
+                          background: "rgba(255,255,255,0.08)",
+                          border: "1px solid rgba(255,255,255,0.16)",
+                          color: "rgba(255,255,255,0.55)",
+                          cursor: "pointer",
+                          transition: "background 0.15s ease, color 0.15s ease, border-color 0.15s ease",
+                          flexShrink: 0,
+                        }}
+                        onMouseEnter={(e) => {
+                          (e.currentTarget as HTMLButtonElement).style.background = "rgba(255,255,255,0.16)";
+                          (e.currentTarget as HTMLButtonElement).style.color = "rgba(255,255,255,0.90)";
+                          (e.currentTarget as HTMLButtonElement).style.borderColor = "rgba(255,255,255,0.30)";
+                        }}
+                        onMouseLeave={(e) => {
+                          (e.currentTarget as HTMLButtonElement).style.background = "rgba(255,255,255,0.08)";
+                          (e.currentTarget as HTMLButtonElement).style.color = "rgba(255,255,255,0.55)";
+                          (e.currentTarget as HTMLButtonElement).style.borderColor = "rgba(255,255,255,0.16)";
+                        }}
+                      >
+                        <ChevronLeft className="w-3.5 h-3.5" />
+                      </button>
+
+                      <div className="flex items-center gap-1.5">
+                        {CARD_STATES.map((_, i) => (
+                          <div
+                            key={i}
+                            className="rounded-full transition-all duration-300"
+                            style={{
+                              width: i === cardStateIndex ? "16px" : "6px",
+                              height: "6px",
+                              background: i === cardStateIndex ? "hsla(38,92%,50%,0.90)" : "rgba(255,255,255,0.20)",
+                            }}
+                          />
+                        ))}
+                      </div>
+
+                      <button
+                        data-testid="button-card-next"
+                        aria-label="Next state"
+                        onClick={(e) => navigateState(1, e)}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          width: "24px",
+                          height: "24px",
+                          borderRadius: "9999px",
+                          background: "rgba(255,255,255,0.08)",
+                          border: "1px solid rgba(255,255,255,0.16)",
+                          color: "rgba(255,255,255,0.55)",
+                          cursor: "pointer",
+                          transition: "background 0.15s ease, color 0.15s ease, border-color 0.15s ease",
+                          flexShrink: 0,
+                        }}
+                        onMouseEnter={(e) => {
+                          (e.currentTarget as HTMLButtonElement).style.background = "rgba(255,255,255,0.16)";
+                          (e.currentTarget as HTMLButtonElement).style.color = "rgba(255,255,255,0.90)";
+                          (e.currentTarget as HTMLButtonElement).style.borderColor = "rgba(255,255,255,0.30)";
+                        }}
+                        onMouseLeave={(e) => {
+                          (e.currentTarget as HTMLButtonElement).style.background = "rgba(255,255,255,0.08)";
+                          (e.currentTarget as HTMLButtonElement).style.color = "rgba(255,255,255,0.55)";
+                          (e.currentTarget as HTMLButtonElement).style.borderColor = "rgba(255,255,255,0.16)";
+                        }}
+                      >
+                        <ChevronRight className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                 </div>
               </div>
             </div>
