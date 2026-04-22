@@ -236,7 +236,7 @@ export default function AdminCompaniesPage() {
         <PageHeader icon={Building2} title="Companies" subtitle={`${companies?.length || 0} companies`}>
           <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
             <DialogTrigger asChild>
-              <Button className="bg-[hsl(36,90%,50%)] text-[hsl(216,32%,10%)] hover:bg-[hsl(36,90%,45%)] font-semibold" data-testid="button-create-company">
+              <Button className="bg-accent text-accent-foreground hover:bg-accent/90 font-semibold shadow-sm" data-testid="button-create-company">
                 <Plus className="w-4 h-4 mr-2" />
                 Add Company
               </Button>

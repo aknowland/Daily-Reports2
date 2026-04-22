@@ -472,7 +472,7 @@ export default function ProfilePage() {
           />
           <Button
             variant="outline"
-            className="border-white/30 text-white hover:bg-white/10"
+            className=""
             onClick={() => resumeInputRef.current?.click()}
             disabled={resumeParseMutation.isPending}
             data-testid="button-upload-resume"
@@ -486,7 +486,7 @@ export default function ProfilePage() {
           </Button>
           {profile && (
             <Button
-              className="bg-[hsl(36,90%,50%)] text-[hsl(216,32%,10%)] hover:bg-[hsl(36,90%,45%)] font-semibold"
+              className="bg-accent text-accent-foreground hover:bg-accent/90 font-semibold shadow-sm"
               onClick={() => window.open(`/api/resume/generate/${profile.userId}`, '_blank')}
               data-testid="button-generate-resume"
             >

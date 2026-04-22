@@ -372,7 +372,7 @@ export default function CompanyRecruitingPage() {
             </Button>
             <Button
               onClick={() => setShowImportConfirm(true)}
-              className="bg-[hsl(36,90%,50%)] text-[hsl(216,32%,10%)] hover:bg-[hsl(36,90%,45%)] font-semibold"
+              className="bg-accent text-accent-foreground hover:bg-accent/90 font-semibold shadow-sm"
               data-testid="button-import-dsa"
             >
               <Download className="w-4 h-4 mr-2" />
@@ -482,7 +482,7 @@ export default function CompanyRecruitingPage() {
               <div className="flex gap-2 justify-center flex-wrap">
                 <Button
                   onClick={() => setShowImportConfirm(true)}
-                  className="bg-[hsl(36,90%,50%)] text-[hsl(216,32%,10%)] hover:bg-[hsl(36,90%,45%)] font-semibold"
+                  className="bg-accent text-accent-foreground hover:bg-accent/90 font-semibold shadow-sm"
                   data-testid="button-import-empty"
                 >
                   <Download className="w-4 h-4 mr-2" />
@@ -636,7 +636,7 @@ export default function CompanyRecruitingPage() {
             <AlertDialogAction
               onClick={() => importMutation.mutate()}
               disabled={importMutation.isPending}
-              className="bg-[hsl(36,90%,50%)] text-[hsl(216,32%,10%)] hover:bg-[hsl(36,90%,45%)]"
+              className="bg-accent text-accent-foreground hover:bg-accent/90 shadow-sm"
               data-testid="button-confirm-import"
             >
               {importMutation.isPending ? (
@@ -843,7 +843,7 @@ export default function CompanyRecruitingPage() {
                         }
                       }}
                       disabled={!newNote.trim() || addNoteMutation.isPending}
-                      className="shrink-0 self-end bg-[hsl(36,90%,50%)] text-[hsl(216,32%,10%)] hover:bg-[hsl(36,90%,45%)]"
+                      className="shrink-0 self-end bg-accent text-accent-foreground hover:bg-accent/90 shadow-sm"
                       data-testid="button-add-note"
                     >
                       {addNoteMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}

@@ -157,11 +157,11 @@ export default function PricingPage() {
             </div>
           </Link>
           {user ? (
-            <Button variant="outline" onClick={handleSkip} className="border-white/30 text-white hover:bg-white/10" data-testid="button-skip-pricing">
+            <Button variant="outline" onClick={handleSkip} className="" data-testid="button-skip-pricing">
               Skip for now
             </Button>
           ) : (
-            <Button asChild className="bg-[hsl(36,90%,50%)] text-[hsl(216,32%,10%)] hover:bg-[hsl(36,90%,45%)] font-semibold" data-testid="button-header-login">
+            <Button asChild className="bg-accent text-accent-foreground hover:bg-accent/90 font-semibold shadow-sm" data-testid="button-header-login">
               <a href="/api/login">Sign In</a>
             </Button>
           )}

@@ -456,7 +456,7 @@ export default function ReportFormPage() {
       >
         <Button 
           variant="outline"
-          className="border-white/30 text-white hover:bg-white/10"
+          className=""
           onClick={() => window.history.back()}
           data-testid="button-back"
         >
@@ -997,7 +997,7 @@ export default function ReportFormPage() {
         <div className="fixed bottom-0 left-0 right-0 bg-[hsl(216,32%,15%)] border-t-2 border-[hsl(36,90%,50%)] p-4 flex gap-3 z-50">
           <Button
             variant="outline"
-            className="flex-1 h-12 border-white/30 text-white hover:bg-white/10"
+            className="flex-1 h-12"
             onClick={() => handleSubmit("draft")}
             disabled={isSaving}
             data-testid="button-save-draft"
@@ -1010,7 +1010,7 @@ export default function ReportFormPage() {
             Save Draft
           </Button>
           <Button
-            className="flex-1 h-12 bg-[hsl(36,90%,50%)] text-[hsl(216,32%,10%)] hover:bg-[hsl(36,90%,45%)] font-semibold"
+            className="flex-1 h-12 bg-accent text-accent-foreground hover:bg-accent/90 font-semibold shadow-sm"
             onClick={() => handleSubmit("submitted")}
             disabled={isSaving}
             data-testid="button-submit-report"

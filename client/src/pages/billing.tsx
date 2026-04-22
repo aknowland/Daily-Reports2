@@ -157,7 +157,7 @@ export default function BillingPage() {
       <div className="max-w-4xl mx-auto space-y-6 p-4 md:p-6">
         <PageHeader icon={Receipt} title="Billing & Subscription" subtitle="Manage your subscription and billing details">
           <Link href="/profile">
-            <Button variant="outline" className="border-white/30 text-white hover:bg-white/10" size="sm" data-testid="button-back">
+            <Button variant="outline" className="" size="sm" data-testid="button-back">
               <ArrowLeft className="w-4 h-4 mr-1" />
               Back to Profile
             </Button>

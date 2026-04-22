@@ -1385,7 +1385,7 @@ export default function ContractsPage() {
           <>
             <Button 
               variant="outline"
-              className="border-white/30 text-white hover:bg-white/10"
+              className=""
               onClick={() => {
                 setEditingProposal(null);
                 setShowProposalDialog(true);
@@ -1396,7 +1396,7 @@ export default function ContractsPage() {
               Create Quick Proposal
             </Button>
             <Button 
-              className="bg-[hsl(36,90%,50%)] text-[hsl(216,32%,10%)] hover:bg-[hsl(36,90%,45%)] font-semibold"
+              className="bg-accent text-accent-foreground hover:bg-accent/90 font-semibold shadow-sm"
               onClick={() => {
                 setFormData(emptyFormData);
                 setShowCreateDialog(true);
@@ -1594,9 +1594,9 @@ export default function ContractsPage() {
                 const scheduleInfo = getScheduleProgress(contract);
                 
                 return (
-                <Card 
-                  key={contract.id} 
-                  className="hover-elevate cursor-pointer" 
+                <Card
+                  key={contract.id}
+                  className="card-interactive"
                   data-testid={`contract-${contract.id}`}
                   onClick={() => setLocation(`/company/contracts/${contract.id}/dashboard`)}
                 >
@@ -1882,9 +1882,9 @@ export default function ContractsPage() {
           ) : (
             <div className="space-y-3">
               {paginatedArchivedContracts.map(contract => (
-                <Card 
-                  key={contract.id} 
-                  className="hover-elevate cursor-pointer opacity-75" 
+                <Card
+                  key={contract.id}
+                  className="card-interactive opacity-75"
                   data-testid={`archived-contract-${contract.id}`}
                   onClick={() => setLocation(`/company/contracts/${contract.id}/dashboard`)}
                 >
@@ -2036,7 +2036,7 @@ export default function ContractsPage() {
                 }, 0) || 0;
 
                 return (
-                  <Card key={proposal.id} className="hover-elevate" data-testid={`proposal-${proposal.id}`}>
+                  <Card key={proposal.id} className="card-interactive" data-testid={`proposal-${proposal.id}`}>
                     <CardContent className="p-4">
                       <div className="flex items-start justify-between gap-4 flex-wrap">
                         <div className="flex-1 min-w-0">

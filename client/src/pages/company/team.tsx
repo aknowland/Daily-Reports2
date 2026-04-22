@@ -719,7 +719,7 @@ export default function CompanyTeamPage() {
         <PageHeader icon={Users} title="Team" subtitle={`Manage team for ${activeCompany.name}`}>
           <Dialog open={showInviteDialog} onOpenChange={setShowInviteDialog}>
             <DialogTrigger asChild>
-              <Button className="bg-[hsl(36,90%,50%)] text-[hsl(216,32%,10%)] hover:bg-[hsl(36,90%,45%)] font-semibold" data-testid="button-invite-user">
+              <Button className="bg-accent text-accent-foreground hover:bg-accent/90 font-semibold shadow-sm" data-testid="button-invite-user">
                 <UserPlus className="w-4 h-4 mr-2" />
                 Invite User
               </Button>

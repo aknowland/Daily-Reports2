@@ -314,7 +314,7 @@ export default function CompanyMeetingsPage() {
     <PageLayout title="Meetings" description="Manage meeting minutes and agendas">
       <div className="space-y-4">
         <PageHeader icon={CalendarCheck} title="Meetings" subtitle="Manage meeting minutes and agendas">
-          <Button className="bg-[hsl(36,90%,50%)] text-[hsl(216,32%,10%)] hover:bg-[hsl(36,90%,45%)] font-semibold" onClick={() => { setFormData({ ...defaultFormData }); setShowCreateDialog(true); }} data-testid="button-create-meeting">
+          <Button className="bg-accent text-accent-foreground hover:bg-accent/90 font-semibold shadow-sm" onClick={() => { setFormData({ ...defaultFormData }); setShowCreateDialog(true); }} data-testid="button-create-meeting">
             <Plus className="mr-2 h-4 w-4" />
             New Meeting
           </Button>

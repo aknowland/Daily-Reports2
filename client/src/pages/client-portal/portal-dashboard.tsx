@@ -106,7 +106,7 @@ export default function PortalDashboard() {
       >
         <Button
           variant="outline"
-          className="border-white/30 text-white"
+          className=""
           onClick={handleLogout}
           data-testid="button-logout"
         >

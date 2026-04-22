@@ -133,7 +133,7 @@ export default function ProjectDailyReportsPage() {
         subtitle={projectQuery.data ? `${projectQuery.data.name}${projectQuery.data.projectNumber ? ` (#${projectQuery.data.projectNumber})` : ""}` : undefined}
       >
         <Link href={`/project/${id}/dashboard`}>
-          <Button variant="outline" className="border-white/30 text-white hover:bg-white/10" data-testid="button-back-to-dashboard">
+          <Button variant="outline" className="" data-testid="button-back-to-dashboard">
             <ArrowLeft className="w-4 h-4 mr-2" />
             Back
           </Button>

@@ -171,7 +171,7 @@ export default function PortalProjectPage() {
           <Link href="/client-portal">
             <Button
               variant="outline"
-              className="border-white/30 text-white"
+              className=""
               data-testid="button-back"
             >
               <ArrowLeft className="w-4 h-4 mr-2" />
@@ -212,7 +212,7 @@ export default function PortalProjectPage() {
           <Link href="/client-portal">
             <Button
               variant="outline"
-              className="border-white/30 text-white"
+              className=""
               data-testid="button-back"
             >
               <ArrowLeft className="w-4 h-4 mr-2" />
@@ -241,7 +241,7 @@ export default function PortalProjectPage() {
         <Link href="/client-portal">
           <Button
             variant="outline"
-            className="border-white/30 text-white"
+            className=""
             data-testid="button-back"
           >
             <ArrowLeft className="w-4 h-4 mr-2" />
