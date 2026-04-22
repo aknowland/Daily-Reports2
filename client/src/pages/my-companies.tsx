@@ -309,7 +309,7 @@ export default function MyCompaniesPage() {
     <PageLayout title="My Companies">
       <div className="container px-4 py-6 mx-auto max-w-screen-lg space-y-6">
         <PageHeader icon={Building2} title="My Companies" subtitle="Companies you are affiliated with">
-          <Button className="bg-[hsl(36,90%,50%)] text-[hsl(216,32%,10%)] hover:bg-[hsl(36,90%,45%)] font-semibold" onClick={() => setShowCreateDialog(true)} data-testid="button-create-company">
+          <Button className="bg-accent text-accent-foreground hover:bg-accent/90 font-semibold shadow-sm" onClick={() => setShowCreateDialog(true)} data-testid="button-create-company">
             <Plus className="w-4 h-4 mr-2" />
             Create Company
           </Button>

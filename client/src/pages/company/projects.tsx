@@ -572,7 +572,7 @@ export default function CompanyProjectsPage() {
   if (isCompaniesLoading) {
     return (
       <PageLayout title="Company Projects">
-        <div className="container px-4 py-6 mx-auto max-w-screen-lg space-y-6">
+        <div className="space-y-6">
           <div className="flex items-center gap-2 mb-2">
             <Button variant="ghost" size="sm" asChild data-testid="button-back">
               <Link href="/">
@@ -618,7 +618,7 @@ export default function CompanyProjectsPage() {
   if (isLoading) {
     return (
       <PageLayout title="Company Projects">
-        <div className="container px-4 py-6 mx-auto max-w-screen-lg space-y-6">
+        <div className="space-y-6">
           <div className="flex items-center gap-2 mb-2">
             <Button variant="ghost" size="sm" asChild data-testid="button-back">
               <Link href="/">
@@ -671,14 +671,14 @@ export default function CompanyProjectsPage() {
 
   return (
     <PageLayout title="Company Projects">
-      <div className="container px-4 py-6 mx-auto max-w-screen-lg space-y-6">
+      <div className="space-y-6">
         <PageHeader
           icon={FolderOpen}
           title={selectedProject ? selectedProject.name : selectedClient ? `Projects for ${selectedClient.name}` : "Projects"}
           subtitle={selectedProject ? `Project #${selectedProject.projectNumber || 'N/A'}` : selectedClient ? `Showing ${filteredProjects.length} project${filteredProjects.length !== 1 ? "s" : ""} for this client` : `Manage projects for ${activeCompany.name}`}
         >
           <Button
-            className="bg-[hsl(36,90%,50%)] text-[hsl(216,32%,10%)] hover:bg-[hsl(36,90%,45%)] font-semibold"
+            className="bg-accent text-accent-foreground hover:bg-accent/90 font-semibold shadow-sm"
             onClick={() => setShowCreateDialog(true)}
             data-testid="button-create-project"
           >
@@ -734,7 +734,7 @@ export default function CompanyProjectsPage() {
               const projectLink = `/project/${project.id}/dashboard`;
               
               return (
-              <Card key={project.id} className="hover-elevate" data-testid={`card-project-${project.id}`}>
+              <Card key={project.id} className="card-interactive" data-testid={`card-project-${project.id}`}>
                 <CardHeader>
                   <div className="flex items-start justify-between gap-2">
                     <Link 
@@ -830,11 +830,16 @@ export default function CompanyProjectsPage() {
           setBaseHours([]);
         }
       }}>
-        <DialogContent className="max-h-[90vh] max-w-2xl p-0">
-          <div className="flex flex-col max-h-[90vh]">
-          <DialogHeader className="flex-shrink-0 p-6 pb-0">
-            <DialogTitle>{editingProject ? "Edit Project" : "Create Project"}</DialogTitle>
-            <DialogDescription>
+        <DialogContent className="max-h-[92vh] max-w-3xl p-0">
+          <div className="flex flex-col max-h-[92vh]">
+          <DialogHeader className="flex-shrink-0 px-6 pt-6 pb-4 border-b border-border bg-gradient-subtle">
+            <DialogTitle className="flex items-center gap-2.5">
+              <div className="w-9 h-9 rounded-lg bg-accent/12 ring-1 ring-accent/20 flex items-center justify-center">
+                <FolderOpen className="h-[18px] w-[18px] text-accent" />
+              </div>
+              {editingProject ? "Edit Project" : "Create Project"}
+            </DialogTitle>
+            <DialogDescription className="pl-[46px]">
               {editingProject ? "Update project details" : "Add a new project to your company"}
             </DialogDescription>
           </DialogHeader>

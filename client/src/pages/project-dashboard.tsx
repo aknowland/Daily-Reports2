@@ -1022,6 +1022,7 @@ export default function ProjectDashboardPage() {
         throw new Error(error.message || 'Failed to generate timesheet');
       }
       
+      const warningHeader = response.headers.get("X-Timesheet-Hours-Warning");
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -1036,6 +1037,19 @@ export default function ProjectDashboardPage() {
         title: "Timesheet Generated",
         description: "Your timesheet PDF has been downloaded",
       });
+
+      if (warningHeader) {
+        try {
+          const w = JSON.parse(warningHeader);
+          toast({
+            title: "Hours Changed on Approved Timesheet",
+            description: `The approved record had ${w.oldReg}h reg / ${w.oldOT}h OT / ${w.oldPrm}h premium. The regenerated PDF now shows ${w.newReg}h reg / ${w.newOT}h OT / ${w.newPrm}h premium.`,
+            variant: "destructive",
+            duration: 10000,
+          });
+        } catch (_) {}
+      }
+
       setTimesheetDialogOpen(false);
     } catch (error: any) {
       toast({
@@ -1136,7 +1150,7 @@ export default function ProjectDashboardPage() {
           <Button
             variant="outline"
             size="sm"
-            className="border-white/30 text-white hover:bg-white/10"
+            className=""
             asChild
           >
             <Link href="/my-projects">
@@ -1146,7 +1160,7 @@ export default function ProjectDashboardPage() {
           </Button>
           <Button
             size="sm"
-            className="bg-[hsl(36,90%,50%)] text-[hsl(216,32%,10%)] hover:bg-[hsl(36,90%,45%)] font-semibold"
+            className="bg-accent text-accent-foreground hover:bg-accent/90 font-semibold shadow-sm"
             onClick={() => setDailyReportDialogOpen(true)}
             data-testid="button-new-daily-report-header"
           >
@@ -1157,7 +1171,7 @@ export default function ProjectDashboardPage() {
             <Button
               variant="outline"
               size="sm"
-              className="border-white/30 text-white hover:bg-white/10"
+              className=""
               onClick={openEditDialog}
               data-testid="button-edit-project"
             >

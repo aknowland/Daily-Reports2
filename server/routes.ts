@@ -11283,6 +11283,32 @@ export async function registerRoutes(
         } catch (notifError) {
           console.error("Error creating admin notifications for timesheet submission:", notifError);
         }
+
+        // Send email notifications to all company admins
+        try {
+          const adminEmails = await storage.getCompanyAdminEmails(timesheet.companyId);
+          if (adminEmails.length > 0) {
+            const inspectorName = profile
+              ? `${profile.firstName ?? ""} ${profile.lastName ?? ""}`.trim() || "An inspector"
+              : "An inspector";
+            const { sendEmail } = await import('./replit_integrations/email/client');
+            const appBaseUrl = process.env.APP_BASE_URL ?? "";
+            const billingUrl = appBaseUrl
+              ? `${appBaseUrl}/company/billing-management`
+              : "/company/billing-management";
+            await sendEmail({
+              to: adminEmails,
+              subject: "Timesheet Submitted for Review",
+              html: `
+                <p>Hi,</p>
+                <p><strong>${inspectorName}</strong> has submitted a timesheet for review.</p>
+                <p>Please visit <a href="${billingUrl}">Billing Management</a> to review and approve it.</p>
+              `,
+            });
+          }
+        } catch (emailError) {
+          console.error("Error sending email notifications for timesheet submission:", emailError);
+        }
       }
 
       res.json(updated);
@@ -11316,6 +11342,13 @@ export async function registerRoutes(
       
       if (!isEffectiveSystemAdmin(profile) && !hasCompanyAccess && !isProjectMember) {
         return res.status(403).json({ message: "Access denied" });
+      }
+
+      // If overriding the inspector, only admins/company admins are allowed
+      if (inspectorId && inspectorId !== userId) {
+        if (!isEffectiveSystemAdmin(profile) && !hasCompanyAccess) {
+          return res.status(403).json({ message: "Only admins can generate timesheets on behalf of other users" });
+        }
       }
 
       // Get company info
@@ -11407,12 +11440,38 @@ export async function registerRoutes(
           }
         }
         try {
+          const monthInt = parseInt(String(month), 10);
+          const yearInt = parseInt(String(year), 10);
+
+          // Check if there's an existing approved timesheet with different hours
+          const existing = await storage.getTimesheetByKey(projectId, targetInspectorId, monthInt, yearInt);
+          const HOUR_EPSILON = 0.01;
+          if (
+            existing &&
+            existing.status === "approved" &&
+            (
+              Math.abs(parseFloat(existing.totalRegularHours ?? "0") - totalReg) > HOUR_EPSILON ||
+              Math.abs(parseFloat(existing.totalOvertimeHours ?? "0") - totalOT) > HOUR_EPSILON ||
+              Math.abs(parseFloat(existing.totalPremiumHours ?? "0") - totalPrm) > HOUR_EPSILON
+            )
+          ) {
+            const warning = {
+              oldReg: parseFloat(existing.totalRegularHours ?? "0"),
+              oldOT: parseFloat(existing.totalOvertimeHours ?? "0"),
+              oldPrm: parseFloat(existing.totalPremiumHours ?? "0"),
+              newReg: totalReg,
+              newOT: totalOT,
+              newPrm: totalPrm,
+            };
+            res.setHeader("X-Timesheet-Hours-Warning", JSON.stringify(warning));
+          }
+
           await storage.upsertTimesheet({
             companyId: project.companyId,
             projectId,
             inspectorId: targetInspectorId,
-            month: parseInt(String(month), 10),
-            year: parseInt(String(year), 10),
+            month: monthInt,
+            year: yearInt,
             status: "submitted",
             totalRegularHours: String(totalReg),
             totalOvertimeHours: String(totalOT),
@@ -11446,30 +11505,25 @@ export async function registerRoutes(
     try {
       const userId = req.user?.claims?.sub;
       const profile = await storage.getUserProfile(userId);
-      const { projectIds, month, year } = req.body;
+      const { projectIds, month, year, inspectorId } = req.body;
 
       if (!Array.isArray(projectIds) || projectIds.length === 0 || projectIds.length > 5 || !month || !year) {
         return res.status(400).json({ message: "1-5 project IDs, month, and year are required" });
       }
 
       const allProjects: any[] = [];
-      const allReports: DailyReport[] = [];
       let companyId: string | null = null;
+      let callerHasAdminAccess = isEffectiveSystemAdmin(profile);
 
       for (const projectId of projectIds) {
         const project = await storage.getProject(projectId);
         if (!project) continue;
         const isMember = await storage.isUserMemberOfProject(projectId, userId);
         const hasCompanyAccess = project.companyId && await isEffectiveCompanyAdmin(userId, project.companyId, profile);
+        if (!callerHasAdminAccess && hasCompanyAccess) callerHasAdminAccess = true;
         if (!isEffectiveSystemAdmin(profile) && !hasCompanyAccess && !isMember) continue;
         allProjects.push(project);
         if (!companyId && project.companyId) companyId = project.companyId;
-        const startDate = new Date(year, month - 1, 1);
-        const endDate = new Date(year, month, 0);
-        endDate.setHours(23, 59, 59, 999);
-        const reports = await storage.getReportsForInvoice(projectId, startDate, endDate);
-        const inspectorReports = reports.filter(r => r.inspectorId === userId);
-        allReports.push(...inspectorReports);
       }
 
       if (allProjects.length === 0) {
@@ -11481,10 +11535,31 @@ export async function registerRoutes(
         return res.status(400).json({ message: "All selected projects must belong to the same company" });
       }
 
+      // If overriding the inspector, only admins/company admins are allowed
+      if (inspectorId && inspectorId !== userId) {
+        if (!callerHasAdminAccess) {
+          return res.status(403).json({ message: "Only admins can generate timesheets on behalf of other users" });
+        }
+      }
+
+      // Allow admins to generate on behalf of a specific inspector
+      const targetInspectorId = inspectorId || userId;
+
+      const allReports: DailyReport[] = [];
+
+      for (const project of allProjects) {
+        const startDate = new Date(year, month - 1, 1);
+        const endDate = new Date(year, month, 0);
+        endDate.setHours(23, 59, 59, 999);
+        const reports = await storage.getReportsForInvoice(project.id, startDate, endDate);
+        const inspectorReports = reports.filter(r => r.inspectorId === targetInspectorId);
+        allReports.push(...inspectorReports);
+      }
+
       let company = null;
       if (companyId) company = await storage.getCompany(companyId);
       const contracts = companyId ? await storage.getContracts(companyId) : [];
-      const inspectorProfile = await storage.getUserProfile(userId);
+      const inspectorProfile = await storage.getUserProfile(targetInspectorId);
 
       const timesheetData = aggregateReportsToTimesheetData(
         allReports, allProjects, contracts, company, inspectorProfile, month, year
@@ -11529,7 +11604,7 @@ export async function registerRoutes(
           await storage.upsertTimesheet({
             companyId: project.companyId,
             projectId: project.id,
-            inspectorId: userId,
+            inspectorId: targetInspectorId,
             month: parseInt(String(month), 10),
             year: parseInt(String(year), 10),
             status: "submitted",

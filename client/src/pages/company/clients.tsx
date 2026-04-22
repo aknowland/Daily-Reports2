@@ -336,7 +336,7 @@ export default function ClientsPage() {
     <PageLayout title="Clients">
       <div className="space-y-6">
         <PageHeader icon={Building2} title="Clients" subtitle={activeCompany.name}>
-          <Button className="bg-[hsl(36,90%,50%)] text-[hsl(216,32%,10%)] hover:bg-[hsl(36,90%,45%)] font-semibold" onClick={() => handleOpenDialog()} data-testid="button-add-client">
+          <Button className="bg-accent text-accent-foreground hover:bg-accent/90 font-semibold shadow-sm" onClick={() => handleOpenDialog()} data-testid="button-add-client">
             <Plus className="h-4 w-4 mr-2" />
             Add Client
           </Button>

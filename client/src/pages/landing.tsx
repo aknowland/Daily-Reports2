@@ -197,12 +197,8 @@ export default function LandingPage() {
             </div>
             <span className="font-bold text-base tracking-tight">Field Daily Reports</span>
           </div>
-          <div className="flex items-center gap-3">
-            <Button
-              asChild
-              className="bg-[hsl(36,90%,50%)] text-[hsl(216,32%,10%)] hover:bg-[hsl(36,90%,45%)] font-semibold shadow-sm"
-              data-testid="button-header-login"
-            >
+          <div className="flex items-center gap-2">
+            <Button asChild className="bg-accent text-accent-foreground hover:bg-accent/90 font-semibold shadow-sm" data-testid="button-header-login">
               <a href="/api/login">Sign In</a>
             </Button>
           </div>

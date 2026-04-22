@@ -189,14 +189,14 @@ export default function ReportsListPage() {
       >
         <Button 
           variant="outline"
-          className="border-white/30 text-white hover:bg-white/10"
+          className=""
           onClick={handleOpenExportModal}
           data-testid="button-export-reports"
         >
           <Download className="w-4 h-4 mr-2" />
           Export
         </Button>
-        <Button asChild className="bg-[hsl(36,90%,50%)] text-[hsl(216,32%,10%)] hover:bg-[hsl(36,90%,45%)] font-semibold" data-testid="button-new-report">
+        <Button asChild className="bg-accent text-accent-foreground hover:bg-accent/90 font-semibold shadow-sm" data-testid="button-new-report">
           <Link href="/reports/new">
             <Plus className="w-4 h-4 mr-2" />
             New Report
@@ -329,7 +329,7 @@ export default function ReportsListPage() {
                   <p className="text-sm text-muted-foreground mt-1 mb-5">
                     Create your first daily report to get started
                   </p>
-                  <Button asChild className="bg-[hsl(36,90%,50%)] text-[hsl(216,32%,10%)] hover:bg-[hsl(36,90%,45%)] font-semibold" data-testid="button-create-first-report">
+                  <Button asChild className="bg-accent text-accent-foreground hover:bg-accent/90 font-semibold shadow-sm" data-testid="button-create-first-report">
                     <Link href="/reports/new">
                       <Plus className="w-4 h-4 mr-2" />
                       Create Report

@@ -406,6 +406,7 @@ export interface IStorage {
   getTimesheets(companyId: string): Promise<(Timesheet & { projectName?: string; inspectorName?: string })[]>;
   getTimesheetsByInspectorAndProject(inspectorId: string, projectId: string): Promise<Timesheet[]>;
   getTimesheet(id: string): Promise<Timesheet | undefined>;
+  getTimesheetByKey(projectId: string, inspectorId: string, month: number, year: number): Promise<Timesheet | undefined>;
   updateTimesheetStatus(id: string, status: string): Promise<Timesheet | undefined>;
   upsertTimesheet(data: InsertTimesheet): Promise<Timesheet>;
 
@@ -2958,6 +2959,21 @@ export class DatabaseStorage implements IStorage {
 
   async getTimesheet(id: string): Promise<Timesheet | undefined> {
     const [row] = await db.select().from(timesheets).where(eq(timesheets.id, id));
+    return row;
+  }
+
+  async getTimesheetByKey(projectId: string, inspectorId: string, month: number, year: number): Promise<Timesheet | undefined> {
+    const [row] = await db
+      .select()
+      .from(timesheets)
+      .where(
+        and(
+          eq(timesheets.projectId, projectId),
+          eq(timesheets.inspectorId, inspectorId),
+          eq(timesheets.month, month),
+          eq(timesheets.year, year),
+        )
+      );
     return row;
   }
 
