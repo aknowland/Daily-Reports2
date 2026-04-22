@@ -11283,6 +11283,32 @@ export async function registerRoutes(
         } catch (notifError) {
           console.error("Error creating admin notifications for timesheet submission:", notifError);
         }
+
+        // Send email notifications to all company admins
+        try {
+          const adminEmails = await storage.getCompanyAdminEmails(timesheet.companyId);
+          if (adminEmails.length > 0) {
+            const inspectorName = profile
+              ? `${profile.firstName ?? ""} ${profile.lastName ?? ""}`.trim() || "An inspector"
+              : "An inspector";
+            const { sendEmail } = await import('./replit_integrations/email/client');
+            const appBaseUrl = process.env.APP_BASE_URL ?? "";
+            const billingUrl = appBaseUrl
+              ? `${appBaseUrl}/company/billing-management`
+              : "/company/billing-management";
+            await sendEmail({
+              to: adminEmails,
+              subject: "Timesheet Submitted for Review",
+              html: `
+                <p>Hi,</p>
+                <p><strong>${inspectorName}</strong> has submitted a timesheet for review.</p>
+                <p>Please visit <a href="${billingUrl}">Billing Management</a> to review and approve it.</p>
+              `,
+            });
+          }
+        } catch (emailError) {
+          console.error("Error sending email notifications for timesheet submission:", emailError);
+        }
       }
 
       res.json(updated);
