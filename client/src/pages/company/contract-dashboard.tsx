@@ -1554,7 +1554,17 @@ export default function ContractDashboard() {
               </div>
             ) : (
               <div className="space-y-3">
-                <p className="text-sm font-medium text-muted-foreground">Project Schedules</p>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-sm font-medium text-muted-foreground">Project Schedules</p>
+                  <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground" data-testid="schedule-status-legend">
+                    <span className="font-medium">Legend:</span>
+                    <span className="flex items-center gap-1"><span className="inline-block w-2.5 h-2.5 rounded-full bg-blue-500"></span>On Track</span>
+                    <span className="flex items-center gap-1"><span className="inline-block w-2.5 h-2.5 rounded-full bg-yellow-500"></span>Near Due</span>
+                    <span className="flex items-center gap-1"><span className="inline-block w-2.5 h-2.5 rounded-full bg-red-500"></span>Overdue</span>
+                    <span className="flex items-center gap-1"><span className="inline-block w-2.5 h-2.5 rounded-full bg-green-500"></span>Complete</span>
+                    <span className="flex items-center gap-1"><span className="inline-block w-2.5 h-2.5 rounded-full bg-gray-400"></span>Not Started</span>
+                  </div>
+                </div>
                 <div className="overflow-x-auto">
                   <Table>
                     <TableHeader>
