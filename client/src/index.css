@@ -383,6 +383,11 @@
     border: 1px solid transparent;
   }
 
+  /* Card: crisp border, clear separation from page background */
+  .card, [data-slot="card"] {
+    box-shadow: var(--shadow-sm);
+  }
+
   /* Subtle gradient backgrounds */
   .bg-gradient-subtle {
     background: linear-gradient(
@@ -451,9 +456,17 @@
     background-color: hsl(var(--sidebar-primary));
   }
 
-  /* ── Card: crisp border, clear separation from page background ───────────── */
-  .card, [data-slot="card"] {
-    box-shadow: var(--shadow-sm);
+  /* ── Primary button: subtle top-light gradient for depth ─────────────────── */
+  [data-slot="button"][class*="bg-primary"]:not(:disabled),
+  button[class*="bg-primary"]:not(:disabled) {
+    background-image: linear-gradient(180deg, rgba(255,255,255,0.08) 0%, transparent 60%);
+    transition: box-shadow 0.15s ease, opacity 0.15s ease, transform 0.1s ease;
+    box-shadow: 0 1px 3px -1px hsl(var(--primary) / 0.5), 0 1px 2px -1px hsl(var(--primary) / 0.3);
+  }
+  [data-slot="button"][class*="bg-primary"]:active:not(:disabled),
+  button[class*="bg-primary"]:active:not(:disabled) {
+    transform: translateY(0.5px);
+    box-shadow: 0 0 0 1px hsl(var(--primary) / 0.2);
   }
 }
 @layer utilities {
